@@ -1,0 +1,20 @@
+# Dependencias
+node_modules/
+
+# Build
+dist/
+
+# Variables de entorno
+.env
+.env.*.local
+
+# Cliente de Prisma generado
+src/generated/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db

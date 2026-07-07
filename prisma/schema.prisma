@@ -1,0 +1,29 @@
+// Documentación: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Categoria {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @unique
+  gastos    Gasto[]
+  createdAt DateTime @default(now())
+}
+
+model Gasto {
+  id          Int        @id @default(autoincrement())
+  descripcion String
+  monto       Decimal    @db.Decimal(10, 2)
+  fecha       DateTime   @default(now())
+  categoria   Categoria? @relation(fields: [categoriaId], references: [id])
+  categoriaId Int?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
