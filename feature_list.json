@@ -1,0 +1,74 @@
+{
+  "project": "TODO: nombre del proyecto",
+  "description": "TODO: describe brevemente qué hace este proyecto.",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "require_tests_to_close": true,
+    "require_approved_spec_to_implement": true,
+    "human_writes_intent_first": "Toda feature DEBE tener un bloque 'intent' escrito por el humano ANTES de que el leader derive 'acceptance'. El leader traduce la intención a criterios técnicos; NUNCA se inventa el QUÉ. Si una feature no tiene 'intent', el leader se detiene y lo pide. Ver docs/intent-template.md.",
+    "valid_status": ["pending", "spec_ready", "in_progress", "done", "blocked"],
+    "sdd_required_when": "feature has \"sdd\": true"
+  },
+  "features": [
+    {
+      "id": 1,
+      "name": "bootstrap",
+      "title": "Bootstrap del proyecto",
+      "intent": {
+        "que_quiero": "Que el proyecto se pueda arrancar con un solo comando y quede una estructura de carpetas base sobre la que construir el resto.",
+        "por_que": "Necesito una línea de salida limpia y repetible; sin esto cada feature posterior improvisa su propia estructura.",
+        "como_se_que_esta_bien": [
+          "Cuando ejecuto el comando de arranque, el proyecto levanta sin errores.",
+          "Cuando abro el repo, la estructura de carpetas coincide con la que decidí en docs/architecture.md.",
+          "Cuando ejecuto ./init.sh, detecta el stack y termina en verde."
+        ],
+        "que_no_quiero": [
+          "No añadir aún lógica de negocio; esto es solo el esqueleto.",
+          "No meter dependencias que no sean imprescindibles para arrancar."
+        ],
+        "delego_en_agente": [
+          "Qué versiones exactas fijar de cada herramienta; que el agente proponga y las anote en docs/stack.md.",
+          "Qué gestor de paquetes / runner concreto usar si hay varias opciones válidas; que decida y me lo marque."
+        ]
+      },
+      "acceptance": [
+        "El proyecto arranca con un comando único (ej: npm run dev, dotnet run, etc.)",
+        "Está documentado en docs/stack.md el lenguaje, framework y versiones usadas",
+        "init.sh detecta correctamente el stack y termina en verde",
+        "El árbol de carpetas inicial sigue lo descrito en docs/architecture.md"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "name": "fundamentos",
+      "title": "Fundamentos transversales",
+      "intent": {
+        "que_quiero": "Una capa base común (manejo de errores, configuración por entorno, y el cliente HTTP o la validación de datos según el proyecto) que todas las features posteriores reutilicen en vez de reinventar.",
+        "por_que": "Si cada feature resuelve los errores y la config a su manera, el proyecto se vuelve incoherente y difícil de mantener.",
+        "como_se_que_esta_bien": [
+          "Cuando arranca la app, la configuración por entorno está validada; si falta algo obligatorio, falla al arrancar con un mensaje claro.",
+          "Cuando una feature lanza un error, sale con un formato consistente en toda la app.",
+          "Cuando miro src/, la estructura por features ya está establecida y documentada."
+        ],
+        "que_no_quiero": [
+          "No construir features de negocio todavía, solo la base transversal.",
+          "No dejar la config con valores hardcodeados fuera del sistema de entorno."
+        ],
+        "delego_en_agente": [
+          "El patrón concreto de manejo de errores idiomático del stack; que el agente lo proponga apoyándose en docs/conventions.md y me lo marque.",
+          "Si conviene una librería de validación o hacerlo a mano; que decida con el trade-off y me lo explique."
+        ]
+      },
+      "acceptance": [
+        "Configuración de variables de entorno tipada y validada al arrancar",
+        "Manejo de errores centralizado con formato consistente",
+        "Estructura de carpetas por feature establecida en src/",
+        "Al menos un test del camino feliz de los fundamentos pasa con ./init.sh",
+        "docs/architecture.md actualizado con las decisiones tomadas"
+      ],
+      "sdd": true,
+      "status": "pending"
+    }
+  ]
+}

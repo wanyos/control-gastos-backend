@@ -1,0 +1,92 @@
+# Stack del proyecto
+
+> **Rellenado a partir de la inspección del repo** (`package.json`,
+> `tsconfig.json`, `prisma/`, `docker-compose.yml`, `src/`). Son datos
+> descubribles del proyecto real, no propuestas. Actualízalo si cambia el stack.
+
+## Lenguaje
+
+- **TypeScript** (`typescript@^6.0.3`), compilado a **ES2022**.
+- **Modo estricto activado.** `tsconfig.json` con `"strict": true`,
+  `"module": "NodeNext"`, `"moduleResolution": "NodeNext"`.
+- Proyecto **ESM** (`"type": "module"` en `package.json`): las importaciones
+  relativas usan extensión `.js` (ej. `import { buildApp } from './app.js'`).
+
+## Framework / Runtime
+
+- **Framework:** Fastify `^5.10.0`.
+- **Runtime:** Node.js — probado con `v24.11.0`; `engines.node` exige `>=20`.
+
+## Librerías clave
+
+- **ORM / DB:** Prisma `^7.8.0` (CLI `prisma` + `@prisma/client`), conectado
+  con el **driver adapter** `@prisma/adapter-pg@^7.8.0` sobre `pg@^8.22.0`.
+  El cliente se genera en `src/generated/prisma/` (generador `prisma-client`, ESM).
+- **Validación de schemas:** JSON Schema **nativo de Fastify** (AJV integrado).
+  No hay Zod/Typebox instalado; los endpoints declaran `schema` inline
+  (ej. `createExpenseSchema` en [`src/routes/expenses.ts`](../src/routes/expenses.ts)).
+- **Encapsulación de plugins:** `fastify-plugin@^6.0.0`.
+- **Carga de entorno:** `dotenv@^17.4.2` (Prisma 7 no autocarga `.env`).
+- **Estado / routing cliente / estilos:** N/A (backend sin UI).
+
+## Build / Dev tooling
+
+- **Gestor de paquetes:** **npm** (existe `package-lock.json`; no hay
+  `pnpm-lock.yaml` ni `yarn.lock`).
+- **Arranque dev (recarga en caliente):** `npm run dev` → `tsx watch src/server.ts`
+  (`tsx@^4.23.0`).
+- **Build:** `npm run build` → `prisma generate && tsc` (salida a `dist/`).
+- **Arranque producción:** `npm start` → `node dist/server.js`.
+- **Type check:** `npm run typecheck` → `tsc --noEmit`.
+
+## Testing
+
+- **Test runner:** **Vitest** `^4.1.10` (elegido 2026-07-10; alternativa
+  `node:test` descartada por requerir cablear el loader tsx a mano).
+  - `npm test` → `vitest run` (suite completa, la ejecuta también `./init.sh`).
+  - `npm run test:watch` → `vitest` (modo watch en desarrollo).
+- **Config:** `vitest.config.ts` — `environment: 'node'`, `.env` cargado vía
+  `setupFiles: ['dotenv/config']` (mismo mecanismo que producción),
+  `LOG_LEVEL=silent` para no ensuciar la salida.
+- **Estilo:** tests de integración con `buildApp()` + `app.inject()` de
+  Fastify contra el PostgreSQL real, sin mocks; limpian las filas que crean.
+- **Ubicación:** junto al archivo bajo test (ej. `src/routes/expenses.test.ts`),
+  según `docs/conventions.md` §Tests.
+
+## Base de datos / Persistencia
+
+- **Motor:** PostgreSQL **17** (imagen `postgres:17-alpine` en `docker-compose.yml`).
+- **Local:** `docker compose up -d` levanta el contenedor `gastos-postgres`
+  en **`localhost:5434`** (BD `gastos`, credenciales `postgres` / `postgres`).
+- **Por qué 5434 y no 5432 (decidido por el humano, 2026-07-10):** en esta
+  máquina `5432` lo ocupa un PostgreSQL 17.6 nativo de Windows (servicio
+  `postgresql-x64-17`) y `5433` el relay de WSL/Docker. El contenedor se
+  remapeó a `5434:5432` y `DATABASE_URL` apunta ahí; migraciones aplicadas al
+  contenedor y suite verificada contra él (versión servida: 17.9 linux-musl).
+  El PostgreSQL nativo conserva una BD `gastos` residual que ya no se usa.
+- **Migraciones:** Prisma Migrate → `npm run prisma:migrate` (`prisma migrate dev`).
+  Historial en `prisma/migrations/`.
+- **Conexión:** el CLI la lee de `prisma.config.ts` (Prisma 7); en runtime se
+  pasa vía el driver adapter en [`src/lib/prisma.ts`](../src/lib/prisma.ts).
+
+## Restricciones / decisiones de versionado
+
+- **Prisma fijado a la major 7.** Prisma 7 cambió el modelo de configuración:
+  la URL ya no vive en `schema.prisma` (se usa `prisma.config.ts` + driver
+  adapter) y `.env` no se autocarga. No bajar a 6.x sin revisitar esa config.
+- Versiones declaradas con rango caret (`^`) en `package.json`; el pin exacto
+  vive en `package-lock.json`.
+- **Librerías explícitamente prohibidas:** ninguna registrada todavía
+  (decisión del humano — añádelas aquí si las hay).
+
+## Variables de entorno requeridas
+
+| Nombre         | Descripción                        | Obligatoria       | Ejemplo                                                              |
+| -------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------- |
+| `DATABASE_URL` | Cadena de conexión a PostgreSQL.   | **sí**            | `postgresql://postgres:postgres@localhost:5434/gastos?schema=public` |
+| `PORT`         | Puerto HTTP del servidor.          | no (def. `3000`)  | `3000`                                                              |
+| `HOST`         | Interfaz de escucha.               | no (def. `0.0.0.0`) | `0.0.0.0`                                                          |
+| `LOG_LEVEL`    | Nivel de log de Fastify.           | no (def. `info`)  | `info`                                                              |
+
+> Fuente: `.env.example`, [`src/server.ts`](../src/server.ts) (`PORT`, `HOST`)
+> y [`src/app.ts`](../src/app.ts) (`LOG_LEVEL`).
