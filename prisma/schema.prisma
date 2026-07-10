@@ -1,4 +1,4 @@
-// Documentación: https://pris.ly/d/prisma-schema
+// Documentation: https://pris.ly/d/prisma-schema
 
 generator client {
   provider     = "prisma-client"
@@ -10,20 +10,20 @@ datasource db {
   provider = "postgresql"
 }
 
-model Categoria {
-  id        Int      @id @default(autoincrement())
-  nombre    String   @unique
-  gastos    Gasto[]
-  createdAt DateTime @default(now())
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  expenses  Expense[]
+  createdAt DateTime  @default(now())
 }
 
-model Gasto {
-  id          Int        @id @default(autoincrement())
-  descripcion String
-  monto       Decimal    @db.Decimal(10, 2)
-  fecha       DateTime   @default(now())
-  categoria   Categoria? @relation(fields: [categoriaId], references: [id])
-  categoriaId Int?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+model Expense {
+  id          Int       @id @default(autoincrement())
+  description String
+  amount      Decimal   @db.Decimal(10, 2)
+  date        DateTime  @default(now())
+  category    Category? @relation(fields: [categoryId], references: [id])
+  categoryId  Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }

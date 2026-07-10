@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import fp from 'fastify-plugin'
 import { createPrismaClient, type AppPrismaClient } from '../lib/prisma.js'
 
-// Extiende la instancia de Fastify para que `fastify.prisma` esté tipado
-// en todo el proyecto (rutas, hooks, etc.).
+// Extend the Fastify instance so `fastify.prisma` is typed across the whole
+// project (routes, hooks, etc.).
 declare module 'fastify' {
   interface FastifyInstance {
     prisma: AppPrismaClient
@@ -11,14 +11,14 @@ declare module 'fastify' {
 }
 
 /**
- * Plugin de Fastify que instancia PrismaClient, lo expone como `fastify.prisma`
- * y cierra la conexión de forma limpia cuando el servidor se apaga.
+ * Fastify plugin that instantiates PrismaClient, exposes it as `fastify.prisma`
+ * and closes the connection cleanly when the server shuts down.
  */
 async function prismaPlugin(fastify: FastifyInstance) {
   const prisma = createPrismaClient()
 
   await prisma.$connect()
-  fastify.log.info('Conexión a PostgreSQL establecida (Prisma)')
+  fastify.log.info('PostgreSQL connection established (Prisma)')
 
   fastify.decorate('prisma', prisma)
 
@@ -27,6 +27,6 @@ async function prismaPlugin(fastify: FastifyInstance) {
   })
 }
 
-// `fastify-plugin` evita que el plugin quede encapsulado, de modo que
-// `fastify.prisma` esté disponible en todas las rutas registradas.
+// `fastify-plugin` prevents the plugin from being encapsulated, so that
+// `fastify.prisma` is available in all registered routes.
 export default fp(prismaPlugin, { name: 'prisma' })

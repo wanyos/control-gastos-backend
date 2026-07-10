@@ -1,10 +1,10 @@
 import 'dotenv/config'
 import { defineConfig, env } from 'prisma/config'
 
-// Configuración del CLI de Prisma (migrate, studio, generate).
-// En Prisma 7 la URL de conexión ya no vive en el schema: se define aquí
-// para las tareas del CLI, y en el driver adapter para el runtime.
-// El archivo .env NO se carga automáticamente; por eso importamos 'dotenv/config'.
+// Prisma CLI configuration (migrate, studio, generate).
+// In Prisma 7 the connection URL no longer lives in the schema: it is defined
+// here for CLI tasks, and in the driver adapter for the runtime.
+// The .env file is NOT loaded automatically; that's why we import 'dotenv/config'.
 export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {

@@ -1,11 +1,11 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import prismaPlugin from './plugins/prisma.js'
 import healthRoutes from './routes/health.js'
-import gastosRoutes from './routes/gastos.js'
+import expenseRoutes from './routes/expenses.js'
 
 /**
- * Construye y configura la instancia de Fastify (plugins + rutas) sin ponerla
- * a escuchar. Separarlo de `server.ts` facilita las pruebas de integración.
+ * Builds and configures the Fastify instance (plugins + routes) without
+ * starting to listen. Keeping it separate from `server.ts` eases integration testing.
  */
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -14,12 +14,12 @@ export function buildApp(): FastifyInstance {
     },
   })
 
-  // Plugins (infraestructura compartida).
+  // Plugins (shared infrastructure).
   app.register(prismaPlugin)
 
-  // Rutas.
+  // Routes.
   app.register(healthRoutes)
-  app.register(gastosRoutes, { prefix: '/api/gastos' })
+  app.register(expenseRoutes, { prefix: '/api/expenses' })
 
   return app
 }

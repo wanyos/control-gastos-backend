@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 
 /**
- * Rutas de estado del servicio.
- *   GET /health     -> liveness (el proceso responde)
- *   GET /health/db  -> readiness (la base de datos está accesible)
+ * Service status routes.
+ *   GET /health     -> liveness (the process responds)
+ *   GET /health/db  -> readiness (the database is reachable)
  */
 export default async function healthRoutes(fastify: FastifyInstance) {
   fastify.get('/health', async () => {
@@ -15,7 +15,7 @@ export default async function healthRoutes(fastify: FastifyInstance) {
       await fastify.prisma.$queryRaw`SELECT 1`
       return { status: 'ok', database: 'up' }
     } catch (error) {
-      fastify.log.error(error, 'Fallo la comprobación de la base de datos')
+      fastify.log.error(error, 'Database health check failed')
       return reply.status(503).send({ status: 'error', database: 'down' })
     }
   })

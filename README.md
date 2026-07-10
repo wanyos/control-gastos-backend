@@ -49,17 +49,17 @@ El servidor queda escuchando en `http://localhost:3000` (configurable con `PORT`
 | -------- | ------------------ | ------------------------------------ |
 | `GET`    | `/health`          | Liveness (el proceso responde).      |
 | `GET`    | `/health/db`       | Readiness (la base de datos responde). |
-| `GET`    | `/api/gastos`      | Lista todos los gastos.              |
-| `POST`   | `/api/gastos`      | Crea un gasto.                       |
-| `GET`    | `/api/gastos/:id`  | Obtiene un gasto por id.             |
-| `DELETE` | `/api/gastos/:id`  | Elimina un gasto.                    |
+| `GET`    | `/api/expenses`     | Lista todos los gastos.              |
+| `POST`   | `/api/expenses`     | Crea un gasto.                       |
+| `GET`    | `/api/expenses/:id` | Obtiene un gasto por id.             |
+| `DELETE` | `/api/expenses/:id` | Elimina un gasto.                    |
 
 Ejemplo de creación de un gasto:
 
 ```bash
-curl -X POST http://localhost:3000/api/gastos \
+curl -X POST http://localhost:3000/api/expenses \
   -H "Content-Type: application/json" \
-  -d '{ "descripcion": "Compra supermercado", "monto": 45.90, "categoriaId": 1 }'
+  -d '{ "description": "Weekly groceries", "amount": 45.90, "categoryId": 1 }'
 ```
 
 ## Estructura del proyecto
@@ -67,7 +67,7 @@ curl -X POST http://localhost:3000/api/gastos \
 ```
 gastos-backend/
 ├── prisma/
-│   ├── schema.prisma        # Modelos de datos (Categoria, Gasto)
+│   ├── schema.prisma        # Modelos de datos (Category, Expense)
 │   └── migrations/          # Historial de migraciones
 ├── src/
 │   ├── server.ts            # Punto de entrada: carga .env y arranca el servidor
@@ -78,7 +78,7 @@ gastos-backend/
 │   │   └── prisma.ts        # Plugin que expone `fastify.prisma` y cierra la conexión
 │   ├── routes/
 │   │   ├── health.ts        # Rutas de estado
-│   │   └── gastos.ts        # CRUD de gastos
+│   │   └── expenses.ts      # CRUD de gastos
 │   └── generated/prisma/    # Cliente de Prisma generado (no se versiona)
 ├── prisma.config.ts         # Configuración del CLI de Prisma (Prisma 7)
 ├── docker-compose.yml       # PostgreSQL para desarrollo

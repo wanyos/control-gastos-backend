@@ -2,20 +2,20 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '../generated/prisma/client.js'
 
 /**
- * Crea una instancia de PrismaClient usando el driver adapter de PostgreSQL.
+ * Creates a PrismaClient instance using the PostgreSQL driver adapter.
  *
- * En Prisma 7 la conexión a la base de datos se establece en tiempo de
- * ejecución mediante un "driver adapter" (aquí `@prisma/adapter-pg`), en lugar
- * de leer la URL desde el schema. La cadena de conexión se toma de
- * `process.env.DATABASE_URL`, que debe estar cargada antes de llamar a esta
- * función (ver `src/server.ts`, que importa `dotenv/config`).
+ * In Prisma 7 the database connection is established at runtime through a
+ * "driver adapter" (here `@prisma/adapter-pg`) instead of reading the URL from
+ * the schema. The connection string is taken from `process.env.DATABASE_URL`,
+ * which must be loaded before calling this function (see `src/server.ts`,
+ * which imports `dotenv/config`).
  */
 export function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL
 
   if (!connectionString) {
     throw new Error(
-      'DATABASE_URL no está definida. Copia .env.example a .env y configura la conexión a PostgreSQL.',
+      'DATABASE_URL is not defined. Copy .env.example to .env and configure the PostgreSQL connection.',
     )
   }
 
@@ -23,5 +23,5 @@ export function createPrismaClient() {
   return new PrismaClient({ adapter })
 }
 
-/** Tipo de la instancia devuelta por `createPrismaClient`. */
+/** Type of the instance returned by `createPrismaClient`. */
 export type AppPrismaClient = ReturnType<typeof createPrismaClient>
