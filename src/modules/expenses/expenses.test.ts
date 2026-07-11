@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
-import { buildApp } from '../app.js'
+import { buildApp } from '../../app.js'
 
 interface ExpenseResponse {
   id: number
@@ -92,6 +92,35 @@ describe('expense routes', () => {
 
     expect(response.statusCode).toBe(404)
     expect(response.json()).toMatchObject({ message: 'Expense not found' })
+  })
+
+  it('GET /api/expenses/99999 returns the shared error body shape', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/expenses/99999' })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toEqual({
+      statusCode: 404,
+      code: 'NOT_FOUND',
+      message: 'Expense not found',
+    })
+  })
+
+  it('POST /api/expenses without amount returns 400 with code VALIDATION_ERROR', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/expenses',
+      payload: { description: 'Missing amount' },
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+  })
+
+  it('GET /api/expenses/abc returns 400 with code VALIDATION_ERROR', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/expenses/abc' })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
   })
 
   it('DELETE /api/expenses/:id returns 204 and removes it from the list', async () => {

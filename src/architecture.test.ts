@@ -1,0 +1,63 @@
+// Guardian test for whole-tree invariants (R4, R11, R12, R13 of
+// specs/fundamentos). Lives at the root of src/ because it guards the tree,
+// not a single file (conscious exception to "test next to the file").
+import { readdirSync, readFileSync, existsSync } from 'node:fs'
+import { join, relative } from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+const srcDir = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+
+function sourceFiles(dir: string): string[] {
+  const files: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === 'generated') continue
+      files.push(...sourceFiles(fullPath))
+    } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) {
+      files.push(fullPath)
+    }
+  }
+  return files
+}
+
+describe('architecture invariants', () => {
+  it('reads process.env only in src/config/env.ts', () => {
+    const offenders = sourceFiles(srcDir)
+      .filter((file) => relative(srcDir, file).replace(/\\/g, '/') !== 'config/env.ts')
+      .filter((file) => readFileSync(file, 'utf8').includes('process.env'))
+      .map((file) => relative(srcDir, file))
+
+    expect(offenders).toEqual([])
+  })
+
+  it('contains the target tree of docs/architecture.md (ADR-004)', () => {
+    const expected = [
+      'config/env.ts',
+      'errors/app-error.ts',
+      'plugins/error-handler.ts',
+      'modules/expenses/expenses.routes.ts',
+      'modules/expenses/expenses.service.ts',
+      'modules/expenses/expenses.schema.ts',
+      'modules/expenses/expenses.types.ts',
+      'modules/expenses/expenses.test.ts',
+      'modules/health/health.routes.ts',
+      'modules/health/health.test.ts',
+    ]
+
+    const missing = expected.filter((file) => !existsSync(join(srcDir, file)))
+
+    expect(missing).toEqual([])
+  })
+
+  it('has no src/routes/ directory (migrated to modules/)', () => {
+    expect(existsSync(join(srcDir, 'routes'))).toBe(false)
+  })
+
+  it('keeps expenses.routes.ts free of data access (no "prisma" reference)', () => {
+    const routes = readFileSync(join(srcDir, 'modules/expenses/expenses.routes.ts'), 'utf8')
+
+    expect(routes.toLowerCase()).not.toContain('prisma')
+  })
+})

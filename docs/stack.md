@@ -23,8 +23,9 @@
   con el **driver adapter** `@prisma/adapter-pg@^7.8.0` sobre `pg@^8.22.0`.
   El cliente se genera en `src/generated/prisma/` (generador `prisma-client`, ESM).
 - **Validación de schemas:** JSON Schema **nativo de Fastify** (AJV integrado).
-  No hay Zod/Typebox instalado; los endpoints declaran `schema` inline
-  (ej. `createExpenseSchema` en [`src/routes/expenses.ts`](../src/routes/expenses.ts)).
+  No hay Zod/Typebox instalado; los schemas viven en el `*.schema.ts` de cada
+  módulo (ej. `createExpenseSchema` en
+  [`src/modules/expenses/expenses.schema.ts`](../src/modules/expenses/expenses.schema.ts)).
 - **Encapsulación de plugins:** `fastify-plugin@^6.0.0`.
 - **Carga de entorno:** `dotenv@^17.4.2` (Prisma 7 no autocarga `.env`).
 - **Estado / routing cliente / estilos:** N/A (backend sin UI).
@@ -38,6 +39,13 @@
 - **Build:** `npm run build` → `prisma generate && tsc` (salida a `dist/`).
 - **Arranque producción:** `npm start` → `node dist/server.js`.
 - **Type check:** `npm run typecheck` → `tsc --noEmit`.
+- **Lint:** `npm run lint` → `eslint .` (ESLint `10.7.0` flat config +
+  `typescript-eslint` 8 sobre `src/**/*.ts`, `eslint-config-prettier` al
+  final; ignora `src/generated/` y `dist/`). `lint:fix` para autofix.
+- **Format:** `npm run format:check` / `format` → Prettier `3.9.5`
+  (`.prettierrc`: comillas simples, sin punto y coma, 2 espacios,
+  100 columnas). `.prettierignore` excluye artefactos generados, el
+  lockfile, los `.md` del harness y `feature_list.json`.
 
 ## Testing
 
@@ -50,8 +58,8 @@
   `LOG_LEVEL=silent` para no ensuciar la salida.
 - **Estilo:** tests de integración con `buildApp()` + `app.inject()` de
   Fastify contra el PostgreSQL real, sin mocks; limpian las filas que crean.
-- **Ubicación:** junto al archivo bajo test (ej. `src/routes/expenses.test.ts`),
-  según `docs/conventions.md` §Tests.
+- **Ubicación:** junto al archivo bajo test (ej.
+  `src/modules/expenses/expenses.test.ts`), según `docs/conventions.md` §Tests.
 
 ## Base de datos / Persistencia
 

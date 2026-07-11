@@ -1,25 +1,31 @@
 import Fastify, { type FastifyInstance } from 'fastify'
+
+import { loadConfig, type AppConfig } from './config/env.js'
+import expensesRoutes from './modules/expenses/expenses.routes.js'
+import healthRoutes from './modules/health/health.routes.js'
+import errorHandlerPlugin from './plugins/error-handler.js'
 import prismaPlugin from './plugins/prisma.js'
-import healthRoutes from './routes/health.js'
-import expenseRoutes from './routes/expenses.js'
 
 /**
- * Builds and configures the Fastify instance (plugins + routes) without
+ * Builds and configures the Fastify instance (plugins + modules) without
  * starting to listen. Keeping it separate from `server.ts` eases integration testing.
  */
-export function buildApp(): FastifyInstance {
+export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   const app = Fastify({
     logger: {
-      level: process.env.LOG_LEVEL ?? 'info',
+      level: config.logLevel,
     },
   })
 
-  // Plugins (shared infrastructure).
+  app.decorate('config', config)
+
+  // Shared infrastructure. The error handler goes first so it covers every module.
+  app.register(errorHandlerPlugin)
   app.register(prismaPlugin)
 
-  // Routes.
+  // Modules.
   app.register(healthRoutes)
-  app.register(expenseRoutes, { prefix: '/api/expenses' })
+  app.register(expensesRoutes, { prefix: '/api/expenses' })
 
   return app
 }

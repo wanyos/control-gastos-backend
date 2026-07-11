@@ -35,9 +35,9 @@ npm run typecheck   # tsc --noEmit — debe terminar sin errores
 Las features de API se prueban cruzando la capa HTTP + Fastify + Prisma contra
 una base de datos PostgreSQL real. La forma idiomática ya está en uso: levantar
 la app con `buildApp()` y ejercerla con **`app.inject()`** (sin abrir puerto
-real). Ejemplos vivos: `src/routes/expenses.test.ts` y
-`src/routes/health.test.ts` (cubren 201/lista/200 por id/400/404/204 y limpian
-las filas que crean).
+real). Ejemplos vivos: `src/modules/expenses/expenses.test.ts` y
+`src/modules/health/health.test.ts` (cubren 201/lista/200 por id/400/404/204 y
+limpian las filas que crean).
 
 Equivalente manual con curl (para probar a mano contra el servidor en marcha):
 
@@ -89,7 +89,7 @@ Verde = el proceso responde (`/health`) y la base de datos está accesible
 Cada `R<n>` de `specs/<name>/requirements.md` debe poder mapearse a al
 menos un test concreto. El reviewer rechaza si falta cobertura.
 
-El implementer documenta el mapa en `progress/impl_<name>.md`:
+El implementer documenta el mapa en `progress/implementations/<name>.md`:
 
 ```markdown
 ## Trazabilidad

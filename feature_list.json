@@ -41,7 +41,7 @@
     },
     {
       "id": 2,
-      "name": "fundamentos",
+      "name": "foundations",
       "title": "Fundamentos transversales",
       "intent": {
         "que_quiero": "Una capa base común (manejo de errores, configuración por entorno, y el cliente HTTP o la validación de datos según el proyecto) que todas las features posteriores reutilicen en vez de reinventar.",
@@ -68,7 +68,7 @@
         "docs/architecture.md actualizado con las decisiones tomadas"
       ],
       "sdd": true,
-      "status": "pending"
+      "status": "done"
     }
   ]
 }

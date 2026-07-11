@@ -20,10 +20,40 @@
 - **Números decimales:** el campo `amount` se serializa como **string decimal**
   (p. ej. `"45.90"`), no como número, porque proviene de un `Decimal(10,2)`.
 - **Fechas:** ISO 8601 en UTC (p. ej. `"2026-07-04T00:00:00.000Z"`).
-- **Errores:** el cuerpo de error tiene la forma `{ "message": "STRING" }` con el
-  código HTTP correspondiente. *(Un formato con `code` estable está previsto en
-  la feature de fundamentos; hasta entonces, el frontend discrimina por el
-  código HTTP, no por el texto de `message`.)*
+- **Errores:** todo cuerpo de error tiene la forma única
+  `{ "statusCode": NUMBER, "code": "STRING", "message": "STRING" }`
+  (ver la sección [Errores](#errores)).
+
+## Errores
+
+Toda respuesta de error de la API (validación, no encontrado, error interno,
+ruta inexistente) usa el mismo cuerpo:
+
+```json
+{ "statusCode": 404, "code": "NOT_FOUND", "message": "Expense not found" }
+```
+
+- `statusCode`: el código HTTP de la respuesta, repetido en el cuerpo.
+- `code`: identificador **estable** para máquinas; el frontend puede
+  discriminar por él (además de por el código HTTP).
+- `message`: texto para humanos; **puede cambiar sin aviso**, no programar
+  lógica contra él.
+
+Códigos estables:
+
+| `code`                  | HTTP | Cuándo                                                     |
+| ----------------------- | ---- | ---------------------------------------------------------- |
+| `VALIDATION_ERROR`      | 400  | El body o los params no cumplen el esquema de la ruta.     |
+| `NOT_FOUND`             | 404  | El recurso pedido no existe, o la ruta no existe.          |
+| `INTERNAL_SERVER_ERROR` | 500  | Error inesperado; el cuerpo no expone detalles internos.   |
+
+> **Nota de cambio (feature "foundations", 2026-07-11):** hasta ahora el
+> cuerpo de error era `{ "message": "STRING" }` (y los errores de validación
+> o de ruta inexistente salían con el formato default de Fastify). Ahora todo
+> error responde con `{ statusCode, code, message }`. **No es breaking** para
+> el frontend: los códigos HTTP no cambian y el contrato vigente indicaba
+> discriminar por código HTTP, no por el cuerpo; este formato ya estaba
+> anunciado aquí como previsto.
 
 ## Modelos
 

@@ -15,7 +15,7 @@ declare module 'fastify' {
  * and closes the connection cleanly when the server shuts down.
  */
 async function prismaPlugin(fastify: FastifyInstance) {
-  const prisma = createPrismaClient()
+  const prisma = createPrismaClient(fastify.config.databaseUrl)
 
   await prisma.$connect()
   fastify.log.info('PostgreSQL connection established (Prisma)')
