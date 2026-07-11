@@ -1,0 +1,17 @@
+# Generated / build artifacts (also in .gitignore, listed here explicitly)
+src/generated/
+dist/
+node_modules/
+package-lock.json
+
+# Harness prose and state: reformatting these in bulk adds git noise and they
+# are owned by humans/leader, not by the formatter. Revisit if desired.
+*.md
+docs/
+progress/
+specs/
+.claude/
+feature_list.json
+
+# Editor-local settings
+.vscode/

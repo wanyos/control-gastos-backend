@@ -10,11 +10,11 @@ services:
     ports:
       # 5434 en el host: evita las colisiones de esta máquina — el PostgreSQL
       # nativo de Windows ocupa 5432 y el relay de WSL/Docker ocupa 5433.
-      - "5434:5432"
+      - '5434:5432'
     volumes:
       - gastos_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d gastos"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d gastos']
       interval: 5s
       timeout: 5s
       retries: 5
