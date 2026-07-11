@@ -5,7 +5,7 @@
 
 ## Quién consume esta API
 
-- `TODO-frontend/` (TODO: stack, ej. Vue3 + TypeScript) consume esta API.
+- `gastos-frontend/` (Vue3 + TypeScript) consume esta API.
 
 ## Qué debe saber el harness del backend
 
