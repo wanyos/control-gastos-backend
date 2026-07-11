@@ -5,7 +5,7 @@
 > Es la pieza de SALIDA, simétrica a `docs/intent-template.md` (la de entrada).
 > Su objetivo: que el humano entienda QUÉ se hizo y DÓNDE está el código, sin
 > tener que bucear en diffs de git. Un archivo por feature en
-> `progress/resumen_<feature>.md`.
+> `progress/summaries/<feature>.md`.
 >
 > Reglas de estilo:
 > - En cristiano, sin jerga. Como si se lo explicaras a alguien que conoce el

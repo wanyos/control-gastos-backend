@@ -46,16 +46,16 @@ leader te la asigna directamente).
    según el caso).
 6. **Verifica** ejecutando `./init.sh`. Si falla → vuelve al paso 4.
 7. **Trazabilidad (solo SDD)**: confirma que cada `R<n>` está cubierto por
-   al menos un test concreto. Anótalo en `progress/impl_<name>.md`
+   al menos un test concreto. Anótalo en `progress/implementations/<name>.md`
    (mapa `R<n> → test`).
-8. **Escribe el informe** en `progress/impl_<feature>.md` con:
+8. **Escribe el informe** en `progress/implementations/<feature>.md` con:
    - Archivos modificados / creados
    - Diseño / decisiones tomadas
    - Output del último `./init.sh`
    - SDD: el mapa de trazabilidad `R<n> → test`
    - Estado final en `feature_list.json`
 9. **No marques `done` tú mismo.** Llama a un `reviewer` y espera su veredicto.
-10. Si el reviewer aprueba: comprueba que existe `progress/resumen_<feature>.md`
+10. Si el reviewer aprueba: comprueba que existe `progress/summaries/<feature>.md`
     (el resumen de cierre en lenguaje humano que escribe el reviewer). Si no
     existe, no cierres: la aprobación está incompleta. Si existe, cambias el
     estado a `done` y añades tu informe de implementación a `progress/history.md`.
@@ -83,11 +83,11 @@ leader te la asigna directamente).
 Cuando el líder te lance, tu respuesta final es **una sola línea**:
 
 ```
-done -> progress/impl_<feature>.md
+done -> progress/implementations/<feature>.md
 ```
 o
 ```
-blocked -> progress/impl_<feature>.md
+blocked -> progress/implementations/<feature>.md
 ```
 
 Nunca devuelvas el diff completo en chat. El líder lo leerá del disco si lo necesita.

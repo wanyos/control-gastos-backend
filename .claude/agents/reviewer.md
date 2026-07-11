@@ -17,7 +17,7 @@ cambios. No editas código.
    - `docs/conventions.md`
    - `docs/verification.md`
    - `CHECKPOINTS.md`
-   - El informe del implementer en `progress/impl_<feature>.md`
+   - El informe del implementer en `progress/implementations/<feature>.md`
    - Si la feature es SDD: `docs/specs.md` + `specs/<feature>/` completo.
 2. Identifica la feature en curso (la única en `in_progress` en
    `feature_list.json`) y los archivos modificados/creados. Léelos.
@@ -31,7 +31,7 @@ cambios. No editas código.
      clasificar, rechaza: sin ella, el humano no pudo aprobar con criterio.
    - **Tasks completas**: comprueba que TODAS las tasks de `tasks.md` están
      `[x]`. Si queda alguna `[ ]`, rechaza salvo justificación documentada
-     en `progress/impl_<feature>.md`.
+     en `progress/implementations/<feature>.md`.
 4. **Para cada archivo modificado** (SDD y no-SDD):
    - ¿Respeta `docs/architecture.md`? (capas, dependencias, estructura)
    - ¿Respeta `docs/conventions.md`? (estilo, nombres, errores)
@@ -42,7 +42,7 @@ cambios. No editas código.
 6. Recorre `CHECKPOINTS.md`. Marca `[x]` los que se cumplen, `[ ]` los que no.
 7. Emite veredicto.
 8. **Si el veredicto es APPROVED, escribe el resumen de cierre** en
-   `progress/resumen_<feature>.md` siguiendo `docs/resumen-template.md`. Es la
+   `progress/summaries/<feature>.md` siguiendo `docs/summary-template.md`. Es la
    pieza de salida para el humano: en cristiano, con archivo y línea concretos
    de cada pieza, y cerrando el círculo con el `intent` (por cada punto del
    `como_se_que_esta_bien`, di si se cumple y dónde se verifica). Sin este
@@ -51,7 +51,7 @@ cambios. No editas código.
 
 ## Formato del veredicto
 
-Tu salida final es **un único bloque** escrito en `progress/review_<feature>.md`:
+Tu salida final es **un único bloque** escrito en `progress/reviews/<feature>.md`:
 
 ```markdown
 # Review — feature <id> `<name>`
@@ -103,7 +103,7 @@ Tu salida final es **un único bloque** escrito en `progress/review_<feature>.md
 
 ## Resumen de cierre (si APPROVED)
 
-- Escrito en `progress/resumen_<feature>.md` → sí / no
+- Escrito en `progress/summaries/<feature>.md` → sí / no
 
 ## Cambios requeridos (si aplica)
 
@@ -114,11 +114,11 @@ Tu salida final es **un único bloque** escrito en `progress/review_<feature>.md
 Tu respuesta en chat es **una sola línea**:
 
 ```
-APPROVED -> progress/review_<feature>.md
+APPROVED -> progress/reviews/<feature>.md
 ```
 o
 ```
-CHANGES_REQUESTED -> progress/review_<feature>.md
+CHANGES_REQUESTED -> progress/reviews/<feature>.md
 ```
 
 ## Reglas duras
@@ -129,7 +129,7 @@ CHANGES_REQUESTED -> progress/review_<feature>.md
 - ❌ (SDD) Nunca apruebes si quedan tasks en `[ ]` sin justificación.
 - ❌ Nunca edites el código del implementador. Tu trabajo es decir qué falla,
   no arreglarlo.
-- ❌ Nunca devuelvas APPROVED sin haber escrito `progress/resumen_<feature>.md`.
+- ❌ Nunca devuelvas APPROVED sin haber escrito `progress/summaries/<feature>.md`.
   El resumen de cierre es parte del trabajo de aprobar, no un extra opcional.
 - ✅ Sé concreto: cita líneas y archivos. Nada de feedback genérico.
 - ✅ Si todo está bien, dilo claramente. No inventes problemas para

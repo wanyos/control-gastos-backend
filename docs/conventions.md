@@ -19,12 +19,24 @@
 - **Prosa de la documentación:** los `docs/` se redactan en español (idioma de
   trabajo); solo los identificadores de código, rutas y modelos citados en ellos
   van en inglés.
+- **Nombres de archivos y carpetas SIEMPRE en inglés** (decidido 2026-07-11),
+  incluidos los artefactos del harness y los `name` de las features en
+  `feature_list.json`. La única excepción sigue siendo la prosa (contenido)
+  de los documentos, que va en español. Estructura de `progress/` por tipo:
+  - `progress/current.md` e `progress/history.md` — en la raíz.
+  - `progress/implementations/<feature>.md` — informes del implementer.
+  - `progress/reviews/<feature>.md` — veredictos del reviewer.
+  - `progress/summaries/<feature>.md` — resúmenes de cierre (C8).
+  - `progress/explorations/<topic>.md` — investigaciones previas.
 
 ## Estilo del lenguaje
 
 - **TypeScript estricto, target ES2022, ESM.** *(observado en `tsconfig.json`)*
-- **Linter + formatter: ESLint + Prettier.** Aún no instalados en el repo; se
-  añaden en la feature de fundamentos. Reglas fijadas:
+- **Linter + formatter: ESLint + Prettier.** Instalados y configurados
+  (2026-07-11, tarea directa): ESLint 10 flat config + typescript-eslint 8
+  sobre `src/**/*.ts`, Prettier 3. Comandos: `npm run lint` / `lint:fix` /
+  `format` / `format:check`. Prettier no formatea los `.md` del harness ni
+  `feature_list.json` (ver `.prettierignore`). Reglas fijadas:
   - Comillas **simples**.
   - **Sin** punto y coma.
   - Indentación de **2 espacios**.
@@ -71,8 +83,8 @@ export default async function expenseRoutes(fastify: FastifyInstance) {
 
 - **Ubicación: junto al archivo** (`expenses.test.ts` al lado de
   `expenses.routes.ts`).
-- **Runner:** Vitest o `node:test` nativo. **Decisión pendiente** (ver
-  `docs/verification.md`).
+- **Runner:** **Vitest** (configurado 2026-07-10; ver `docs/stack.md`
+  §Testing y `docs/verification.md`).
 - **Integración de API:** con `app.inject()` sobre `buildApp()`, contra la BD
   real de `docker-compose.yml`.
 - **Nombres de test:** descriptivos, en inglés.
@@ -81,7 +93,9 @@ export default async function expenseRoutes(fastify: FastifyInstance) {
 
 ## Manejo de errores
 
-> Aún **no implementado** (es parte de la feature #2 "fundamentos").
+> Implementado por la feature #2 "foundations" (2026-07-11): jerarquía en
+> `src/errors/app-error.ts`, handler central en `src/plugins/error-handler.ts`
+> (ver ADR-005 en `docs/architecture.md`).
 
 - Errores de dominio extienden una base `AppError` con un `code` string y un
   `statusCode`.

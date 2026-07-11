@@ -95,3 +95,81 @@ Plantilla para cada entrada nueva:
 - **Cierre:** app y tests trabajan contra el contenedor. El PostgreSQL
   nativo de Windows sigue corriendo con su BD `gastos` residual (sin uso;
   el humano puede pararlo o borrarla cuando quiera).
+
+## 2026-07-10 → 2026-07-11 — Feature 2: fundamentos (SDD) + tarea directa lint-tooling
+
+- **Agente:** leader (orquestando) + spec_author + implementer + reviewer.
+- **Plan:** flujo SDD completo. (a) spec_author redactó
+  `specs/fundamentos/` (R1-R18 en EARS con procedencia, design, T1-T25);
+  (b) puerta humana: aprobado el 2026-07-11 sin cambios (R3 valores de env
+  inválidos y R10 404 de router normalizado ENTRAN; R18 se dio por
+  satisfecho vía tarea directa); (c) implementer ejecutó las tasks en
+  orden; (d) reviewer validó trazabilidad R↔test re-ejecutando todo.
+  Durante la revisión del spec, el humano pidió adelantar el lint tooling
+  como tarea directa.
+- **Cambios:**
+  - lint-tooling (implementer, APPROVED): ESLint 10 flat config +
+    typescript-eslint 8 + Prettier 3 + eslint-config-prettier; scripts
+    `lint`/`lint:fix`/`format`/`format:check`; cero reformateo en `src/`.
+    Leader actualizó docs/conventions.md y docs/stack.md. Informes:
+    impl_/review_lint-tooling.md.
+  - Feature 2 fundamentos (implementer; T1-T25 completadas, T22 N/A por el
+    lint ya hecho):
+    - `src/config/env.ts` — `loadConfig()` tipado que valida al arrancar y
+      acumula todos los problemas en un mensaje; fail-fast en `server.ts`
+      (stderr + exit 1); `process.env` centralizado (adiós lecturas
+      dispersas en app/server/lib).
+    - `src/errors/app-error.ts` (`AppError`, `NotFoundError`,
+      `ValidationError`) + `src/plugins/error-handler.ts`
+      (`setErrorHandler` + `setNotFoundHandler`): formato único de error
+      `{ statusCode, code, message }`; 500 genérico sin filtrar detalles.
+    - Migración a `modules/` (ADR-004): `expenses/`
+      (routes/service/schema/types, service único punto de acceso a Prisma
+      vía accessor `expensesDb`) y `health/`; `src/routes/` eliminado; los
+      8 tests movidos sin tocar asserts.
+    - `src/architecture.test.ts` — guardián de invariantes (R4, R11, R12,
+      R13).
+    - Docs: api-contract.md §Errores nueva (códigos estables + nota
+      no-breaking), architecture.md (ADR-005 patrón de errores, ADR-006
+      validación de env a mano, árbol sin `(nueva)`, notas de realidad),
+      stack.md y verification.md (referencias a `src/modules/*`).
+    - Suite: de 8 → **35 tests**. Informes:
+      impl_/review_/resumen_fundamentos.md.
+- **Verificación:** `npm test` 35/35; `typecheck`/`lint`/`format:check`
+  exit 0; `bash ./init.sh` → `[OK] Entorno listo` (re-ejecutado también
+  por el reviewer). Smoke real: `npm run dev` responde /health, /health/db
+  y 404 normalizado; sin `DATABASE_URL` → exit 1 con mensaje claro;
+  `PORT`/`LOG_LEVEL` inválidos → exit 1 listando ambos problemas. Procesos
+  `tsx watch` matados por PID y verificados por lista de procesos
+  (Win32_Process) + puerto 3000 libre.
+- **Cierre:** feature 2 `fundamentos` → **done** (reviewer APPROVED sin
+  cambios requeridos; resumen en `progress/resumen_fundamentos.md`).
+  Observaciones no bloqueantes anotadas en `review_fundamentos.md` para el
+  leader: nota obsoleta en conventions.md §Manejo de errores, pie de
+  stack.md §Variables de entorno desactualizado, placeholder en
+  related-projects.md, assert histórico redundante en expenses.test.ts.
+  Próxima feature: no quedan features pendientes en `feature_list.json`;
+  esperar el siguiente `intent` del humano.
+
+## 2026-07-11 — Tarea directa: reorganización de progress/ y regla de nombres en inglés
+
+- **Agente:** leader (solo harness/docs). Decisiones del humano: subcarpetas
+  sin prefijo; renombrar la feature "fundamentos" → "foundations".
+- **Cambios:** `progress/` organizado por tipo — `implementations/`,
+  `reviews/`, `summaries/` (y `explorations/` para el futuro); `current.md`
+  e `history.md` quedan en la raíz. Renombrados a inglés:
+  `specs/fundamentos/` → `specs/foundations/`, `name` de la feature 2 →
+  `foundations`, `docs/resumen-template.md` → `docs/summary-template.md`.
+  Referencias actualizadas en `.claude/agents/*` (leader, implementer,
+  reviewer, spec_author — este último ahora reporta bloqueos en
+  `progress/current.md`), `CHECKPOINTS.md` (C8) y
+  `docs/{specs,verification,conventions,architecture,api-contract}.md`.
+  Regla codificada en `docs/conventions.md` §Idioma: nombres de archivos y
+  carpetas SIEMPRE en inglés; solo la prosa de los documentos va en español.
+  Corregida de paso la nota obsoleta de conventions.md §Manejo de errores
+  ("aún no implementado" → implementado por foundations).
+- **Verificación:** `./init.sh` → `[OK] Entorno listo` (su paso 3 valida
+  `specs/foundations/` contra el nombre nuevo); 35/35 tests.
+- **Cierre:** los informes históricos NO se editaron (history.md es
+  append-only; las rutas citadas en su contenido reflejan la época en que
+  se escribieron). Siguiente: commits del trabajo pendiente.

@@ -170,16 +170,16 @@ referencias del tipo: "resultado en `progress/<nombre>.md`" o
 
 Convención de nombres:
 
-- `progress/explore_<tema>.md` — investigaciones previas
+- `progress/explorations/<topic>.md` — investigaciones previas
 - `specs/<feature>/` — output del spec_author
-- `progress/impl_<feature>.md` — informe del implementer
-- `progress/review_<feature>.md` — informe del reviewer
+- `progress/implementations/<feature>.md` — informe del implementer
+- `progress/reviews/<feature>.md` — informe del reviewer
 
 Ejemplo de instrucción correcta para un subagente:
 
 > "Investiga cómo está estructurada la capa de auth actual. Escribe tus
-> hallazgos en `progress/explore_auth.md`. Tu respuesta a mí debe ser solo:
-> `done -> progress/explore_auth.md` o un mensaje de bloqueo."
+> hallazgos en `progress/explorations/auth.md`. Tu respuesta a mí debe ser solo:
+> `done -> progress/explorations/auth.md` o un mensaje de bloqueo."
 
 ## Escalado de esfuerzo
 

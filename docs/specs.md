@@ -183,7 +183,7 @@ rechaza si queda alguna `[ ]` sin justificación documentada.
 - El `reviewer` comprueba esta correspondencia explícitamente y rechaza
   si falta.
 
-El `implementer` documenta el mapa en `progress/impl_<name>.md`:
+El `implementer` documenta el mapa en `progress/implementations/<name>.md`:
 
 ```markdown
 ## Trazabilidad

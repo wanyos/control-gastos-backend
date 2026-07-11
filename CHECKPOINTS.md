@@ -66,8 +66,8 @@
 ## C8 — El resumen de cierre existe (solo al aprobar una feature)
 
 - [ ] Toda feature que se cierra como `done` tiene su
-      `progress/resumen_<name>.md` escrito en lenguaje humano
-      (ver `docs/resumen-template.md`).
+      `progress/summaries/<name>.md` escrito en lenguaje humano
+      (ver `docs/summary-template.md`).
 - [ ] El resumen indica archivo y línea concretos de cada pieza de código.
 - [ ] El resumen cierra el círculo con el `intent`: cada punto de
       `como_se_que_esta_bien` aparece marcado como cumplido y con su test.

@@ -72,8 +72,9 @@ spec_ready -> specs/<name>/
 ```
 o
 ```
-blocked -> progress/spec_<name>.md
+blocked -> progress/current.md
 ```
 
-Si te bloqueas, escribe la razón en `progress/spec_<name>.md`. Nunca
-devuelvas el contenido del spec en chat — vive en disco.
+Si te bloqueas, escribe la razón en `progress/current.md` (el lugar
+canónico de los bloqueos, ver `AGENTS.md` §6). Nunca devuelvas el
+contenido del spec en chat — vive en disco.
