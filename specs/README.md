@@ -13,5 +13,5 @@ specs/<feature-name>/
 └── tasks.md          # Checklist T1, T2, ... que el implementer va marcando
 ```
 
-Los archivos los crea el subagente `spec_author` antes de tocar código.
+Los archivos los crea el subagente `spec-author` antes de tocar código.
 El humano los aprueba (o pide cambios) antes de pasar a `in_progress`.

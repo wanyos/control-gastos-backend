@@ -28,7 +28,7 @@ Antes de cualquier flujo (SDD o simple), esta regla manda:
 - **Tú NO escribes el QUÉ.** Tu trabajo es *derivar* el `acceptance` técnico
   a partir del `intent` del humano, no sustituirlo ni inventarlo. El humano
   es dueño del QUÉ y del POR QUÉ; tú del CÓMO.
-- Al derivar `acceptance` (o al instruir al `spec_author`), respeta dos
+- Al derivar `acceptance` (o al instruir al `spec-author`), respeta dos
   obligaciones:
   - **Trazabilidad:** cada criterio técnico debe poder mapearse a una frase
     del `intent`. Si un criterio no sale de la intención del humano, no lo
@@ -52,7 +52,7 @@ Este harness soporta SDD. Ver `docs/specs.md`. Una feature con
 entre ellas:
 
 ```
-pending → [spec_author] → spec_ready → ⏸ HUMANO APRUEBA → in_progress → [implementer → reviewer] → done
+pending → [spec-author] → spec_ready → ⏸ HUMANO APRUEBA → in_progress → [implementer → reviewer] → done
 ```
 
 Una feature sin la marca `"sdd": true` salta directamente al `implementer`
@@ -68,8 +68,8 @@ Mira el status de la primera feature no-`done` / no-`blocked` en
 
 ### Caso A — status == `pending` Y `"sdd": true`
 
-1. Lanza **1 subagente `spec_author`**.
-2. El `spec_author` redacta
+1. Lanza **1 subagente `spec-author`**.
+2. El `spec-author` redacta
    `specs/<name>/{requirements.md, design.md, tasks.md}` y cambia el status
    a `spec_ready`.
 3. **PARAS**. No lanzas implementer. Tu mensaje al humano:
@@ -171,7 +171,7 @@ referencias del tipo: "resultado en `progress/<nombre>.md`" o
 Convención de nombres:
 
 - `progress/explorations/<topic>.md` — investigaciones previas
-- `specs/<feature>/` — output del spec_author
+- `specs/<feature>/` — output del spec-author
 - `progress/implementations/<feature>.md` — informe del implementer
 - `progress/reviews/<feature>.md` — informe del reviewer
 
@@ -185,9 +185,9 @@ Ejemplo de instrucción correcta para un subagente:
 
 | Complejidad de la tarea | Subagentes (con SDD)                                            | Subagentes (sin SDD)          |
 |-------------------------|------------------------------------------------------------------|-------------------------------|
-| Trivial (1 archivo)     | 1 spec_author → ⏸ → 1 implementer                               | 1 implementer                 |
-| Media (2-3 archivos)    | 1 spec_author → ⏸ → 1 implementer → 1 reviewer                  | 1 implementer + 1 reviewer    |
-| Compleja (refactor)     | 2-3 explorers → 1 spec_author → ⏸ → 1 implementer → 1 reviewer  | 2-3 explorers → 1 implementer → 1 reviewer |
+| Trivial (1 archivo)     | 1 spec-author → ⏸ → 1 implementer                               | 1 implementer                 |
+| Media (2-3 archivos)    | 1 spec-author → ⏸ → 1 implementer → 1 reviewer                  | 1 implementer + 1 reviewer    |
+| Compleja (refactor)     | 2-3 explorers → 1 spec-author → ⏸ → 1 implementer → 1 reviewer  | 2-3 explorers → 1 implementer → 1 reviewer |
 | Muy compleja            | Divide en sub-tareas y vuelve a aplicar la tabla                 | Igual                         |
 
 ## Sobre proyectos hermanos
@@ -204,7 +204,7 @@ NO los hagas en esta sesión. Anota en `progress/current.md`:
   humano; no lo rellenas tú de tu cabeza.
 - ❌ Derivar criterios o lanzar subagentes para una feature `pending` sin
   `intent`. Si falta, paras y lo pides.
-- ❌ Meter en `acceptance` (o pasar al `spec_author`) decisiones que el humano
+- ❌ Meter en `acceptance` (o pasar al `spec-author`) decisiones que el humano
   no pidió sin marcarlas como procedencia tuya para su aprobación.
 - ❌ Editar archivos de código fuente o tests directamente.
 - ❌ Marcar features como `done` (eso lo hace el implementer tras revisión).

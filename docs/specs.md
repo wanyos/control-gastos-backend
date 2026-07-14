@@ -36,7 +36,7 @@ El `feature-name` coincide con el campo `name` de `feature_list.json`.
 
 | Estado         | Significado                                                    |
 |----------------|----------------------------------------------------------------|
-| `pending`      | Sin spec. El `spec_author` es el primero en actuar (si `sdd: true`); si no, el `implementer` lo toma directamente. |
+| `pending`      | Sin spec. El `spec-author` es el primero en actuar (si `sdd: true`); si no, el `implementer` lo toma directamente. |
 | `spec_ready`   | Spec drafted (solo SDD). Esperando aprobación humana. NO se toca código. |
 | `in_progress`  | Aprobado (o tomado por el implementer si no es SDD). Trabajando. |
 | `done`         | Código verde, `reviewer` aprobó, sesión cerrada.               |
@@ -56,7 +56,7 @@ intent (humano) → acceptance (derivado) → requirements/design/tasks (spec) �
 
 ## La puerta de aprobación humana
 
-El flujo automático se detiene **una vez**: cuando el `spec_author` termina
+El flujo automático se detiene **una vez**: cuando el `spec-author` termina
 sus tres archivos, marca la feature como `spec_ready` y para. El humano
 lee `specs/<feature>/` y dice "aprobado" (o pide cambios).
 
@@ -74,12 +74,12 @@ Solo entonces el `leader` transiciona `spec_ready → in_progress` y lanza
 el `implementer`.
 
 ```
-pending → [spec_author] → spec_ready → ⏸ HUMANO → in_progress → [implementer → reviewer] → done
+pending → [spec-author] → spec_ready → ⏸ HUMANO → in_progress → [implementer → reviewer] → done
 ```
 
 ## Sección de procedencia (obligatoria en requirements.md)
 
-Al final de `requirements.md`, el `spec_author` clasifica cada `R<n>`:
+Al final de `requirements.md`, el `spec-author` clasifica cada `R<n>`:
 
 ```markdown
 ## Procedencia

@@ -15,13 +15,13 @@ implementar.
 - ❌ **No marques** features como `done` en `feature_list.json`. Eso lo hace
   el `implementer` después de que el `reviewer` lo apruebe.
 - ❌ **No saltes la fase de spec.** Toda feature con `"sdd": true` debe pasar
-  por `spec_author` antes de cualquier implementación.
+  por `spec-author` antes de cualquier implementación.
 - ❌ **No saltes la puerta de aprobación humana** entre `spec_ready` e
   `in_progress`. Cuando una feature SDD llega a `spec_ready`, paras y le
   pides al humano que apruebe o pida cambios.
 - ✅ Para cualquier tarea de código, lanza el subagente apropiado vía la
   herramienta `Agent`:
-  - `subagent_type: "spec_author"` → redacta
+  - `subagent_type: "spec-author"` → redacta
     `specs/<name>/{requirements,design,tasks}.md` para una feature `pending`
     con `"sdd": true`.
   - `subagent_type: "implementer"` → escribe código y tests de **una** feature

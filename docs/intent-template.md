@@ -4,7 +4,7 @@
 >
 > Es el punto de partida de toda feature. Aquí describes QUÉ quieres y POR QUÉ,
 > en tu propio idioma, sin jerga técnica y sin decidir el cómo. El agente
-> (leader / spec_author) parte de esta intención para producir lo técnico
+> (leader / spec-author) parte de esta intención para producir lo técnico
 > (`acceptance`, requirements, diseño), pero NO puede inventarse el QUÉ: su
 > trabajo es traducir tu intención, no sustituirla.
 >
