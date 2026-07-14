@@ -32,17 +32,20 @@
 
 ## Build / Dev tooling
 
-- **Gestor de paquetes:** **npm** (existe `package-lock.json`; no hay
-  `pnpm-lock.yaml` ni `yarn.lock`).
-- **Arranque dev (recarga en caliente):** `npm run dev` → `tsx watch src/server.ts`
+- **Gestor de paquetes:** **pnpm** `11.10.0`, fijado en el campo
+  `packageManager` de `package.json`. El lockfile versionado es
+  `pnpm-lock.yaml`; `init.sh` detecta el gestor por el lockfile y corre
+  `pnpm test`. **Usa siempre `pnpm`, nunca `npm`**: mezclarlos genera un
+  `node_modules` distinto del que valida `init.sh`.
+- **Arranque dev (recarga en caliente):** `pnpm run dev` → `tsx watch src/server.ts`
   (`tsx@^4.23.0`).
-- **Build:** `npm run build` → `prisma generate && tsc` (salida a `dist/`).
-- **Arranque producción:** `npm start` → `node dist/server.js`.
-- **Type check:** `npm run typecheck` → `tsc --noEmit`.
-- **Lint:** `npm run lint` → `eslint .` (ESLint `10.7.0` flat config +
+- **Build:** `pnpm run build` → `prisma generate && tsc` (salida a `dist/`).
+- **Arranque producción:** `pnpm start` → `node dist/server.js`.
+- **Type check:** `pnpm run typecheck` → `tsc --noEmit`.
+- **Lint:** `pnpm run lint` → `eslint .` (ESLint `10.7.0` flat config +
   `typescript-eslint` 8 sobre `src/**/*.ts`, `eslint-config-prettier` al
   final; ignora `src/generated/` y `dist/`). `lint:fix` para autofix.
-- **Format:** `npm run format:check` / `format` → Prettier `3.9.5`
+- **Format:** `pnpm run format:check` / `format` → Prettier `3.9.5`
   (`.prettierrc`: comillas simples, sin punto y coma, 2 espacios,
   100 columnas). `.prettierignore` excluye artefactos generados, el
   lockfile, los `.md` del harness y `feature_list.json`.
@@ -51,8 +54,8 @@
 
 - **Test runner:** **Vitest** `^4.1.10` (elegido 2026-07-10; alternativa
   `node:test` descartada por requerir cablear el loader tsx a mano).
-  - `npm test` → `vitest run` (suite completa, la ejecuta también `./init.sh`).
-  - `npm run test:watch` → `vitest` (modo watch en desarrollo).
+  - `pnpm test` → `vitest run` (suite completa, la ejecuta también `./init.sh`).
+  - `pnpm run test:watch` → `vitest` (modo watch en desarrollo).
 - **Config:** `vitest.config.ts` — `environment: 'node'`, `.env` cargado vía
   `setupFiles: ['dotenv/config']` (mismo mecanismo que producción),
   `LOG_LEVEL=silent` para no ensuciar la salida.
@@ -72,7 +75,7 @@
   remapeó a `5434:5432` y `DATABASE_URL` apunta ahí; migraciones aplicadas al
   contenedor y suite verificada contra él (versión servida: 17.9 linux-musl).
   El PostgreSQL nativo conserva una BD `gastos` residual que ya no se usa.
-- **Migraciones:** Prisma Migrate → `npm run prisma:migrate` (`prisma migrate dev`).
+- **Migraciones:** Prisma Migrate → `pnpm run prisma:migrate` (`prisma migrate dev`).
   Historial en `prisma/migrations/`.
 - **Conexión:** el CLI la lee de `prisma.config.ts` (Prisma 7); en runtime se
   pasa vía el driver adapter en [`src/lib/prisma.ts`](../src/lib/prisma.ts).
@@ -83,7 +86,7 @@
   la URL ya no vive en `schema.prisma` (se usa `prisma.config.ts` + driver
   adapter) y `.env` no se autocarga. No bajar a 6.x sin revisitar esa config.
 - Versiones declaradas con rango caret (`^`) en `package.json`; el pin exacto
-  vive en `package-lock.json`.
+  vive en `pnpm-lock.yaml`.
 - **Librerías explícitamente prohibidas:** ninguna registrada todavía
   (decisión del humano — añádelas aquí si las hay).
 

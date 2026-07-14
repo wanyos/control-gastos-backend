@@ -19,6 +19,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
   },
+  "packageManager": "pnpm@11.10.0",
   "engines": {
     "node": ">=20"
   },

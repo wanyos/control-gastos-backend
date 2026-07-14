@@ -3,7 +3,7 @@
 > Regla de oro: **el agente no dice "funciona", lo demuestra**.
 > Toda feature termina con evidencia ejecutable, no con afirmaciones.
 >
-> **Estado:** test runner configurado (**Vitest**, 2026-07-10). `npm test`
+> **Estado:** test runner configurado (**Vitest**, 2026-07-10). `pnpm test`
 > ejecuta la suite y `./init.sh` la corre en su paso 5. Ver `docs/stack.md`
 > §Testing para la configuración.
 
@@ -19,15 +19,15 @@ Toda función / módulo público en `src/` tiene al menos un test que:
 **Comando para ejecutar todos los tests:**
 
 ```bash
-npm test            # vitest run — suite completa
-npm run test:watch  # vitest en modo watch durante el desarrollo
+pnpm test            # vitest run — suite completa
+pnpm run test:watch  # vitest en modo watch durante el desarrollo
 ```
 
 Verificación complementaria: el type check estricto (lo ejecuta también
 `./init.sh`, y tipa también los archivos de test):
 
 ```bash
-npm run typecheck   # tsc --noEmit — debe terminar sin errores
+pnpm run typecheck   # tsc --noEmit — debe terminar sin errores
 ```
 
 ### Nivel 2 — Test de integración (obligatorio para features de API)
@@ -42,7 +42,7 @@ limpian las filas que crean).
 Equivalente manual con curl (para probar a mano contra el servidor en marcha):
 
 ```bash
-# Prerrequisitos: docker compose up -d  &&  npm run prisma:migrate
+# Prerrequisitos: docker compose up -d  &&  pnpm run prisma:migrate
 BASE=http://localhost:3000
 
 # Crear un gasto -> 201 con el recurso creado
@@ -61,7 +61,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/expenses" \
 curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/expenses/99999"
 ```
 
-> Esta secuencia ya está portada a tests automáticos (`npm test`); el bloque
+> Esta secuencia ya está portada a tests automáticos (`pnpm test`); el bloque
 > curl anterior se conserva solo como referencia para pruebas manuales.
 
 Frontend / E2E (Playwright, Cypress): N/A — este proyecto es solo backend.
@@ -73,8 +73,8 @@ PostgreSQL y responde:
 
 ```bash
 docker compose up -d          # 1. levanta PostgreSQL (gastos-postgres, :5434)
-npm run prisma:migrate        # 2. aplica migraciones sobre la BD 'gastos'
-npm run dev                   # 3. arranca el servidor (http://localhost:3000)
+pnpm run prisma:migrate        # 2. aplica migraciones sobre la BD 'gastos'
+pnpm run dev                   # 3. arranca el servidor (http://localhost:3000)
 
 # En otra terminal:
 curl -s http://localhost:3000/health       # -> {"status":"ok",...}
@@ -120,13 +120,14 @@ En Windows se ejecuta con **Git Bash** o **WSL** (`init.sh` es un script bash).
 
 Qué comprueba hoy en este proyecto (detecta stack `node` + `tsconfig.json`):
 
-1. Detecta el stack y el runtime (Node) y el gestor de paquetes (`npm`).
+1. Detecta el stack y el runtime (Node) y el gestor de paquetes (`pnpm`, por
+   la presencia de `pnpm-lock.yaml`).
 2. Verifica que existen los archivos base del arnés (`AGENTS.md`,
    `CHECKPOINTS.md`, `feature_list.json`, `progress/current.md`, `docs/*.md`).
 3. Valida `feature_list.json` (estados válidos, máx. 1 `in_progress`, specs
    presentes para features `sdd`).
 4. Ejecuta **`npx tsc --noEmit`** (type check estricto).
-5. Ejecuta **`npm test`** (Vitest): la suite completa debe pasar al 100%.
+5. Ejecuta **`pnpm test`** (Vitest): la suite completa debe pasar al 100%.
 
 Si `./init.sh` está rojo, **no** marques nada como `done`. Anota el bloqueo
 en `progress/current.md` con estado `blocked` en `feature_list.json`.

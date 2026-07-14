@@ -2,7 +2,7 @@
 src/generated/
 dist/
 node_modules/
-package-lock.json
+pnpm-lock.yaml
 
 # Harness prose and state: reformatting these in bulk adds git noise and they
 # are owned by humans/leader, not by the formatter. Revisit if desired.

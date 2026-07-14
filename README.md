@@ -13,7 +13,7 @@ sobre **PostgreSQL**.
 
 ```bash
 # 1. Instalar dependencias
-npm install
+pnpm install
 
 # 2. Configurar variables de entorno
 cp .env.example .env        # en Windows: copy .env.example .env
@@ -23,10 +23,10 @@ cp .env.example .env        # en Windows: copy .env.example .env
 docker compose up -d
 
 # 4. Crear las tablas en la base de datos
-npm run prisma:migrate      # aplica las migraciones (crea la BD si no existe)
+pnpm run prisma:migrate      # aplica las migraciones (crea la BD si no existe)
 
 # 5. Arrancar en modo desarrollo (recarga en caliente)
-npm run dev
+pnpm run dev
 ```
 
 El servidor queda escuchando en `http://localhost:3000` (configurable con `PORT`).
@@ -35,13 +35,13 @@ El servidor queda escuchando en `http://localhost:3000` (configurable con `PORT`
 
 | Script                    | Descripción                                                   |
 | ------------------------- | ------------------------------------------------------------- |
-| `npm run dev`             | Servidor en desarrollo con recarga en caliente (`tsx watch`). |
-| `npm run build`           | Genera el cliente de Prisma y compila TypeScript a `dist/`.   |
-| `npm start`               | Ejecuta la versión compilada (`dist/server.js`).              |
-| `npm run typecheck`       | Comprueba tipos sin emitir archivos.                          |
-| `npm run prisma:migrate`  | Crea y aplica migraciones (`prisma migrate dev`).             |
-| `npm run prisma:generate` | Regenera el cliente de Prisma.                                |
-| `npm run prisma:studio`   | Abre Prisma Studio para explorar los datos.                   |
+| `pnpm run dev`             | Servidor en desarrollo con recarga en caliente (`tsx watch`). |
+| `pnpm run build`           | Genera el cliente de Prisma y compila TypeScript a `dist/`.   |
+| `pnpm start`               | Ejecuta la versión compilada (`dist/server.js`).              |
+| `pnpm run typecheck`       | Comprueba tipos sin emitir archivos.                          |
+| `pnpm run prisma:migrate`  | Crea y aplica migraciones (`prisma migrate dev`).             |
+| `pnpm run prisma:generate` | Regenera el cliente de Prisma.                                |
+| `pnpm run prisma:studio`   | Abre Prisma Studio para explorar los datos.                   |
 
 ## Endpoints
 

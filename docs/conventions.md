@@ -34,7 +34,7 @@
 - **TypeScript estricto, target ES2022, ESM.** *(observado en `tsconfig.json`)*
 - **Linter + formatter: ESLint + Prettier.** Instalados y configurados
   (2026-07-11, tarea directa): ESLint 10 flat config + typescript-eslint 8
-  sobre `src/**/*.ts`, Prettier 3. Comandos: `npm run lint` / `lint:fix` /
+  sobre `src/**/*.ts`, Prettier 3. Comandos: `pnpm run lint` / `lint:fix` /
   `format` / `format:check`. Prettier no formatea los `.md` del harness ni
   `feature_list.json` (ver `.prettierignore`). Reglas fijadas:
   - Comillas **simples**.
