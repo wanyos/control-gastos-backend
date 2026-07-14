@@ -69,6 +69,76 @@
       ],
       "sdd": true,
       "status": "done"
+    },
+    {
+      "id": 3,
+      "name": "drive-connection",
+      "title": "Conexión del backend con Google Drive",
+      "intent": {
+        "que_quiero": "Que el backend pueda autenticarse y hablar con mi Google Drive (el remoto único de la ingesta) a través de su API, de forma segura y reutilizable, para que las features siguientes se apoyen en esa conexión sin volver a montarla.",
+        "por_que": "Es el cimiento de la idea nº1 (ingesta automática de movimientos): sin una conexión establecida con Drive, nada de lo demás —crear carpetas, depositar, leer, importar— puede tocar el remoto. Hoy el backend no sabe hablar con Drive.",
+        "como_se_que_esta_bien": [
+          "Cuando arranca la app con las credenciales de Drive configuradas, el backend puede establecer conexión con mi Drive sin que yo tenga que intervenir a mano en cada arranque.",
+          "Cuando falta o es inválida alguna credencial de Drive, la app lo detecta y falla o avisa con un mensaje claro, en vez de romperse a mitad de una operación posterior.",
+          "Cuando compruebo la conexión, el backend me dice si llega a Drive o no.",
+          "Cualquier feature futura puede reutilizar esta conexión sin volver a resolver el auth."
+        ],
+        "que_no_quiero": [
+          "No crear todavía carpetas ni subir/leer/mover archivos: esto es solo la tubería de conexión.",
+          "No guardar credenciales ni tokens en el código ni en el repositorio; van por entorno o secreto.",
+          "No tocar nada de bancos, parsers ni importación aquí."
+        ],
+        "delego_en_agente": [
+          "Qué mecanismo de auth concreto encaja con una cuenta personal de Google Drive (p. ej. OAuth con refresh token de larga duración vs. otras opciones); que el agente lo proponga y lo marque.",
+          "Qué librería usar (googleapis oficial u otra) y cómo exponer el cliente de Drive a la app siguiendo docs/architecture.md (p. ej. plugin Fastify); que decida con el trade-off.",
+          "Qué variables de entorno nuevas hacen falta y cómo validarlas al arrancar (extendiendo src/config/env.ts).",
+          "Qué pasos son manuales de mi lado (crear proyecto en Google Cloud, pantalla de consentimiento OAuth, obtener el token/credenciales); que me los liste para hacerlos yo."
+        ]
+      },
+      "acceptance": [
+        "Con las credenciales OAuth presentes en el entorno, el backend obtiene access tokens frescos a partir del refresh token sin intervención humana en cada arranque (deriva de: 'sin que yo tenga que intervenir a mano en cada arranque')",
+        "Si falta alguna credencial obligatoria de Drive, la app no arranca y el mensaje lista exactamente qué falta, sin hacer llamadas de red (deriva de: 'la app lo detecta y falla o avisa con un mensaje claro'; el humano resolvió el 'o' el 2026-07-14: validar al arrancar, conectar en diferido)",
+        "Existe una comprobación explícita bajo demanda que responde si el backend llega a Drive o no, y que no tumba la app cuando Drive no responde (deriva de: 'cuando compruebo la conexión, el backend me dice si llega a Drive o no')",
+        "El cliente de Drive queda expuesto a toda la app de forma reutilizable, de modo que las features 4+ lo consumen sin volver a resolver el auth (deriva de: 'cualquier feature futura puede reutilizar esta conexión sin volver a resolver el auth')",
+        "Ninguna credencial ni token aparece en el código, en el repositorio ni en los logs; .env.example lleva solo placeholders (deriva de: 'no guardar credenciales ni tokens en el código ni en el repositorio')",
+        "La feature NO crea carpetas ni sube, lee o mueve archivos, y no toca bancos, parsers ni importación (deriva de los 'que_no_quiero')",
+        "El humano tiene una lista numerada y concreta de sus pasos manuales en Google Cloud Console, incluido publicar la app en 'In production' (deriva de: 'que me los liste para hacerlos yo')",
+        "Cada requirement R<n> del spec tiene al menos un test concreto que lo cubre, mapeado en progress/implementations/drive-connection.md",
+        "./init.sh termina en verde, incluida la suite completa",
+        "Decisiones delegadas anotadas como ADR en docs/architecture.md, variables nuevas en docs/stack.md y .env.example, y docs/api-contract.md actualizado si la feature expone endpoint o código de error nuevo"
+      ],
+      "sdd": true,
+      "status": "spec_ready"
+    },
+    {
+      "id": 4,
+      "name": "drive-structure",
+      "title": "Estructura en Drive: crear carpetas, subir y mover archivos",
+      "intent": {
+        "que_quiero": "Que el backend cree la estructura de carpetas del remoto (notas-banco/<banco>/<año>/ con una subcarpeta procesados/ dentro) cuando haga falta, pueda subir un archivo nuevo a la carpeta que le corresponde por banco y año, y pueda mover un archivo ya procesado a su subcarpeta procesados/.",
+        "por_que": "Es la organización física sobre la que se apoya la ingesta: el banco y el año se saben por la carpeta (no del contenido), y el estado pendiente/procesado se representa moviendo el archivo entre la carpeta del año y su procesados/.",
+        "como_se_que_esta_bien": [
+          "Cuando pido asegurar la carpeta de un banco/año que aún no existe, el backend la crea (con su procesados/ dentro) sin fallar.",
+          "Cuando esa carpeta ya existe, el backend NO crea duplicados: la reutiliza (es idempotente).",
+          "Cuando deposito/subo un archivo para un banco y año, aparece como archivo nuevo dentro de notas-banco/<banco>/<año>/, sin sobrescribir ni concatenarse a otro archivo existente.",
+          "Cuando un archivo se da por procesado, el backend lo mueve a notas-banco/<banco>/<año>/procesados/ y deja de estar en la carpeta de pendientes.",
+          "Cuando algo falla con Drive (permiso, red, carpeta raíz inaccesible), el backend responde con un error claro y no deja la estructura a medias."
+        ],
+        "que_no_quiero": [
+          "No leer ni parsear el contenido de los archivos, ni importar movimientos a la base de datos: eso es la parte 3 (otra feature).",
+          "No implementar la detección de 'N nuevos' ni el disparo de la importación aquí.",
+          "No montar la conexión con Drive aquí: esta feature se apoya en la feature de conexión (id 3).",
+          "No crear la carpeta raíz notas-banco/: la creo yo a mano y el backend cuelga de ella."
+        ],
+        "delego_en_agente": [
+          "Cómo resolver rutas por nombre (banco/año) a los IDs internos de Drive —Drive direcciona por fileId, no por ruta— y cómo hacer el ensureFolder idempotente evitando duplicados y condiciones de carrera.",
+          "Cómo conoce el backend la carpeta raíz que yo creo a mano (p. ej. su fileId por variable de entorno); que lo proponga.",
+          "Si 'subir archivo' y 'mover a procesados' se exponen como servicio interno, como endpoint(s) de la API, o ambos; que lo proponga (y actualice api-contract.md si crea endpoints).",
+          "Cómo se identifica el banco de entrada (¿lista cerrada de bancos?, ¿string libre?) y cómo se valida el año; que proponga y me lo marque."
+        ]
+      },
+      "sdd": true,
+      "status": "pending"
     }
   ]
 }
