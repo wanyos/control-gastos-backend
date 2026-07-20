@@ -27,6 +27,10 @@
   módulo (ej. `createExpenseSchema` en
   [`src/modules/expenses/expenses.schema.ts`](../src/modules/expenses/expenses.schema.ts)).
 - **Encapsulación de plugins:** `fastify-plugin@^6.0.0`.
+- **Google Drive:** `@googleapis/drive@^20.2.0` (cliente Drive v3 + `auth`
+  reexportado; **no** se declara `google-auth-library` aparte, ver ADR-007). Se
+  eligió frente al monolito `googleapis` (~85x más pesado) por peso. Auth OAuth2
+  con refresh token; el cliente se expone como `fastify.drive`.
 - **Carga de entorno:** `dotenv@^17.4.2` (Prisma 7 no autocarga `.env`).
 - **Estado / routing cliente / estilos:** N/A (backend sin UI).
 
@@ -92,12 +96,17 @@
 
 ## Variables de entorno requeridas
 
-| Nombre         | Descripción                        | Obligatoria       | Ejemplo                                                              |
-| -------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------- |
-| `DATABASE_URL` | Cadena de conexión a PostgreSQL.   | **sí**            | `postgresql://postgres:postgres@localhost:5434/gastos?schema=public` |
-| `PORT`         | Puerto HTTP del servidor.          | no (def. `3000`)  | `3000`                                                              |
-| `HOST`         | Interfaz de escucha.               | no (def. `0.0.0.0`) | `0.0.0.0`                                                          |
-| `LOG_LEVEL`    | Nivel de log de Fastify.           | no (def. `info`)  | `info`                                                              |
+| Nombre                       | Descripción                              | Obligatoria         | Ejemplo                                                              |
+| ---------------------------- | ---------------------------------------- | ------------------- | ------------------------------------------------------------------- |
+| `DATABASE_URL`               | Cadena de conexión a PostgreSQL.         | **sí**              | `postgresql://postgres:postgres@localhost:5434/gastos?schema=public` |
+| `PORT`                       | Puerto HTTP del servidor.                | no (def. `3000`)    | `3000`                                                              |
+| `HOST`                       | Interfaz de escucha.                     | no (def. `0.0.0.0`) | `0.0.0.0`                                                          |
+| `LOG_LEVEL`                  | Nivel de log de Fastify.                 | no (def. `info`)    | `info`                                                              |
+| `GOOGLE_DRIVE_CLIENT_ID`     | Client id OAuth de Google Cloud (Drive). | **sí**              | `xxxx.apps.googleusercontent.com`                                  |
+| `GOOGLE_DRIVE_CLIENT_SECRET` | Client secret OAuth de Google Cloud.     | **sí**              | `GOCSPX-…`                                                          |
+| `GOOGLE_DRIVE_REFRESH_TOKEN` | Refresh token OAuth de larga duración.   | **sí**              | `1//…`                                                              |
 
-> Fuente: `.env.example`, [`src/server.ts`](../src/server.ts) (`PORT`, `HOST`)
-> y [`src/app.ts`](../src/app.ts) (`LOG_LEVEL`).
+> Fuente: `.env.example`, [`src/server.ts`](../src/server.ts) (`PORT`, `HOST`),
+> [`src/app.ts`](../src/app.ts) (`LOG_LEVEL`) y
+> [`src/config/env.ts`](../src/config/env.ts) (las tres de Drive). Cómo obtener
+> las de Drive: `specs/drive-connection/design.md` §10 (pasos manuales del humano).

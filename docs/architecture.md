@@ -52,9 +52,11 @@ src/
   config/                # carga y validación de env tipada (loadConfig)
   plugins/               # plugins Fastify transversales
     prisma.ts            #   expone fastify.prisma + cierre limpio
+    drive.ts             #   expone fastify.drive (sin handshake eager, ADR-007)
     error-handler.ts     #   setErrorHandler + setNotFoundHandler centrales
   lib/                   # utilidades de infraestructura
     prisma.ts            #   fábrica de PrismaClient (driver adapter pg)
+    drive.ts             #   fábrica del cliente de Drive + checkDriveConnection
   errors/                # clases de error de dominio (AppError, ...)
   modules/                 # un directorio por recurso (vertical slice)
     expenses/
@@ -194,6 +196,69 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 - **Consecuencias:** menos declarativo y sin coerción automática.
   **Umbral para reconsiderar:** si las variables crecen (>8-10) o aparecen
   tipos complejos, reevaluar `@fastify/env`.
+  - **Evaluado el 2026-07-20 (feature "drive-connection"):** las tres variables
+    de Drive llevan la cuenta de 4 a **7**. Se **mantiene el validador manual**:
+    aún no se cruza el umbral (7 de 8-10) y las tres nuevas son el caso más
+    simple posible (strings obligatorios, sin coerción ni enum). Reevaluar de
+    verdad cuando la feature 4 lleve la cuenta a 8 **y** aparezca la primera
+    variable que no sea un string plano (detalle en
+    `specs/drive-connection/design.md` §3).
+
+### ADR-007: Conexión con Google Drive — `@googleapis/drive` + OAuth2 con refresh token
+
+- **Fecha:** 2026-07-14
+- **Estado:** aceptada (implementada en la feature #3)
+- **Contexto:** la feature #3 necesita que el backend hable con el Google Drive
+  **personal** del dueño (cuenta Gmail, sin Workspace) de forma desatendida, como
+  cimiento de la ingesta automática. El `intent` delegaba en el agente el
+  mecanismo de auth, la librería y la forma de exponer el cliente; el humano
+  cerró el 2026-07-14 el scope y la política de arranque.
+- **Decisión:**
+  1. **Librería:** `@googleapis/drive@^20.2.0`, única dependencia nueva.
+     `google-auth-library` **no** se declara: se usa el `auth` que el paquete
+     reexporta.
+  2. **Auth:** OAuth2 con refresh token de larga duración, cliente OAuth de tipo
+     *Desktop app*, app publicada **"In production"**. El consentimiento es
+     manual y se hace **una vez** con un script fuera de `src/`.
+  3. **Scope:** `https://www.googleapis.com/auth/drive` completo (restringido),
+     como constante de código.
+  4. **Exposición:** triángulo `config/env.ts` + `lib/drive.ts` (fábrica pura) +
+     `plugins/drive.ts` (plugin `fp` que decora `fastify.drive`), igual que
+     Prisma pero **sin handshake eager**: el cliente se construye sin I/O y la
+     conectividad se comprueba bajo demanda en `GET /health/drive`.
+  5. **Errores:** `DriveConnectionError` (`DRIVE_CONNECTION_ERROR`, 503) envuelve
+     todo error de la librería con un mensaje fijo; el error crudo nunca sale.
+- **Alternativas consideradas:**
+  - **`googleapis` (monolito):** 207 MB frente a 2,45 MB (~85x) para
+    funcionalidad idéntica en Drive. Descartada por peso.
+  - **Service Account:** descartada — **no funciona** con Drive personal: no
+    tiene cuota de almacenamiento y no puede poseer archivos, así que la subida
+    de la feature 4 fallaría con `403 storageQuotaExceeded`. Sus dos vías de
+    escape (Shared Drives, domain-wide delegation) exigen Google Workspace **de
+    pago**.
+  - **ADC:** no es un mecanismo de auth, solo descubrimiento de credenciales;
+    acaba en una Service Account (mismo problema) o en credenciales de `gcloud`
+    de desarrollo, y añade magia implícita que dificulta el fail-fast al arrancar.
+  - **Scope `drive.file` (no sensible):** descartado por el humano con las
+    alternativas delante. No sirve para el diseño acordado: es acceso *por
+    archivo*, no ve la raíz creada a mano ni los archivos depositados a mano,
+    que es el corazón de la idea nº1. No existe un scope de "solo esta carpeta".
+  - **Handshake eager en el arranque (como Prisma `$connect()`):** descartado por
+    el humano. Ataría cada `app.ready()` de la suite a una llamada de red real a
+    Google, y no hay "Drive local" con el que compensarlo.
+- **Consecuencias:**
+  - **Coste asumido conscientemente:** el refresh token da acceso de
+    lectura/escritura a **todo** el Drive del dueño; si se filtra, se filtra todo.
+    Mitigaciones: solo en `.env` (gitignoreado), nunca en logs (los errores se
+    envuelven con mensaje fijo), nunca en el repo (`.env.example` con
+    placeholders, guardado por test), revocable en
+    [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+  - `pnpm dev` deja de arrancar sin las tres credenciales. La suite no las
+    necesita: usa placeholders en `vitest.config.ts` (posible solo gracias al
+    arranque lazy; R8 lo convierte en test).
+  - La feature 4 hereda el cliente vía `fastify.drive` sin volver a resolver auth.
+  - **Umbral de ADR-006 evaluado**: 7 variables tras esta feature; se mantiene el
+    validador manual (razones en `specs/drive-connection/design.md` §3).
 
 ## Qué NO hacer
 

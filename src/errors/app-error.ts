@@ -25,3 +25,9 @@ export class ValidationError extends AppError {
     super(message, 'VALIDATION_ERROR', 400)
   }
 }
+
+export class DriveConnectionError extends AppError {
+  constructor(message = 'Cannot reach Google Drive') {
+    super(message, 'DRIVE_CONNECTION_ERROR', 503)
+  }
+}

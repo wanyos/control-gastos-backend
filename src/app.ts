@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import { loadConfig, type AppConfig } from './config/env.js'
 import expensesRoutes from './modules/expenses/expenses.routes.js'
 import healthRoutes from './modules/health/health.routes.js'
+import drivePlugin from './plugins/drive.js'
 import errorHandlerPlugin from './plugins/error-handler.js'
 import prismaPlugin from './plugins/prisma.js'
 
@@ -22,6 +23,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   // Shared infrastructure. The error handler goes first so it covers every module.
   app.register(errorHandlerPlugin)
   app.register(prismaPlugin)
+  app.register(drivePlugin)
 
   // Modules.
   app.register(healthRoutes)

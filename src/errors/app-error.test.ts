@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { AppError, NotFoundError, ValidationError } from './app-error.js'
+import { AppError, DriveConnectionError, NotFoundError, ValidationError } from './app-error.js'
 
 describe('AppError hierarchy', () => {
   it('AppError exposes message, code and statusCode (default 400)', () => {
@@ -46,5 +46,19 @@ describe('AppError hierarchy', () => {
 
   it('ValidationError has a default message', () => {
     expect(new ValidationError().message).toBe('Invalid request data')
+  })
+
+  it('DriveConnectionError is an AppError with DRIVE_CONNECTION_ERROR / 503', () => {
+    const error = new DriveConnectionError('Drive OAuth credentials are not valid')
+
+    expect(error).toBeInstanceOf(AppError)
+    expect(error.message).toBe('Drive OAuth credentials are not valid')
+    expect(error.code).toBe('DRIVE_CONNECTION_ERROR')
+    expect(error.statusCode).toBe(503)
+    expect(error.name).toBe('DriveConnectionError')
+  })
+
+  it('DriveConnectionError has a default message', () => {
+    expect(new DriveConnectionError().message).toBe('Cannot reach Google Drive')
   })
 })

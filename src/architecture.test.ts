@@ -36,6 +36,8 @@ describe('architecture invariants', () => {
     const expected = [
       'config/env.ts',
       'errors/app-error.ts',
+      'lib/drive.ts',
+      'plugins/drive.ts',
       'plugins/error-handler.ts',
       'modules/expenses/expenses.routes.ts',
       'modules/expenses/expenses.service.ts',
@@ -59,5 +61,22 @@ describe('architecture invariants', () => {
     const routes = readFileSync(join(srcDir, 'modules/expenses/expenses.routes.ts'), 'utf8')
 
     expect(routes.toLowerCase()).not.toContain('prisma')
+  })
+
+  it('.env.example lists the Drive variables with placeholders, not real credentials (R14)', () => {
+    const envExample = readFileSync(join(srcDir, '..', '.env.example'), 'utf8')
+
+    expect(envExample).toContain('GOOGLE_DRIVE_CLIENT_ID')
+    expect(envExample).toContain('GOOGLE_DRIVE_CLIENT_SECRET')
+    expect(envExample).toContain('GOOGLE_DRIVE_REFRESH_TOKEN')
+    // No real-looking refresh token (1//...) nor client secret (GOCSPX-...).
+    expect(envExample).not.toMatch(/1\/\/[A-Za-z0-9_-]{20,}/)
+    expect(envExample).not.toMatch(/GOCSPX-[A-Za-z0-9_-]{10,}/)
+  })
+
+  it('keeps src/lib/drive.ts within the connection scope: no files.* surface (R17)', () => {
+    const driveLib = readFileSync(join(srcDir, 'lib/drive.ts'), 'utf8')
+
+    expect(driveLib).not.toContain('files.')
   })
 })

@@ -108,7 +108,7 @@
         "Decisiones delegadas anotadas como ADR en docs/architecture.md, variables nuevas en docs/stack.md y .env.example, y docs/api-contract.md actualizado si la feature expone endpoint o código de error nuevo"
       ],
       "sdd": true,
-      "status": "spec_ready"
+      "status": "done"
     },
     {
       "id": 4,

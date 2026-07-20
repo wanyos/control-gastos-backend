@@ -2,11 +2,18 @@ const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']
 
 export type LogLevel = (typeof logLevels)[number]
 
+export interface DriveCredentials {
+  clientId: string
+  clientSecret: string
+  refreshToken: string
+}
+
 export interface AppConfig {
   databaseUrl: string
   port: number
   host: string
   logLevel: LogLevel
+  drive: DriveCredentials
 }
 
 const defaults = {
@@ -56,14 +63,45 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     }
   }
 
-  // `!databaseUrl` is redundant at runtime (already a problem) but narrows the type.
-  if (problems.length > 0 || !databaseUrl) {
+  const driveClientId = env.GOOGLE_DRIVE_CLIENT_ID
+  if (!driveClientId) {
+    problems.push('GOOGLE_DRIVE_CLIENT_ID is required (Google Cloud OAuth client id)')
+  }
+
+  const driveClientSecret = env.GOOGLE_DRIVE_CLIENT_SECRET
+  if (!driveClientSecret) {
+    problems.push('GOOGLE_DRIVE_CLIENT_SECRET is required (Google Cloud OAuth client secret)')
+  }
+
+  const driveRefreshToken = env.GOOGLE_DRIVE_REFRESH_TOKEN
+  if (!driveRefreshToken) {
+    problems.push('GOOGLE_DRIVE_REFRESH_TOKEN is required (OAuth refresh token for Drive)')
+  }
+
+  // Each `|| !x` is redundant at runtime (already a problem) but narrows the type.
+  if (
+    problems.length > 0 ||
+    !databaseUrl ||
+    !driveClientId ||
+    !driveClientSecret ||
+    !driveRefreshToken
+  ) {
     throw new Error(
       `Invalid environment configuration:\n${problems.map((p) => `- ${p}`).join('\n')}`,
     )
   }
 
-  return { databaseUrl, port, host, logLevel }
+  return {
+    databaseUrl,
+    port,
+    host,
+    logLevel,
+    drive: {
+      clientId: driveClientId,
+      clientSecret: driveClientSecret,
+      refreshToken: driveRefreshToken,
+    },
+  }
 }
 
 declare module 'fastify' {

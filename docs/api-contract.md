@@ -46,6 +46,15 @@ Códigos estables:
 | `VALIDATION_ERROR`      | 400  | El body o los params no cumplen el esquema de la ruta.     |
 | `NOT_FOUND`             | 404  | El recurso pedido no existe, o la ruta no existe.          |
 | `INTERNAL_SERVER_ERROR` | 500  | Error inesperado; el cuerpo no expone detalles internos.   |
+| `DRIVE_CONNECTION_ERROR`| 503  | No se puede hablar con Google Drive (token caducado, API deshabilitada, scope insuficiente…). |
+
+> **Nota (`DRIVE_CONNECTION_ERROR`, feature "drive-connection", 2026-07-20):**
+> hoy **ningún endpoint de dominio devuelve este código en el cuerpo**. La
+> comprobación de conexión (`GET /health/drive`, abajo) responde con un cuerpo de
+> readiness propio (`{ status, drive }`), no con el cuerpo de error estándar, y
+> el detalle sanitizado del fallo solo se registra en los logs. El código queda
+> **reservado** para los endpoints de dominio que la feature 4 (estructura en
+> Drive) expondrá cuando una operación sobre Drive falle de cara al cliente.
 
 > **Nota de cambio (feature "foundations", 2026-07-11):** hasta ahora el
 > cuerpo de error era `{ "message": "STRING" }` (y los errores de validación
@@ -168,7 +177,29 @@ Elimina un gasto por su `id`.
 
 Para monitorización; el frontend no los consume.
 
-| Método | Ruta          | Descripción                              |
-| ------ | ------------- | ---------------------------------------- |
-| `GET`  | `/health`     | Liveness (el proceso responde).          |
-| `GET`  | `/health/db`  | Readiness (la base de datos responde).   |
+| Método | Ruta            | Descripción                                       |
+| ------ | --------------- | ------------------------------------------------- |
+| `GET`  | `/health`       | Liveness (el proceso responde).                   |
+| `GET`  | `/health/db`    | Readiness (la base de datos responde).            |
+| `GET`  | `/health/drive` | Readiness (Google Drive responde).                |
+
+### `GET /health/drive`
+
+Comprobación bajo demanda de la conexión con Google Drive. No lleva prefijo
+`/api` (es un endpoint de operación). Es idempotente y **no tumba la app** si
+Drive no responde.
+
+**Respuesta 200** — Drive es alcanzable.
+```json
+{ "status": "ok", "drive": "up" }
+```
+
+**Respuesta 503** — Drive no es alcanzable (token caducado, API deshabilitada,
+scope insuficiente, red, etc.).
+```json
+{ "status": "error", "drive": "down" }
+```
+
+> La cuenta de Drive conectada (`emailAddress`) **no** se incluye en el cuerpo:
+> el endpoint no tiene autenticación y solo se registra en los logs del servidor.
+> El detalle del fallo va sanitizado al log, nunca al cuerpo.
