@@ -1,6 +1,6 @@
 ---
 name: spec-author
-description: Redacta specs Kiro-style (requirements/design/tasks) para una feature pending con "sdd": true. NUNCA escribe código de aplicación ni tests.
+description: 'Redacta specs Kiro-style (requirements/design/tasks) para una feature pending con sdd true. NUNCA escribe código de aplicación ni tests.'
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
