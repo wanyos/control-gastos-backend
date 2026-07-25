@@ -37,6 +37,8 @@ describe('architecture invariants', () => {
       'config/env.ts',
       'errors/app-error.ts',
       'lib/drive.ts',
+      'lib/drive-structure.ts',
+      'lib/drive-structure.test.ts',
       'plugins/drive.ts',
       'plugins/error-handler.ts',
       'modules/expenses/expenses.routes.ts',
@@ -78,5 +80,19 @@ describe('architecture invariants', () => {
     const driveLib = readFileSync(join(srcDir, 'lib/drive.ts'), 'utf8')
 
     expect(driveLib).not.toContain('files.')
+  })
+
+  it('keeps src/lib/drive-structure.ts free of data access (no "prisma" reference) (R18)', () => {
+    const driveStructure = readFileSync(join(srcDir, 'lib/drive-structure.ts'), 'utf8')
+
+    expect(driveStructure.toLowerCase()).not.toContain('prisma')
+  })
+
+  it('keeps src/lib/drive-structure.ts free of Drive auth wiring, consuming the client (R19)', () => {
+    const driveStructure = readFileSync(join(srcDir, 'lib/drive-structure.ts'), 'utf8')
+
+    expect(driveStructure).not.toContain('createDriveClient')
+    expect(driveStructure).not.toContain('createDriveAuth')
+    expect(driveStructure).not.toContain('OAuth2')
   })
 })

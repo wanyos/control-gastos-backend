@@ -49,7 +49,7 @@ const driveErrorMessages = {
  * into its output: a library error can carry the refresh token or a signed URL,
  * and this message ends up in the logs. Every branch returns a constant.
  */
-function driveErrorMessage(error: unknown): string {
+export function driveErrorMessage(error: unknown): string {
   const signals = errorSignals(error)
   if (signals.includes('invalid_grant')) {
     return driveErrorMessages.invalidGrant

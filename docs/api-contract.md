@@ -47,14 +47,25 @@ Códigos estables:
 | `NOT_FOUND`             | 404  | El recurso pedido no existe, o la ruta no existe.          |
 | `INTERNAL_SERVER_ERROR` | 500  | Error inesperado; el cuerpo no expone detalles internos.   |
 | `DRIVE_CONNECTION_ERROR`| 503  | No se puede hablar con Google Drive (token caducado, API deshabilitada, scope insuficiente…). |
+| `UNKNOWN_BANK`          | 404  | El banco (con formato válido) no está registrado en Drive. **Reservado** (interno; ningún endpoint lo devuelve todavía). |
 
 > **Nota (`DRIVE_CONNECTION_ERROR`, feature "drive-connection", 2026-07-20):**
 > hoy **ningún endpoint de dominio devuelve este código en el cuerpo**. La
 > comprobación de conexión (`GET /health/drive`, abajo) responde con un cuerpo de
 > readiness propio (`{ status, drive }`), no con el cuerpo de error estándar, y
 > el detalle sanitizado del fallo solo se registra en los logs. El código queda
-> **reservado** para los endpoints de dominio que la feature 4 (estructura en
-> Drive) expondrá cuando una operación sobre Drive falle de cara al cliente.
+> **reservado** para los endpoints de dominio que expondrán una operación sobre
+> Drive cuando falle de cara al cliente.
+
+> **Nota (feature "drive-structure", 2026-07-25):** la feature 4 (estructura en
+> Drive: crear carpetas, subir y mover archivos) se resolvió como **servicio
+> interno** (funciones en `src/lib/drive-structure.ts`), **sin endpoints de API**
+> — razón en `specs/drive-structure/design.md` §5 y §7. Por eso este contrato **no
+> gana endpoints** en esta feature. Añade sin embargo el código de error nuevo
+> `UNKNOWN_BANK` (404) a la tabla de arriba, también **reservado** (interno; lo
+> devolverá la feature que exponga la operación de cara al cliente, p. ej. la
+> ingesta). Tanto `DRIVE_CONNECTION_ERROR` como `UNKNOWN_BANK` quedan documentados
+> pero sin superficie HTTP todavía.
 
 > **Nota de cambio (feature "foundations", 2026-07-11):** hasta ahora el
 > cuerpo de error era `{ "message": "STRING" }` (y los errores de validación

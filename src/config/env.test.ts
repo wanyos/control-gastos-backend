@@ -18,13 +18,22 @@ const drive = {
   refreshToken: 'refresh-token',
 }
 
-const baseEnv = { DATABASE_URL: databaseUrl, ...driveEnv }
+// The Drive root folder id is required too, but it is NOT a credential: it lives
+// as a sibling of `drive` in the config, so it is kept as its own constant.
+const driveRootFolderId = 'root-folder-id'
+
+const baseEnv = {
+  DATABASE_URL: databaseUrl,
+  ...driveEnv,
+  GOOGLE_DRIVE_ROOT_FOLDER_ID: driveRootFolderId,
+}
 
 describe('loadConfig', () => {
   it('builds a typed config from a complete environment', () => {
     const config = loadConfig({
       ...driveEnv,
       DATABASE_URL: databaseUrl,
+      GOOGLE_DRIVE_ROOT_FOLDER_ID: driveRootFolderId,
       PORT: '4000',
       HOST: '127.0.0.1',
       LOG_LEVEL: 'debug',
@@ -36,6 +45,7 @@ describe('loadConfig', () => {
       host: '127.0.0.1',
       logLevel: 'debug',
       drive,
+      driveRootFolderId,
     })
   })
 
@@ -48,6 +58,7 @@ describe('loadConfig', () => {
       host: '0.0.0.0',
       logLevel: 'info',
       drive,
+      driveRootFolderId,
     })
   })
 
@@ -61,6 +72,12 @@ describe('loadConfig', () => {
     const config = loadConfig(baseEnv)
 
     expect(config.drive).toEqual(drive)
+  })
+
+  it('exposes the Drive root folder id under config.driveRootFolderId', () => {
+    const config = loadConfig(baseEnv)
+
+    expect(config.driveRootFolderId).toBe(driveRootFolderId)
   })
 
   it('throws naming DATABASE_URL when it is missing', () => {
@@ -116,6 +133,25 @@ describe('loadConfig', () => {
   it('names every missing Drive variable in a single error message', () => {
     expect(() => loadConfig({ DATABASE_URL: databaseUrl })).toThrowError(
       /GOOGLE_DRIVE_CLIENT_ID[\s\S]*GOOGLE_DRIVE_CLIENT_SECRET[\s\S]*GOOGLE_DRIVE_REFRESH_TOKEN/,
+    )
+  })
+
+  it('throws naming GOOGLE_DRIVE_ROOT_FOLDER_ID when it is missing', () => {
+    // baseEnv minus the root folder id: everything else valid.
+    expect(() => loadConfig({ DATABASE_URL: databaseUrl, ...driveEnv })).toThrowError(
+      /GOOGLE_DRIVE_ROOT_FOLDER_ID/,
+    )
+  })
+
+  it('throws naming GOOGLE_DRIVE_ROOT_FOLDER_ID when it is empty', () => {
+    expect(() => loadConfig({ ...baseEnv, GOOGLE_DRIVE_ROOT_FOLDER_ID: '' })).toThrowError(
+      /GOOGLE_DRIVE_ROOT_FOLDER_ID/,
+    )
+  })
+
+  it('lists GOOGLE_DRIVE_ROOT_FOLDER_ID alongside the other missing problems', () => {
+    expect(() => loadConfig({ PORT: 'abc' })).toThrowError(
+      /DATABASE_URL[\s\S]*PORT[\s\S]*GOOGLE_DRIVE_ROOT_FOLDER_ID/,
     )
   })
 

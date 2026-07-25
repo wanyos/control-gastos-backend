@@ -14,6 +14,7 @@ export interface AppConfig {
   host: string
   logLevel: LogLevel
   drive: DriveCredentials
+  driveRootFolderId: string
 }
 
 const defaults = {
@@ -78,13 +79,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     problems.push('GOOGLE_DRIVE_REFRESH_TOKEN is required (OAuth refresh token for Drive)')
   }
 
+  const driveRootFolderId = env.GOOGLE_DRIVE_ROOT_FOLDER_ID
+  if (!driveRootFolderId) {
+    problems.push(
+      'GOOGLE_DRIVE_ROOT_FOLDER_ID is required (fileId of the manually-created notas-banco/ root)',
+    )
+  }
+
   // Each `|| !x` is redundant at runtime (already a problem) but narrows the type.
   if (
     problems.length > 0 ||
     !databaseUrl ||
     !driveClientId ||
     !driveClientSecret ||
-    !driveRefreshToken
+    !driveRefreshToken ||
+    !driveRootFolderId
   ) {
     throw new Error(
       `Invalid environment configuration:\n${problems.map((p) => `- ${p}`).join('\n')}`,
@@ -101,6 +110,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       clientSecret: driveClientSecret,
       refreshToken: driveRefreshToken,
     },
+    driveRootFolderId,
   }
 }
 

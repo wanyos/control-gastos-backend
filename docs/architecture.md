@@ -57,6 +57,7 @@ src/
   lib/                   # utilidades de infraestructura
     prisma.ts            #   fábrica de PrismaClient (driver adapter pg)
     drive.ts             #   fábrica del cliente de Drive + checkDriveConnection
+    drive-structure.ts   #   estructura en Drive (files.*): carpetas, subir, mover (ADR-008)
   errors/                # clases de error de dominio (AppError, ...)
   modules/                 # un directorio por recurso (vertical slice)
     expenses/
@@ -178,6 +179,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   subclases (p. ej. `ConflictError`) se añaden cuando una feature las
   necesite. El contrato (`docs/api-contract.md` §Errores) documenta los
   códigos estables.
+  - **Subclase añadida (feature #4 "drive-structure", 2026-07-25):**
+    `UnknownBankError` (`UNKNOWN_BANK`, 404), la nueva subclase idiomática que
+    esta feature necesitó para distinguir "banco con formato válido pero no
+    registrado" tanto de `ValidationError` (formato inválido, 400) como de
+    `DriveConnectionError` (fallo de Drive, 503). Ver ADR-008.
 
 ### ADR-006: Validación de configuración de entorno a mano
 
@@ -203,6 +209,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     verdad cuando la feature 4 lleve la cuenta a 8 **y** aparezca la primera
     variable que no sea un string plano (detalle en
     `specs/drive-connection/design.md` §3).
+  - **Evaluado el 2026-07-25 (feature "drive-structure"):**
+    `GOOGLE_DRIVE_ROOT_FOLDER_ID` lleva la cuenta a **8**. Se **mantiene el
+    validador manual**: la 8ª variable sigue siendo un string plano obligatorio
+    (fileId), sin coerción ni enum, así que se cruza el umbral en **número** pero
+    no en **tipo**. Reevaluar `@fastify/env` cuando aparezca la primera variable
+    que no sea un string plano (detalle en `specs/drive-structure/design.md` §10,
+    ADR-008 consecuencias).
 
 ### ADR-007: Conexión con Google Drive — `@googleapis/drive` + OAuth2 con refresh token
 
@@ -259,6 +272,96 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - La feature 4 hereda el cliente vía `fastify.drive` sin volver a resolver auth.
   - **Umbral de ADR-006 evaluado**: 7 variables tras esta feature; se mantiene el
     validador manual (razones en `specs/drive-connection/design.md` §3).
+
+### ADR-008: Estructura en Drive — servicio interno idempotente en `lib/`, Drive como registro de bancos, raíz por env
+
+- **Fecha:** 2026-07-24
+- **Estado:** aceptada (implementada en la feature #4; modelo de identidad de banco
+  revisado en la puerta de aprobación el 2026-07-24)
+- **Contexto:** la feature #4 crea la organización física de la ingesta en el Drive
+  del dueño: `notas-banco/<banco>/<año>/procesados/`. Se apoya en el cliente de la
+  feature #3 (`fastify.drive`, ADR-007) sin volver a montar auth. El `intent`
+  delegó: resolución nombre→fileId + idempotencia + carrera; cómo conoce la raíz;
+  superficie de exposición; e identidad de banco/validación de año. En la puerta de
+  aprobación el humano fijó el **modelo de identidad de banco** (ver Decisión 7).
+- **Decisión:**
+  1. **Ubicación:** funciones puras en `src/lib/drive-structure.ts` (contraparte
+     `files.*` de `lib/drive.ts`, que se queda "solo conexión"). Reciben el
+     `AppDriveClient` por parámetro (seam inyectable, testeable sin red).
+  2. **Exposición:** **servicio interno, sin endpoints**. El consumidor es la
+     ingesta (feature futura); no se abre superficie HTTP sin auth sobre scope
+     completo. `api-contract.md` sin endpoints nuevos; `DRIVE_CONNECTION_ERROR` y
+     el nuevo `UNKNOWN_BANK` quedan **reservados**.
+  3. **Raíz:** variable **obligatoria** `GOOGLE_DRIVE_ROOT_FOLDER_ID` (8ª variable),
+     validada al arrancar; el backend **nunca** crea la raíz. Campo hermano
+     `config.driveRootFolderId` (no dentro de `DriveCredentials`).
+  4. **Idempotencia y carrera:** `findFolder` busca por `files.list` (`q` por
+     nombre+mimeType+padre+`trashed=false`) y de-duplica de forma determinista (la
+     más antigua); `ensureFolder` crea solo si no existe, con lock en memoria por
+     `(padre, nombre)` para el concurrente **intra-proceso**. **Límite:** el lock es
+     de un proceso; en multi-instancia pueden aparecer duplicados, hechos
+     inofensivos por la de-dup pero no borrados.
+  5. **"No a medias":** Drive no tiene transacciones; se garantiza por convergencia
+     idempotente en el reintento + no reportar éxito parcial (no rollback).
+  6. **Subir/mover:** `files.create` con `media` (archivo nuevo, nunca
+     sobrescribe); `files.update` con `addParents`/`removeParents` (mover a
+     `procesados`).
+  7. **Identidad de banco — Drive es el registro; crear es explícito (decisión del
+     humano en la puerta):** las **subcarpetas directas de la raíz** son la única
+     fuente de verdad de "qué bancos existen" (no hay lista en config ni BD). Dos
+     operaciones separadas: **`resolveBankFolder`** (ruta por defecto, segura) exige
+     que la carpeta de banco exista; si no, lanza `UnknownBankError` con la lista de
+     bancos conocidos y una sugerencia por distancia de edición (Levenshtein ≤ 2,
+     desempate alfabético), y **no crea nada**. **`createBank`** (operación explícita
+     y aparte) es el **único** camino de alta, idempotente. El nivel año y su
+     `procesados/` se auto-crean siempre (rutina acotada por la validación de año).
+     La validación de **forma** del slug (`^[a-z0-9-]{1,64}$`, no `procesados`) y del
+     año (`^\d{4}$` en 2000-2100) protege el nombre de carpeta **y** el filtro `q`
+     (sin escapar).
+  8. **Errores:** `ValidationError` (formato de slug/año inválido, 400) y
+     `DriveConnectionError` (fallo de Drive, 503) se **reutilizan**; se **añade**
+     `UnknownBankError` (`UNKNOWN_BANK`, 404) para "banco con formato válido pero no
+     registrado", requisito de distinguibilidad del humano.
+- **Alternativas consideradas:**
+  - **Auto-crear el banco en la ruta normal (modelo anterior, descartado por el
+    humano en la puerta):** un typo en el slug (`santender` por `santander`) crearía
+    silenciosamente una carpeta de banco nueva y equivocada, donde la ingesta
+    depositaría sin que nadie lo note. Separar usar (resuelve-existente) de crear
+    (explícito) cierra ese agujero: un banco mal escrito falla ruidosamente con
+    lista + sugerencia en vez de crear basura.
+  - **Flag `{ create: true }` en la ruta normal en vez de función aparte:**
+    descartada — un booleano es fácil de colar por descuido y reabre el agujero del
+    typo; una función dedicada (`createBank`) hace el alta imposible por accidente.
+  - **Lista cerrada de bancos hardcodeada en código:** descartada — obligaría a un
+    deploy por banco nuevo y a inventar nombres sin conocerlos; el registro en Drive
+    da la misma seguridad sin acoplar la lista al código.
+  - **Reutilizar `ValidationError` (o `NotFoundError`) para banco desconocido:**
+    descartada — rompe la distinguibilidad que el humano exige (indistinguible del
+    formato inválido, o del not-found genérico de dominio).
+  - **Endpoints de API:** descartada — superficie HTTP sin consumidor ni auth sobre
+    scope completo; la ingesta definirá su contrato cuando exista.
+  - **`rootFolderId` dentro de `DriveCredentials`:** descartada — no es credencial
+    y ensuciaría la firma de `createDriveClient`.
+  - **`appProperties` como marca de unicidad:** descartada — Drive no la impone, no
+    elimina la carrera, complica la lectura.
+  - **Borrar lo creado al fallar (rollback):** descartada — destructivo y contrario
+    a la idempotencia que quiere reutilizarlo en el reintento.
+- **Consecuencias:**
+  - **8ª variable de entorno.** El umbral de ADR-006 se cruza en número (8) pero
+    **no en tipo** (sigue siendo string plano): se **mantiene el validador manual**;
+    reevaluar `@fastify/env` cuando aparezca la primera variable no-string.
+  - **Nueva subclase de error `UnknownBankError`** en `src/errors/app-error.ts`
+    (idiomática bajo ADR-005). El `error-handler` la mapea sin cambios.
+  - `pnpm dev` deja de arrancar sin `GOOGLE_DRIVE_ROOT_FOLDER_ID`. La suite usa
+    placeholder.
+  - **Dar de alta un banco es una acción deliberada** (`createBank` o crear la
+    subcarpeta a mano en Drive). La ingesta cotidiana nunca crea bancos: un banco
+    desconocido falla con lista + sugerencia.
+  - La ingesta (feature futura) hereda el servicio sin re-resolver auth ni estructura,
+    y puede discriminar `UNKNOWN_BANK` para ofrecer el alta.
+  - `src/lib/drive.ts` gana un `export` (`driveErrorMessage`) reutilizado por
+    `drive-structure.ts`; su guardián `no files.` sigue verde (los `files.*` viven
+    en `drive-structure.ts`).
 
 ## Qué NO hacer
 

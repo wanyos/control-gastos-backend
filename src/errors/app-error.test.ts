@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { AppError, DriveConnectionError, NotFoundError, ValidationError } from './app-error.js'
+import {
+  AppError,
+  DriveConnectionError,
+  NotFoundError,
+  UnknownBankError,
+  ValidationError,
+} from './app-error.js'
 
 describe('AppError hierarchy', () => {
   it('AppError exposes message, code and statusCode (default 400)', () => {
@@ -60,5 +66,19 @@ describe('AppError hierarchy', () => {
 
   it('DriveConnectionError has a default message', () => {
     expect(new DriveConnectionError().message).toBe('Cannot reach Google Drive')
+  })
+
+  it('UnknownBankError is an AppError with UNKNOWN_BANK / 404', () => {
+    const error = new UnknownBankError("Unknown bank 'santender'")
+
+    expect(error).toBeInstanceOf(AppError)
+    expect(error.message).toBe("Unknown bank 'santender'")
+    expect(error.code).toBe('UNKNOWN_BANK')
+    expect(error.statusCode).toBe(404)
+    expect(error.name).toBe('UnknownBankError')
+  })
+
+  it('UnknownBankError has a default message', () => {
+    expect(new UnknownBankError().message).toBe('Unknown bank')
   })
 })

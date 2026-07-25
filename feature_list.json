@@ -137,8 +137,20 @@
           "Cómo se identifica el banco de entrada (¿lista cerrada de bancos?, ¿string libre?) y cómo se valida el año; que proponga y me lo marque."
         ]
       },
+      "acceptance": [
+        "Cuando se pide asegurar la carpeta de un banco/año, el backend garantiza que existe notas-banco/<banco>/<año>/ con su subcarpeta procesados/ dentro, colgando de la raíz que el humano creó a mano, y devuelve su identificador reutilizable (deriva de: 'el backend la crea con su procesados/ dentro sin fallar')",
+        "La operación de asegurar carpeta es idempotente: si la carpeta (o su procesados/) ya existe, la reutiliza y NO crea duplicados aunque se invoque varias veces o de forma concurrente (deriva de: 'NO crea duplicados: la reutiliza'; cubre la condición de carrera que se delegó al agente)",
+        "El backend sube un archivo nuevo a notas-banco/<banco>/<año>/ como archivo independiente, sin sobrescribir ni concatenarse a ningún archivo existente de esa carpeta (deriva de: 'aparece como archivo nuevo... sin sobrescribir ni concatenarse a otro archivo existente')",
+        "El backend mueve un archivo dado por procesado a notas-banco/<banco>/<año>/procesados/, de modo que queda en procesados/ y deja de aparecer en la carpeta del año (deriva de: 'lo mueve a procesados/ y deja de estar en la carpeta de pendientes')",
+        "SI una operación con Drive falla (permiso, red, raíz inaccesible) ENTONCES el backend responde con un error claro y no deja la estructura a medias (deriva de: 'error claro y no deja la estructura a medias')",
+        "El backend descubre la carpeta raíz notas-banco/ que el humano crea a mano mediante configuración validada al arrancar (p. ej. su fileId por variable de entorno), y NO crea ni asume la raíz por su cuenta (deriva de: 'no crear la carpeta raíz... el backend cuelga de ella' + la delegación de cómo conoce la raíz)",
+        "El banco de entrada y el año se validan según la política que el spec proponga y marque explícitamente (lista cerrada de bancos vs. string libre; rango/forma del año), quedando anotada la decisión (deriva de la delegación 'cómo se identifica el banco... y cómo se valida el año')",
+        "La feature NO lee ni parsea contenido de archivos, NO importa movimientos a la base de datos, NO detecta 'N nuevos' ni dispara importación, y NO vuelve a montar la conexión con Drive: la consume de la feature 3 (deriva de los 'que_no_quiero')",
+        "Si la feature expone endpoints de la API, docs/api-contract.md queda actualizado en la misma feature; si se resuelve como servicio interno, se documenta dónde y por qué (deriva de la delegación 'servicio interno, endpoint(s), o ambos')",
+        "Cada requirement R<n> del spec tiene al menos un test concreto que lo cubre, mapeado en progress/implementations/drive-structure.md; ./init.sh termina en verde incluida la suite completa; y las decisiones delegadas quedan anotadas como ADR en docs/architecture.md, con las variables nuevas en docs/stack.md y .env.example"
+      ],
       "sdd": true,
-      "status": "pending"
+      "status": "done"
     }
   ]
 }

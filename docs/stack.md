@@ -105,8 +105,11 @@
 | `GOOGLE_DRIVE_CLIENT_ID`     | Client id OAuth de Google Cloud (Drive). | **sí**              | `xxxx.apps.googleusercontent.com`                                  |
 | `GOOGLE_DRIVE_CLIENT_SECRET` | Client secret OAuth de Google Cloud.     | **sí**              | `GOCSPX-…`                                                          |
 | `GOOGLE_DRIVE_REFRESH_TOKEN` | Refresh token OAuth de larga duración.   | **sí**              | `1//…`                                                              |
+| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | fileId de la carpeta raíz `notas-banco/` creada a mano. | **sí** | `1AbCdEfGhIj...` (fileId de Drive)                                |
 
 > Fuente: `.env.example`, [`src/server.ts`](../src/server.ts) (`PORT`, `HOST`),
 > [`src/app.ts`](../src/app.ts) (`LOG_LEVEL`) y
-> [`src/config/env.ts`](../src/config/env.ts) (las tres de Drive). Cómo obtener
-> las de Drive: `specs/drive-connection/design.md` §10 (pasos manuales del humano).
+> [`src/config/env.ts`](../src/config/env.ts) (las tres de Drive y
+> `GOOGLE_DRIVE_ROOT_FOLDER_ID`). Cómo obtener las de Drive:
+> `specs/drive-connection/design.md` §10 (pasos manuales del humano); cómo obtener
+> el fileId de la raíz: `specs/drive-structure/design.md` §9 (de la URL de la carpeta).

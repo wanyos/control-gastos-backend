@@ -31,3 +31,9 @@ export class DriveConnectionError extends AppError {
     super(message, 'DRIVE_CONNECTION_ERROR', 503)
   }
 }
+
+export class UnknownBankError extends AppError {
+  constructor(message = 'Unknown bank') {
+    super(message, 'UNKNOWN_BANK', 404)
+  }
+}

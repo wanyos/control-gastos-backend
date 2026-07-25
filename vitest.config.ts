@@ -16,6 +16,7 @@ export default defineConfig({
       GOOGLE_DRIVE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
       GOOGLE_DRIVE_CLIENT_SECRET: 'test-client-secret',
       GOOGLE_DRIVE_REFRESH_TOKEN: 'test-refresh-token',
+      GOOGLE_DRIVE_ROOT_FOLDER_ID: 'test-root-folder-id',
     },
   },
 })
