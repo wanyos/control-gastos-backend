@@ -10,8 +10,12 @@
 > Reglas de estilo:
 > - En cristiano, sin jerga. Como si se lo explicaras a alguien que conoce el
 >   proyecto pero no ha visto este código.
-> - Archivo y línea concretos en la tabla de "Dónde está el código", para ir
->   directo. Formato `ruta/archivo.ext:línea`.
+> - Archivo y línea concretos en la tabla de "Dónde está el código", **como
+>   enlace clicable** para saltar directo desde VS Code. Formato:
+>   `[archivo.ext:línea](ruta/relativa#Llínea)`, con la ruta **relativa al propio
+>   resumen** (desde `progress/summaries/` son dos niveles: `../../src/...`).
+>   Verifica cada línea contra el código actual y agrupa las filas por tema si
+>   son muchas.
 > - Cierra el círculo con el `intent`: por cada punto del
 >   `como_se_que_esta_bien`, di si se cumplió y dónde se verifica.
 
@@ -40,11 +44,21 @@ gastos.">
 
 ## Dónde está el código (para revisión directa)
 
-| Qué | Archivo:línea |
-|-----|---------------|
-| <handler / componente / función> | `src/....ext:NN` |
-| <modelo / validación> | `src/....ext:NN` |
-| <test principal> | `tests/....ext:NN` |
+> Los enlaces de la columna **Código** son clicables en la vista previa de
+> Markdown de VS Code (o con Ctrl/Cmd + clic): saltan a la línea exacta.
+
+### <Grupo temático 1 — p. ej. la lógica principal>
+
+| Qué hace | Símbolo | Código |
+| --- | --- | --- |
+| <handler / función> | `nombreFuncion` | [archivo.ext:NN](../../src/....ext#LNN) |
+| <validación / modelo> | `otraFuncion` | [archivo.ext:NN](../../src/....ext#LNN) |
+
+### <Grupo temático 2 — p. ej. Tests>
+
+| Qué cubre | Código |
+| --- | --- |
+| <test principal> | [archivo.test.ext:NN](../../src/....test.ext#LNN) |
 
 ## Cumplimiento de la intención
 

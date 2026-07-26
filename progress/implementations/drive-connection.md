@@ -28,46 +28,46 @@ código ni parte de la feature.
 
 ## Archivos creados
 
-- `src/lib/drive.ts` — `driveScope`, `createDriveAuth`, `createDriveClient`,
+- [`src/lib/drive.ts`](../../src/lib/drive.ts) — `driveScope`, `createDriveAuth`, `createDriveClient`,
   `type AppDriveClient`, `checkDriveConnection` y el `driveErrorMessage` privado
   (tabla de síntomas). Recibe `DriveCredentials` por parámetro; **no** menciona
   `process.env` ni `files.`.
-- `src/lib/drive.test.ts` — 11 unitarios con dobles en el seam, sin red.
-- `src/plugins/drive.ts` — plugin `fp` que decora `fastify.drive`. **Sin
+- [`src/lib/drive.test.ts`](../../src/lib/drive.test.ts) — 11 unitarios con dobles en el seam, sin red.
+- [`src/plugins/drive.ts`](../../src/plugins/drive.ts) — plugin `fp` que decora `fastify.drive`. **Sin
   handshake, sin log de arranque, sin `onClose`** (las tres diferencias
   deliberadas con `plugins/prisma.ts`).
-- `src/plugins/drive.test.ts` — integración: `buildApp()` + `ready()` con
+- [`src/plugins/drive.test.ts`](../../src/plugins/drive.test.ts) — integración: `buildApp()` + `ready()` con
   placeholders; ruta posterior lee `fastify.drive`.
-- `scripts/get-drive-refresh-token.mjs` — one-shot fuera de `src/` (R23),
+- [`scripts/get-drive-refresh-token.mjs`](../../scripts/get-drive-refresh-token.mjs) — one-shot fuera de `src/` (R23),
   formateado con Prettier.
 
 ## Archivos modificados
 
-- `src/errors/app-error.ts` — `+ DriveConnectionError` (`DRIVE_CONNECTION_ERROR`,
+- [`src/errors/app-error.ts`](../../src/errors/app-error.ts) — `+ DriveConnectionError` (`DRIVE_CONNECTION_ERROR`,
   503). `error-handler.ts` **no se tocó** (ya despacha por `instanceof AppError`).
-- `src/errors/app-error.test.ts` — `+ 2` tests de la subclase.
-- `src/config/env.ts` — `interface DriveCredentials`, campo `drive` en
+- [`src/errors/app-error.test.ts`](../../src/errors/app-error.test.ts) — `+ 2` tests de la subclase.
+- [`src/config/env.ts`](../../src/config/env.ts) — `interface DriveCredentials`, campo `drive` en
   `AppConfig`, 3 bloques `if` de validación tras el de `LOG_LEVEL`, y el guard
   del `throw` ampliado con `|| !driveClientId || !driveClientSecret ||
   !driveRefreshToken`.
-- `src/config/env.test.ts` — fixtures `driveEnv`/`drive`/`baseEnv`; 3 tests
+- [`src/config/env.test.ts`](../../src/config/env.test.ts) — fixtures `driveEnv`/`drive`/`baseEnv`; 3 tests
   arreglados (uno renombrado a `applies defaults when only the required variables
   are present`); tests nuevos de Drive.
-- `vitest.config.ts` — 3 credenciales placeholder junto a `LOG_LEVEL: 'silent'`.
-- `src/app.ts` — `import` + `app.register(drivePlugin)` tras `prismaPlugin`.
-- `src/modules/health/health.routes.ts` — `+ GET /health/drive`.
-- `src/modules/health/health.test.ts` — describe nuevo con Fastify desnudo +
+- [`vitest.config.ts`](../../vitest.config.ts) — 3 credenciales placeholder junto a `LOG_LEVEL: 'silent'`.
+- [`src/app.ts`](../../src/app.ts) — `import` + `app.register(drivePlugin)` tras `prismaPlugin`.
+- [`src/modules/health/health.routes.ts`](../../src/modules/health/health.routes.ts) — `+ GET /health/drive`.
+- [`src/modules/health/health.test.ts`](../../src/modules/health/health.test.ts) — describe nuevo con Fastify desnudo +
   doble de Drive (3 tests). Los 2 tests existentes intactos.
-- `src/architecture.test.ts` — árbol objetivo (+ `lib/drive.ts`, `plugins/drive.ts`),
+- [`src/architecture.test.ts`](../../src/architecture.test.ts) — árbol objetivo (+ `lib/drive.ts`, `plugins/drive.ts`),
   guardián de `.env.example` y guardián de alcance (`no files.`).
-- `.env.example` — 3 variables con placeholders + comentario a `design.md` §10.
-- `docs/api-contract.md` — `GET /health/drive` + `DRIVE_CONNECTION_ERROR` (503),
+- [`.env.example`](../../.env.example) — 3 variables con placeholders + comentario a `design.md` §10.
+- [`docs/api-contract.md`](../../docs/api-contract.md) — `GET /health/drive` + `DRIVE_CONNECTION_ERROR` (503),
   anotando que hoy ningún endpoint de dominio lo devuelve en el body.
-- `docs/architecture.md` — **ADR-007**, árbol de carpetas, nota en el umbral de
+- [`docs/architecture.md`](../../docs/architecture.md) — **ADR-007**, árbol de carpetas, nota en el umbral de
   ADR-006.
-- `docs/stack.md` — 3 variables en la tabla de entorno + `@googleapis/drive` en
+- [`docs/stack.md`](../../docs/stack.md) — 3 variables en la tabla de entorno + `@googleapis/drive` en
   librerías clave (la línea del gestor de paquetes NO se tocó).
-- `package.json` / `pnpm-lock.yaml` — `+ @googleapis/drive@^20.2.0`
+- [`package.json`](../../package.json) / [`pnpm-lock.yaml`](../../pnpm-lock.yaml) — `+ @googleapis/drive@^20.2.0`
   (`google-auth-library` **no** declarada; se usa el `auth` reexportado).
 
 ## Decisiones y detalles de diseño respetados

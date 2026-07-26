@@ -10,41 +10,41 @@
 
 ## Archivos creados
 
-- `src/lib/drive-structure.ts` — servicio interno (funciones puras que reciben
+- [`src/lib/drive-structure.ts`](../../src/lib/drive-structure.ts) — servicio interno (funciones puras que reciben
   `AppDriveClient` por parámetro): `normalizeBankName`, `validateYear`,
   `suggestBank` (Levenshtein ≤ 2, desempate alfabético), `findFolder`,
   `ensureFolder` (con lock en memoria por `(padre, nombre)`), `resolveBankFolder`,
   `createBank`, `ensureBankYearFolders`, `uploadFile`, `moveFileToProcessed`.
   Superficie `files.*` (NO en `drive.ts`). Sin `prisma`, sin `process.env`, sin
   wiring de auth.
-- `src/lib/drive-structure.test.ts` — 26 unitarios con `driveDouble` en el seam,
+- [`src/lib/drive-structure.test.ts`](../../src/lib/drive-structure.test.ts) — 26 unitarios con `driveDouble` en el seam,
   sin red.
 
 ## Archivos modificados
 
-- `src/config/env.ts` — `+ driveRootFolderId: string` en `AppConfig`; bloque `if`
+- [`src/config/env.ts`](../../src/config/env.ts) — `+ driveRootFolderId: string` en `AppConfig`; bloque `if`
   de validación de `GOOGLE_DRIVE_ROOT_FOLDER_ID` tras los tres de Drive; guard del
   `throw` ampliado con `|| !driveRootFolderId`; campo añadido al objeto devuelto.
-- `src/config/env.test.ts` — constante `driveRootFolderId`, `baseEnv` con la nueva
+- [`src/config/env.test.ts`](../../src/config/env.test.ts) — constante `driveRootFolderId`, `baseEnv` con la nueva
   var, los dos `toEqual` de config completa con `driveRootFolderId`, y tests
   nuevos (expone la var; ausente/vacía → lanza nombrándola; junto a otros
   problemas → la nombra en el mismo mensaje).
-- `vitest.config.ts` — placeholder `GOOGLE_DRIVE_ROOT_FOLDER_ID: 'test-root-folder-id'`.
-- `src/errors/app-error.ts` — `+ UnknownBankError` (`UNKNOWN_BANK`, 404).
+- [`vitest.config.ts`](../../vitest.config.ts) — placeholder `GOOGLE_DRIVE_ROOT_FOLDER_ID: 'test-root-folder-id'`.
+- [`src/errors/app-error.ts`](../../src/errors/app-error.ts) — `+ UnknownBankError` (`UNKNOWN_BANK`, 404).
   `error-handler.ts` **no se tocó** (despacha cualquier `AppError` por su código).
-- `src/errors/app-error.test.ts` — 2 tests de la subclase (código/status/name/mensaje).
-- `src/lib/drive.ts` — `export` a `driveErrorMessage` (única línea; comportamiento
+- [`src/errors/app-error.test.ts`](../../src/errors/app-error.test.ts) — 2 tests de la subclase (código/status/name/mensaje).
+- [`src/lib/drive.ts`](../../src/lib/drive.ts) — `export` a `driveErrorMessage` (única línea; comportamiento
   y guardián `no files.` intactos).
-- `src/architecture.test.ts` — árbol objetivo (+ `lib/drive-structure.ts` y su
+- [`src/architecture.test.ts`](../../src/architecture.test.ts) — árbol objetivo (+ `lib/drive-structure.ts` y su
   `.test.ts`); guardián `no "prisma"` (R18); guardián `no createDriveClient /
   createDriveAuth / OAuth2` (R19).
-- `.env.example` — `GOOGLE_DRIVE_ROOT_FOLDER_ID` con placeholder + comentario a
+- [`.env.example`](../../.env.example) — `GOOGLE_DRIVE_ROOT_FOLDER_ID` con placeholder + comentario a
   `design.md` §9.
-- `docs/stack.md` — la variable en la tabla de entorno (obligatoria) + fuente.
-- `docs/architecture.md` — **ADR-008**; `lib/drive-structure.ts` en el árbol; nota
+- [`docs/stack.md`](../../docs/stack.md) — la variable en la tabla de entorno (obligatoria) + fuente.
+- [`docs/architecture.md`](../../docs/architecture.md) — **ADR-008**; `lib/drive-structure.ts` en el árbol; nota
   del umbral de ADR-006 (8ª variable, string plano → validador manual); nota bajo
   ADR-005 (`UnknownBankError` como subclase idiomática nueva).
-- `docs/api-contract.md` — **sin endpoints nuevos**; `UNKNOWN_BANK` (404) en la
+- [`docs/api-contract.md`](../../docs/api-contract.md) — **sin endpoints nuevos**; `UNKNOWN_BANK` (404) en la
   tabla de códigos estables como **reservado**; nota de que la feature 4 se
   resolvió como servicio interno.
 

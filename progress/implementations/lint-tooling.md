@@ -61,9 +61,9 @@ Exactamente las reglas fijadas por el humano en `docs/conventions.md` §Estilo:
   reformatear docs en bloque mete ruido en git y esos archivos los poseen el
   humano/leader, no el formatter. Se extendió a todos los `.md` (incluidos
   README/AGENTS/CHECKPOINTS/CLAUDE de raíz) por el mismo motivo. Revisable.
-- `feature_list.json` — estado del harness gestionado por agentes; excluido
+- [`feature_list.json`](../../feature_list.json) — estado del harness gestionado por agentes; excluido
   para garantizar que `prettier --write .` jamás lo toque.
-- `.vscode/` — configuración local del editor, fuera del alcance del formatter.
+- [`.vscode/`](../../.vscode/) — configuración local del editor, fuera del alcance del formatter.
 
 Con esto, Prettier posee: `src/**` (salvo generated), los configs de raíz
 (`eslint.config.js`, `vitest.config.ts`, `prisma.config.ts`, `tsconfig.json`,
@@ -83,10 +83,10 @@ Con esto, Prettier posee: `src/**` (salvo generated), los configs de raíz
 - **`src/`: CERO archivos reformateados.** Todo el código ya cumplía el estilo
   (comillas simples, sin `;`, 2 espacios, <100 cols). Ni ESLint ni Prettier
   pidieron un solo cambio en `src/`.
-- `docker-compose.yml`: 2 líneas, comillas dobles → simples (`'5434:5432'` y
+- [`docker-compose.yml`](../../docker-compose.yml): 2 líneas, comillas dobles → simples (`'5434:5432'` y
   el array del healthcheck). YAML semánticamente idéntico; verificado por diff
   antes de escribir.
-- `eslint.config.js`: plegado a 100 columnas del propio archivo nuevo.
+- [`eslint.config.js`](../../eslint.config.js): plegado a 100 columnas del propio archivo nuevo.
 
 ## Comandos ejecutados y resultado (verificación final)
 

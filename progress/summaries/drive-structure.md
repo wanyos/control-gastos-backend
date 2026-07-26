@@ -38,23 +38,62 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 
 ## Dónde está el código (para revisión directa)
 
-| Qué | Archivo:línea |
-|-----|---------------|
-| Asegurar `<banco>/<año>/procesados` (resuelve banco, auto-crea año/procesados) | `src/lib/drive-structure.ts:288` |
-| Resolver banco existente o `UnknownBankError` (lista + sugerencia) | `src/lib/drive-structure.ts:254` |
-| Alta explícita de banco (único camino, idempotente) | `src/lib/drive-structure.ts:272` |
-| `ensureFolder` idempotente + lock en memoria por `(padre,nombre)` | `src/lib/drive-structure.ts:205` |
-| `findFolder` (de-dup determinista: la más antigua) | `src/lib/drive-structure.ts:144` |
-| Subir archivo nuevo (nunca sobrescribe) | `src/lib/drive-structure.ts:306` |
-| Mover a `procesados/` (addParents/removeParents) | `src/lib/drive-structure.ts:330` |
-| Validación de slug de banco / año | `src/lib/drive-structure.ts:52` / `:82` |
-| `suggestBank` (Levenshtein ≤ 2, desempate alfabético) | `src/lib/drive-structure.ts:123` |
-| Sanitizado de errores de Drive (`callDrive`) | `src/lib/drive-structure.ts:34` |
-| Nueva clase de error `UnknownBankError` | `src/errors/app-error.ts:35` |
-| Variable `GOOGLE_DRIVE_ROOT_FOLDER_ID` validada al arrancar | `src/config/env.ts:82` |
-| Test principal de la lib (26 casos, sin red) | `src/lib/drive-structure.test.ts:1` |
-| Guardianes de alcance (no prisma / no auth-wiring) | `src/architecture.test.ts:85`, `:91` |
-| ADR-008 | `docs/architecture.md:276` |
+> Los enlaces de la columna **Código** son **clicables** en la vista previa de
+> Markdown de VS Code (o con `Ctrl`/`Cmd` + clic sobre el enlace): te llevan a la
+> línea exacta del archivo.
+
+### 📁 Estructura de carpetas — banco / año / procesados
+
+> Todo en [`src/lib/drive-structure.ts`](../../src/lib/drive-structure.ts).
+
+| Qué hace | Función | Código |
+| --- | --- | --- |
+| Asegura `<banco>/<año>/procesados`: resuelve el banco y auto-crea año + `procesados` | `ensureBankYearFolders` | [:288](../../src/lib/drive-structure.ts#L288) |
+| Resuelve el banco existente, o lanza `UnknownBankError` (lista + sugerencia) | `resolveBankFolder` | [:254](../../src/lib/drive-structure.ts#L254) |
+| Alta explícita de banco — **único** camino, idempotente | `createBank` | [:272](../../src/lib/drive-structure.ts#L272) |
+| Crea la carpeta solo si falta; lock en memoria por `(padre, nombre)` | `ensureFolder` | [:205](../../src/lib/drive-structure.ts#L205) |
+| Resuelve por nombre; de-dup determinista (reutiliza la más antigua) | `findFolder` | [:144](../../src/lib/drive-structure.ts#L144) |
+
+### 📤 Archivos — subir y mover
+
+> Todo en [`src/lib/drive-structure.ts`](../../src/lib/drive-structure.ts).
+
+| Qué hace | Función | Código |
+| --- | --- | --- |
+| Sube un archivo nuevo (nunca sobrescribe ni concatena) | `uploadFile` | [:306](../../src/lib/drive-structure.ts#L306) |
+| Mueve el archivo a `procesados/` (`addParents` / `removeParents`) | `moveFileToProcessed` | [:330](../../src/lib/drive-structure.ts#L330) |
+
+### ✅ Validación y ayudas (funciones puras)
+
+> Todo en [`src/lib/drive-structure.ts`](../../src/lib/drive-structure.ts).
+
+| Qué hace | Función | Código |
+| --- | --- | --- |
+| Normaliza y valida el nombre de banco a slug seguro | `normalizeBankName` | [:52](../../src/lib/drive-structure.ts#L52) |
+| Valida el año (`^\d{4}$`, rango 2000-2100) | `validateYear` | [:82](../../src/lib/drive-structure.ts#L82) |
+| Sugiere el banco más parecido (Levenshtein ≤ 2, desempate alfabético) | `suggestBank` | [:123](../../src/lib/drive-structure.ts#L123) |
+
+### ⚠️ Errores y configuración
+
+| Qué hace | Símbolo | Código |
+| --- | --- | --- |
+| Envuelve fallos de Drive en `DriveConnectionError` sanitizado | `callDrive` | [drive-structure.ts:34](../../src/lib/drive-structure.ts#L34) |
+| Clase de error de banco no registrado (`UNKNOWN_BANK`, 404) | `UnknownBankError` | [app-error.ts:35](../../src/errors/app-error.ts#L35) |
+| Variable de la carpeta raíz, validada al arrancar | `GOOGLE_DRIVE_ROOT_FOLDER_ID` | [env.ts:82](../../src/config/env.ts#L82) |
+
+### 🧪 Tests y guardianes
+
+| Qué cubre | Código |
+| --- | --- |
+| Test principal de la lib (26 casos, sin red) | [drive-structure.test.ts:1](../../src/lib/drive-structure.test.ts#L1) |
+| Guardián de alcance: sin `prisma` (R18) | [architecture.test.ts:85](../../src/architecture.test.ts#L85) |
+| Guardián de alcance: sin wiring de auth (R19) | [architecture.test.ts:91](../../src/architecture.test.ts#L91) |
+
+### 📄 Documentación de la decisión
+
+| Qué | Código |
+| --- | --- |
+| ADR-008 — estructura en Drive, Drive como registro de bancos | [architecture.md:276](../../docs/architecture.md#L276) |
 
 ## Cumplimiento de la intención
 

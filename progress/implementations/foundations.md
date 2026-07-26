@@ -20,42 +20,42 @@ T1-T21 y T23-T25 completadas y marcadas `[x]` en `specs/fundamentos/tasks.md`.
 
 | Archivo | Contenido |
 | --- | --- |
-| `src/config/env.ts` | `AppConfig`, `LogLevel`, `loadConfig(env)` (acumula todos los problemas en un único error); module augmentation `fastify.config` |
-| `src/config/env.test.ts` | 9 tests unitarios de `loadConfig` |
-| `src/errors/app-error.ts` | `AppError`, `NotFoundError`, `ValidationError` |
-| `src/errors/app-error.test.ts` | 6 tests unitarios de la jerarquía |
-| `src/plugins/error-handler.ts` | `handleError` exportado + plugin `fp` con `setErrorHandler` y `setNotFoundHandler` |
-| `src/plugins/error-handler.test.ts` | 3 unit (`handleError` con spies) + 2 integración (500 genérico, 404 de router) |
-| `src/modules/expenses/expenses.types.ts` | `CreateExpenseBody`, `ExpenseIdParams` |
-| `src/modules/expenses/expenses.schema.ts` | `createExpenseSchema` (movido) + `expenseIdParamsSchema` (nuevo) |
-| `src/modules/expenses/expenses.service.ts` | `expensesDb`, `listExpenses`, `getExpenseById`, `createExpense`, `deleteExpense` (P2025 → `NotFoundError`) |
-| `src/modules/expenses/expenses.routes.ts` | capa HTTP fina, sin referencia alguna a `prisma` |
-| `src/modules/expenses/expenses.test.ts` | los 6 tests movidos (solo cambió el import) + 3 nuevos de formato de error |
-| `src/modules/health/health.routes.ts` | movido de `src/routes/health.ts` sin cambios funcionales |
-| `src/modules/health/health.test.ts` | los 2 tests movidos (solo cambió el import) |
-| `src/architecture.test.ts` | guardián: `process.env` centralizado, árbol ADR-004, no `src/routes/`, rutas sin `prisma` |
+| [`src/config/env.ts`](../../src/config/env.ts) | `AppConfig`, `LogLevel`, `loadConfig(env)` (acumula todos los problemas en un único error); module augmentation `fastify.config` |
+| [`src/config/env.test.ts`](../../src/config/env.test.ts) | 9 tests unitarios de `loadConfig` |
+| [`src/errors/app-error.ts`](../../src/errors/app-error.ts) | `AppError`, `NotFoundError`, `ValidationError` |
+| [`src/errors/app-error.test.ts`](../../src/errors/app-error.test.ts) | 6 tests unitarios de la jerarquía |
+| [`src/plugins/error-handler.ts`](../../src/plugins/error-handler.ts) | `handleError` exportado + plugin `fp` con `setErrorHandler` y `setNotFoundHandler` |
+| [`src/plugins/error-handler.test.ts`](../../src/plugins/error-handler.test.ts) | 3 unit (`handleError` con spies) + 2 integración (500 genérico, 404 de router) |
+| [`src/modules/expenses/expenses.types.ts`](../../src/modules/expenses/expenses.types.ts) | `CreateExpenseBody`, `ExpenseIdParams` |
+| [`src/modules/expenses/expenses.schema.ts`](../../src/modules/expenses/expenses.schema.ts) | `createExpenseSchema` (movido) + `expenseIdParamsSchema` (nuevo) |
+| [`src/modules/expenses/expenses.service.ts`](../../src/modules/expenses/expenses.service.ts) | `expensesDb`, `listExpenses`, `getExpenseById`, `createExpense`, `deleteExpense` (P2025 → `NotFoundError`) |
+| [`src/modules/expenses/expenses.routes.ts`](../../src/modules/expenses/expenses.routes.ts) | capa HTTP fina, sin referencia alguna a `prisma` |
+| [`src/modules/expenses/expenses.test.ts`](../../src/modules/expenses/expenses.test.ts) | los 6 tests movidos (solo cambió el import) + 3 nuevos de formato de error |
+| [`src/modules/health/health.routes.ts`](../../src/modules/health/health.routes.ts) | movido de `src/routes/health.ts` sin cambios funcionales |
+| [`src/modules/health/health.test.ts`](../../src/modules/health/health.test.ts) | los 2 tests movidos (solo cambió el import) |
+| [`src/architecture.test.ts`](../../src/architecture.test.ts) | guardián: `process.env` centralizado, árbol ADR-004, no `src/routes/`, rutas sin `prisma` |
 
 ## Archivos modificados
 
-- `src/app.ts` — `buildApp(config: AppConfig = loadConfig())`; logger con
+- [`src/app.ts`](../../src/app.ts) — `buildApp(config: AppConfig = loadConfig())`; logger con
   `config.logLevel`; `app.decorate('config', config)`; orden de registro:
   `error-handler` → `prisma` → módulos.
-- `src/server.ts` — `loadConfig()` en `try/catch` → mensaje a stderr +
+- [`src/server.ts`](../../src/server.ts) — `loadConfig()` en `try/catch` → mensaje a stderr +
   `process.exit(1)`; `listen({ port: config.port, host: config.host })`.
-- `src/lib/prisma.ts` — `createPrismaClient(databaseUrl: string)`; sin
+- [`src/lib/prisma.ts`](../../src/lib/prisma.ts) — `createPrismaClient(databaseUrl: string)`; sin
   lectura de env ni throw propio.
-- `src/plugins/prisma.ts` — pasa `fastify.config.databaseUrl`.
-- `docs/api-contract.md` — sección "Errores" nueva: formato
+- [`src/plugins/prisma.ts`](../../src/plugins/prisma.ts) — pasa `fastify.config.databaseUrl`.
+- [`docs/api-contract.md`](../../docs/api-contract.md) — sección "Errores" nueva: formato
   `{ statusCode, code, message }`, tabla de códigos estables y nota visible
   del cambio respecto a `{ message }` (no breaking).
-- `docs/architecture.md` — notas de realidad actualizadas (principios ya
+- [`docs/architecture.md`](../../docs/architecture.md) — notas de realidad actualizadas (principios ya
   implementados y guardados por test), árbol sin marcas `(nueva)` (añadido
   `architecture.test.ts`), nota de migración marcada como ejecutada,
   **ADR-005** y **ADR-006** añadidos, línea de "Qué NO hacer" sobre Prisma
   en rutas actualizada a la realidad con servicios.
-- `docs/stack.md` — referencias `src/routes/*` → `src/modules/*`
+- [`docs/stack.md`](../../docs/stack.md) — referencias `src/routes/*` → `src/modules/*`
   (§Librerías clave, §Testing).
-- `docs/verification.md` — ejemplos vivos de §Nivel 2 → `src/modules/*`.
+- [`docs/verification.md`](../../docs/verification.md) — ejemplos vivos de §Nivel 2 → `src/modules/*`.
 - `specs/fundamentos/tasks.md` — checklist marcada.
 
 ## Eliminados

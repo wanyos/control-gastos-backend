@@ -33,22 +33,42 @@ La app tiene una base común que todas las features futuras van a reutilizar:
 
 ## Dónde está el código (para revisión directa)
 
-| Qué | Archivo:línea |
-|-----|---------------|
-| Validación de config (`loadConfig`) | `src/config/env.ts:27` |
-| Arranque fail-fast (stderr + exit 1) | `src/server.ts:9` |
-| Jerarquía de errores (`AppError` y subclases) | `src/errors/app-error.ts:6` |
-| Handler central de errores (`handleError`) | `src/plugins/error-handler.ts:20` |
-| 404 de ruta inexistente normalizado | `src/plugins/error-handler.ts:46` |
-| Servicio de expenses (único acceso a datos) | `src/modules/expenses/expenses.service.ts:13` |
-| Rutas de expenses (capa HTTP fina, sin Prisma) | `src/modules/expenses/expenses.routes.ts:22` |
-| Fábrica de Prisma (ya sin leer env) | `src/lib/prisma.ts:13` |
-| Cableado en la app (`buildApp(config)`) | `src/app.ts:13` |
-| Test guardián de la arquitectura | `src/architecture.test.ts:25` |
-| Tests de config | `src/config/env.test.ts:7` |
-| Tests del handler de errores | `src/plugins/error-handler.test.ts:25` |
-| Contrato: sección Errores + nota de cambio | `docs/api-contract.md:27` |
-| ADR-005 (patrón de errores) y ADR-006 (env a mano) | `docs/architecture.md:157` y `:180` |
+> Los enlaces de la columna **Código** son clicables en la vista previa de
+> Markdown de VS Code (o con Ctrl/Cmd + clic): saltan a la línea exacta.
+
+### ⚙️ Configuración y arranque
+
+| Qué hace | Símbolo | Código |
+| --- | --- | --- |
+| Valida y tipa la config al arrancar | `loadConfig` | [env.ts:35](../../src/config/env.ts#L35) |
+| Arranque fail-fast (stderr + exit 1) | try/catch de `server.ts` | [server.ts:9](../../src/server.ts#L9) |
+| Cableado de la app | `buildApp(config)` | [app.ts:14](../../src/app.ts#L14) |
+
+### ⚠️ Errores con formato único
+
+| Qué hace | Símbolo | Código |
+| --- | --- | --- |
+| Jerarquía de errores de dominio | `AppError` y subclases | [app-error.ts:6](../../src/errors/app-error.ts#L6) |
+| Handler central error → HTTP | `handleError` | [error-handler.ts:20](../../src/plugins/error-handler.ts#L20) |
+| 404 de ruta inexistente normalizado | `setNotFoundHandler` | [error-handler.ts:46](../../src/plugins/error-handler.ts#L46) |
+
+### 📦 Módulo de ejemplo (expenses) y datos
+
+| Qué hace | Símbolo | Código |
+| --- | --- | --- |
+| Único acceso a datos del módulo | `expensesDb` | [expenses.service.ts:13](../../src/modules/expenses/expenses.service.ts#L13) |
+| Capa HTTP fina (sin Prisma) | `expensesRoutes` | [expenses.routes.ts:22](../../src/modules/expenses/expenses.routes.ts#L22) |
+| Fábrica de Prisma (ya sin leer env) | `createPrismaClient` | [prisma.ts:13](../../src/lib/prisma.ts#L13) |
+
+### 🧪 Tests y documentación
+
+| Qué cubre | Código |
+| --- | --- |
+| Test guardián de la arquitectura | [architecture.test.ts:25](../../src/architecture.test.ts#L25) |
+| Tests de config | [env.test.ts:31](../../src/config/env.test.ts#L31) |
+| Tests del handler de errores | [error-handler.test.ts:25](../../src/plugins/error-handler.test.ts#L25) |
+| Contrato: sección Errores + nota de cambio | [api-contract.md §Errores](../../docs/api-contract.md#L27) |
+| ADR-005 (errores) y ADR-006 (env a mano) | [architecture.md:160](../../docs/architecture.md#L160) · [:188](../../docs/architecture.md#L188) |
 
 ## Cumplimiento de la intención
 

@@ -7,9 +7,9 @@
 
 | Archivo | Acción |
 |---------|--------|
-| `package.json` | Añadido `vitest` a devDependencies; scripts `"test": "vitest run"` y `"test:watch": "vitest"` |
+| [`package.json`](../../package.json) | Añadido `vitest` a devDependencies; scripts `"test": "vitest run"` y `"test:watch": "vitest"` |
 | `package-lock.json` | Actualizado por `npm install --save-dev vitest` (vitest 4.1.10) |
-| `vitest.config.ts` | **Nuevo.** Config mínima: `environment: 'node'`, `setupFiles: ['dotenv/config']`, `env: { LOG_LEVEL: 'silent' }` |
+| [`vitest.config.ts`](../../vitest.config.ts) | **Nuevo.** Config mínima: `environment: 'node'`, `setupFiles: ['dotenv/config']`, `env: { LOG_LEVEL: 'silent' }` |
 | `src/routes/health.test.ts` | **Nuevo.** 2 tests de integración (niveles 2/3) |
 | `src/routes/expenses.test.ts` | **Nuevo.** 6 tests de integración (nivel 2) |
 

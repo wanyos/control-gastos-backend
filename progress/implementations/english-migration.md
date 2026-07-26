@@ -6,11 +6,11 @@ del repo) intacta. Comportamiento idéntico; solo renombrado/traducción.
 
 ## Archivos modificados / creados
 
-- `prisma/schema.prisma` — modelos `Categoria`→`Category`, `Gasto`→`Expense`;
+- [`prisma/schema.prisma`](../../prisma/schema.prisma) — modelos `Categoria`→`Category`, `Gasto`→`Expense`;
   campos `nombre`→`name`, `descripcion`→`description`, `monto`→`amount`,
   `fecha`→`date`, `categoriaId`→`categoryId`; relaciones `gastos`→`expenses`,
   `categoria`→`category`. Comentario de cabecera traducido.
-- `prisma/migrations/20260707171322_init/migration.sql` — DDL reescrito a
+- [`prisma/migrations/20260707171322_init/migration.sql`](../../prisma/migrations/20260707171322_init/migration.sql) — DDL reescrito a
   inglés: tablas `Category`/`Expense`, columnas nuevas, índice
   `Category_name_key`, FK `Expense_categoryId_fkey` con
   `ON DELETE SET NULL ON UPDATE CASCADE`. (Editado in situ por ser un reset.)
@@ -22,19 +22,19 @@ del repo) intacta. Comportamiento idéntico; solo renombrado/traducción.
   `include: { category }`. Mensajes de error en inglés
   (`'The id must be an integer'`, `'Expense not found'`). Comentarios en inglés.
 - `src/routes/gastos.ts` — **eliminado**.
-- `src/app.ts` — import a `'./routes/expenses.js'`, variable `expenseRoutes`,
+- [`src/app.ts`](../../src/app.ts) — import a `'./routes/expenses.js'`, variable `expenseRoutes`,
   `register(expenseRoutes, { prefix: '/api/expenses' })`. Comentarios traducidos.
-- `src/server.ts` — comentarios y log de shutdown traducidos
+- [`src/server.ts`](../../src/server.ts) — comentarios y log de shutdown traducidos
   (`'Received ${signal} signal, shutting down server...'`).
 - `src/routes/health.ts` — JSDoc y log de error traducidos
   (`'Database health check failed'`).
-- `src/plugins/prisma.ts` — comentarios y log traducidos
+- [`src/plugins/prisma.ts`](../../src/plugins/prisma.ts) — comentarios y log traducidos
   (`'PostgreSQL connection established (Prisma)'`).
-- `src/lib/prisma.ts` — JSDoc y mensaje de error traducidos
+- [`src/lib/prisma.ts`](../../src/lib/prisma.ts) — JSDoc y mensaje de error traducidos
   (`'DATABASE_URL is not defined. Copy .env.example to .env ...'`).
-- `prisma.config.ts` — comentarios traducidos.
+- [`prisma.config.ts`](../../prisma.config.ts) — comentarios traducidos.
 - `src/generated/prisma/**` — regenerado por `npx prisma generate` (artefacto).
-- `progress/current.md` — bitácora de sesión.
+- [`progress/current.md`](../../progress/current.md) — bitácora de sesión.
 
 ## Decisiones
 

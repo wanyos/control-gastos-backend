@@ -18,7 +18,7 @@ de procesos en la ronda de corrección (ver "Correcciones tras review").
 
 ## Archivos modificados / creados
 
-- `progress/current.md` — plan y bitácora de la sesión (harness, no código).
+- [`progress/current.md`](../../progress/current.md) — plan y bitácora de la sesión (harness, no código).
 - `progress/impl_bootstrap.md` — este informe.
 - **Código fuente: sin cambios.** No se movió, renombró ni creó ningún archivo
   en `src/`, ni se añadieron dependencias.

@@ -30,21 +30,37 @@ saber "conecto / no conecto" y con qué cuenta.
 
 ## Dónde está el código (para revisión directa)
 
-| Qué | Archivo:línea |
-|-----|---------------|
-| Fábrica del cliente + auth OAuth2 + scope | `src/lib/drive.ts:10,18,31` |
-| Comprobación de conexión (devuelve el email) | `src/lib/drive.ts:110` |
-| Mapeo de errores a mensaje fijo (sin fuga de tokens) | `src/lib/drive.ts:38-67` |
-| Plugin que expone `fastify.drive` (sin handshake) | `src/plugins/drive.ts:22-30` |
-| Registro del plugin en la app | `src/app.ts:26` |
-| Endpoint `GET /health/drive` | `src/modules/health/health.routes.ts:26-38` |
-| Validación de las 3 variables al arrancar | `src/config/env.ts:66-92` |
-| Error de dominio `DriveConnectionError` (503) | `src/errors/app-error.ts:29-33` |
-| Placeholders que hacen hermética la suite | `vitest.config.ts:14-19` |
-| Guardianes (.env.example sin secretos, sin `files.*`) | `src/architecture.test.ts:66,77` |
-| Tests unitarios del cliente de Drive | `src/lib/drive.test.ts` |
-| Tests del endpoint y del logueo del email | `src/modules/health/health.test.ts:42-102` |
-| Tests del arranque lazy del plugin | `src/plugins/drive.test.ts` |
+> Los enlaces de la columna **Código** son clicables en la vista previa de
+> Markdown de VS Code (o con Ctrl/Cmd + clic): saltan a la línea exacta.
+
+### 🔌 Cliente y conexión con Drive
+
+| Qué hace | Símbolo | Código |
+| --- | --- | --- |
+| Fábrica del cliente + auth OAuth2 + scope | `driveScope` · `createDriveAuth` · `createDriveClient` | [drive.ts:10](../../src/lib/drive.ts#L10) · [:18](../../src/lib/drive.ts#L18) · [:31](../../src/lib/drive.ts#L31) |
+| Comprobación de conexión (devuelve el email) | `checkDriveConnection` | [drive.ts:110](../../src/lib/drive.ts#L110) |
+| Mapeo de errores a mensaje fijo (sin fuga de tokens) | `driveErrorMessage` | [drive.ts:38](../../src/lib/drive.ts#L38) |
+| Plugin que expone `fastify.drive` (sin handshake) | `drivePlugin` | [plugins/drive.ts:22](../../src/plugins/drive.ts#L22) |
+| Registro del plugin en la app | `app.register(drivePlugin)` | [app.ts:26](../../src/app.ts#L26) |
+
+### 🌐 Endpoint, config y error
+
+| Qué hace | Símbolo | Código |
+| --- | --- | --- |
+| Endpoint `GET /health/drive` | ruta en `healthRoutes` | [health.routes.ts:26](../../src/modules/health/health.routes.ts#L26) |
+| Validación de las variables de Drive al arrancar | bloques en `loadConfig` | [env.ts:67](../../src/config/env.ts#L67) |
+| Error de dominio `DriveConnectionError` (503) | `DriveConnectionError` | [app-error.ts:29](../../src/errors/app-error.ts#L29) |
+
+### 🧪 Tests y guardianes
+
+| Qué cubre | Código |
+| --- | --- |
+| Placeholders que hacen hermética la suite | [vitest.config.ts:14](../../vitest.config.ts#L14) |
+| Guardián: `.env.example` sin secretos (R14) | [architecture.test.ts:68](../../src/architecture.test.ts#L68) |
+| Guardián: `drive.ts` sin `files.*` (R17) | [architecture.test.ts:79](../../src/architecture.test.ts#L79) |
+| Tests unitarios del cliente de Drive | [lib/drive.test.ts](../../src/lib/drive.test.ts) |
+| Tests del endpoint y del logueo del email | [health.test.ts:42](../../src/modules/health/health.test.ts#L42) |
+| Tests del arranque lazy del plugin | [plugins/drive.test.ts](../../src/plugins/drive.test.ts) |
 
 ## Cumplimiento de la intención
 

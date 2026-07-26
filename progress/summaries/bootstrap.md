@@ -27,16 +27,38 @@ lo supiera). Ya no queda ninguno.
 
 ## Dónde está el código (para revisión directa)
 
-| Qué | Archivo:línea |
-|-----|---------------|
-| Comando único de arranque (`dev`) | `package.json:8` |
-| Punto de entrada: env + listen | `src/server.ts:3` (dotenv) y `src/server.ts:22` (listen) |
-| Construcción de la app (plugins + rutas) | `src/app.ts:10` (`buildApp()`) |
-| Endpoint `GET /health` | `src/routes/health.ts:9` |
-| Endpoint `GET /health/db` | `src/routes/health.ts:13` |
-| Test del arranque + salud | `src/routes/health.test.ts:17` y `src/routes/health.test.ts:24` |
-| Detección de stack en init.sh | `init.sh:357` (Stack detectado) y `init.sh:548` (Entorno listo) |
-| Estado presente del árbol documentado | `docs/architecture.md:47-77` |
+> Los enlaces de la columna **Código** son clicables en la vista previa de
+> Markdown de VS Code (o con Ctrl/Cmd + clic): saltan a la línea exacta.
+>
+> ⚠️ **Nota histórica:** esta feature fue verificación + limpieza, sin código
+> nuevo. La feature 2 (`fundamentos`) reorganizó después `src/routes/` →
+> `src/modules/` y reescribió el arranque, así que los enlaces de abajo apuntan a
+> la **ubicación actual** del código, no a la que existía al cerrar esta feature.
+
+### 🚀 Arranque
+
+| Qué | Símbolo | Código |
+| --- | --- | --- |
+| Comando único de arranque | `dev` (script) | [package.json:8](../../package.json#L8) |
+| Carga de `.env` antes que nada | `dotenv/config` | [server.ts:3](../../src/server.ts#L3) |
+| Puesta en escucha del servidor | `app.listen` | [server.ts:31](../../src/server.ts#L31) |
+| Construcción de la app (plugins + rutas) | `buildApp()` | [app.ts:14](../../src/app.ts#L14) |
+
+### 🩺 Endpoints de salud (hoy en `src/modules/health/`)
+
+| Qué | Código |
+| --- | --- |
+| Endpoint `GET /health` | [health.routes.ts:12](../../src/modules/health/health.routes.ts#L12) |
+| Endpoint `GET /health/db` | [health.routes.ts:16](../../src/modules/health/health.routes.ts#L16) |
+| Test de `/health` y `/health/db` | [health.test.ts:20](../../src/modules/health/health.test.ts#L20) · [:27](../../src/modules/health/health.test.ts#L27) |
+
+### 🧰 Entorno y documentación
+
+| Qué | Código |
+| --- | --- |
+| Detección de stack en `init.sh` | [init.sh:364](../../init.sh#L364) |
+| Cierre `[OK] Entorno listo` | [init.sh:555](../../init.sh#L555) |
+| Árbol de carpetas documentado | [architecture.md §Estructura de carpetas](../../docs/architecture.md#L36) |
 
 ## Cumplimiento de la intención
 
