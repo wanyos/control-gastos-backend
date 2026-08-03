@@ -14,20 +14,20 @@
 
 ## Framework / Runtime
 
-- **Framework:** Fastify `^5.10.0`.
+- **Framework:** Fastify `^5.11.2`.
 - **Runtime:** Node.js — probado con `v24.11.0`; `engines.node` exige `>=20`.
 
 ## Librerías clave
 
-- **ORM / DB:** Prisma `^7.8.0` (CLI `prisma` + `@prisma/client`), conectado
-  con el **driver adapter** `@prisma/adapter-pg@^7.8.0` sobre `pg@^8.22.0`.
+- **ORM / DB:** Prisma `^7.9.1` (CLI `prisma` + `@prisma/client`), conectado
+  con el **driver adapter** `@prisma/adapter-pg@^7.9.1` sobre `pg@^8.22.0`.
   El cliente se genera en `src/generated/prisma/` (generador `prisma-client`, ESM).
 - **Validación de schemas:** JSON Schema **nativo de Fastify** (AJV integrado).
   No hay Zod/Typebox instalado; los schemas viven en el `*.schema.ts` de cada
   módulo (ej. `createExpenseSchema` en
   [`src/modules/expenses/expenses.schema.ts`](../src/modules/expenses/expenses.schema.ts)).
 - **Encapsulación de plugins:** `fastify-plugin@^6.0.0`.
-- **Google Drive:** `@googleapis/drive@^20.2.0` (cliente Drive v3 + `auth`
+- **Google Drive:** `@googleapis/drive@^21.0.0` (cliente Drive v3 + `auth`
   reexportado; **no** se declara `google-auth-library` aparte, ver ADR-007). Se
   eligió frente al monolito `googleapis` (~85x más pesado) por peso. Auth OAuth2
   con refresh token; el cliente se expone como `fastify.drive`.
@@ -42,7 +42,7 @@
   `pnpm test`. **Usa siempre `pnpm`, nunca `npm`**: mezclarlos genera un
   `node_modules` distinto del que valida `init.sh`.
 - **Arranque dev (recarga en caliente):** `pnpm run dev` → `tsx watch src/server.ts`
-  (`tsx@^4.23.0`).
+  (`tsx@^4.23.5`).
 - **Build:** `pnpm run build` → `prisma generate && tsc` (salida a `dist/`).
 - **Arranque producción:** `pnpm start` → `node dist/server.js`.
 - **Type check:** `pnpm run typecheck` → `tsc --noEmit`.
