@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { loadConfig } from './env.js'
+import { loadConfig, normalizeDriveFolderId } from './env.js'
+
+// Synthetic Drive folder id used across the normalization tests. It is NOT the
+// human's real folder id: it only needs to be shaped like a Drive id (no spaces,
+// no slashes) so the sanity check treats it as valid.
+const syntheticFolderId = '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456'
 
 const databaseUrl = 'postgresql://postgres:postgres@localhost:5434/gastos?schema=public'
 
@@ -149,6 +154,21 @@ describe('loadConfig', () => {
     )
   })
 
+  it('normalizes a Drive folder URL in GOOGLE_DRIVE_ROOT_FOLDER_ID to the bare id', () => {
+    const config = loadConfig({
+      ...baseEnv,
+      GOOGLE_DRIVE_ROOT_FOLDER_ID: `https://drive.google.com/drive/folders/${syntheticFolderId}?usp=sharing`,
+    })
+
+    expect(config.driveRootFolderId).toBe(syntheticFolderId)
+  })
+
+  it('throws naming GOOGLE_DRIVE_ROOT_FOLDER_ID when it still contains a slash after normalization', () => {
+    expect(() =>
+      loadConfig({ ...baseEnv, GOOGLE_DRIVE_ROOT_FOLDER_ID: 'https://drive.google.com/drive/' }),
+    ).toThrowError(/GOOGLE_DRIVE_ROOT_FOLDER_ID/)
+  })
+
   it('lists GOOGLE_DRIVE_ROOT_FOLDER_ID alongside the other missing problems', () => {
     expect(() => loadConfig({ PORT: 'abc' })).toThrowError(
       /DATABASE_URL[\s\S]*PORT[\s\S]*GOOGLE_DRIVE_ROOT_FOLDER_ID/,
@@ -165,5 +185,43 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ PORT: 'abc', LOG_LEVEL: 'verbose' })).toThrowError(
       /GOOGLE_DRIVE_CLIENT_ID[\s\S]*GOOGLE_DRIVE_CLIENT_SECRET[\s\S]*GOOGLE_DRIVE_REFRESH_TOKEN/,
     )
+  })
+})
+
+describe('normalizeDriveFolderId', () => {
+  it('returns a bare id unchanged', () => {
+    expect(normalizeDriveFolderId(syntheticFolderId)).toBe(syntheticFolderId)
+  })
+
+  it('trims surrounding whitespace from a bare id', () => {
+    expect(normalizeDriveFolderId(`  ${syntheticFolderId}  `)).toBe(syntheticFolderId)
+  })
+
+  it('extracts the id from a /drive/folders/<id> URL', () => {
+    expect(
+      normalizeDriveFolderId(`https://drive.google.com/drive/folders/${syntheticFolderId}`),
+    ).toBe(syntheticFolderId)
+  })
+
+  it('extracts the id from a folder URL with a trailing slash', () => {
+    expect(
+      normalizeDriveFolderId(`https://drive.google.com/drive/folders/${syntheticFolderId}/`),
+    ).toBe(syntheticFolderId)
+  })
+
+  it('extracts the id from a folder URL with a ?usp=sharing query', () => {
+    expect(
+      normalizeDriveFolderId(
+        `https://drive.google.com/drive/folders/${syntheticFolderId}?usp=sharing`,
+      ),
+    ).toBe(syntheticFolderId)
+  })
+
+  it('extracts the id from an open?id=<id> URL', () => {
+    expect(
+      normalizeDriveFolderId(
+        `https://drive.google.com/open?id=${syntheticFolderId}&usp=drive_link`,
+      ),
+    ).toBe(syntheticFolderId)
   })
 })

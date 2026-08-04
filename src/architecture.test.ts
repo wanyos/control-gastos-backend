@@ -48,6 +48,11 @@ describe('architecture invariants', () => {
       'modules/expenses/expenses.test.ts',
       'modules/health/health.routes.ts',
       'modules/health/health.test.ts',
+      'modules/ingesta/ingesta.routes.ts',
+      'modules/ingesta/ingesta.service.ts',
+      'modules/ingesta/ingesta.types.ts',
+      'modules/ingesta/ingesta.service.test.ts',
+      'modules/ingesta/ingesta.routes.test.ts',
     ]
 
     const missing = expected.filter((file) => !existsSync(join(srcDir, file)))
@@ -94,5 +99,23 @@ describe('architecture invariants', () => {
     expect(driveStructure).not.toContain('createDriveClient')
     expect(driveStructure).not.toContain('createDriveAuth')
     expect(driveStructure).not.toContain('OAuth2')
+  })
+
+  it('keeps the ingesta module free of data access (no "prisma" reference)', () => {
+    const files = [
+      'modules/ingesta/ingesta.routes.ts',
+      'modules/ingesta/ingesta.service.ts',
+      'modules/ingesta/ingesta.types.ts',
+    ]
+
+    for (const file of files) {
+      expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
+  it('gitignores the local Drive dump dir so bank data is never versioned (privacy)', () => {
+    const gitignore = readFileSync(join(srcDir, '..', '.gitignore'), 'utf8')
+
+    expect(gitignore).toContain('var/drive-read/')
   })
 })

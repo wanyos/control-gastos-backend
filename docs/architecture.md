@@ -67,6 +67,10 @@ src/
       expenses.types.ts    #   tipos del recurso (CreateExpenseBody, ...)
     health/
       health.routes.ts
+    ingesta/               # lectura de archivos de banco desde Drive (drive-read)
+      ingesta.routes.ts    #   GET /api/ingesta/pending + POST /api/ingesta/process
+      ingesta.service.ts   #   detección + proceso (descarga tal cual, copia local, mover)
+      ingesta.types.ts     #   tipos de la respuesta (DetectionResult, ProcessResult, ...)
   generated/prisma/      # cliente Prisma generado (no se versiona)
 ```
 
@@ -362,6 +366,80 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - `src/lib/drive.ts` gana un `export` (`driveErrorMessage`) reutilizado por
     `drive-structure.ts`; su guardián `no files.` sigue verde (los `files.*` viven
     en `drive-structure.ts`).
+
+### ADR-009: Lectura de banco desde Drive (`drive-read`) — endpoints HTTP de ingesta, proceso archivo-a-archivo con volcado local gitignoreado
+
+- **Fecha:** 2026-08-03
+- **Estado:** aceptada (implementada en la feature #5)
+- **Contexto:** la feature #5 hace la **primera lectura real** de archivos de banco
+  desde Drive antes de escribir cualquier parser (feature 6): detectar pendientes,
+  descargar el contenido **tal cual** (p. ej. el `.xlsx` de Bankinter), copiarlo a
+  una carpeta local para inspeccionarlo, y marcar el original como procesado
+  moviéndolo. Sin parsear y **sin base de datos**. El `intent` delegó: la forma de
+  los endpoints, dónde se guardan las copias, si el proceso trata todos los
+  archivos de una vez o uno a uno, y cómo listar/descargar reutilizando la
+  feature 4 (`src/lib/drive-structure.ts`).
+- **Decisión:**
+  1. **Operaciones Drive nuevas en `lib/drive-structure.ts`** (contraparte
+     `files.*`, ADR-008), todas read-only salvo la descarga: `listBankFolders`
+     (registro dinámico de bancos = subcarpetas de la raíz), `listYearFolders`
+     (solo carpetas con forma `^\d{4}$`), `listPendingFiles` (hijos no-carpeta del
+     año, excluye `procesados/`) y `downloadFileContent` (`files.get` con
+     `alt: 'media'` + `responseType: 'arraybuffer'` → `Buffer`, envuelto en
+     `DriveConnectionError` sanitizado). El mover reutiliza `moveFileToProcessed`
+     de la f4; el `procesados/` se resuelve con `ensureFolder` de la f4.
+  2. **Se expone como endpoints HTTP** en `modules/ingesta/`:
+     `GET /api/ingesta/pending` (detección) y `POST /api/ingesta/process`
+     (proceso). **Sin auth nueva** (coherente con el contrato). A diferencia de la
+     f4 (servicio interno, ADR-008 decisión 2), aquí sí hay superficie HTTP porque
+     el `intent` pide explícitamente que el backend "me diga" los pendientes y que
+     el proceso se dispare "cuando lo pida", y porque el frontend consumirá esta
+     API en otra sesión.
+  3. **Proceso archivo-a-archivo con aislamiento del fallo:** cada pendiente se
+     descarga, se copia y **solo si la copia se escribió con éxito** se mueve a
+     `procesados/`. Un fallo (lectura o copia) de un archivo se captura, se reporta
+     en `failed[]` (su original **no** se mueve) y no detiene al resto; la
+     respuesta sigue siendo 200. Solo un fallo de Drive de nivel superior (ni
+     listar los bancos) sube como 503 `DRIVE_CONNECTION_ERROR`. Idempotencia
+     observable: sin pendientes no hace nada ni duplica copias (el estado
+     pendiente/procesado lo lleva Drive moviendo el archivo).
+  4. **Volcado local gitignoreado:** las copias van a
+     `var/drive-read/<banco>/<año>/<archivo>` (base **inyectable** para testear
+     contra un tempdir; por defecto `process.cwd()/var/drive-read`). La carpeta
+     está en `.gitignore` (privacidad crítica: datos bancarios reales **nunca** se
+     versionan ni se suben). Un guardián en `architecture.test.ts` lo verifica.
+  5. **Errores:** se **reutiliza** `DriveConnectionError` (503, ahora **sí**
+     devuelto en el cuerpo por estos endpoints; ver `api-contract.md`). El
+     mensaje sale sanitizado (los fallos de Drive pasan por `callDrive`; los de
+     escritura local son rutas, no secretos). `UNKNOWN_BANK` **no** se emite: la
+     ingesta descubre los bancos por carpeta, no los resuelve por nombre.
+- **Alternativas consideradas:**
+  - **Servicio interno sin endpoints (como la f4):** descartada — el `intent`
+    pide una API que el backend expone y que el frontend consumirá; no había
+    consumidor en la f4, sí lo hay aquí.
+  - **Procesar todo el lote de forma atómica (todo-o-nada):** descartada — un
+    archivo corrupto o un fallo de red puntual abortaría el lote entero y
+    escondería los que sí se pudieron leer; el aislamiento por archivo entrega el
+    máximo y reporta lo que falló, y converge en el siguiente disparo.
+  - **Guardar las copias en BD o fuera del repo:** descartada — el objetivo es
+    **ver** el formato crudo delante para diseñar el parser (f6); una carpeta del
+    repo gitignoreada es lo más directo y no toca BD (fuera de scope).
+  - **Prefijar el nombre local con el `fileId` para evitar colisiones:**
+    descartada por ahora — perjudica la legibilidad que el humano quiere ("ver con
+    qué formato llega cada banco") y las colisiones de nombre dentro de un mismo
+    banco/año son improbables; anotado como límite conocido.
+- **Consecuencias:**
+  - **Sin variables de entorno ni dependencias nuevas.** El único parámetro nuevo
+    (carpeta de volcado) es una ruta fija del repo, inyectable, no configurable por
+    entorno; no cruza el umbral de ADR-006.
+  - `DRIVE_CONNECTION_ERROR` deja de estar solo "reservado": es el primer código de
+    Drive que un endpoint de dominio devuelve en el cuerpo.
+  - **Límite conocido (paginación):** las listas usan `pageSize: 1000` sin seguir
+    `nextPageToken` (igual que `listBankNames` de la f4). Suficiente para el uso
+    previsto; revisitar si un año acumula >1000 pendientes.
+  - **Límite conocido (colisión de nombre):** dos pendientes con el mismo nombre en
+    el mismo `<banco>/<año>/` sobrescribirían la copia local; cada uno es un fichero
+    distinto en Drive y se mueve igual, así que no se pierde el original.
 
 ## Qué NO hacer
 

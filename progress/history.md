@@ -420,3 +420,43 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 - **`console.warn` diagnóstico** en `findFolder` cuando Drive tiene carpetas
   homónimas: exigido por el spec; las funciones son puras y no tienen logger. A
   migrar si algún día reciben uno.
+
+## 2026-08-04 — Feature 5: drive-read (no-SDD)
+
+- **Agente:** leader (orquestando) + implementer + reviewer. Feature **no-SDD**
+  (sin spec formal; medida contra `intent` + `acceptance`).
+- **Qué hace:** primera lectura de archivos de banco desde Drive, **sin parsear y
+  sin base de datos**. `GET /api/ingesta/pending` detecta pendientes recorriendo
+  TODAS las carpetas de banco (descubiertas dinámicamente de la raíz, no lista
+  fija); `POST /api/ingesta/process` descarga cada pendiente tal cual, guarda una
+  copia local gitignoreada en `var/drive-read/<banco>/<año>/<archivo>` y, solo si
+  la copia se escribió, mueve el original a `procesados/` (reusa la f4). Fallo por
+  archivo aislado. Consume f3 (conexión) y f4 (estructura).
+- **Cambios (alto nivel):** nuevas ops de lectura en `src/lib/drive-structure.ts`
+  (`listBankFolders`, `listYearFolders`, `listPendingFiles`, `downloadFileContent`)
+  + módulo `src/modules/ingesta/` (routes + service + types) + tests con dobles.
+  Guardianes: ingesta sin `prisma`, `.gitignore` tapa el volcado. **ADR-009**
+  (endpoints HTTP sin auth, razonado frente al servicio interno de ADR-008);
+  `api-contract.md` §Ingesta (los 2 endpoints; `DRIVE_CONNECTION_ERROR` ya en el
+  cuerpo). Informe: `progress/implementations/drive-read.md`; resumen:
+  `progress/summaries/drive-read.md`.
+- **Smoke real Nivel 3 (2026-08-04, leader + humano):** end-to-end contra el Drive
+  real → `pending` detectó `bankinter/2026/Movimientos_3_8_2026.xlsx`, `process` lo
+  descargó (copia local de 8.548 bytes), lo movió a `procesados/` y `pending` volvió
+  a 0. **El smoke cazó un fallo de configuración** invisible para los tests con
+  dobles: `GOOGLE_DRIVE_ROOT_FOLDER_ID` en el `.env` tenía la **URL completa** de la
+  carpeta en vez del fileId, así que `files.list` daba 404. Se endureció con
+  **`normalizeDriveFolderId`** (`src/config/env.ts`): acepta el fileId pelado, la URL
+  `/drive/folders/<id>` y `open?id=<id>`, extrayendo el id al arrancar. También se
+  normalizó el campo `path` del response a barras `/` (antes salía con `\` en Windows).
+- **Verificación:** `bash ./init.sh` → typecheck OK + **123 tests** en 11 archivos +
+  `[OK] Entorno listo`; `lint` y `format:check` verdes. Sin red (dobles + tempdir);
+  privacidad confirmada (`git check-ignore` sobre el volcado; ningún dato bancario
+  trackeado). Sin variables de entorno ni dependencias nuevas.
+- **Cierre:** feature 5 `drive-read` → **done** (reviewer APPROVED, review en
+  `progress/reviews/drive-read.md`; los retoques post-review —normalización de la raíz
+  y del `path`— con puertas verdes y smoke real superado). Límites conocidos (ADR-009):
+  listas con `pageSize 1000` sin `nextPageToken`; la copia local se sobrescribiría con
+  dos pendientes homónimos en el mismo banco/año (el original en Drive nunca se pierde).
+  No quedan features `pending`: la siguiente (parser + modelo de datos del primer banco
+  → BD) espera el `intent` del humano.

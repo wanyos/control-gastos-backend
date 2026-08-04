@@ -11,6 +11,10 @@ dist/
 # Cliente de Prisma generado
 src/generated/
 
+# Volcado local de la lectura de Drive (feature drive-read): datos bancarios
+# reales. PRIVACIDAD: nunca se versiona ni se sube al remoto.
+var/drive-read/
+
 # Logs
 *.log
 npm-debug.log*

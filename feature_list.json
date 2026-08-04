@@ -151,6 +151,49 @@
       ],
       "sdd": true,
       "status": "done"
+    },
+    {
+      "id": 5,
+      "name": "drive-read",
+      "title": "Primera lectura de un banco desde Drive (sin modelo)",
+      "intent": {
+        "que_quiero": "Tengo archivos de un banco en su carpeta de Drive (notas-banco/<banco>/<año>/). Quiero que el backend pueda (a) decirme si hay archivos sin procesar en cualquiera de las carpetas de banco que existan, y (b) cuando lo pida, leer esos archivos tal cual (sin interpretarlos), guardar una copia del contenido en una carpeta local del repo (para ver con qué formato llega cada banco) y mover cada original en Drive a su subcarpeta procesados/. Ni parsear, ni base de datos.",
+        "por_que": "Antes de escribir el parser del primer banco necesito ver de verdad cómo llegan sus datos (Bankinter ofrece un Excel .xlsx descargable tal cual desde su web). Esto ejercita la fontanería (detectar + leer + marcar procesado) contra un archivo real y me deja el contenido delante para diseñar, en la feature 6, el parser y el modelo de datos.",
+        "como_se_que_esta_bien": [
+          "Cuando hay archivos pendientes en las carpetas de banco/año, el backend me dice cuántos hay sin procesar, sin tocarlos, recorriendo TODAS las carpetas de banco que existan en ese momento (descubiertas de Drive, no de una lista fija de nombres).",
+          "Cuando pido procesar, por cada archivo pendiente aparece una copia de su contenido en una carpeta local del repo y el archivo original queda movido a procesados/, dejando de estar en la carpeta del año.",
+          "Cuando no queda nada pendiente, procesar no hace nada: ni falla ni duplica copias.",
+          "Cuando falla al leer o copiar un archivo, ese archivo NO se mueve a procesados/ (solo se marca procesado lo copiado con éxito) y el error se reporta con claridad.",
+          "El banco y el año de cada archivo se saben por la carpeta, no por el contenido; añadir o quitar una carpeta de banco no rompe la detección (se lee por carpetas, no por nombres)."
+        ],
+        "que_no_quiero": [
+          "No parsear ni interpretar el contenido: se lee y se copia tal cual.",
+          "No tocar base de datos ni crear tablas o modelo de datos: eso es la feature 6.",
+          "No construir la interfaz web (comprobar al abrir la app, el botón): es del frontend, en otra sesión; aquí solo el backend expone la API que consumirá.",
+          "No montar la conexión ni la estructura de carpetas de Drive: se reutilizan las features 3 y 4 sin remontarlas.",
+          "No implementar la extensión de navegador ni el copia-pega.",
+          "La copia local con datos bancarios reales NO se versiona: su carpeta va en .gitignore y nunca se sube al remoto."
+        ],
+        "delego_en_agente": [
+          "La forma exacta de los endpoints (uno de detección de pendientes, uno de proceso), sus rutas y nombres; que los proponga y actualice docs/api-contract.md.",
+          "Dónde y con qué nombre se guardan las copias locales (carpeta gitignored del repo).",
+          "Si el proceso trata todos los archivos pendientes de una vez o de uno en uno.",
+          "Cómo listar dinámicamente las carpetas de banco/año y los archivos pendientes reutilizando src/lib/drive-structure.ts, y cómo descargar el contenido de un archivo de Drive."
+        ]
+      },
+      "acceptance": [
+        "Existe una detección no destructiva que recorre TODAS las carpetas de banco bajo la raíz (descubiertas de Drive dinámicamente, no de una lista fija) y, dentro de cada banco/año, cuenta y lista los archivos pendientes (los que cuelgan de <banco>/<año>/ y no de su procesados/), sin descargarlos ni moverlos (deriva de: 'me dice cuántos hay sin procesar, sin tocarlos' + 'se lee por carpetas, no por nombres')",
+        "Existe una acción explícita de proceso que, por cada archivo pendiente, descarga su contenido tal cual (sin parsear) y guarda una copia en una carpeta local del repo (deriva de: 'leer tal cual y guardar una copia en el repo')",
+        "Tras copiar con éxito un archivo, su original en Drive se mueve a <banco>/<año>/procesados/ reutilizando la función de la feature 4 y deja de aparecer como pendiente (deriva de: 'mover a procesados/')",
+        "SI la lectura o la copia de un archivo falla ENTONCES ese archivo NO se mueve a procesados/ (solo se marca procesado lo copiado con éxito) y el error se reporta sin filtrar secretos (deriva de: 'si falla no se mueve, me entero')",
+        "Reejecutar el proceso cuando no hay pendientes no hace nada y no duplica copias (idempotencia observable) (deriva de: 'no queda nada pendiente, no hace nada')",
+        "La carpeta local de volcado está en .gitignore: ningún dato bancario real se versiona ni se sube al remoto (deriva de la decisión de privacidad)",
+        "La feature NO parsea ni interpreta contenido, NO crea tablas ni modelo de datos, NO construye UI web, y reutiliza la conexión (f3) y la estructura (f4) de Drive sin remontarlas (deriva de los 'que_no_quiero')",
+        "La capacidad se expone como endpoint(s) de la API con docs/api-contract.md actualizado (detección + proceso), sin introducir autenticación nueva, coherente con el estado actual del contrato (deriva de la delegación del disparo)",
+        "Cada criterio tiene al menos un test concreto (con dobles del cliente de Drive, sin red), mapeado en progress/implementations/drive-read.md; ./init.sh termina en verde incluida la suite completa; y cualquier decisión notable queda anotada (ADR si aplica), con docs/stack.md y .env.example actualizados si hiciera falta"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

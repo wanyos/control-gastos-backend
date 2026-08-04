@@ -49,13 +49,17 @@ Códigos estables:
 | `DRIVE_CONNECTION_ERROR`| 503  | No se puede hablar con Google Drive (token caducado, API deshabilitada, scope insuficiente…). |
 | `UNKNOWN_BANK`          | 404  | El banco (con formato válido) no está registrado en Drive. **Reservado** (interno; ningún endpoint lo devuelve todavía). |
 
-> **Nota (`DRIVE_CONNECTION_ERROR`, feature "drive-connection", 2026-07-20):**
-> hoy **ningún endpoint de dominio devuelve este código en el cuerpo**. La
-> comprobación de conexión (`GET /health/drive`, abajo) responde con un cuerpo de
-> readiness propio (`{ status, drive }`), no con el cuerpo de error estándar, y
-> el detalle sanitizado del fallo solo se registra en los logs. El código queda
-> **reservado** para los endpoints de dominio que expondrán una operación sobre
-> Drive cuando falle de cara al cliente.
+> **Nota (`DRIVE_CONNECTION_ERROR`, actualizada en la feature "drive-read",
+> 2026-08-03):** desde la feature 5 este código **sí** sale en el cuerpo de error
+> estándar. Los endpoints de ingesta (`GET /api/ingesta/pending` y
+> `POST /api/ingesta/process`) lo devuelven con `{ statusCode, code, message }`
+> cuando falla una operación de Drive de nivel superior (p. ej. no se pueden ni
+> listar los bancos). El `message` va **sanitizado** (nunca incluye token ni URL
+> firmada). Nota histórica: hasta la feature 4 ningún endpoint de dominio lo
+> devolvía; `GET /health/drive` sigue respondiendo con su cuerpo de readiness
+> propio (`{ status, drive }`), no con el cuerpo de error estándar. `UNKNOWN_BANK`
+> continúa **reservado**: la ingesta descubre los bancos por carpeta, no los
+> resuelve por nombre, así que no lo emite.
 
 > **Nota (feature "drive-structure", 2026-07-25):** la feature 4 (estructura en
 > Drive: crear carpetas, subir y mover archivos) se resolvió como **servicio
@@ -181,6 +185,87 @@ Elimina un gasto por su `id`.
 | ----------- | ------------------------------------------- |
 | 400         | `id` no es un entero.                       |
 | 404         | No existe un gasto con ese `id`.            |
+
+---
+
+## Ingesta desde Google Drive
+
+> **Feature "drive-read" (2026-08-03).** Primera lectura de archivos de banco
+> desde Drive, **sin parsear y sin base de datos**. El banco y el año se saben por
+> la carpeta (`notas-banco/<banco>/<año>/`), no por el contenido; los bancos se
+> descubren dinámicamente (las subcarpetas de la raíz SON los bancos). Sin
+> autenticación nueva. El contenido descargado se copia a una carpeta local del
+> repo **gitignoreada** (nunca se versiona); estos endpoints no exponen esa ruta
+> absoluta, solo la ruta relativa `<banco>/<año>/<archivo>`.
+
+### `GET /api/ingesta/pending`
+
+Detección **no destructiva**: recorre todas las carpetas de banco bajo la raíz y,
+dentro de cada `<banco>/<año>/`, cuenta y lista los archivos pendientes (los que
+cuelgan del año y NO están en `procesados/`). No descarga ni mueve nada. Solo se
+listan los bancos/años que tienen algún pendiente.
+
+**Respuesta 200**
+```json
+{
+  "totalPending": 2,
+  "banks": [
+    {
+      "bank": "bankinter",
+      "years": [
+        {
+          "year": "2026",
+          "pendingCount": 1,
+          "pending": [{ "fileId": "1AbC...", "name": "movs.xlsx" }]
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Errores**
+| Código HTTP | `code`                   | Cuándo                                            |
+| ----------- | ------------------------ | ------------------------------------------------- |
+| 503         | `DRIVE_CONNECTION_ERROR` | No se puede hablar con Drive (mensaje sanitizado). |
+
+---
+
+### `POST /api/ingesta/process`
+
+Acción **explícita** de proceso. Por cada archivo pendiente (uno a uno): descarga
+su contenido **tal cual** (sin parsear), guarda una copia local y, **solo si la
+copia se escribió con éxito**, mueve el original a `<banco>/<año>/procesados/`. El
+fallo de un archivo (lectura o copia) se **aísla**: ese archivo NO se mueve, se
+reporta en `failed` y el resto continúa. Reejecutarlo sin pendientes no hace nada.
+
+Sin cuerpo de petición.
+
+**Respuesta 200**
+```json
+{
+  "processedCount": 1,
+  "failedCount": 1,
+  "processed": [
+    { "bank": "bankinter", "year": "2026", "fileId": "1AbC...", "name": "movs.xlsx", "path": "bankinter/2026/movs.xlsx" }
+  ],
+  "failed": [
+    { "bank": "santander", "year": "2025", "fileId": "9XyZ...", "name": "roto.xlsx", "error": "Cannot reach Google Drive" }
+  ]
+}
+```
+
+- `path`: ruta de la copia **relativa** a la carpeta de volcado local (no se
+  expone la ruta absoluta de la máquina).
+- `error`: mensaje **sanitizado** para humanos; nunca contiene tokens ni secretos.
+- Un fallo por archivo NO cambia el código HTTP: la respuesta es 200 con el
+  detalle en `failed`. Solo un fallo de Drive de nivel superior (no se pueden ni
+  listar los bancos) devuelve 503.
+
+**Errores**
+| Código HTTP | `code`                   | Cuándo                                            |
+| ----------- | ------------------------ | ------------------------------------------------- |
+| 503         | `DRIVE_CONNECTION_ERROR` | Fallo de Drive de nivel superior (mensaje sanitizado). |
 
 ---
 

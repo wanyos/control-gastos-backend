@@ -501,6 +501,12 @@ El backend **no crea la raíz** (R3). Tú la creas y le pasas su fileId:
 3. Pégalo en `.env` como `GOOGLE_DRIVE_ROOT_FOLDER_ID` (ver `.env.example`). **No**
    lo pegues en `.env.example` (ese se versiona: solo placeholder).
 
+> **Nota (endurecimiento f5):** `GOOGLE_DRIVE_ROOT_FOLDER_ID` acepta tanto el id
+> pelado como la **URL completa** de la carpeta (`.../folders/<id>` con o sin
+> `?usp=sharing`, o `open?id=<id>`): `normalizeDriveFolderId` en `src/config/env.ts`
+> extrae el `<id>` al arrancar. Motivación: pegar la URL entera en vez del id es un
+> error de configuración muy común y hacía fallar `files.list` con un 404 en runtime.
+
 > **Consecuencia del modelo de registro:** las **subcarpetas** que crees a mano
 > dentro de `notas-banco/` (o mediante `createBank`) son los bancos que el backend
 > reconocerá. Si pides ingesta para un banco cuya carpeta no existe, el backend

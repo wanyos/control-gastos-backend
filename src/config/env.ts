@@ -28,6 +28,30 @@ function isLogLevel(value: string): value is LogLevel {
 }
 
 /**
+ * Normalizes GOOGLE_DRIVE_ROOT_FOLDER_ID: accepts either a bare Drive folder id
+ * or the full folder URL a user copies from the browser, and always returns the
+ * bare id. Pasting the whole `https://drive.google.com/drive/folders/<id>` URL
+ * instead of just `<id>` is a very common misconfiguration (Drive addresses by
+ * fileId, and `files.list` then fails at runtime with a 404).
+ *
+ * Handled shapes:
+ * - bare id (`1_oxtq...`) → returned as-is
+ * - `https://drive.google.com/drive/folders/<id>` (+ optional `/` or `?query`)
+ * - `https://drive.google.com/open?id=<id>` (+ optional `&query`)
+ */
+export function normalizeDriveFolderId(raw: string): string {
+  const trimmed = raw.trim()
+
+  const folderMatch = trimmed.match(/\/folders\/([^/?#]+)/)
+  if (folderMatch) return folderMatch[1]
+
+  const openMatch = trimmed.match(/[?&]id=([^&#]+)/)
+  if (openMatch) return openMatch[1]
+
+  return trimmed
+}
+
+/**
  * Validates and types the environment. Throws on any problem (fail-fast).
  * All problems are collected into a single error message so a broken
  * startup can be fixed in one pass.
@@ -79,11 +103,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     problems.push('GOOGLE_DRIVE_REFRESH_TOKEN is required (OAuth refresh token for Drive)')
   }
 
-  const driveRootFolderId = env.GOOGLE_DRIVE_ROOT_FOLDER_ID
-  if (!driveRootFolderId) {
+  const rawDriveRootFolderId = env.GOOGLE_DRIVE_ROOT_FOLDER_ID
+  let driveRootFolderId: string | undefined
+  if (!rawDriveRootFolderId) {
     problems.push(
       'GOOGLE_DRIVE_ROOT_FOLDER_ID is required (fileId of the manually-created notas-banco/ root)',
     )
+  } else {
+    // Accept a bare id or a Drive folder URL; store the bare id (see ADR-008).
+    driveRootFolderId = normalizeDriveFolderId(rawDriveRootFolderId)
+    if (driveRootFolderId === '' || /[\s/]/.test(driveRootFolderId)) {
+      problems.push(
+        `GOOGLE_DRIVE_ROOT_FOLDER_ID must be a bare Drive folder id or a folder URL, got '${rawDriveRootFolderId}'`,
+      )
+    }
   }
 
   // Each `|| !x` is redundant at runtime (already a problem) but narrows the type.

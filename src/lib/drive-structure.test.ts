@@ -2,8 +2,12 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
   createBank,
+  downloadFileContent,
   ensureBankYearFolders,
   ensureFolder,
+  listBankFolders,
+  listPendingFiles,
+  listYearFolders,
   moveFileToProcessed,
   normalizeBankName,
   resolveBankFolder,
@@ -19,6 +23,7 @@ function driveDouble(files: {
   list?: ReturnType<typeof vi.fn>
   create?: ReturnType<typeof vi.fn>
   update?: ReturnType<typeof vi.fn>
+  get?: ReturnType<typeof vi.fn>
 }): AppDriveClient {
   return { files } as unknown as AppDriveClient
 }
@@ -394,5 +399,120 @@ describe('moveFileToProcessed', () => {
     expect(arg.fileId).toBe('file-1')
     expect(arg.addParents).toBe('processed-id')
     expect(arg.removeParents).toBe('year-id')
+  })
+})
+
+describe('listBankFolders', () => {
+  it('lists the bank subfolders of the root as id/name (dynamic registry)', async () => {
+    const list = vi.fn().mockResolvedValue({
+      data: {
+        files: [
+          { id: 'b-bankinter', name: 'bankinter' },
+          { id: 'b-santander', name: 'santander' },
+        ],
+      },
+    })
+    const client = driveDouble({ list })
+
+    const banks = await listBankFolders(client, 'root')
+
+    expect(banks).toEqual([
+      { id: 'b-bankinter', name: 'bankinter' },
+      { id: 'b-santander', name: 'santander' },
+    ])
+    const q = list.mock.calls[0][0].q as string
+    expect(q).toContain("'root' in parents")
+    expect(q).toContain("mimeType = 'application/vnd.google-apps.folder'")
+  })
+
+  it('drops entries without a usable id or name', async () => {
+    const list = vi.fn().mockResolvedValue({
+      data: { files: [{ id: 'b-ok', name: 'bbva' }, { name: 'no-id' }, { id: 'no-name' }] },
+    })
+    const client = driveDouble({ list })
+
+    await expect(listBankFolders(client, 'root')).resolves.toEqual([{ id: 'b-ok', name: 'bbva' }])
+  })
+})
+
+describe('listYearFolders', () => {
+  it('returns only 4-digit year folders, ignoring stray folders', async () => {
+    const list = vi.fn().mockResolvedValue({
+      data: {
+        files: [
+          { id: 'y-2025', name: '2025' },
+          { id: 'y-2026', name: '2026' },
+          { id: 'misc', name: 'notas' },
+        ],
+      },
+    })
+    const client = driveDouble({ list })
+
+    const years = await listYearFolders(client, 'b-bankinter')
+
+    expect(years).toEqual([
+      { id: 'y-2025', name: '2025' },
+      { id: 'y-2026', name: '2026' },
+    ])
+    expect(list.mock.calls[0][0].q as string).toContain("'b-bankinter' in parents")
+  })
+})
+
+describe('listPendingFiles', () => {
+  it('lists non-folder children of the year folder (excludes procesados)', async () => {
+    const list = vi.fn().mockResolvedValue({
+      data: {
+        files: [
+          { id: 'f1', name: 'movs.xlsx', mimeType: 'application/vnd.ms-excel' },
+          { id: 'f2', name: 'extracto.pdf', mimeType: 'application/pdf' },
+        ],
+      },
+    })
+    const client = driveDouble({ list })
+
+    const pending = await listPendingFiles(client, 'y-2026')
+
+    expect(pending).toEqual([
+      { id: 'f1', name: 'movs.xlsx', mimeType: 'application/vnd.ms-excel' },
+      { id: 'f2', name: 'extracto.pdf', mimeType: 'application/pdf' },
+    ])
+    const q = list.mock.calls[0][0].q as string
+    expect(q).toContain("'y-2026' in parents")
+    expect(q).toContain("mimeType != 'application/vnd.google-apps.folder'")
+  })
+
+  it('returns an empty list when nothing is pending', async () => {
+    const list = vi.fn().mockResolvedValue({ data: { files: [] } })
+    const client = driveDouble({ list })
+
+    await expect(listPendingFiles(client, 'y-2026')).resolves.toEqual([])
+  })
+})
+
+describe('downloadFileContent', () => {
+  it('downloads raw bytes via files.get alt=media and returns a Buffer', async () => {
+    const bytes = Buffer.from('xlsx-raw-bytes')
+    const get = vi.fn().mockResolvedValue({ data: bytes })
+    const client = driveDouble({ get })
+
+    const content = await downloadFileContent(client, 'file-1')
+
+    expect(Buffer.isBuffer(content)).toBe(true)
+    expect(content.equals(bytes)).toBe(true)
+    const [params, opts] = get.mock.calls[0]
+    expect(params).toEqual({ fileId: 'file-1', alt: 'media' })
+    expect(opts).toEqual({ responseType: 'arraybuffer' })
+  })
+
+  it('wraps a Drive failure in a sanitized DriveConnectionError, hiding the token', async () => {
+    const get = vi
+      .fn()
+      .mockRejectedValue(new Error('download failed for token 1//fake-token-value'))
+    const client = driveDouble({ get })
+
+    const error = await captureError(downloadFileContent(client, 'file-1'))
+
+    expect(error).toBeInstanceOf(DriveConnectionError)
+    expect((error as DriveConnectionError).message).not.toContain('1//fake-token-value')
   })
 })

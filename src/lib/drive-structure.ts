@@ -9,9 +9,10 @@ import {
 import { driveErrorMessage, type AppDriveClient } from './drive.js'
 
 const folderMimeType = 'application/vnd.google-apps.folder'
-const processedFolderName = 'procesados'
+export const processedFolderName = 'procesados'
 const maxBankNameLength = 64
 const suggestionThreshold = 2
+const yearShape = /^\d{4}$/
 
 export interface BankYearFolders {
   bankFolderId: string
@@ -23,6 +24,19 @@ export interface FileUpload {
   name: string
   mimeType: string
   body: Buffer | Readable | string
+}
+
+/** A Drive folder identified by its id and name. */
+export interface DriveFolder {
+  id: string
+  name: string
+}
+
+/** A Drive file (non-folder) identified by id, name and mimeType. */
+export interface DriveFile {
+  id: string
+  name: string
+  mimeType: string
 }
 
 /**
@@ -340,4 +354,99 @@ export async function moveFileToProcessed(
       fields: 'id, parents',
     }),
   )
+}
+
+/**
+ * Lists the bank folders directly under the root as `{ id, name }`. This is the
+ * dynamic registry of banks: the subfolders of the root ARE the banks, so adding
+ * or removing a bank folder in Drive is reflected here without a code change.
+ * Read-only (never creates or moves).
+ */
+export async function listBankFolders(
+  client: AppDriveClient,
+  rootFolderId: string,
+): Promise<DriveFolder[]> {
+  const res = await callDrive(() =>
+    client.files.list({
+      q: `mimeType = '${folderMimeType}' and '${rootFolderId}' in parents and trashed = false`,
+      fields: 'files(id, name)',
+      spaces: 'drive',
+      orderBy: 'name',
+      pageSize: 1000,
+    }),
+  )
+  return toDriveFolders(res.data.files ?? [])
+}
+
+/**
+ * Lists the year folders under a bank as `{ id, name }`. Only folders whose name
+ * is a 4-digit year are returned, so a stray folder under a bank is never crawled
+ * as a year. Read-only.
+ */
+export async function listYearFolders(
+  client: AppDriveClient,
+  bankFolderId: string,
+): Promise<DriveFolder[]> {
+  const res = await callDrive(() =>
+    client.files.list({
+      q: `mimeType = '${folderMimeType}' and '${bankFolderId}' in parents and trashed = false`,
+      fields: 'files(id, name)',
+      spaces: 'drive',
+      orderBy: 'name',
+      pageSize: 1000,
+    }),
+  )
+  return toDriveFolders(res.data.files ?? []).filter((folder) => yearShape.test(folder.name))
+}
+
+/**
+ * Lists the pending files directly under a `<bank>/<year>/` folder: its non-folder
+ * children, so the `procesados` subfolder (a folder) is excluded. These are the
+ * files not yet processed. Read-only: it neither downloads nor moves anything.
+ */
+export async function listPendingFiles(
+  client: AppDriveClient,
+  yearFolderId: string,
+): Promise<DriveFile[]> {
+  const res = await callDrive(() =>
+    client.files.list({
+      q:
+        `'${yearFolderId}' in parents and trashed = false ` + `and mimeType != '${folderMimeType}'`,
+      fields: 'files(id, name, mimeType)',
+      spaces: 'drive',
+      orderBy: 'name',
+      pageSize: 1000,
+    }),
+  )
+  return (res.data.files ?? [])
+    .filter(
+      (file): file is { id: string; name: string; mimeType: string } =>
+        typeof file.id === 'string' &&
+        typeof file.name === 'string' &&
+        file.name.length > 0 &&
+        typeof file.mimeType === 'string',
+    )
+    .map((file) => ({ id: file.id, name: file.name, mimeType: file.mimeType }))
+}
+
+/**
+ * Downloads a file's raw bytes as-is (no parsing) via `files.get` with
+ * `alt: 'media'` and the `arraybuffer` response type, returning a Buffer. Any
+ * Drive failure is wrapped in a sanitized DriveConnectionError (never leaks the
+ * token or a signed URL).
+ */
+export async function downloadFileContent(client: AppDriveClient, fileId: string): Promise<Buffer> {
+  const res = await callDrive(() =>
+    client.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' }),
+  )
+  return Buffer.from(res.data as unknown as ArrayBuffer)
+}
+
+function toDriveFolders(files: Array<{ id?: string | null; name?: string | null }>): DriveFolder[] {
+  return files
+    .filter(
+      (file): file is { id: string; name: string } =>
+        typeof file.id === 'string' && typeof file.name === 'string' && file.name.length > 0,
+    )
+    .map((file) => ({ id: file.id, name: file.name }))
 }
