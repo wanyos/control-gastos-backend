@@ -460,3 +460,40 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   dos pendientes homónimos en el mismo banco/año (el original en Drive nunca se pierde).
   No quedan features `pending`: la siguiente (parser + modelo de datos del primer banco
   → BD) espera el `intent` del humano.
+
+## 2026-08-04 — Feature 6: bankinter-parser (no-SDD)
+
+- **Agente:** leader (orquestando) + implementer + reviewer. No-SDD (contra `intent` + `acceptance`).
+- **Qué hace:** parsea un `.xlsx` de Bankinter (la copia local que dejó la f5) a
+  movimientos estructurados, **sin base de datos ni persistencia**. Salta el
+  preámbulo, extrae el IBAN, mapea las columnas reales y vuelca el resultado a un
+  JSON local gitignoreado. `POST /api/parser/bankinter` (read-only: no persiste, no
+  toca Drive, no mueve).
+- **Modelo (ajustado a las columnas reales tras el smoke):** `MovimientoParseado {
+  fechaContable, fechaValor (ISO), descripcion, importe (number con signo), saldo
+  (number), divisa, tipo 'ingreso'|'gasto' }` dentro de `BankinterParseResult {
+  banco, cuentaIban, movimientos[], noReconocidas[] }`. El extracto real trae
+  `Fecha contable | Fecha valor | Descripción | Importe | Saldo | Divisa` (no
+  `Concepto`/`Tipo de movimiento`, que eran etiquetas del preámbulo); se quitaron
+  esos campos y se añadieron `saldo`/`divisa`. El `saldo` (saldo corrido) reforzará
+  el dedup en la feature de persistencia.
+- **Cambios (alto nivel):** módulo `src/modules/bankinter/` (parser + service +
+  routes + types + fixture) + tests con fixture sintético (sin datos reales, sin
+  red). Dependencia **`exceljs@^4.4.0`** (ADR-010; elegida sobre SheetJS `xlsx` por
+  CVEs sin parchear). Guardián: parser sin `prisma`; `var/parsed/` en `.gitignore`.
+  `api-contract.md` (endpoint + modelo), `architecture.md` (ADR-010). Informe:
+  `progress/implementations/bankinter-parser.md`; resumen:
+  `progress/summaries/bankinter-parser.md`.
+- **Smoke real Nivel 3 (2026-08-04, leader + humano):** `POST /api/parser/bankinter`
+  sobre la copia local real → **39 movimientos, 0 no reconocidas**, IBAN extraído,
+  fechas ISO, importe con signo, saldo, divisa EUR, tipo por signo. Volcado en
+  `var/parsed/bankinter/2026/...json` (gitignoreado).
+- **Verificación:** `bash ./init.sh` → typecheck OK + **146 tests** + `[OK]`; lint y
+  format verdes. Privacidad confirmada (volcado gitignoreado; ningún dato real
+  trackeado).
+- **Cierre:** feature 6 `bankinter-parser` → **done** (reviewer APPROVED, review en
+  `progress/reviews/bankinter-parser.md`). No bloqueante: un importe `0` cae hoy en
+  `ingreso` (el acceptance no define el cero). No quedan features `pending`. La
+  siguiente es la **persistencia** (guardar los movimientos en BD + dedup), que el
+  humano ya está diseñando en `docs/data-model.md` (esquema Account/Category/Movement
+  con `importHash`, `pending_review`, traspasos como dos filas).

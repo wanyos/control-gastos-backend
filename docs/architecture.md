@@ -71,6 +71,12 @@ src/
       ingesta.routes.ts    #   GET /api/ingesta/pending + POST /api/ingesta/process
       ingesta.service.ts   #   detección + proceso (descarga tal cual, copia local, mover)
       ingesta.types.ts     #   tipos de la respuesta (DetectionResult, ProcessResult, ...)
+    bankinter/             # parser del extracto .xlsx de Bankinter (bankinter-parser)
+      bankinter.parser.ts  #   parser puro (buffer .xlsx -> movimientos + IBAN), sin BD/Drive
+      bankinter.service.ts #   lee copias locales de la f5, parsea y vuelca JSON (read-only)
+      bankinter.routes.ts  #   POST /api/parser/bankinter
+      bankinter.types.ts   #   modelo (MovimientoParseado, BankinterParseResult, ...)
+      bankinter.fixture.ts #   helper de test: genera .xlsx sintético en memoria (exceljs)
   generated/prisma/      # cliente Prisma generado (no se versiona)
 ```
 
@@ -440,6 +446,79 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - **Límite conocido (colisión de nombre):** dos pendientes con el mismo nombre en
     el mismo `<banco>/<año>/` sobrescribirían la copia local; cada uno es un fichero
     distinto en Drive y se mueve igual, así que no se pierde el original.
+
+### ADR-010: Parser de Bankinter — `exceljs` para leer `.xlsx`, parser puro en `modules/bankinter/`, volcado JSON local gitignoreado
+
+- **Fecha:** 2026-08-04
+- **Estado:** aceptada (implementada en la feature #6)
+- **Contexto:** la feature #6 convierte el `.xlsx` de Bankinter (ya descargable en
+  local por la f5) en movimientos estructurados + el IBAN de la cuenta, **sin
+  base de datos, sin persistir, sin deduplicar y sin mover archivos**. El `intent`
+  delegó: qué librería `.xlsx` usar, la forma final del modelo, cómo se dispara y
+  dónde se vuelca el JSON, y cómo localizar la cabecera e interpretar fechas
+  (dd/mm/yyyy) e importes (formato español).
+- **Decisión:**
+  1. **Librería `.xlsx`: `exceljs@^4.4.0`** (MIT, en npm). Lee desde `Buffer` y
+     **escribe** libros en memoria, así los fixtures sintéticos de test se generan
+     en código, sin datos reales ni red. Descartado SheetJS `xlsx`: su versión en
+     npm está **congelada en 0.18.5** con CVEs sin parchear (prototype pollution,
+     ReDoS); las corregidas solo están en su CDN, lo que rompería el flujo
+     pnpm/lockfile. Coste asumido: árbol de deps más pesado (documentado en
+     `docs/stack.md`).
+  2. **Parser puro en `src/modules/bankinter/bankinter.parser.ts`**
+     (`parseBankinterXlsx(buffer) → BankinterParseResult`): sin I/O, sin Drive, sin
+     Prisma. Localiza la cabecera **por nombre de columna** (robusto al preámbulo),
+     extrae el IBAN de la línea `MOVIMIENTOS DE LA CUENTA <IBAN>`, y mapea cada
+     fila. `tipo` deriva del signo del importe. **No deduplica.** Las filas no
+     interpretables van a `noReconocidas` (nº de fila + motivo) sin perderse; el
+     resto se parsea igual. Lanza `ValidationError` solo ante fallo estructural (no
+     hay cabecera reconocible).
+  3. **Interpretación española:** fechas `dd/mm/yyyy` → ISO `YYYY-MM-DD`
+     (validando fecha real); importes → number con signo. El importe se acepta
+     tanto como **número nativo** (el export real lo guarda así) como **texto
+     español** (`1.234,56` → `1234.56`), cubriendo ambas variantes.
+  4. **Modelo (`bankinter.types.ts`), ajustado a las columnas REALES de Bankinter
+     (confirmado por el humano el 2026-08-04):** `BankinterParseResult { banco,
+     cuentaIban, movimientos[], noReconocidas[] }`, `MovimientoParseado {
+     fechaContable, fechaValor (ISO), descripcion, importe (number con signo),
+     saldo (number), divisa, tipo 'ingreso'|'gasto' }`, `FilaNoReconocida { fila,
+     motivo }`. El extracto real trae `Fecha contable | Fecha valor | Descripción |
+     Importe | Saldo | Divisa`; no existen columnas `Concepto` ni `Tipo de
+     movimiento` (esos textos solo aparecen en el preámbulo como etiquetas de
+     filtro). `importe` y `saldo` se aceptan como número nativo o texto español.
+     Una fila con fecha, importe o saldo ilegible va a `noReconocidas`.
+  5. **Exposición: endpoint read-only `POST /api/parser/bankinter`**
+     (`modules/bankinter/bankinter.routes.ts`), coherente con la f5 y consumible
+     por el frontend. Lee las **copias locales de la f5**
+     (`var/drive-read/bankinter/<año>/*.xlsx`), parsea archivo a archivo (fallo
+     aislado en `failed[]`) y **vuelca** cada resultado a
+     `var/parsed/bankinter/<año>/<archivo>.json`. **No toca Drive, no persiste en
+     BD, no mueve nada.** Contrato actualizado en `docs/api-contract.md`.
+  6. **Privacidad:** `var/parsed/` está en `.gitignore` (misma política que la f5);
+     ningún dato bancario real se versiona. Guardián en `architecture.test.ts`.
+- **Alternativas consideradas:**
+  - **SheetJS `xlsx`:** cero dependencias pero versión npm vulnerable y congelada;
+    instalar desde el CDN rompe el lockfile versionado. Descartada por seguridad.
+  - **`read-excel-file` (solo lectura, ligera):** no escribe `.xlsx`, así que
+    habría que generar los fixtures por otra vía (OOXML a mano o binario
+    versionado); exceljs mantiene todo en un solo paquete y en código.
+  - **Servicio interno sin endpoint (como la f4):** descartada — el `intent` pide
+    "ver el resultado" y el frontend lo consumirá; un endpoint encaja con la f5.
+  - **Inventar columnas `Concepto`/`Tipo de movimiento` que el extracto no trae
+    (o dividir `descripcion` heurísticamente):** descartada — inventaría datos. El
+    modelo se ciñe a las columnas reales; el mapeo es **por nombre de cabecera**,
+    robusto a la posición.
+- **Consecuencias:**
+  - **Una dependencia nueva** (`exceljs`), la primera con árbol transitivo grande;
+    anotada en `docs/stack.md`. **Sin variables de entorno nuevas.**
+  - **Modelo alineado con el formato real:** durante la implementación se verificó
+    sobre el `.xlsx` real (OOXML) que la tabla es `Fecha contable | Fecha valor |
+    Descripción | Importe | Saldo | Divisa` y que el importe llega como número
+    nativo. El humano confirmó (2026-08-04) el modelo a esas columnas: se
+    descartaron `concepto`/`tipoMovimiento` y se añadieron `saldo` y `divisa`.
+  - `var/parsed/` es el segundo directorio gitignoreado de datos bancarios (tras
+    `var/drive-read/` de la f5). La persistencia en BD y la deduplicación quedan
+    explícitamente **fuera** de esta feature (features futuras).
 
 ## Qué NO hacer
 

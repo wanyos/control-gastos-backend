@@ -194,6 +194,50 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 6,
+      "name": "bankinter-parser",
+      "title": "Parser del extracto de Bankinter a movimientos estructurados (sin BD)",
+      "intent": {
+        "que_quiero": "Que el backend coja un .xlsx de Bankinter (el que ya sé leer de Drive en la f5) y lo convierta en una lista de movimientos estructurados: por cada fila del extracto, un objeto con fecha contable, fecha valor, descripción, importe, saldo, divisa, y si es ingreso o gasto; y que saque también el IBAN de la cuenta que viene en el preámbulo. Quiero ver ese resultado (volcado a un archivo JSON local) para validar que el parser entiende bien el formato del banco. Nada de guardar en base de datos todavía.",
+        "por_que": "Ya sé leer el archivo crudo (f5); el siguiente paso es entenderlo. Necesito el parser y el modelo de un movimiento bien definidos y probados contra el formato real de Bankinter antes de decidir, en otra feature, cómo persistirlo. Separar 'parsear' de 'guardar' me deja pensar con calma la estructura de la base de datos.",
+        "como_se_que_esta_bien": [
+          "Cuando le doy el .xlsx de Bankinter, obtengo una fila estructurada por cada movimiento, saltando el preámbulo de metadatos del banco (cuenta, filtros) que va antes de la tabla.",
+          "Cada movimiento trae fecha contable y fecha valor (ambas), descripción, importe, saldo y divisa (las columnas reales del extracto de Bankinter); y el resultado incluye el IBAN de la cuenta sacado del preámbulo.",
+          "El importe negativo queda marcado como gasto y el positivo como ingreso.",
+          "Las fechas dd/mm/yyyy se interpretan bien y los importes (número nativo del Excel o texto español '1.234,56') dan el número correcto (p. ej. 1234.56).",
+          "Si dos filas del mismo archivo son idénticas (mismo día, importe y concepto), aparecen las dos: el parser representa el archivo fielmente, no descarta nada.",
+          "Si una fila no se puede interpretar, no se pierde: se reporta aparte (lista de 'no reconocidas' con su nº de fila y el motivo) y el resto sí se parsea.",
+          "Puedo ver el resultado parseado en un archivo JSON local para revisarlo."
+        ],
+        "que_no_quiero": [
+          "No guardar en base de datos ni crear tablas/esquema Prisma: la persistencia y el diseño de la BD son otra feature.",
+          "No deduplicar: el parser representa el archivo tal cual (dos filas iguales aparecen las dos). Evitar reingestar lo ya importado al re-descargar es un problema de la persistencia (otra feature), no del parser.",
+          "No parsear otros bancos: solo Bankinter (el único cuyo formato tengo).",
+          "No construir interfaz web.",
+          "No mover el archivo a procesados/: eso es del import real con persistencia."
+        ],
+        "delego_en_agente": [
+          "Qué librería usar para leer .xlsx (SheetJS/xlsx, exceljs u otra); que la proponga con el trade-off y la declare como dependencia.",
+          "La forma exacta y final del modelo del movimiento parseado, ajustada a las columnas reales de Bankinter (Fecha contable | Fecha valor | Descripción | Importe | Saldo | Divisa). Modelo: BankinterParseResult { banco, cuentaIban, movimientos[], noReconocidas[] } y MovimientoParseado { fechaContable, fechaValor (ISO 'YYYY-MM-DD'), descripcion, importe (number con signo, euros), saldo (number), divisa, tipo 'ingreso'|'gasto' }; FilaNoReconocida { fila, motivo }.",
+          "Cómo se dispara y dónde se vuelca el JSON local (ruta gitignoreada del repo), y desde dónde lee el archivo (la copia local de la f5 o descargándolo de Drive); que lo proponga, sin mover ni persistir.",
+          "Cómo localizar la fila de cabecera de forma robusta para saltar el preámbulo, y cómo interpretar fechas (dd/mm/yyyy) e importes (coma decimal, punto de miles)."
+        ]
+      },
+      "acceptance": [
+        "Existe un parser que, dado el contenido de un .xlsx de Bankinter, salta el preámbulo de metadatos, localiza la fila de cabecera y devuelve una lista de movimientos estructurados (uno por fila de datos) más el IBAN de la cuenta extraído del preámbulo (deriva de: 'una fila estructurada por cada movimiento, saltando el preámbulo' + 'incluye el IBAN')",
+        "Cada movimiento incluye fecha contable y fecha valor (ambas), descripción, importe, saldo y divisa (columnas reales de Bankinter); el importe se interpreta a número con signo (acepta número nativo del Excel o texto español con coma decimal/punto de miles), y las fechas dd/mm/yyyy a fecha correcta (deriva de: 'ambas fechas... descripción, importe, saldo y divisa' + 'las fechas y los importes se interpretan bien')",
+        "El tipo se deriva del signo del importe: negativo → gasto, positivo → ingreso (deriva de: 'importe negativo = gasto, positivo = ingreso')",
+        "El parser NO deduplica: dos filas idénticas del mismo archivo se devuelven ambas, representación fiel del archivo (deriva de: 'aparecen las dos... no descarta nada')",
+        "Una fila que no se puede interpretar no se pierde: se recoge en una lista de 'no reconocidas' con su nº de fila y el motivo, y el resto se parsea igual (deriva de: 'no se pierde... se reporta aparte')",
+        "El resultado parseado se vuelca a un archivo JSON local en una ruta gitignoreada del repo para poder revisarlo; NO se persiste en base de datos ni se mueve el archivo en Drive (deriva de: 'ver el resultado en un JSON local' + 'nada de BD' + 'no mover a procesados')",
+        "La feature NO crea tablas ni esquema Prisma, NO deduplica, NO parsea otros bancos, NO construye UI y NO mueve archivos; el código del parser NO referencia 'prisma' (deriva de los 'que_no_quiero')",
+        "El volcado local va en .gitignore: ningún dato bancario real se versiona (misma política de privacidad que la f5)",
+        "Cada criterio tiene al menos un test concreto con un fixture .xlsx sintético que imita el formato de Bankinter (sin datos reales ni red), mapeado en progress/implementations/bankinter-parser.md; ./init.sh termina en verde incluida la suite completa; y la nueva dependencia (librería .xlsx) queda documentada en docs/stack.md, con ADR si la decisión lo amerita"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

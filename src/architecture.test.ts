@@ -53,6 +53,13 @@ describe('architecture invariants', () => {
       'modules/ingesta/ingesta.types.ts',
       'modules/ingesta/ingesta.service.test.ts',
       'modules/ingesta/ingesta.routes.test.ts',
+      'modules/bankinter/bankinter.parser.ts',
+      'modules/bankinter/bankinter.service.ts',
+      'modules/bankinter/bankinter.routes.ts',
+      'modules/bankinter/bankinter.types.ts',
+      'modules/bankinter/bankinter.parser.test.ts',
+      'modules/bankinter/bankinter.service.test.ts',
+      'modules/bankinter/bankinter.routes.test.ts',
     ]
 
     const missing = expected.filter((file) => !existsSync(join(srcDir, file)))
@@ -113,9 +120,28 @@ describe('architecture invariants', () => {
     }
   })
 
+  it('keeps the bankinter parser module free of data access (no "prisma" reference)', () => {
+    const files = [
+      'modules/bankinter/bankinter.parser.ts',
+      'modules/bankinter/bankinter.service.ts',
+      'modules/bankinter/bankinter.routes.ts',
+      'modules/bankinter/bankinter.types.ts',
+    ]
+
+    for (const file of files) {
+      expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
   it('gitignores the local Drive dump dir so bank data is never versioned (privacy)', () => {
     const gitignore = readFileSync(join(srcDir, '..', '.gitignore'), 'utf8')
 
     expect(gitignore).toContain('var/drive-read/')
+  })
+
+  it('gitignores the local parser dump dir so parsed bank data is never versioned (privacy)', () => {
+    const gitignore = readFileSync(join(srcDir, '..', '.gitignore'), 'utf8')
+
+    expect(gitignore).toContain('var/parsed/')
   })
 })

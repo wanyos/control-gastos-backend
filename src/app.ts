@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 
 import { loadConfig, type AppConfig } from './config/env.js'
+import bankinterRoutes from './modules/bankinter/bankinter.routes.js'
 import expensesRoutes from './modules/expenses/expenses.routes.js'
 import healthRoutes from './modules/health/health.routes.js'
 import ingestaRoutes from './modules/ingesta/ingesta.routes.js'
@@ -30,6 +31,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(healthRoutes)
   app.register(expensesRoutes, { prefix: '/api/expenses' })
   app.register(ingestaRoutes, { prefix: '/api/ingesta' })
+  app.register(bankinterRoutes, { prefix: '/api/parser' })
 
   return app
 }

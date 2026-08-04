@@ -32,6 +32,15 @@
   eligió frente al monolito `googleapis` (~85x más pesado) por peso. Auth OAuth2
   con refresh token; el cliente se expone como `fastify.drive`.
 - **Carga de entorno:** `dotenv@^17.4.2` (Prisma 7 no autocarga `.env`).
+- **Lectura de `.xlsx`:** `exceljs@^4.4.0` (MIT). Lee el extracto `.xlsx` de
+  Bankinter (feature 6 `bankinter-parser`) desde un `Buffer` y **escribe** libros
+  en memoria, lo que permite generar los fixtures sintéticos de test en código
+  (sin datos reales ni red). Se eligió frente a SheetJS `xlsx`, cuya versión
+  publicada en npm está **congelada en 0.18.5** con CVEs sin parchear (las
+  versiones corregidas solo viven en el CDN de SheetJS, lo que rompería el flujo
+  pnpm/lockfile). Coste asumido: árbol de dependencias más pesado (`jszip`,
+  `unzipper`, `archiver`, `fast-csv`, `saxes`, `dayjs`). Ver ADR-010. El parser
+  vive en `src/modules/bankinter/` y **no** toca Prisma ni la BD.
 - **Estado / routing cliente / estilos:** N/A (backend sin UI).
 
 ## Build / Dev tooling

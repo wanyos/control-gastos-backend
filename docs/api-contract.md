@@ -269,6 +269,79 @@ Sin cuerpo de petición.
 
 ---
 
+## Parser de Bankinter (sin base de datos)
+
+> **Feature "bankinter-parser" (2026-08-04).** Convierte el `.xlsx` de Bankinter
+> (el que la ingesta de la f5 dejó como copia local) en movimientos
+> estructurados **sin parsear a base de datos, sin deduplicar y sin mover nada en
+> Drive**. Solo Bankinter. El resultado se vuelca a un archivo JSON local del repo
+> **gitignoreado** (`var/parsed/`, nunca se versiona); estos endpoints no exponen
+> esa ruta absoluta, solo la ruta relativa `<banco>/<año>/<archivo>.json`. Sin
+> autenticación nueva.
+
+### Modelo `MovimientoParseado`
+
+Refleja las columnas reales del extracto de Bankinter: `Fecha contable | Fecha
+valor | Descripción | Importe | Saldo | Divisa`.
+
+| Campo           | Tipo                      | Descripción                                                  |
+| --------------- | ------------------------- | ----------------------------------------------------------- |
+| `fechaContable` | string (ISO `YYYY-MM-DD`) | Fecha contable.                                             |
+| `fechaValor`    | string (ISO `YYYY-MM-DD`) | Fecha valor.                                                |
+| `descripcion`   | string                    | Descripción del movimiento.                                 |
+| `importe`       | number                    | Importe con signo, en euros (negativo = salida).            |
+| `saldo`         | number                    | Saldo tras el movimiento, en euros.                         |
+| `divisa`        | string                    | Divisa del movimiento (p. ej. `"EUR"`); `""` si no aparece. |
+| `tipo`          | `"ingreso"` \| `"gasto"`  | Derivado del signo del importe.                             |
+
+> El resultado completo de un archivo tiene la forma `{ banco: "bankinter",
+> cuentaIban, movimientos: MovimientoParseado[], noReconocidas: { fila, motivo }[] }`
+> y es lo que se escribe en el JSON local. `importe` y `saldo` se interpretan tanto
+> desde el número nativo del Excel como desde texto español (coma decimal / punto
+> de miles, `1.234,56` → `1234.56`). **No** se deduplica: dos filas idénticas
+> aparecen las dos. Una fila no interpretable (fecha, importe o saldo ilegibles) va
+> a `noReconocidas` (con su nº de fila y el motivo), sin perderse.
+
+### `POST /api/parser/bankinter`
+
+Acción **explícita** de parseo. Recorre las copias locales de Bankinter que dejó
+la ingesta (`var/drive-read/bankinter/<año>/*.xlsx`), parsea cada una y escribe su
+resultado a `var/parsed/bankinter/<año>/<archivo>.json`. Read-only respecto a
+Drive y a la base de datos: **no** descarga, **no** mueve, **no** persiste en BD.
+Un fallo por archivo (no es un extracto reconocible, etc.) se **aísla** en
+`failed` y no detiene al resto. Reejecutarlo sin copias locales no hace nada.
+
+Sin cuerpo de petición.
+
+**Respuesta 200**
+```json
+{
+  "parsedCount": 1,
+  "failedCount": 0,
+  "parsed": [
+    {
+      "bank": "bankinter",
+      "year": "2026",
+      "file": "movs.xlsx",
+      "cuentaIban": "ES9820385778983000760236",
+      "movimientos": 42,
+      "noReconocidas": 1,
+      "dumpPath": "bankinter/2026/movs.xlsx.json"
+    }
+  ],
+  "failed": []
+}
+```
+
+- `movimientos` / `noReconocidas`: número de movimientos parseados y de filas no
+  reconocidas; el detalle completo está en el JSON volcado.
+- `dumpPath`: ruta del JSON volcado **relativa** a la carpeta de volcado local (no
+  se expone la ruta absoluta de la máquina).
+- `failed[]`: `{ bank, year, file, error }` con el `error` sanitizado (sin
+  secretos). Un fallo por archivo NO cambia el código HTTP: la respuesta es 200.
+
+---
+
 ## Endpoints de operación (no de dominio)
 
 Para monitorización; el frontend no los consume.

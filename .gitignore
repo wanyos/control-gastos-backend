@@ -15,6 +15,10 @@ src/generated/
 # reales. PRIVACIDAD: nunca se versiona ni se sube al remoto.
 var/drive-read/
 
+# Volcado local del parser (feature bankinter-parser): JSON con movimientos
+# reales. PRIVACIDAD: nunca se versiona ni se sube al remoto.
+var/parsed/
+
 # Logs
 *.log
 npm-debug.log*
