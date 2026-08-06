@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   AppError,
+  ConflictError,
   DriveConnectionError,
+  MissingAccountDataError,
   NotFoundError,
   UnknownBankError,
   ValidationError,
@@ -52,6 +54,34 @@ describe('AppError hierarchy', () => {
 
   it('ValidationError has a default message', () => {
     expect(new ValidationError().message).toBe('Invalid request data')
+  })
+
+  it('ConflictError is an AppError with CONFLICT / 409', () => {
+    const error = new ConflictError('An account with that iban already exists')
+
+    expect(error).toBeInstanceOf(AppError)
+    expect(error.message).toBe('An account with that iban already exists')
+    expect(error.code).toBe('CONFLICT')
+    expect(error.statusCode).toBe(409)
+    expect(error.name).toBe('ConflictError')
+  })
+
+  it('ConflictError has a default message', () => {
+    expect(new ConflictError().message).toBe('Resource already exists')
+  })
+
+  it('MissingAccountDataError is an AppError with MISSING_ACCOUNT_DATA / 422', () => {
+    const error = new MissingAccountDataError('Missing iban to create the account')
+
+    expect(error).toBeInstanceOf(AppError)
+    expect(error.message).toBe('Missing iban to create the account')
+    expect(error.code).toBe('MISSING_ACCOUNT_DATA')
+    expect(error.statusCode).toBe(422)
+    expect(error.name).toBe('MissingAccountDataError')
+  })
+
+  it('MissingAccountDataError has a default message', () => {
+    expect(new MissingAccountDataError().message).toBe('Missing data to create the account')
   })
 
   it('DriveConnectionError is an AppError with DRIVE_CONNECTION_ERROR / 503', () => {

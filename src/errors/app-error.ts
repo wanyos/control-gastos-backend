@@ -26,6 +26,22 @@ export class ValidationError extends AppError {
   }
 }
 
+export class ConflictError extends AppError {
+  constructor(message = 'Resource already exists') {
+    super(message, 'CONFLICT', 409)
+  }
+}
+
+/**
+ * The statement metadata is well formed but not enough to create the account
+ * (e.g. no IBAN). 422 keeps it distinguishable from VALIDATION_ERROR (400).
+ */
+export class MissingAccountDataError extends AppError {
+  constructor(message = 'Missing data to create the account') {
+    super(message, 'MISSING_ACCOUNT_DATA', 422)
+  }
+}
+
 export class DriveConnectionError extends AppError {
   constructor(message = 'Cannot reach Google Drive') {
     super(message, 'DRIVE_CONNECTION_ERROR', 503)

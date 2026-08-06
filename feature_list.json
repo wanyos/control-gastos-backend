@@ -238,6 +238,96 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 7,
+      "name": "parser-english",
+      "title": "Renombrar los campos del parser de Bankinter a inglés (alineado con la BD)",
+      "intent": {
+        "que_quiero": "Que todos los campos y modelos que expone el parser de Bankinter (feature 6) estén en inglés, como el resto del contrato de la API. Hoy salen en español (fechaContable, fechaValor, descripcion, importe, saldo, divisa, tipo con valores 'ingreso'/'gasto', cuentaIban, movimientos, noReconocidas, fila, motivo) y quiero que pasen a inglés según el mapeo acordado, dejando el vocabulario alineado con el que usará la base de datos.",
+        "por_que": "El propio api-contract.md obliga a que rutas, campos y modelos vayan en inglés, y estos nombres en español lo incumplen de forma pública. Además el parser alimentará a la persistencia (feature 8); si su vocabulario ya está en inglés y alineado con la BD, el mapeo posterior es directo y no arrastramos la incoherencia.",
+        "como_se_que_esta_bien": [
+          "Cuando llamo a POST /api/parser/bankinter, la respuesta trae los campos en inglés: a nivel de resultado bank, accountIban, movements, unparsedRows; por movimiento bookingDate, valueDate, description, amount, balance, currency y type con valores 'income'|'expense'; y cada fila no reconocida con row y reason.",
+          "El volcado JSON local (var/parsed/<banco>/<año>/<archivo>.json) usa esos mismos nombres en inglés.",
+          "El comportamiento del parser no cambia: para el mismo .xlsx, mismos movimientos, mismas filas no reconocidas y mismos valores; solo cambian los nombres de campo.",
+          "docs/api-contract.md queda actualizado con el modelo del parser en inglés, y anota que es un cambio de contrato aún no consumido por el frontend.",
+          "Los tests siguen en verde tras el renombrado."
+        ],
+        "que_no_quiero": [
+          "No cambiar la lógica ni la forma del parser (qué columnas lee, cómo detecta la cabecera, cómo interpreta fechas e importes): solo renombrar a inglés.",
+          "No tocar la base de datos ni crear el esquema Prisma: eso es la feature 8.",
+          "No añadir deduplicación, persistencia ni mover archivos en Drive.",
+          "No parsear otros bancos."
+        ],
+        "delego_en_agente": [
+          "Los nombres exactos en inglés siguiendo el mapeo acordado (bookingDate, valueDate, description, amount, balance, currency, type income|expense, accountIban, movements, unparsedRows, row, reason). Si detectas una colisión o un nombre mejor alineado con la BD, propónlo y márcalo, no lo cambies en silencio.",
+          "Cómo propagar el renombrado por tipos, parser, service, fixture, volcado JSON y tests sin cambiar comportamiento, y cómo dejar api-contract.md coherente y con la nota de breaking change."
+        ]
+      },
+      "acceptance": [
+        "POST /api/parser/bankinter devuelve el resultado con TODOS los campos en inglés según el mapeo acordado: a nivel de resultado bank, accountIban, movements, unparsedRows; por movimiento bookingDate, valueDate, description, amount, balance, currency y type ('income'|'expense'); por fila no reconocida row y reason (deriva de: 'los campos en inglés según el mapeo')",
+        "El volcado JSON local en var/parsed/<banco>/<año>/<archivo>.json usa los mismos nombres en inglés (deriva de: 'el volcado usa esos mismos nombres')",
+        "El renombrado NO cambia el comportamiento: para un mismo .xlsx, mismos movimientos, mismas filas no reconocidas y mismos valores que antes; solo cambian los nombres de campo (deriva de: 'el comportamiento no cambia')",
+        "docs/api-contract.md queda actualizado en la misma feature con el modelo del parser en inglés y una nota visible de breaking change aún no consumido por el frontend; se anota también en progress/current.md (deriva de: 'contrato actualizado' + regla de proyecto sobre breaking changes)",
+        "La feature NO cambia la lógica o forma del parser, NO toca la BD ni el esquema Prisma, NO añade dedup/persistencia/mover archivos, NI parsea otros bancos (deriva de los 'que_no_quiero')",
+        "Los tests (parser, service, routes, fixture) quedan en verde con los nombres nuevos y ./init.sh termina en verde incluida la suite completa; el mapeo aplicado queda anotado en progress/implementations/parser-english.md (deriva de: 'los tests siguen en verde')"
+      ],
+      "sdd": false,
+      "status": "done"
+    },
+    {
+      "id": 8,
+      "name": "data-model",
+      "title": "Modelo de datos del flujo: cuentas, movimientos y categorías (Prisma + migración)",
+      "intent": {
+        "que_quiero": "Que la app tenga su base de datos real del flujo de dinero, según docs/data-model.md: cuentas bancarias (mis ~7; NO hay cuenta de efectivo) con banco, alias, tipo, IBAN y saldo inicial; movimientos (gasto o ingreso) con fecha, importe, description, cuenta, categoría y forma de pago; los movimientos NO se crean ni se borran a mano por API: si el movimiento existe, existe en el banco y llegara en su fichero de movimientos, asi que de /api/movements solo hay lectura (esto ademas evita tener que cuadrar el saldo a mano); un traspaso entre cuentas propias NO se crea desde la app ni tiene endpoint: sus dos apuntes ya llegan en los extractos (gasto en la cuenta origen, ingreso en la destino), así que es un movimiento más y lo único propio es que no debe contar ni como gasto ni como ingreso en los totales; el modelo solo reserva el campo transferId para enlazar las dos piernas cuando se identifiquen (quién lo rellena es una feature posterior); y categorías con subcategoría de un nivel y tipo (gasto/ingreso), que SI se dan de alta a mano por API (a diferencia de los movimientos): el banco no manda categorías, el catálogo solo puede definirlo yo. Aquí se entrega solo el catálogo; asignar una categoría a un movimiento sera automático por reglas sobre el concepto, en una feature posterior. Puedo dar de alta y consultar todo por la API. Las cuentas se crean de dos formas: a mano por API, y automáticamente al importar un banco nuevo (si el extracto trae IBAN + banco se crea sola y se me notifica con los datos usados; si faltan datos, se manda un error al frontend para crearla a mano). Todo en inglés y alineado con el parser: el movimiento guarda las dos fechas (contable y valor), el saldo tras el movimiento y la divisa, y la cuenta guarda su IBAN. El saldo de una cuenta NO se recalcula sumando movimientos: se lee del balanceAfter del movimiento mas reciente, porque el extracto ya lo trae; sumar es solo el plan B para una cuenta sin extractos importados. Cada movimiento importado guarda ademas su posicion dentro del dia (daySequence), que fija el orden cuando hay varios movimientos con la misma fecha y evita que dos lineas identicas legitimas del extracto (tres transferencias iguales el mismo dia) se tomen por duplicados y se pierdan.",
+        "por_que": "Hoy solo existe un Expense de prueba del bootstrap que no representa mis finanzas. Importar del banco, los dashboards y el patrimonio necesitan primero cuentas y movimientos bien modelados. Es el cimiento que falta y quiero fijarlo bien antes de construir encima.",
+        "como_se_que_esta_bien": [
+          "Creo una cuenta bancaria con IBAN y saldo inicial y queda guardada, y la puedo listar.",
+          "Listo los movimientos por la API y salen del mas reciente al mas antiguo, con su cuenta y su categoria; no hay forma de crear ni de borrar un movimiento por la API.",
+          "Dos movimientos que comparten transferId (el gasto de una cuenta y el ingreso de otra) se guardan y se recuperan enlazados conservando su type: el saldo de cada cuenta los refleja con su signo y en el total global no cuentan ni como gasto ni como ingreso. No hay ningún endpoint para crear traspasos.",
+          "Creo una categoría con subcategoría y tipo (gasto/ingreso) y se respeta la jerarquía y el tipo.",
+          "Al importar un extracto de un banco que aún no existe y con IBAN + banco presentes, la cuenta se crea sola y se me notifica con los datos usados.",
+          "Si al extracto le falta el dato necesario (p. ej. IBAN), no se crea a ciegas: se me devuelve un error para crearla a mano.",
+          "Cuando pido los datos por la API, los campos salen en inglés con los nombres del modelo validado (incluidas las dos fechas, saldo y divisa).",
+          "Aplico la migración sobre una base limpia y las tablas se crean sin error; el Expense del bootstrap deja de ser el modelo.",
+      "Un extracto con tres lineas identicas el mismo dia (misma fecha, mismo concepto, mismo importe) se guarda como tres movimientos, no como uno; y reimportar ese mismo extracto no crea duplicados.",
+          "Si intento algo incoherente (un importe cero o negativo, una cuenta o categoría inexistente, o una categoría de tipo distinto al del movimiento), el backend lo rechaza con un error claro."
+        ],
+        "que_no_quiero": [
+          "Nada de inversiones ni patrimonio (idea #3) todavía: solo el flujo; se añade encima después.",
+          "No hay cuenta de efectivo: el efectivo se ve a traves de los movimientos que el banco reporta (retiradas de cajero).",
+      "Nada de alta ni de borrado de movimientos por API (ni sus validaciones): un movimiento que no venga del banco no debe existir ni tocar el saldo. El efectivo se agota en la retirada de cajero, que ya es un movimiento del extracto: no hace falta saber en que se gasto ese dinero.",
+      "Nada de endpoints ni logica de traspasos: no se crean, no se enlazan y no se detectan parejas aqui; tampoco existe un type 'transfer' ni un campo 'direction' (el type que reporto el banco ya dice si resta o suma). El emparejado de las dos piernas (manual o automatico) es una feature posterior, encima de la importacion.",
+          "Nada de multi-divisa real: todo en euros; el campo currency existe pero no hay conversión.",
+          "El disparo de la importación desde Drive (leer la carpeta, parsear y persistir en lote, deduplicar, mover a procesados/) es la feature siguiente; aquí solo dejo el modelo, el alta manual y el servicio de creación de cuenta listos para que la importación los use.",
+          "No construir interfaz web (es del frontend, otra sesión).",
+          "Quitar del bootstrap las tablas viejas (Expense/Category placeholder) y sus endpoints /api/expenses para dejar la base de datos limpia con el modelo nuevo; el cambio se anota como breaking change en docs/api-contract.md."
+        ],
+        "delego_en_agente": [
+          "Cómo materializar el modelo en Prisma/Postgres (tipos, enums, índices), incluido el índice único parcial para el dedup de importados y la unicidad de categorías raíz (el punto de los NULL de Postgres). Que lo proponga en el design y me lo marque.",
+          "Dónde vive la creación automática de cuenta desde los metadatos del extracto: como servicio reutilizable en esta feature vs. el disparo por Drive y el error al frontend en la feature de importación. Que proponga el límite exacto, qué datos son suficientes para auto-crear (¿IBAN + banco?) y los valores por defecto (alias, tipo) cuando falten, y la forma del error 'faltan datos para crear la cuenta'.",
+          "Importe 0: hoy el parser lo trata como income y no es real; que proponga si se deja así o se añade un valor neutro (ni ingreso ni gasto).",
+          "El cómo de reemplazar el Expense del bootstrap (borrar tabla y endpoints, y la migración correspondiente), dejando la base de datos limpia.",
+          "Qué endpoints mínimos expone esta feature y su forma exacta en docs/api-contract.md."
+        ]
+      },
+      "acceptance": [
+        "El esquema Prisma define las tablas del flujo según docs/data-model.md y el intent: Account (cuenta bancaria con banco, alias, tipo, IBAN y saldo inicial; SIN cuenta de efectivo), Category (jerárquica con parentId de un nivel y kind gasto/ingreso) y Movement (type expense/income más el tratamiento que se decida para el importe 0, sin valor 'transfer' y sin columna 'direction'; con transferId nullable como enlace entre las dos piernas de un traspaso), en inglés y con los campos que aporta el parser (bookingDate, valueDate, balanceAfter, currency) (deriva de: 'la BD real del flujo según data-model.md' + 'no hay cuenta de efectivo' + 'alineado con el parser' + 'un traspaso es un movimiento más')",
+        "Existe una migración que, aplicada sobre una base limpia, crea todas las tablas sin error (deriva de: 'aplico la migración sobre BD limpia, las tablas se crean sin error')",
+    "El índice de deduplicación de movimientos importados incluye la posición del movimiento dentro de su día (daySequence), de modo que varias líneas idénticas legítimas del mismo extracto se guardan todas y una reimportación del mismo periodo no duplica nada (deriva de: 'guardar la posicion de cada linea del extracto para no tener problemas con el saldo')",
+        "Se puede crear y listar una cuenta bancaria (con IBAN y saldo inicial) por la API (deriva de: 'creo una cuenta con IBAN y saldo inicial, queda guardada y la listo')",
+        "Los movimientos se pueden listar por la API (mas recientes primero, con cuenta y categoria embebidas) y NO existe endpoint para crearlos ni para borrarlos: entran solo por importacion (deriva de: 'si lo hago en el banco queda reflejado... no creo que sea necesario tener movimientos a mano... eliminar movimientos lo mismo... el saldo no quiero que se controle a mano')",
+        "Un traspaso entre dos cuentas propias son dos Movement ordinarios que ya llegan de los extractos (expense en origen, income en destino) enlazados por un transferId compartido: no hay endpoint que los cree ni que los enlace, el saldo de cada cuenta ya los incluye (viene del balanceAfter del extracto) y los totales globales excluyen todo movimiento con transferId (deriva de: 'un traspaso es un movimiento mas, no necesita crearse nada ni un endpoint; solo que no cuente ni como ingreso ni como gasto')",
+        "Las categorías admiten un nivel de subcategoría (parentId) y un tipo (gasto/ingreso), y se respeta esa estructura (deriva de: 'categorías con subcategoría y tipo')",
+        "Existe un servicio de creación de cuenta reutilizable que crea la cuenta a partir de los metadatos de un extracto (IBAN + banco); si faltan los datos suficientes, no crea a ciegas y devuelve un error diferenciable para que el frontend pida el alta manual (deriva de: 'las cuentas se crean a mano y automáticamente... si faltan datos, error al frontend'). El disparo real desde Drive queda para la feature de importación",
+        "Las operaciones incoherentes se rechazan con error claro y tipado, en lo que queda de superficie de escritura: alta de cuenta sin IBAN o sin banco, IBAN duplicado, categoria de mas de un nivel o con kind distinto al del padre (deriva de: 'algo incoherente... rechazado con error claro')",
+        "El Expense/Category placeholder del bootstrap y sus endpoints /api/expenses se eliminan (base de datos limpia con el modelo nuevo), y el cambio se documenta como breaking change en docs/api-contract.md (deriva de: 'quitar las tablas viejas y los endpoints, dejar la BD limpia' + regla de breaking change)",
+        "docs/api-contract.md queda actualizado con los modelos y endpoints nuevos en inglés (Account, Category, Movement), y docs/data-model.md se actualiza para reflejar el modelo final (sin cuenta de efectivo, con IBAN/valueDate/balanceAfter/currency y description) (deriva de: 'todo en inglés' + 'usar data-model.md')",
+        "Cada criterio tiene al menos un test concreto mapeado en progress/implementations/data-model.md; ./init.sh termina en verde incluida la suite completa; y las decisiones delegadas (índices/dedup, ubicación del servicio de auto-alta de cuenta, tratamiento del importe 0, cómo reemplazar el Expense) quedan anotadas como ADR en docs/architecture.md donde aplique, con docs/stack.md actualizado si hay dependencias nuevas (deriva del cierre estándar del proyecto)"
+      ],
+      "sdd": true,
+      "status": "done"
     }
   ]
 }

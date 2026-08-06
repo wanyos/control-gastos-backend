@@ -60,11 +60,20 @@ src/
     drive-structure.ts   #   estructura en Drive (files.*): carpetas, subir, mover (ADR-008)
   errors/                # clases de error de dominio (AppError, ...)
   modules/                 # un directorio por recurso (vertical slice)
-    expenses/
-      expenses.routes.ts   #   capa HTTP: valida, llama al servicio, formatea
-      expenses.service.ts  #   lógica de negocio; único que habla con Prisma
-      expenses.schema.ts   #   JSON Schemas del recurso
-      expenses.types.ts    #   tipos del recurso (CreateExpenseBody, ...)
+    accounts/              # cuentas bancarias (data-model, ADR-011)
+      accounts.routes.ts   #   capa HTTP: valida, llama al servicio, formatea
+      accounts.service.ts  #   lógica de negocio; único que habla con Prisma
+      accounts.schema.ts   #   JSON Schemas del recurso
+      accounts.types.ts    #   tipos del recurso (CreateAccountBody, ...)
+    categories/            # catálogo de categorías (un nivel de subcategoría)
+      categories.routes.ts
+      categories.service.ts
+      categories.schema.ts
+      categories.types.ts
+    movements/             # movimientos: SOLO LECTURA (entran por importación)
+      movements.routes.ts  #   solo GET /
+      movements.service.ts #   listado + helpers de dominio (saldo, totales, signo)
+      movements.types.ts   #   (sin *.schema.ts: no hay body que validar)
     health/
       health.routes.ts
     ingesta/               # lectura de archivos de banco desde Drive (drive-read)
@@ -90,6 +99,12 @@ src/
 > `*.service.ts` extraído (la lógica y `fastify.prisma` fuera de la ruta) y el
 > `*.schema.ts`. `src/routes/` ya no existe (lo guarda
 > `src/architecture.test.ts`).
+>
+> Nota de la feature #8 "data-model" (2026-08-06): `modules/expenses/` **se
+> borró** (era el placeholder del bootstrap) y lo sustituyen `accounts/`,
+> `categories/` y `movements/`. `src/architecture.test.ts` guarda que la carpeta
+> ya no exista, que las tres rutas nuevas no importen Prisma y que `movements`
+> siga siendo de solo lectura.
 
 ## Flujo de datos
 
@@ -194,6 +209,15 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     esta feature necesitó para distinguir "banco con formato válido pero no
     registrado" tanto de `ValidationError` (formato inválido, 400) como de
     `DriveConnectionError` (fallo de Drive, 503). Ver ADR-008.
+  - **Subclases añadidas (feature #8 "data-model", 2026-08-06):**
+    `ConflictError` (`CONFLICT`, 409) — el `iban` de una cuenta y la categoría
+    raíz `(kind, name)` son únicos, y el `P2002` de Prisma se traduce a un 409
+    claro en vez de escaparse como 500; y `MissingAccountDataError`
+    (`MISSING_ACCOUNT_DATA`, **422**) — los metadatos de un extracto no bastan
+    para crear la cuenta, distinguible de `VALIDATION_ERROR` (400, formato) y de
+    `NOT_FOUND` (404) para que el frontend pueda ofrecer el alta manual
+    exactamente en ese caso. `MISSING_ACCOUNT_DATA` queda **reservado** en el
+    contrato (interno; lo devolverá la feature de importación). Ver ADR-011.
 
 ### ADR-006: Validación de configuración de entorno a mano
 
@@ -519,6 +543,114 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - `var/parsed/` es el segundo directorio gitignoreado de datos bancarios (tras
     `var/drive-read/` de la f5). La persistencia en BD y la deduplicación quedan
     explícitamente **fuera** de esta feature (features futuras).
+
+### ADR-011: Modelo de datos del flujo — `Account`/`Category`/`Movement`, saldo leído del extracto, importe 0 = `neutral`, índices personalizados por SQL crudo, reemplazo del `Expense`
+
+- **Fecha:** 2026-08-06
+- **Estado:** aceptada (implementada en la feature #8; el spec pasó por cuatro
+  correcciones humanas en la puerta de aprobación)
+- **Contexto:** la feature #8 fija la **base de datos real del flujo** según
+  `docs/data-model.md` + el `intent`: cuentas bancarias (sin efectivo),
+  movimientos alineados con el parser (features 6/7) y categorías jerárquicas.
+  Hasta ahora solo existía el `Expense` + `Category` placeholder del bootstrap.
+  El `intent` delegó cinco decisiones: materialización en Prisma/Postgres
+  (tipos, enums, **índices**), ubicación y límite del servicio de auto-alta de
+  cuenta, tratamiento del **importe 0**, cómo reemplazar el `Expense`, y qué
+  **endpoints mínimos** expone la feature.
+- **Decisión:**
+  1. **Esquema** `Account` / `Category` / `Movement` + 6 enums, todo en inglés y
+     alineado con el parser (`bookingDate`, `valueDate`, `description`, `amount`,
+     `balanceAfter`, `currency`, `iban`). `AccountType` **sin `cash`** (no hay
+     cuenta de efectivo: el efectivo se ve en la retirada de cajero, que ya es una
+     línea del extracto). `Account.iban` **obligatorio y único**: es la clave
+     natural del find-or-create.
+  2. **`amount` siempre positivo; el signo lo da `type`, y `type` es inmutable**
+     (es lo que reportó el banco). Un **traspaso no se crea**: son **dos
+     movimientos ordinarios** que ya llegan de los extractos (un `expense` en
+     origen y un `income` en destino) enlazados por un `transferId` compartido.
+     **No hay endpoint de traspasos**, ni valor `MovementType.transfer`, ni enum
+     `MovementDirection`. La única regla propia es de agregación: los totales
+     globales excluyen `transferId != null` (y los `neutral`).
+  3. **El saldo de la cuenta se LEE del extracto**, no se recalcula: es el
+     `balanceAfter` del movimiento más reciente (`bookingDate DESC, daySequence
+     DESC`). La suma desde `initialBalance` queda como **caso excepcional** (un
+     banco sin saldo corrido, o una cuenta sin nada importado).
+  4. **Columna `daySequence`** (posición dentro del `bookingDate`, `1` = el
+     primero del día): fija el orden intradía y **entra en la clave del índice de
+     dedup**. Se guarda la posición del día, no el número de línea del fichero,
+     porque ese número no es estable entre descargas.
+  5. **Los movimientos solo entran por importación:** `/api/movements` es de
+     **solo lectura** (`GET /`), sin alta ni borrado manual, y `Movement` nace
+     `origin=imported` / `status=pending_review`. Las **categorías** sí se dan de
+     alta a mano (`POST /api/categories`): el banco no manda categorías, el
+     catálogo solo puede definirlo el usuario; lo automático será **asignarlas**.
+  6. **Importe 0 → tipo `neutral`** (ni ingreso ni gasto), con el helper de
+     dominio `deriveMovementTypeFromAmount` (`<0 expense`, `>0 income`,
+     `=0 neutral`).
+  7. **Dedup de importados = índice ÚNICO PARCIAL** `(accountId, bookingDate,
+     type, amount, description, daySequence) WHERE origin='imported'`, creado con
+     **SQL crudo** en la migración (Prisma 7 no lo declara; Prisma 8 sí con
+     `@@index(where:, unique:)`), **sin** columna `importHash`.
+  8. **Unicidad de categoría raíz con `NULLS NOT DISTINCT`** (Postgres 17),
+     también por SQL crudo, re-creando el índice de Prisma con el mismo nombre y
+     las mismas columnas.
+  9. **Servicio reutilizable `findOrCreateAccountFromMetadata`** (find-or-create
+     por IBAN; datos suficientes = **IBAN + banco**; defaults `alias` derivado /
+     `type checking` / `initialBalance 0`; devuelve `{account, created,
+     appliedDefaults}`) con el error **`MissingAccountDataError`** (422). **Sin
+     endpoint ni disparo desde Drive**: eso es la feature de importación.
+  10. **Reemplazo del `Expense`:** se borra el módulo `modules/expenses/`, su
+      registro en `app.ts` y las tablas viejas en la migración (**DROP + CREATE**,
+      no `ALTER`). `/api/expenses*` responde 404. **Breaking change** anotado en
+      `docs/api-contract.md`.
+- **Alternativas consideradas:**
+  - **Recalcular el saldo sumando movimientos** teniendo el `balanceAfter` del
+    banco: descartada por el humano — es recalcular algo que ya nos dan y
+    arriesgarse a divergir de ello.
+  - **Fiar el orden intradía al `id` autoincremental:** descartada — obligaría al
+    importer a insertar invirtiendo el array y se rompe al importar un extracto
+    antiguo después de uno reciente.
+  - **Guardar el número de línea del fichero** en vez de la posición dentro del
+    día: descartada — no es estable entre descargas.
+  - **Clave de dedup sin `daySequence`:** descartada — un extracto real trae
+    líneas idénticas legítimas (tres `TRANS INM/ Openbank −1000,00` el mismo día
+    en la muestra), y se habrían perdido dos en silencio (−2.000 €).
+  - **Columna `importHash`** (la del borrador de `data-model.md`): descartada —
+    abre la sub-decisión de la receta del hash y la normalización del concepto; el
+    índice compuesto da la misma garantía con la clave visible y auditable.
+  - **Crear los traspasos por API** (`POST /transfer` con dos piernas nuevas):
+    descartada por el humano — duplicaría lo que ya llega del banco (4 filas por
+    traspaso). Y **marcarlos mutando el `type` a `transfer`**: rompería la clave
+    del índice de dedup y con ella la protección contra reimportaciones.
+  - **Mantener el alta y el borrado manual de movimientos:** descartada por el
+    humano — obligaría a cuadrar el saldo a mano contra el banco.
+  - **Dos índices parciales / un centinela `parentId = 0`** para la unicidad de
+    raíz: descartadas (dos objetos donde basta uno; valor mágico en el modelo).
+  - **Dejar el importe 0 como `income`:** descartada — arrastra un dato incorrecto
+    que el `intent` quiere corregir.
+  - **Disparar el auto-alta de cuenta con un endpoint en esta feature:**
+    descartada — el consumidor real es la importación (feature siguiente).
+  - **`ALTER` de `Category` en vez de DROP+CREATE:** descartada — la vieja y la
+    nueva tienen forma incompatible y ambas tablas eran placeholder sin datos.
+- **Consecuencias:**
+  - **Breaking change** en `/api/expenses` (404) y en el modelo `Category`; aún no
+    consumido por el frontend.
+  - **Dos errores de dominio nuevos** (`ConflictError` 409,
+    `MissingAccountDataError` 422, ver ADR-005); `MISSING_ACCOUNT_DATA` queda
+    **reservado** en el contrato, mismo patrón que `UNKNOWN_BANK` en la feature 4.
+  - **Dos índices fuera del schema** (dedup parcial y `NULLS NOT DISTINCT`), solo
+    en el archivo de migración. `prisma migrate dev` no reporta drift (el shadow DB
+    replica la migración), pero **no** deben declararse en el schema.
+  - **Límite conocido:** un día del extracto **partido** entre dos descargas
+    reempieza en `daySequence = 1` y produciría un duplicado. Se evita descargando
+    por días completos; es un duplicado **visible**, no una pérdida silenciosa.
+  - **Columnas reservadas sin escritor** (`transferId`, `categoryId`,
+    `paymentMethod`, `note`): son el cimiento de las features siguientes
+    (importación, categorización por reglas, detección de traspasos). Mientras
+    tanto, un traspaso interno **cuenta** en los totales globales: asumido, porque
+    todavía no hay dashboards que los consuman.
+  - **Sin dependencias nuevas y sin variables de entorno nuevas** (todo con
+    Prisma/Postgres ya presentes): `docs/stack.md` no cambia.
 
 ## Qué NO hacer
 

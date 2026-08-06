@@ -497,3 +497,70 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   siguiente es la **persistencia** (guardar los movimientos en BD + dedup), que el
   humano ya está diseñando en `docs/data-model.md` (esquema Account/Category/Movement
   con `importHash`, `pending_review`, traspasos como dos filas).
+
+## 2026-08-06 — Feature 8: data-model (SDD)
+
+> Informe completo del implementer:
+> [`progress/implementations/data-model.md`](implementations/data-model.md).
+> Review: [`progress/reviews/data-model.md`](reviews/data-model.md).
+> Resumen de cierre: [`progress/summaries/data-model.md`](summaries/data-model.md).
+
+- **Agente:** leader (orquestando) + spec-author + **puerta humana (4 correcciones)**
+  + implementer + reviewer. SDD: `specs/data-model/{requirements,design,tasks}.md`
+  fue la fuente de verdad, no el `acceptance` original.
+- **Qué hace:** fija la **base de datos real del flujo de dinero**. Reemplaza el
+  `Expense` + `Category` placeholder del bootstrap por `Account` / `Category`
+  (jerárquica, un nivel) / `Movement`, en inglés y alineado con el parser (f6/f7).
+  Expone `/api/accounts` (POST, GET, GET `:id`), `/api/categories` (POST, GET) y
+  `/api/movements` (**solo GET**), más el servicio reutilizable de auto-alta de
+  cuenta que consumirá la importación.
+- **Las cuatro correcciones humanas en la puerta (todas respetadas):**
+  1. **No hay endpoint de traspasos.** Un traspaso son **dos movimientos ordinarios
+     que ya llegan de los extractos** (gasto en origen, ingreso en destino),
+     enlazados por `transferId`; crearlos por API los duplicaría. Sin
+     `createTransfer`, sin `POST /transfer`, sin `MovementType.transfer`, sin enum
+     ni columna `direction`. `transferId` queda como **columna reservada** (nadie la
+     escribe todavía; el emparejado es una feature posterior).
+  2. **No hay alta ni borrado manual de movimientos.** El módulo `movements` es de
+     **solo lectura**: entran únicamente por importación. `Movement` nace
+     `origin=imported` / `status=pending_review`. R12, R14-R17 retirados.
+  3. **El saldo se LEE del extracto**, no se suma: `balanceAfter` del movimiento más
+     reciente (`bookingDate DESC, daySequence DESC`). La suma desde `initialBalance`
+     es solo el plan B de una cuenta sin saldo corrido importado.
+  4. **`Movement.daySequence`** (posición dentro del `bookingDate`) entra en la clave
+     del índice único parcial de dedup. Sin ella, las **tres** líneas idénticas
+     legítimas `TRANS INM/ Openbank −1000,00` del mismo día de la muestra real se
+     habrían tomado por duplicados: −2.000 € perdidos en silencio.
+- **Cambios (alto nivel):** `prisma/schema.prisma` reemplazado (6 enums + 3 modelos);
+  migración `20260806191700_data_model` con **DROP + CREATE** y los **dos índices en
+  SQL crudo** (dedup parcial `WHERE origin='imported'` y raíz de categorías con
+  `NULLS NOT DISTINCT`, Postgres 17); módulos nuevos `accounts/`, `categories/` y
+  `movements/`; **borrado** `src/modules/expenses/`; errores nuevos `ConflictError`
+  (409) y `MissingAccountDataError` (422, **reservado**); helpers de dominio
+  `deriveMovementTypeFromAmount`, `computeAccountBalance`, `computeTotals`;
+  `architecture.test.ts` endurecido (árbol nuevo, rutas sin `prisma`, `movements`
+  read-only, `/api/expenses` → 404, tablas viejas ausentes en BD). **Sin
+  dependencias ni variables de entorno nuevas.**
+- **Docs:** `api-contract.md` (**breaking change** visible + modelos y endpoints
+  nuevos + códigos `CONFLICT` y `MISSING_ACCOUNT_DATA`), `data-model.md` reescrito al
+  modelo final (cierra sus puntos abiertos 1 y 2), `architecture.md` con **ADR-011**
+  y el árbol actualizado. `stack.md` sin cambios.
+- **Verificación:** `bash ./init.sh` → typecheck OK + **197 tests** en 16 archivos +
+  `[OK] Entorno listo` (la suite estaba en 146); `lint` y `format:check` verdes.
+  Además, historial de migraciones aplicado sobre una **BD limpia** creada al efecto
+  (`migrate deploy` → solo `Account`/`Category`/`Movement`; `migrate status` al día;
+  `migrate diff` → *empty migration*, **sin drift** pese a los índices fuera del
+  schema). Trazabilidad de los **27 requirements vigentes** (R1-R11, R3b, R13,
+  R18-R20, R25-R37) en el informe; **R32 y R36 son de proceso** (checklist del
+  reviewer, sin superficie ejecutable) y de **R18** el "no existe endpoint" lo
+  verificó el reviewer sobre el diff.
+- **Cierre:** feature 8 `data-model` → **done** (reviewer **APPROVED**). **Breaking
+  change** asumido: `/api/expenses*` responde 404 y las tablas del bootstrap
+  desaparecen (eran placeholder sin datos). Aún **no consumido por el frontend**.
+  Límites conocidos anotados en ADR-011: un día del extracto partido entre dos
+  descargas reempezaría en `daySequence = 1` (duplicado **visible**, no pérdida);
+  `GET /api/movements` sin paginación; carrera pendiente de blindar en
+  `findOrCreateAccountFromMetadata` cuando la importación lo llame. La siguiente es
+  la **importación** (mapear el JSON del parser a la BD invirtiendo el array de
+  Bankinter, auto-alta de cuenta, dedup y mover a `procesados/`); después,
+  **categorización por reglas** y **detección de traspasos**.

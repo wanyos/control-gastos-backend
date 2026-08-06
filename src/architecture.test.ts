@@ -4,7 +4,10 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import type { FastifyInstance } from 'fastify'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { buildApp } from './app.js'
 
 const srcDir = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
@@ -41,11 +44,22 @@ describe('architecture invariants', () => {
       'lib/drive-structure.test.ts',
       'plugins/drive.ts',
       'plugins/error-handler.ts',
-      'modules/expenses/expenses.routes.ts',
-      'modules/expenses/expenses.service.ts',
-      'modules/expenses/expenses.schema.ts',
-      'modules/expenses/expenses.types.ts',
-      'modules/expenses/expenses.test.ts',
+      'modules/accounts/accounts.routes.ts',
+      'modules/accounts/accounts.service.ts',
+      'modules/accounts/accounts.schema.ts',
+      'modules/accounts/accounts.types.ts',
+      'modules/accounts/accounts.test.ts',
+      'modules/categories/categories.routes.ts',
+      'modules/categories/categories.service.ts',
+      'modules/categories/categories.schema.ts',
+      'modules/categories/categories.types.ts',
+      'modules/categories/categories.test.ts',
+      // movements has no *.schema.ts on purpose: it is read-only, there is no
+      // body to validate (specs/data-model/design.md §5).
+      'modules/movements/movements.routes.ts',
+      'modules/movements/movements.service.ts',
+      'modules/movements/movements.types.ts',
+      'modules/movements/movements.test.ts',
       'modules/health/health.routes.ts',
       'modules/health/health.test.ts',
       'modules/ingesta/ingesta.routes.ts',
@@ -71,10 +85,34 @@ describe('architecture invariants', () => {
     expect(existsSync(join(srcDir, 'routes'))).toBe(false)
   })
 
-  it('keeps expenses.routes.ts free of data access (no "prisma" reference)', () => {
-    const routes = readFileSync(join(srcDir, 'modules/expenses/expenses.routes.ts'), 'utf8')
+  it('has no src/modules/expenses/ directory (replaced by the flow model)', () => {
+    expect(existsSync(join(srcDir, 'modules/expenses'))).toBe(false)
+  })
 
-    expect(routes.toLowerCase()).not.toContain('prisma')
+  it('keeps the flow module routes free of data access (no "prisma" reference)', () => {
+    const files = [
+      'modules/accounts/accounts.routes.ts',
+      'modules/categories/categories.routes.ts',
+      'modules/movements/movements.routes.ts',
+    ]
+
+    for (const file of files) {
+      expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
+  it('keeps the movements module read-only (no create/delete/transfer surface)', () => {
+    const files = [
+      'modules/movements/movements.routes.ts',
+      'modules/movements/movements.service.ts',
+    ]
+
+    for (const file of files) {
+      const source = readFileSync(join(srcDir, file), 'utf8')
+      expect(source).not.toContain('createMovement')
+      expect(source).not.toContain('deleteMovement')
+      expect(source).not.toContain('createTransfer')
+    }
   })
 
   it('.env.example lists the Drive variables with placeholders, not real credentials (R14)', () => {
@@ -143,5 +181,65 @@ describe('architecture invariants', () => {
     const gitignore = readFileSync(join(srcDir, '..', '.gitignore'), 'utf8')
 
     expect(gitignore).toContain('var/parsed/')
+  })
+})
+
+// The bootstrap placeholder is gone (feature 8, breaking change): its routes
+// must fall through to the central 404 handler. It lives here, next to the
+// tree guardian, because the module it belonged to no longer exists.
+describe('retired /api/expenses surface and bootstrap tables (R34, R35)', () => {
+  let app: FastifyInstance
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('GET /api/expenses returns 404', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/expenses' })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('POST /api/expenses returns 404', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/expenses',
+      payload: { description: 'Weekly groceries', amount: 45.9 },
+    })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('GET /api/expenses/1 returns 404', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/expenses/1' })
+
+    expect(response.statusCode).toBe(404)
+  })
+
+  it('the Expense table no longer exists in the database (R35)', async () => {
+    const tables = await app.prisma.$queryRaw<Array<{ table_name: string }>>`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name IN ('Expense')
+    `
+
+    expect(tables).toEqual([])
+  })
+
+  it('the Category table is the new one, not the bootstrap placeholder (R35)', async () => {
+    const columns = await app.prisma.$queryRaw<Array<{ column_name: string }>>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'Category'
+    `
+    const names = columns.map((column) => column.column_name)
+
+    expect(names).toContain('kind')
+    expect(names).toContain('parentId')
   })
 })

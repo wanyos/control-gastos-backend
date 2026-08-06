@@ -10,20 +10,108 @@ datasource db {
   provider = "postgresql"
 }
 
-model Category {
-  id        Int       @id @default(autoincrement())
-  name      String    @unique
-  expenses  Expense[]
-  createdAt DateTime  @default(now())
+// ── Enums ─────────────────────────────────────────────────
+// No `cash` account type: cash is seen through the bank movements (ATM
+// withdrawals), there is no cash account (see docs/architecture.md ADR-011).
+enum AccountType {
+  checking
+  savings
 }
 
-model Expense {
-  id          Int       @id @default(autoincrement())
-  description String
-  amount      Decimal   @db.Decimal(10, 2)
-  date        DateTime  @default(now())
-  category    Category? @relation(fields: [categoryId], references: [id])
-  categoryId  Int?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+enum CategoryKind {
+  expense
+  income
+}
+
+// No `transfer` value: a transfer between own accounts is two ordinary
+// movements already reported by each bank, linked by `Movement.transferId`.
+// `neutral` covers a zero amount (neither income nor expense).
+enum MovementType {
+  expense
+  income
+  neutral
+}
+
+enum PaymentMethod {
+  card
+  cash
+  bank_transfer
+  direct_debit
+}
+
+// `manual` has no producer today; it is what keeps the dedup index PARTIAL
+// (WHERE origin = 'imported') without having to rebuild it later.
+enum MovementOrigin {
+  imported
+  manual
+}
+
+enum MovementStatus {
+  confirmed
+  pending_review
+}
+
+// ── Models ────────────────────────────────────────────────
+model Account {
+  id             Int         @id @default(autoincrement())
+  iban           String      @unique
+  bank           String
+  alias          String
+  type           AccountType @default(checking)
+  initialBalance Decimal     @default(0) @db.Decimal(10, 2)
+  movements      Movement[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Category {
+  id        Int          @id @default(autoincrement())
+  name      String
+  kind      CategoryKind
+  parent    Category?    @relation("Subcategories", fields: [parentId], references: [id])
+  parentId  Int?
+  children  Category[]   @relation("Subcategories")
+  movements Movement[]
+  createdAt DateTime     @default(now())
+
+  // Re-created as NULLS NOT DISTINCT in the migration so two root categories
+  // (parentId IS NULL) with the same kind and name cannot coexist.
+  @@unique([parentId, kind, name])
+}
+
+model Movement {
+  id           Int      @id @default(autoincrement())
+  type         MovementType
+  bookingDate  DateTime @db.Date
+  valueDate    DateTime @db.Date
+  amount       Decimal  @db.Decimal(10, 2)
+  description  String
+  balanceAfter Decimal? @db.Decimal(10, 2)
+  currency     String   @default("EUR")
+  note         String?
+
+  account       Account        @relation(fields: [accountId], references: [id])
+  accountId     Int
+  category      Category?      @relation(fields: [categoryId], references: [id])
+  categoryId    Int?
+  paymentMethod PaymentMethod?
+
+  origin MovementOrigin @default(imported)
+  status MovementStatus @default(pending_review)
+
+  // Both legs of a transfer share it. Nothing writes it yet: the pairing is a
+  // later feature, on top of the importer.
+  transferId String?
+
+  // Position within its bookingDate (1 = first of the day). Fixes the intraday
+  // order and is part of the dedup index key.
+  daySequence Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, bookingDate, daySequence])
+  @@index([transferId])
+  // Dedup of imported movements: PARTIAL unique index created with raw SQL in
+  // the migration (Prisma 7 cannot express it in the schema).
 }
