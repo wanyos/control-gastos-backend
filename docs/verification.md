@@ -35,9 +35,14 @@ pnpm run typecheck   # tsc --noEmit — debe terminar sin errores
 Las features de API se prueban cruzando la capa HTTP + Fastify + Prisma contra
 una base de datos PostgreSQL real. La forma idiomática ya está en uso: levantar
 la app con `buildApp()` y ejercerla con **`app.inject()`** (sin abrir puerto
-real). Ejemplos vivos: `src/modules/expenses/expenses.test.ts` y
-`src/modules/health/health.test.ts` (cubren 201/lista/200 por id/400/404/204 y
-limpian las filas que crean).
+real). Ejemplos vivos: `src/modules/accounts/accounts.test.ts`,
+`src/modules/categories/categories.test.ts` y
+`src/modules/movements/movements.test.ts` (cubren 201/lista/400/404/409 y limpian
+las filas que crean).
+
+> **Los movimientos se siembran con el cliente Prisma dentro del test**, no por
+> API: `/api/movements` es de solo lectura y no hay endpoint de alta. Los
+> movimientos entran solo por importación.
 
 Equivalente manual con curl (para probar a mano contra el servidor en marcha):
 
@@ -45,20 +50,31 @@ Equivalente manual con curl (para probar a mano contra el servidor en marcha):
 # Prerrequisitos: docker compose up -d  &&  pnpm run prisma:migrate
 BASE=http://localhost:3000
 
-# Crear un gasto -> 201 con el recurso creado
-curl -s -X POST "$BASE/api/expenses" \
+# Crear una cuenta -> 201 con el recurso creado
+curl -s -X POST "$BASE/api/accounts" \
   -H 'Content-Type: application/json' \
-  -d '{"description":"Weekly groceries","amount":45.90}'
+  -d '{"iban":"ES9820385778983000760236","bank":"bankinter"}'
 
-# Listarlos -> incluye el creado
-curl -s "$BASE/api/expenses"
+# Listarlas -> incluye la creada, cada una con su `balance` resuelto
+curl -s "$BASE/api/accounts"
 
-# Validación: falta 'amount' -> 400
-curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/expenses" \
-  -H 'Content-Type: application/json' -d '{"description":"x"}'
+# Validación: falta 'bank' -> 400
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/accounts" \
+  -H 'Content-Type: application/json' -d '{"iban":"ES9820385778983000760236"}'
 
-# No encontrado -> 404
-curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/expenses/99999"
+# IBAN repetido -> 409
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/accounts" \
+  -H 'Content-Type: application/json' \
+  -d '{"iban":"ES9820385778983000760236","bank":"bankinter"}'
+
+# No encontrada -> 404
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/accounts/99999"
+
+# Categorías y movimientos
+curl -s -X POST "$BASE/api/categories" \
+  -H 'Content-Type: application/json' -d '{"name":"Food","kind":"expense"}'
+curl -s "$BASE/api/categories"
+curl -s "$BASE/api/movements"    # solo lectura: no hay POST ni DELETE
 ```
 
 > Esta secuencia ya está portada a tests automáticos (`pnpm test`); el bloque

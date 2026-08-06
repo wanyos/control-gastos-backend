@@ -9,13 +9,13 @@
 - **Todo el proyecto en inglés**: nombres de variables, funciones, clases,
   tipos, archivos, comentarios y mensajes de commit. No se mezclan idiomas.
 - **Incluye el dominio**: los conceptos de negocio se nombran en inglés
-  (`Expense`, `Category`, `description`, `amount`, `categoryId`, `date`), no en
-  español.
+  (`Account`, `Movement`, `Category`, `description`, `amount`, `categoryId`,
+  `bookingDate`), no en español.
 - **Excepción — identificadores de infraestructura:** se mantienen en español
   por decisión (no los ve el frontend ni forman parte del dominio): el nombre de
   la BD `gastos`, el contenedor docker `gastos-postgres`, `package.name`
   (`gastos-backend`) y la carpeta del repo. El esquema de BD (tablas y columnas)
-  **sí** va en inglés (`Expense`, `Category`, `amount`, …).
+  **sí** va en inglés (`Account`, `Movement`, `Category`, `amount`, …).
 - **Prosa de la documentación:** los `docs/` se redactan en español (idioma de
   trabajo); solo los identificadores de código, rutas y modelos citados en ellos
   van en inglés.
@@ -54,10 +54,10 @@
 
 | Tipo                        | Convención                                                    | Ejemplo                              |
 | --------------------------- | ------------------------------------------------------------ | ------------------------------------ |
-| Archivos                    | `kebab-case` / nombre del recurso                            | `expenses.routes.ts`, `error-handler.ts` |
-| Clases / tipos / interfaces | `PascalCase`, **sin** prefijo `I`                            | `Expense`, `CreateExpenseBody`       |
+| Archivos                    | `kebab-case` / nombre del recurso                            | `accounts.routes.ts`, `error-handler.ts` |
+| Clases / tipos / interfaces | `PascalCase`, **sin** prefijo `I`                            | `Account`, `CreateAccountBody`       |
 | Funciones / variables       | `camelCase`                                                  | `buildApp`, `createPrismaClient`     |
-| Constantes                  | `camelCase` (o `UPPER_SNAKE` si es constante global de módulo) | `createExpenseSchema`              |
+| Constantes                  | `camelCase` (o `UPPER_SNAKE` si es constante global de módulo) | `createAccountSchema`              |
 | Booleanos                   | prefijo `is` / `has`                                        | `isLoading`, `hasError`              |
 
 ## Estructura de archivo
@@ -70,19 +70,19 @@ import type { FastifyInstance } from 'fastify'
 import { createPrismaClient } from '../lib/prisma.js'
 
 // 3. Local types / schemas
-interface CreateExpenseBody { /* ... */ }
-const createExpenseSchema = { /* ... */ } as const
+interface CreateAccountBody { /* ... */ }
+const createAccountSchema = { /* ... */ } as const
 
 // 4. Main export (async routes plugin)
-export default async function expenseRoutes(fastify: FastifyInstance) {
+export default async function accountRoutes(fastify: FastifyInstance) {
   // handlers...
 }
 ```
 
 ## Tests
 
-- **Ubicación: junto al archivo** (`expenses.test.ts` al lado de
-  `expenses.routes.ts`).
+- **Ubicación: junto al archivo** (`accounts.test.ts` al lado de
+  `accounts.routes.ts`).
 - **Runner:** **Vitest** (configurado 2026-07-10; ver `docs/stack.md`
   §Testing y `docs/verification.md`).
 - **Integración de API:** con `app.inject()` sobre `buildApp()`, contra la BD

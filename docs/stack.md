@@ -24,8 +24,8 @@
   El cliente se genera en `src/generated/prisma/` (generador `prisma-client`, ESM).
 - **Validación de schemas:** JSON Schema **nativo de Fastify** (AJV integrado).
   No hay Zod/Typebox instalado; los schemas viven en el `*.schema.ts` de cada
-  módulo (ej. `createExpenseSchema` en
-  [`src/modules/expenses/expenses.schema.ts`](../src/modules/expenses/expenses.schema.ts)).
+  módulo (ej. `createAccountSchema` en
+  [`src/modules/accounts/accounts.schema.ts`](../src/modules/accounts/accounts.schema.ts)).
 - **Encapsulación de plugins:** `fastify-plugin@^6.0.0`.
 - **Google Drive:** `@googleapis/drive@^21.0.0` (cliente Drive v3 + `auth`
   reexportado; **no** se declara `google-auth-library` aparte, ver ADR-007). Se
@@ -75,7 +75,7 @@
 - **Estilo:** tests de integración con `buildApp()` + `app.inject()` de
   Fastify contra el PostgreSQL real, sin mocks; limpian las filas que crean.
 - **Ubicación:** junto al archivo bajo test (ej.
-  `src/modules/expenses/expenses.test.ts`), según `docs/conventions.md` §Tests.
+  `src/modules/accounts/accounts.test.ts`), según `docs/conventions.md` §Tests.
 
 ## Base de datos / Persistencia
 
