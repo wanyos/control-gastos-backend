@@ -39,9 +39,9 @@ describe('parseLocalBankinterCopies', () => {
       bank: 'bankinter',
       year: '2026',
       file: 'movs.xlsx',
-      cuentaIban: 'ES9820385778983000760236',
-      movimientos: 5,
-      noReconocidas: 1,
+      accountIban: 'ES9820385778983000760236',
+      movements: 5,
+      unparsedRows: 1,
       dumpPath: 'bankinter/2026/movs.xlsx.json',
     })
     // The relative dumpPath is logical: always '/', stable across platforms.
@@ -51,14 +51,14 @@ describe('parseLocalBankinterCopies', () => {
     const dumped = JSON.parse(
       await readFile(join(dumpDir, 'bankinter', '2026', 'movs.xlsx.json'), 'utf8'),
     ) as BankinterParseResult
-    expect(dumped.banco).toBe('bankinter')
-    expect(dumped.cuentaIban).toBe('ES9820385778983000760236')
-    expect(dumped.movimientos).toHaveLength(5)
+    expect(dumped.bank).toBe('bankinter')
+    expect(dumped.accountIban).toBe('ES9820385778983000760236')
+    expect(dumped.movements).toHaveLength(5)
     // No deduplication: the two identical rows survive into the dump.
     expect(
-      dumped.movimientos.filter((m) => m.descripcion === 'PAGO TARJETA' && m.importe === -10),
+      dumped.movements.filter((m) => m.description === 'PAGO TARJETA' && m.amount === -10),
     ).toHaveLength(2)
-    expect(dumped.noReconocidas).toEqual([{ fila: 15, motivo: expect.stringContaining('importe') }])
+    expect(dumped.unparsedRows).toEqual([{ row: 15, reason: expect.stringContaining('importe') }])
   })
 
   it('does nothing when there are no local Bankinter copies (source dir absent)', async () => {

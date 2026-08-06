@@ -60,8 +60,8 @@ export async function buildStatementXlsx(fixture: StatementFixture): Promise<Buf
  * - an income (positive) and an expense (negative),
  * - two identical rows (to prove no deduplication),
  * - a Spanish thousands amount as text (`1.234,56`),
- * - a native-number amount and a text saldo (both formats),
- * - a non-parseable row (unreadable amount) for `noReconocidas`.
+ * - a native-number amount and a text balance (both formats),
+ * - a non-parseable row (unreadable amount) for `unparsedRows`.
  */
 export function bankinterSampleFixture(): StatementFixture {
   return {

@@ -1,22 +1,18 @@
 import ExcelJS from 'exceljs'
 
 import { ValidationError } from '../../errors/app-error.js'
-import type {
-  BankinterParseResult,
-  FilaNoReconocida,
-  MovimientoParseado,
-} from './bankinter.types.js'
+import type { BankinterParseResult, ParsedMovement, UnparsedRow } from './bankinter.types.js'
 
 /** Header names (accent/case-insensitive) mapped to the movement fields. */
-type ColumnField = 'fechaContable' | 'fechaValor' | 'descripcion' | 'importe' | 'saldo' | 'divisa'
+type ColumnField = 'bookingDate' | 'valueDate' | 'description' | 'amount' | 'balance' | 'currency'
 
 const headerToField: Record<string, ColumnField> = {
-  'fecha contable': 'fechaContable',
-  'fecha valor': 'fechaValor',
-  descripcion: 'descripcion',
-  importe: 'importe',
-  saldo: 'saldo',
-  divisa: 'divisa',
+  'fecha contable': 'bookingDate',
+  'fecha valor': 'valueDate',
+  descripcion: 'description',
+  importe: 'amount',
+  saldo: 'balance',
+  divisa: 'currency',
 }
 
 type ColumnMap = Partial<Record<ColumnField, number>>
@@ -33,8 +29,8 @@ interface SheetRow {
  *
  * It skips the metadata preamble, locates the header row robustly (by column
  * name, not a fixed position) and maps each following data row to a
- * `MovimientoParseado`. It never deduplicates: two identical rows both appear. A
- * row that cannot be interpreted is not dropped but collected in `noReconocidas`
+ * `ParsedMovement`. It never deduplicates: two identical rows both appear. A
+ * row that cannot be interpreted is not dropped but collected in `unparsedRows`
  * with its 1-based sheet row number and the reason.
  *
  * Throws `ValidationError` only for a structural failure (no recognizable header
@@ -51,15 +47,15 @@ export async function parseBankinterXlsx(content: Buffer): Promise<BankinterPars
   }
 
   const rows = collectRows(worksheet)
-  const cuentaIban = findIban(rows)
+  const accountIban = findIban(rows)
 
   const header = findHeaderRow(rows)
   if (!header) {
     throw new ValidationError('Bankinter header row not found: not a recognizable statement')
   }
 
-  const movimientos: MovimientoParseado[] = []
-  const noReconocidas: FilaNoReconocida[] = []
+  const movements: ParsedMovement[] = []
+  const unparsedRows: UnparsedRow[] = []
 
   for (const row of rows) {
     if (row.rowNumber <= header.rowNumber) {
@@ -69,14 +65,14 @@ export async function parseBankinterXlsx(content: Buffer): Promise<BankinterPars
       continue
     }
     const parsed = parseDataRow(row, header.columns)
-    if ('motivo' in parsed) {
-      noReconocidas.push({ fila: row.rowNumber, motivo: parsed.motivo })
+    if ('reason' in parsed) {
+      unparsedRows.push({ row: row.rowNumber, reason: parsed.reason })
     } else {
-      movimientos.push(parsed)
+      movements.push(parsed)
     }
   }
 
-  return { banco: 'bankinter', cuentaIban, movimientos, noReconocidas }
+  return { bank: 'bankinter', accountIban, movements, unparsedRows }
 }
 
 /** Reads every non-empty row into a `{ rowNumber, cells[] }` (1-based cells). */
@@ -128,7 +124,7 @@ function findHeaderRow(rows: SheetRow[]): { rowNumber: number; columns: ColumnMa
         columns[field] = c
       }
     }
-    if (columns.fechaContable !== undefined && columns.importe !== undefined) {
+    if (columns.bookingDate !== undefined && columns.amount !== undefined) {
       return { rowNumber: row.rowNumber, columns }
     }
   }
@@ -136,45 +132,45 @@ function findHeaderRow(rows: SheetRow[]): { rowNumber: number; columns: ColumnMa
 }
 
 /** Maps a single data row to a movement, or to a reason it is not interpretable. */
-function parseDataRow(row: SheetRow, columns: ColumnMap): MovimientoParseado | { motivo: string } {
+function parseDataRow(row: SheetRow, columns: ColumnMap): ParsedMovement | { reason: string } {
   const problems: string[] = []
 
-  const rawFechaContable = cellAt(row, columns.fechaContable)
-  const fechaContable = parseSpanishDate(rawFechaContable)
-  if (fechaContable === null) {
-    problems.push(`fecha contable inválida ('${cellToString(rawFechaContable)}')`)
+  const rawBookingDate = cellAt(row, columns.bookingDate)
+  const bookingDate = parseSpanishDate(rawBookingDate)
+  if (bookingDate === null) {
+    problems.push(`fecha contable inválida ('${cellToString(rawBookingDate)}')`)
   }
 
-  const rawFechaValor = cellAt(row, columns.fechaValor)
-  const fechaValor = parseSpanishDate(rawFechaValor)
-  if (fechaValor === null) {
-    problems.push(`fecha valor inválida ('${cellToString(rawFechaValor)}')`)
+  const rawValueDate = cellAt(row, columns.valueDate)
+  const valueDate = parseSpanishDate(rawValueDate)
+  if (valueDate === null) {
+    problems.push(`fecha valor inválida ('${cellToString(rawValueDate)}')`)
   }
 
-  const rawImporte = cellAt(row, columns.importe)
-  const importe = parseSpanishAmount(rawImporte)
-  if (importe === null) {
-    problems.push(`importe no numérico ('${cellToString(rawImporte)}')`)
+  const rawAmount = cellAt(row, columns.amount)
+  const amount = parseSpanishAmount(rawAmount)
+  if (amount === null) {
+    problems.push(`importe no numérico ('${cellToString(rawAmount)}')`)
   }
 
-  const rawSaldo = cellAt(row, columns.saldo)
-  const saldo = parseSpanishAmount(rawSaldo)
-  if (saldo === null) {
-    problems.push(`saldo no numérico ('${cellToString(rawSaldo)}')`)
+  const rawBalance = cellAt(row, columns.balance)
+  const balance = parseSpanishAmount(rawBalance)
+  if (balance === null) {
+    problems.push(`saldo no numérico ('${cellToString(rawBalance)}')`)
   }
 
-  if (fechaContable === null || fechaValor === null || importe === null || saldo === null) {
-    return { motivo: problems.join('; ') }
+  if (bookingDate === null || valueDate === null || amount === null || balance === null) {
+    return { reason: problems.join('; ') }
   }
 
   return {
-    fechaContable,
-    fechaValor,
-    descripcion: cellToString(cellAt(row, columns.descripcion)),
-    importe,
-    saldo,
-    divisa: cellToString(cellAt(row, columns.divisa)),
-    tipo: importe < 0 ? 'gasto' : 'ingreso',
+    bookingDate,
+    valueDate,
+    description: cellToString(cellAt(row, columns.description)),
+    amount,
+    balance,
+    currency: cellToString(cellAt(row, columns.currency)),
+    type: amount < 0 ? 'expense' : 'income',
   }
 }
 

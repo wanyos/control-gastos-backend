@@ -10,34 +10,34 @@ describe('parseBankinterXlsx', () => {
 
     const result = await parseBankinterXlsx(buffer)
 
-    expect(result.banco).toBe('bankinter')
-    expect(result.cuentaIban).toBe('ES9820385778983000760236')
+    expect(result.bank).toBe('bankinter')
+    expect(result.accountIban).toBe('ES9820385778983000760236')
     // 6 data rows, one of them non-parseable => 5 movements + 1 unrecognized.
-    expect(result.movimientos).toHaveLength(5)
-    expect(result.noReconocidas).toHaveLength(1)
+    expect(result.movements).toHaveLength(5)
+    expect(result.unparsedRows).toHaveLength(1)
   })
 
-  it('maps every real column (incl. saldo/divisa) and interprets Spanish dates and amounts', async () => {
+  it('maps every real column (incl. balance/currency) and interprets Spanish dates and amounts', async () => {
     const buffer = await buildStatementXlsx(bankinterSampleFixture())
 
     const result = await parseBankinterXlsx(buffer)
 
-    // First data row, native-number importe and saldo. toEqual pins the exact
+    // First data row, native-number amount and balance. toEqual pins the exact
     // shape, so it also proves there is no leftover concepto/tipoMovimiento.
-    expect(result.movimientos[0]).toEqual({
-      fechaContable: '2026-01-05',
-      fechaValor: '2026-01-05',
-      descripcion: 'TRANSF NOMINA EMPRESA',
-      importe: 2500,
-      saldo: 5000,
-      divisa: 'EUR',
-      tipo: 'ingreso',
+    expect(result.movements[0]).toEqual({
+      bookingDate: '2026-01-05',
+      valueDate: '2026-01-05',
+      description: 'TRANSF NOMINA EMPRESA',
+      amount: 2500,
+      balance: 5000,
+      currency: 'EUR',
+      type: 'income',
     })
-    // Spanish text formats: importe '1.234,56' -> 1234.56, saldo '6.159,06' -> 6159.06.
-    const thousands = result.movimientos.find((m) => m.descripcion === 'TRANSFERENCIA RECIBIDA')
-    expect(thousands?.importe).toBe(1234.56)
-    expect(thousands?.saldo).toBe(6159.06)
-    expect(thousands?.divisa).toBe('EUR')
+    // Spanish text formats: amount '1.234,56' -> 1234.56, balance '6.159,06' -> 6159.06.
+    const thousands = result.movements.find((m) => m.description === 'TRANSFERENCIA RECIBIDA')
+    expect(thousands?.amount).toBe(1234.56)
+    expect(thousands?.balance).toBe(6159.06)
+    expect(thousands?.currency).toBe('EUR')
   })
 
   it('drops the removed concepto/tipoMovimiento fields from the model', async () => {
@@ -45,26 +45,26 @@ describe('parseBankinterXlsx', () => {
 
     const result = await parseBankinterXlsx(buffer)
 
-    expect(Object.keys(result.movimientos[0]).sort()).toEqual([
-      'descripcion',
-      'divisa',
-      'fechaContable',
-      'fechaValor',
-      'importe',
-      'saldo',
-      'tipo',
+    expect(Object.keys(result.movements[0]).sort()).toEqual([
+      'amount',
+      'balance',
+      'bookingDate',
+      'currency',
+      'description',
+      'type',
+      'valueDate',
     ])
   })
 
-  it('derives tipo from the sign of the amount', async () => {
+  it('derives type from the sign of the amount', async () => {
     const buffer = await buildStatementXlsx(bankinterSampleFixture())
 
     const result = await parseBankinterXlsx(buffer)
 
-    const income = result.movimientos.find((m) => m.importe === 2500)
-    const expense = result.movimientos.find((m) => m.importe === -75.5)
-    expect(income?.tipo).toBe('ingreso')
-    expect(expense?.tipo).toBe('gasto')
+    const income = result.movements.find((m) => m.amount === 2500)
+    const expense = result.movements.find((m) => m.amount === -75.5)
+    expect(income?.type).toBe('income')
+    expect(expense?.type).toBe('expense')
   })
 
   it('does NOT deduplicate: two identical rows are both returned', async () => {
@@ -72,24 +72,24 @@ describe('parseBankinterXlsx', () => {
 
     const result = await parseBankinterXlsx(buffer)
 
-    const repeated = result.movimientos.filter(
-      (m) => m.descripcion === 'PAGO TARJETA' && m.importe === -10,
+    const repeated = result.movements.filter(
+      (m) => m.description === 'PAGO TARJETA' && m.amount === -10,
     )
     expect(repeated).toHaveLength(2)
   })
 
-  it('collects a non-interpretable row in noReconocidas with row number and reason, parsing the rest', async () => {
+  it('collects a non-interpretable row in unparsedRows with row number and reason, parsing the rest', async () => {
     const buffer = await buildStatementXlsx(bankinterSampleFixture())
 
     const result = await parseBankinterXlsx(buffer)
 
-    expect(result.noReconocidas).toEqual([{ fila: 15, motivo: expect.stringContaining('importe') }])
+    expect(result.unparsedRows).toEqual([{ row: 15, reason: expect.stringContaining('importe') }])
     // The healthy rows around the broken one are still parsed.
-    expect(result.movimientos).toHaveLength(5)
-    expect(result.movimientos.some((m) => m.descripcion === 'IMPORTE ILEGIBLE')).toBe(false)
+    expect(result.movements).toHaveLength(5)
+    expect(result.movements.some((m) => m.description === 'IMPORTE ILEGIBLE')).toBe(false)
   })
 
-  it('parses the exact real Bankinter layout (native number importe and saldo)', async () => {
+  it('parses the exact real Bankinter layout (native number amount and balance)', async () => {
     const buffer = await buildStatementXlsx({
       ibanLine: 'MOVIMIENTOS DE LA CUENTA ES1501280074010100032314',
       headers: ['Fecha contable', 'Fecha valor', 'Descripción', 'Importe', 'Saldo', 'Divisa'],
@@ -101,20 +101,20 @@ describe('parseBankinterXlsx', () => {
 
     const result = await parseBankinterXlsx(buffer)
 
-    expect(result.cuentaIban).toBe('ES1501280074010100032314')
-    expect(result.movimientos).toHaveLength(2)
-    expect(result.movimientos[0]).toEqual({
-      fechaContable: '2026-07-31',
-      fechaValor: '2026-07-31',
-      descripcion: 'RECIBO VISA CLASICA',
-      importe: -188.67,
-      saldo: 24627.49,
-      divisa: 'EUR',
-      tipo: 'gasto',
+    expect(result.accountIban).toBe('ES1501280074010100032314')
+    expect(result.movements).toHaveLength(2)
+    expect(result.movements[0]).toEqual({
+      bookingDate: '2026-07-31',
+      valueDate: '2026-07-31',
+      description: 'RECIBO VISA CLASICA',
+      amount: -188.67,
+      balance: 24627.49,
+      currency: 'EUR',
+      type: 'expense',
     })
   })
 
-  it('reports a row with a non-numeric saldo as noReconocida (saldo is required)', async () => {
+  it('reports a row with a non-numeric balance as an unparsed row (balance is required)', async () => {
     const buffer = await buildStatementXlsx({
       headers: ['Fecha contable', 'Fecha valor', 'Descripción', 'Importe', 'Saldo', 'Divisa'],
       rows: [['01/02/2026', '01/02/2026', 'SALDO ROTO', 10, 'no-num', 'EUR']],
@@ -122,11 +122,11 @@ describe('parseBankinterXlsx', () => {
 
     const result = await parseBankinterXlsx(buffer)
 
-    expect(result.movimientos).toHaveLength(0)
-    expect(result.noReconocidas).toEqual([{ fila: 10, motivo: expect.stringContaining('saldo') }])
+    expect(result.movements).toHaveLength(0)
+    expect(result.unparsedRows).toEqual([{ row: 10, reason: expect.stringContaining('saldo') }])
   })
 
-  it('returns an empty IBAN when the preamble line is absent and defaults divisa to empty', async () => {
+  it('returns an empty IBAN when the preamble line is absent and defaults currency to empty', async () => {
     const buffer = await buildStatementXlsx({
       headers: ['Fecha contable', 'Fecha valor', 'Descripción', 'Importe', 'Saldo'],
       rows: [['01/02/2026', '01/02/2026', 'ALGO', 10, 100]],
@@ -134,10 +134,10 @@ describe('parseBankinterXlsx', () => {
 
     const result = await parseBankinterXlsx(buffer)
 
-    expect(result.cuentaIban).toBe('')
-    expect(result.movimientos).toHaveLength(1)
-    // No Divisa column in this variant => divisa defaults to ''.
-    expect(result.movimientos[0].divisa).toBe('')
+    expect(result.accountIban).toBe('')
+    expect(result.movements).toHaveLength(1)
+    // No Divisa column in this variant => currency defaults to ''.
+    expect(result.movements[0].currency).toBe('')
   })
 
   it('throws ValidationError when there is no recognizable header row', async () => {

@@ -1,43 +1,43 @@
-/** Whether a movement is money in (`ingreso`) or money out (`gasto`). */
-export type MovimientoTipo = 'ingreso' | 'gasto'
+/** Whether a movement is money in (`income`) or money out (`expense`). */
+export type ParsedMovementType = 'income' | 'expense'
 
 /**
  * A single parsed movement from a Bankinter statement row. The fields mirror the
  * real Bankinter export columns: `Fecha contable | Fecha valor | Descripción |
  * Importe | Saldo | Divisa` (the parser maps them by header name, not position).
  */
-export interface MovimientoParseado {
+export interface ParsedMovement {
   /** Accounting date, ISO `YYYY-MM-DD`. */
-  fechaContable: string
+  bookingDate: string
   /** Value date, ISO `YYYY-MM-DD`. */
-  fechaValor: string
+  valueDate: string
   /** Description column ("Descripción"). */
-  descripcion: string
+  description: string
   /** Signed amount in euros (negative = money out). */
-  importe: number
+  amount: number
   /** Balance after the movement ("Saldo"), in euros. */
-  saldo: number
+  balance: number
   /** Currency of the movement ("Divisa"), e.g. `'EUR'`; `''` when absent. */
-  divisa: string
-  /** Derived from the sign of `importe`. */
-  tipo: MovimientoTipo
+  currency: string
+  /** Derived from the sign of `amount`. */
+  type: ParsedMovementType
 }
 
 /** A statement row that could not be interpreted; it is reported, never dropped. */
-export interface FilaNoReconocida {
+export interface UnparsedRow {
   /** 1-based row number in the sheet. */
-  fila: number
+  row: number
   /** Human-readable reason the row was not interpretable. */
-  motivo: string
+  reason: string
 }
 
 /** Full result of parsing a Bankinter `.xlsx` statement. */
 export interface BankinterParseResult {
-  banco: 'bankinter'
+  bank: 'bankinter'
   /** IBAN extracted from the metadata preamble; `''` when it cannot be found. */
-  cuentaIban: string
-  movimientos: MovimientoParseado[]
-  noReconocidas: FilaNoReconocida[]
+  accountIban: string
+  movements: ParsedMovement[]
+  unparsedRows: UnparsedRow[]
 }
 
 /** Summary of one local `.xlsx` copy that was parsed and dumped to JSON. */
@@ -45,11 +45,11 @@ export interface ParsedFileSummary {
   bank: string
   year: string
   file: string
-  cuentaIban: string
+  accountIban: string
   /** Number of parsed movements. */
-  movimientos: number
+  movements: number
   /** Number of rows that could not be interpreted. */
-  noReconocidas: number
+  unparsedRows: number
   /** Path of the JSON dump relative to the dump base dir (`<bank>/<year>/<file>.json`). */
   dumpPath: string
 }

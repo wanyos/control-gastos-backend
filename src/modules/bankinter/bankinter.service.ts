@@ -40,9 +40,9 @@ export async function parseLocalBankinterCopies(
           bank: bankName,
           year,
           file,
-          cuentaIban: result.cuentaIban,
-          movimientos: result.movimientos.length,
-          noReconocidas: result.noReconocidas.length,
+          accountIban: result.accountIban,
+          movements: result.movements.length,
+          unparsedRows: result.unparsedRows.length,
           // Logical relative path for the client: always '/', never the OS separator.
           dumpPath: posix.join(bankName, year, `${file}.json`),
         })
