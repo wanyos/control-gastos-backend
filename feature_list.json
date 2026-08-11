@@ -387,6 +387,56 @@
       "status": "done"
     },
     {
+      "id": 10,
+      "name": "myinvestor-statement",
+      "title": "Parser de MyInvestor (1/2): extracto de la cuenta corriente (sin BD)",
+      "intent": {
+        "que_quiero": "Que exista el parser de MyInvestor, mi banco de inversión, en su propio módulo y con el mismo nombre normalizado que su carpeta de Drive, siguiendo la norma de un parser por banco. MyInvestor tiene dos entradas; esta feature hace LA PRIMERA: el extracto de su cuenta corriente, que es una cuenta normal como la de cualquier otro banco: un archivo de texto separado por punto y coma con fecha de operación, fecha de valor, concepto, importe y divisa, y que NO trae columna de saldo. (La segunda entrada, mis productos de inversión, es la feature 13.) Quiero que un archivo mal escrito me diga qué archivo es y qué le pasa, sin que se caigan los demás. Quiero ver el resultado en un JSON local para revisarlo. Nada de guardar en base de datos todavía.",
+        "por_que": "El modelo de datos de inversiones (feature 9) está esperando en la puerta de aprobación y quiero revisarlo junto a este, porque es al definir los archivos cuando se descubre si al modelo le falta o le sobra algo. Ya ha servido: mirando mis muestras se ha confirmado que el efectivo va aparte del valor de mercado, que un depósito trae dos TAE y solo interesa la que se me aplica, y que el extracto de esta cuenta no trae saldo, así que su saldo habrá que calcularlo. Separar 'entender el archivo' de 'guardarlo' me deja pensar la estructura con calma.",
+        "como_se_que_esta_bien": [
+          "MyInvestor tiene su propio módulo de parser, con el mismo nombre normalizado que su carpeta de Drive, y no comparte parser con ningún otro banco.",
+          "Cuando le doy el extracto de la cuenta corriente, obtengo un movimiento estructurado por cada línea, con sus dos fechas, el concepto, el importe con su signo y la divisa.",
+          "Los importes del extracto se interpretan bien aunque en el mismo archivo unos lleven separador de miles y otros no, y las fechas en formato día/mes/año se interpretan bien.",
+          "El extracto no trae saldo, y eso no se disimula: el resultado deja claro que ese dato no viene en el archivo.",
+          "Si un archivo está mal escrito (me dejo un campo, pongo un número que no lo es, o un tipo de producto que no existe), no se pierde en silencio: se reporta aparte diciendo qué archivo y qué está mal, y los demás archivos se parsean igual.",
+          "El parser no calcula nada: los valores que yo escriba son los que salen, aunque no cuadren entre ellos.",
+          "Puedo ver el resultado parseado en un archivo JSON local para revisarlo.",
+          "Parsear dos veces los mismos archivos da exactamente el mismo resultado."
+        ],
+        "que_no_quiero": [
+          "No guardar en base de datos ni tocar el esquema Prisma: la persistencia es otra feature, encima de esta y de la feature 9.",
+          "No hacer un parser compartido entre bancos: cada banco tiene el suyo, según la norma de docs/conventions.md.",
+          "No calcular ningún valor a partir de los otros: se leen tal cual. Tampoco inventar un saldo que el extracto no trae.",
+          "No enlazar todavía los movimientos con los productos de inversión: el extracto trae aportaciones a la cartera, compras del ETF y aperturas de depósito, pero emparejarlas con su producto es de la feature de importación.",
+          "No mover el archivo a procesados/: eso es del import real con persistencia.",
+          "No construir interfaz web (es del frontend, otra sesión).",
+          "No guardar la TAE que no se me aplica ni versionar ningún dato financiero real."
+        ],
+        "delego_en_agente": [
+          "Si el banco se deduce de la carpeta de Drive o va dentro del archivo, y cómo se distingue el extracto de la cuenta de los archivos de producto dentro de la misma carpeta.",
+          "Cómo se reportan los errores de escritura y con qué nivel de detalle, y qué pasa con el resto de archivos cuando uno está roto.",
+          "Cómo se dispara el parseo y dónde se vuelca el JSON local, reutilizando el camino que ya existe en el proyecto en vez de inventar uno nuevo."
+        ]
+      },
+      "acceptance": [
+        "MyInvestor tiene su propio módulo de parser, nombrado con el mismo identificador normalizado que su carpeta de Drive, sin compartir parser con ningún otro banco, y ese módulo alberga sus dos entradas (esta feature construye la del extracto) (deriva de: 'en su propio módulo y con el mismo nombre normalizado que su carpeta de Drive, siguiendo la norma de un parser por banco' + 'tiene dos entradas y esta feature hace las dos')",
+        "El extracto de la cuenta corriente se parsea a un movimiento estructurado por línea, con fecha de operación, fecha de valor, concepto, importe con signo y divisa (deriva de: 'obtengo un movimiento estructurado por cada línea, con sus dos fechas, el concepto, el importe con su signo y la divisa')",
+        "Los importes del extracto se interpretan correctamente tanto si llevan separador de miles como si no, dentro del mismo archivo, y las fechas día/mes/año se interpretan a fecha correcta (deriva de: 'aunque en el mismo archivo unos lleven separador de miles y otros no, y las fechas en formato día/mes/año se interpretan bien')",
+        "El resultado del extracto refleja que este banco NO aporta saldo por movimiento, sin inventarlo ni calcularlo (deriva de: 'el extracto no trae saldo, y eso no se disimula' + 'tampoco inventar un saldo que el extracto no trae')",
+        "El módulo de MyInvestor CONSUME el contrato compartido de src/lib/parsed-statement.ts y NO vuelve a declarar ParsedMovement, UnparsedRow ni ParsedMovementType: solo declara su alias MyinvestorStatementResult = ParsedStatement<'myinvestor'> (deriva de la feature 11, cerrada el 2026-08-11, y de docs/conventions.md §Parsers de banco)",
+        "El saldo y el IBAN, que este banco no aporta, se emiten como null explícito —nunca 0, cadena vacía ni un campo aparte que lo anuncie— conforme al ADR-013 (deriva de: 'el extracto no trae saldo, y eso no se disimula' + el contrato de la feature 11)",
+        "Cada movimiento sale del parser con su daySequence ya puesta, contando desde el más antiguo del bookingDate, sabiendo que MyInvestor exporta 'newest-first' (verificado en la muestra real); las filas no reconocidas no consumen número (deriva de la feature 11: 'la posición la pone ya el parser del banco')",
+        "El tipo ingreso/gasto/neutral se decide llamando al helper único deriveMovementTypeFromAmount, sin reimplementarlo en el módulo (deriva de la feature 11)",
+        "El resultado parseado se vuelca a un archivo JSON local en una ruta gitignoreada del repo, y parsear dos veces los mismos archivos da el mismo resultado (deriva de: 'puedo ver el resultado parseado en un archivo JSON local' + 'parsear dos veces los mismos archivos da exactamente el mismo resultado')",
+        "La feature NO toca la base de datos ni el esquema Prisma, NO enlaza movimientos con productos, NO parsea los JSON de producto (feature 13), NO mueve archivos a procesados/ y NO construye interfaz; el código del parser NO referencia 'prisma' (deriva de los 'que_no_quiero')",
+        "Ningún dato financiero real se versiona: los fixtures son sintéticos y el volcado local va en .gitignore (deriva de: 'ni versionar ningún dato financiero real')",
+        "Cada criterio tiene al menos un test concreto con archivos de ejemplo sintéticos (sin datos financieros reales ni red) mapeado en progress/implementations/myinvestor-statement.md; ./init.sh termina en verde incluida la suite completa; y cualquier dependencia nueva queda documentada en docs/stack.md, con ADR si la decisión lo amerita (deriva del cierre estándar del proyecto)"
+      ],
+      "sdd": true,
+      "status": "done",
+      "_intent_repartido": "Reparto MECÁNICO del intent que el humano escribió para la feature 10 'myinvestor-parser', partida en dos el 2026-08-11 con su aprobación (70 requirements, muy por encima del tope de ~15 de docs/specs.md §2; y los cinco puntos rojos pendientes eran todos del JSON de producto). Las frases son las SUYAS, literales: no se ha reescrito el QUÉ, solo se ha repartido. El 'por_que' se conserva entero en las dos porque explica la decisión común. Historial del corte: specs/myinvestor-statement/CHANGELOG-respec.md."
+    },
+    {
       "id": 11,
       "name": "parsed-movement-contract",
       "title": "Contrato común de movimiento parseado (un solo sitio, no uno por banco)",
@@ -430,6 +480,103 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 12,
+      "name": "import",
+      "title": "Importación: del archivo parseado a la base de datos",
+      "_intent_es_borrador": "⚠️ BORRADOR escrito por el agente el 2026-08-11 a partir de la conversación y de progress/current.md, NO por el humano. El humano lo corrige o lo reescribe y quita este campo. Hasta entonces NO se deriva acceptance ni se lanza spec-author (regla human_writes_intent_first).",
+      "intent": {
+        "que_quiero": "Que lo que los parsers entienden se guarde de verdad en la base de datos. Hoy leo los archivos de Drive, los parseo y el resultado se queda en un JSON local: ninguna línea escribe un movimiento. Quiero que, al importar, los movimientos parseados se guarden en su cuenta, que la cuenta se cree sola cuando el archivo trae IBAN y banco, y que si le faltan esos datos se me avise para crearla a mano en vez de crearla a ciegas. Volver a importar el mismo archivo no debe duplicar nada, y las líneas idénticas legítimas del mismo día se tienen que guardar todas. Y quiero que el archivo se mueva a procesados/ cuando el dato está guardado, no al descargarlo: hoy 'procesado' significa 'descargado', y si falla la importación me quedo sin saberlo.",
+        "por_que": "Es el eslabón que une todo lo que hay hecho y el único que falta para que la aplicación sirva para algo: la conexión con Drive, la estructura de carpetas, la lectura, los parsers y el modelo de datos están, pero no se tocan entre sí. Hasta que esto exista no hay ni un dato real en la base de datos, así que no hay saldos, no hay dashboards y no hay nada que el frontend pueda enseñar.",
+        "como_se_que_esta_bien": [
+          "Importo el extracto de Bankinter que ya tengo descargado y sus movimientos aparecen al listarlos por la API, del más reciente al más antiguo.",
+          "Si la cuenta de ese extracto no existía, se ha creado sola con el IBAN y el banco del archivo, y se me dice con qué datos.",
+          "Si al archivo le falta el IBAN, no se crea ninguna cuenta a ciegas: se me devuelve un error que distingo del resto, para dar de alta la cuenta a mano.",
+          "El saldo de la cuenta sale del saldo que traía la última línea del extracto, no de sumar movimientos.",
+          "Vuelvo a importar el mismo archivo y no se duplica ni un movimiento.",
+          "Un extracto con tres líneas idénticas el mismo día guarda los tres movimientos, no uno.",
+          "El archivo solo aparece en procesados/ después de que sus movimientos estén guardados; si la importación falla, sigue pendiente en Drive y puedo reintentarlo.",
+          "Una línea que el parser no entendió no se pierde en silencio: se me reporta y el resto se importa igual."
+        ],
+        "que_no_quiero": [
+          "No categorizar los movimientos ni asignarles forma de pago: eso son reglas sobre el concepto, en una feature posterior.",
+          "No emparejar las dos piernas de un traspaso ni rellenar transferId: feature posterior.",
+          "No enlazar aportaciones con su producto de inversión (productId): feature posterior.",
+          "No dar por confirmado lo importado: entra como pendiente de revisar y así se queda hasta que exista la pantalla.",
+          "No permitir crear ni borrar movimientos a mano por la API: siguen entrando solo por aquí.",
+          "No construir interfaz web.",
+          "No rehacer la conexión ni la estructura de Drive: se reutilizan.",
+          "No inventar un saldo para el banco que no lo trae."
+        ],
+        "delego_en_agente": [
+          "Cómo se dispara la importación y su forma exacta en la API, sabiendo que hoy la lectura ya expone detección y proceso, y que el frontend quiere un aviso de 'N nuevos' y un botón; que proponga si se reutilizan esos endpoints o nacen otros, y actualice api-contract.md.",
+          "Cómo se retoca el flujo de la feature 5 para que el movimiento a procesados/ pase a ocurrir tras guardar, sin romper la idempotencia que ya tiene.",
+          "Cómo se guardan sin duplicar apoyándose en el índice único parcial que ya existe, y qué se reporta de lo que se descartó por duplicado.",
+          "Qué pasa cuando un archivo importa a medias: si se guarda lo bueno y se reporta el resto, o no se guarda nada; que lo proponga con el trade-off.",
+          "Qué se hace con los archivos de producto de inversión de MyInvestor, sabiendo que su modelo llega en la feature 9: si entran aquí o en una feature aparte; que marque el límite."
+        ]
+      },
+      "sdd": true,
+      "status": "pending"
+    },
+    {
+      "id": 13,
+      "name": "myinvestor-products",
+      "title": "Parser de MyInvestor (2/2): archivos JSON de los productos de inversión (sin BD)",
+      "_intent_repartido": "Reparto MECÁNICO del intent que el humano escribió para la feature 10 'myinvestor-parser', partida en dos el 2026-08-11 con su aprobación (70 requirements, muy por encima del tope de ~15 de docs/specs.md §2; y los cinco puntos rojos pendientes eran todos del JSON de producto). Las frases son las SUYAS, literales: no se ha reescrito el QUÉ, solo se ha repartido. El 'por_que' se conserva entero en las dos porque explica la decisión común. Historial del corte: specs/myinvestor-statement/CHANGELOG-respec.md.",
+      "intent": {
+        "que_quiero": "Que el módulo de MyInvestor —el mismo que ya parsea su extracto en la feature 10— lea también SU SEGUNDA ENTRADA: mis productos de inversión. Un archivo JSON por producto, que preparo yo a mano y dejo en la carpeta del banco en Google Drive, con los campos explícitos que ese tipo de producto necesita. Los productos que tengo son fondos, un ETF, una cartera automatizada y depósitos. De la web del banco puedo sacar, para un fondo, un ETF y la cartera automatizada, el valor de mercado, la ganancia, el tanto por ciento y lo invertido; la cartera trae además el efectivo sin invertir, que queda fuera de cualquier total y es el remanente de mi aportación mensual que aún no se ha invertido. De un depósito puedo sacar su nombre, el importe, la TAE que se me aplica, los intereses brutos y la fecha de vencimiento, pero no la fecha de contratación. La lista exacta de campos la cierro yo antes de implementar; aquí quiero que se proponga a partir de mis muestras reales y que se me marque qué se ha inventado. Quiero que un archivo mal escrito me diga qué archivo es y qué le pasa, sin que se caigan los demás. Quiero ver el resultado en un JSON local para revisarlo. Nada de guardar en base de datos todavía.",
+        "por_que": "El modelo de datos de inversiones (feature 9) está esperando en la puerta de aprobación y quiero revisarlo junto a este, porque es al definir los archivos cuando se descubre si al modelo le falta o le sobra algo. Ya ha servido: mirando mis muestras se ha confirmado que el efectivo va aparte del valor de mercado, que un depósito trae dos TAE y solo interesa la que se me aplica, y que el extracto de esta cuenta no trae saldo, así que su saldo habrá que calcularlo. Separar 'entender el archivo' de 'guardarlo' me deja pensar la estructura con calma.",
+        "como_se_que_esta_bien": [
+          "Hay un archivo JSON por producto de inversión, con sus campos explícitos, y una plantilla documentada por cada tipo de producto que puedo copiar.",
+          "Cuando le doy los archivos de mis productos, obtengo una entrada estructurada por producto, con su tipo y su fecha.",
+          "Cada tipo de producto se lee con los campos que le corresponden: los que fluctúan con su valor de mercado, ganancia, tanto por ciento e invertido, y el depósito con su importe, su TAE, sus intereses y su vencimiento.",
+          "El efectivo sin invertir se guarda como un dato aparte del valor de mercado, no sumado dentro de él.",
+          "Los campos que solo traen algunos productos se pueden omitir sin que el parseo falle.",
+          "Las ganancias y los porcentajes negativos se interpretan como negativos cuando estoy perdiendo.",
+          "Si un archivo está mal escrito (me dejo un campo, pongo un número que no lo es, o un tipo de producto que no existe), no se pierde en silencio: se reporta aparte diciendo qué archivo y qué está mal, y los demás archivos se parsean igual.",
+          "El parser no calcula nada: los valores que yo escriba son los que salen, aunque no cuadren entre ellos.",
+          "Puedo ver el resultado parseado en un archivo JSON local para revisarlo.",
+          "Parsear dos veces los mismos archivos da exactamente el mismo resultado."
+        ],
+        "que_no_quiero": [
+          "No guardar en base de datos ni tocar el esquema Prisma: la persistencia es otra feature, encima de esta y de la feature 9.",
+          "No calcular ningún valor a partir de los otros: se leen tal cual. Tampoco inventar un saldo que el extracto no trae.",
+          "No enlazar todavía los movimientos con los productos de inversión: el extracto trae aportaciones a la cartera, compras del ETF y aperturas de depósito, pero emparejarlas con su producto es de la feature de importación.",
+          "No mover el archivo a procesados/: eso es del import real con persistencia.",
+          "No construir interfaz web (es del frontend, otra sesión).",
+          "No inventar un formato complicado para los JSON: los preparo yo y tienen que ser obvios de escribir y de revisar.",
+          "No dar por cerrada la lista de campos: el agente la propone y la marca, yo la cierro antes de implementar.",
+          "No guardar la TAE que no se me aplica ni versionar ningún dato financiero real."
+        ],
+        "delego_en_agente": [
+          "La propuesta concreta de campos de cada tipo de producto, sacada de mis muestras reales y alineada con el modelo de la feature 9, para que yo la revise y la cierre. Que marque claramente cuáles salen del modelo, cuáles salen de la muestra y cuáles se ha inventado.",
+          "Cómo se nombran los archivos de producto y de dónde sale a qué producto y a qué fecha corresponde cada uno, sabiendo que habrá varios archivos del mismo producto a lo largo del tiempo.",
+          "El formato exacto de números y fechas en los JSON que escribo a mano, sabiendo que en la web del banco los veo como 1.312,72 € y las fechas unas veces con año de cuatro cifras y otras de dos.",
+          "Cómo digo que un producto ya no está (vencido o reembolsado).",
+          "Cómo se reportan los errores de escritura y con qué nivel de detalle, y qué pasa con el resto de archivos cuando uno está roto.",
+          "Cómo se dispara el parseo y dónde se vuelca el JSON local, reutilizando el camino que ya existe en el proyecto en vez de inventar uno nuevo.",
+          "Si al definir los formatos aparece algo que obliga a cambiar el modelo de la feature 9, que lo diga de forma destacada en el spec en vez de forzar el formato para que encaje."
+        ]
+      },
+      "acceptance": [
+        "El parseo de los productos vive en el MISMO módulo de MyInvestor que ya creó la feature 10, sin duplicarlo ni crear un módulo aparte, y reutiliza las piezas comunes que aquella dejó construidas (normalizador de números, servicio y ruta) en vez de rehacerlas (deriva de: 'en su propio módulo... siguiendo la norma de un parser por banco' + del corte acordado el 2026-08-11)",
+        "El formato de los productos es un archivo JSON por producto, con los campos explícitos que ese tipo necesita, y existe una plantilla documentada por cada tipo (deriva de: 'un archivo JSON por producto... con los campos explícitos que ese tipo de producto necesita' + 'una plantilla documentada por cada tipo de producto que puedo copiar')",
+        "El parser de productos devuelve una entrada estructurada por producto, con su tipo y su fecha, y el spec deja explícito de dónde salen ambos (deriva de: 'obtengo una entrada estructurada por producto, con su tipo y su fecha' + 'de dónde sale a qué producto y a qué fecha corresponde cada uno')",
+        "Cada tipo de producto se parsea con los campos que le corresponden —los que fluctúan con valor de mercado, ganancia, tanto por ciento e invertido; el depósito con importe, TAE aplicada, intereses y vencimiento— y la propuesta de campos queda marcada distinguiendo lo que sale del modelo, lo que sale de la muestra y lo inventado (deriva de: 'cada tipo de producto se lee con los campos que le corresponden' + 'que se me marque qué se ha inventado')",
+        "El efectivo sin invertir se guarda como dato independiente del valor de mercado, nunca sumado dentro de él (deriva de: 'el efectivo queda fuera de cualquier total' + 'se guarda como un dato aparte del valor de mercado, no sumado dentro de él')",
+        "Los campos que solo traen algunos productos son opcionales y su ausencia no impide parsear el archivo, y las ganancias y porcentajes negativos se interpretan con su signo (deriva de: 'los campos que solo traen algunos productos se pueden omitir sin que el parseo falle' + 'los negativos se interpretan como negativos cuando estoy perdiendo')",
+        "El parser NO calcula ni corrige ningún valor derivable: los valores escritos son los que devuelve, aunque no cuadren entre ellos (deriva de: 'el parser no calcula nada: los valores que yo escriba son los que salen, aunque no cuadren entre ellos')",
+        "Una entrada mal escrita (campo ausente, número no interpretable, tipo de producto desconocido, fecha inválida o JSON roto) no se pierde: se recoge aparte identificando el archivo y el motivo, y los demás archivos se parsean igual (deriva de: 'se reporta aparte diciendo qué archivo y qué está mal, y los demás archivos se parsean igual')",
+        "El resultado parseado se vuelca a un archivo JSON local en una ruta gitignoreada del repo, y parsear dos veces los mismos archivos da el mismo resultado (deriva de: 'puedo ver el resultado parseado en un archivo JSON local' + 'parsear dos veces los mismos archivos da exactamente el mismo resultado')",
+        "La feature NO toca la base de datos ni el esquema Prisma, NO enlaza movimientos con productos, NO reabre el parseo del extracto (feature 10), NO mueve archivos a procesados/ y NO construye interfaz; el código del parser NO referencia 'prisma' (deriva de los 'que_no_quiero')",
+        "Ningún dato financiero real se versiona: los fixtures son sintéticos y el volcado local va en .gitignore (deriva de: 'ni versionar ningún dato financiero real')",
+        "El spec señala de forma destacada cualquier cambio que los formatos obliguen a hacer en el modelo de la feature 9, o dice explícitamente que no hace falta ninguno (deriva de: 'si aparece algo que obliga a cambiar el modelo de la feature 9, que lo diga de forma destacada')",
+        "Cada criterio tiene al menos un test concreto con archivos de ejemplo sintéticos (sin datos financieros reales ni red) mapeado en progress/implementations/myinvestor-products.md; ./init.sh termina en verde incluida la suite completa; y cualquier dependencia nueva queda documentada en docs/stack.md, con ADR si la decisión lo amerita (deriva del cierre estándar del proyecto)"
+      ],
+      "sdd": true,
+      "status": "spec_ready"
     }
   ]
 }

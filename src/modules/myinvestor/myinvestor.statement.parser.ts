@@ -1,0 +1,176 @@
+import { ValidationError } from '../../errors/app-error.js'
+import { assignDaySequence } from '../../lib/parsed-statement.js'
+import type { ParsedMovementDraft, UnparsedRow } from '../../lib/parsed-statement.js'
+import { deriveMovementTypeFromAmount } from '../movements/movements.service.js'
+import { parseAmountText, parseStatementDate } from './myinvestor.format.js'
+import type { MyinvestorStatementResult } from './myinvestor.types.js'
+
+/** MyInvestor writes the most recent movement first (verified on a real export). */
+const statementOrder = 'newest-first'
+
+const delimiter = ';'
+
+/** Header names (accent/case-insensitive) mapped to the movement fields. */
+type ColumnField = 'bookingDate' | 'valueDate' | 'description' | 'amount' | 'currency'
+
+const headerToField: Record<string, ColumnField> = {
+  'fecha de valor': 'valueDate',
+  concepto: 'description',
+  importe: 'amount',
+  divisa: 'currency',
+}
+
+/**
+ * The only accented column. It is recognized by its ASCII prefix so it survives
+ * a re-export whose accent arrived mangled (`fecha de operaci?n`).
+ */
+const bookingDatePrefix = 'fecha de operaci'
+
+type ColumnMap = Partial<Record<ColumnField, number>>
+
+interface HeaderRow {
+  /** 1-based line number of the header inside the file. */
+  line: number
+  columns: ColumnMap
+  cellCount: number
+}
+
+/**
+ * Parses the content of a MyInvestor bank statement (`.csv`) into structured
+ * movements, WITHOUT touching a database, Drive or moving anything. It is pure:
+ * content in, structured result out.
+ *
+ * The shape it returns is the shared contract of `src/lib/parsed-statement.ts`
+ * (ADR-013), not a MyInvestor-specific model: only the code that READS the file
+ * is this bank's own.
+ *
+ * Two data this bank simply does not report, which are therefore emitted as an
+ * explicit `null` and never invented, calculated or accumulated: the running
+ * balance of each line and the account IBAN.
+ *
+ * The file is decoded explicitly as UTF-8 (with a leading BOM tolerated) and the
+ * header row is located by column name, not by position. Blank lines are
+ * skipped; a line that cannot be interpreted is not dropped but collected in
+ * `unparsedRows` with its 1-based line number (the header being line 1 of the
+ * table) and the reason. It never deduplicates: two identical lines both appear.
+ *
+ * Throws `ValidationError` only for a structural failure (no recognizable header
+ * row), i.e. the file is not a MyInvestor statement.
+ */
+export function parseMyinvestorStatement(content: Buffer): MyinvestorStatementResult {
+  const lines = content
+    .toString('utf8')
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+
+  const header = findHeaderRow(lines)
+  if (!header) {
+    throw new ValidationError('MyInvestor header row not found: not a recognizable statement')
+  }
+
+  const drafts: ParsedMovementDraft[] = []
+  const unparsedRows: UnparsedRow[] = []
+
+  for (let index = header.line; index < lines.length; index++) {
+    const line = lines[index]
+    if (line.trim() === '') {
+      continue
+    }
+    const parsed = parseDataLine(line, header)
+    if ('reason' in parsed) {
+      unparsedRows.push({ row: index + 1, reason: parsed.reason })
+    } else {
+      drafts.push(parsed)
+    }
+  }
+
+  return {
+    bank: 'myinvestor',
+    accountIban: null,
+    // Numbering goes last and only over the parsed rows: a row that ended up in
+    // `unparsedRows` consumes no number (ADR-013).
+    movements: assignDaySequence(drafts, statementOrder),
+    unparsedRows,
+  }
+}
+
+/**
+ * Finds the table header: the first line carrying both a concept and an amount
+ * column (both pure ASCII, so they survive a bad decoding). Returns its 1-based
+ * line number and the map field → cell index, tolerant to the column order.
+ */
+function findHeaderRow(lines: string[]): HeaderRow | null {
+  for (let index = 0; index < lines.length; index++) {
+    const cells = lines[index].split(delimiter)
+    const columns: ColumnMap = {}
+    cells.forEach((cell, position) => {
+      const normalized = normalizeHeader(cell)
+      const field = normalized.startsWith(bookingDatePrefix)
+        ? 'bookingDate'
+        : headerToField[normalized]
+      if (field && columns[field] === undefined) {
+        columns[field] = position
+      }
+    })
+    if (columns.description !== undefined && columns.amount !== undefined) {
+      return { line: index + 1, columns, cellCount: cells.length }
+    }
+  }
+  return null
+}
+
+/** Maps a single data line to a movement, or to a reason it is not interpretable. */
+function parseDataLine(line: string, header: HeaderRow): ParsedMovementDraft | { reason: string } {
+  const cells = line.split(delimiter)
+  if (cells.length !== header.cellCount) {
+    return {
+      reason: `número de columnas inesperado (${cells.length}, se esperaban ${header.cellCount})`,
+    }
+  }
+
+  const problems: string[] = []
+
+  const rawBookingDate = cellAt(cells, header.columns.bookingDate)
+  const bookingDate = parseStatementDate(rawBookingDate)
+  if (bookingDate === null) {
+    problems.push(`fecha de operación inválida ('${rawBookingDate}')`)
+  }
+
+  const rawValueDate = cellAt(cells, header.columns.valueDate)
+  const valueDate = parseStatementDate(rawValueDate)
+  if (valueDate === null) {
+    problems.push(`fecha de valor inválida ('${rawValueDate}')`)
+  }
+
+  const rawAmount = cellAt(cells, header.columns.amount)
+  const amount = parseAmountText(rawAmount)
+  if (amount === null) {
+    problems.push(`importe no interpretable ('${rawAmount}')`)
+  }
+
+  if (bookingDate === null || valueDate === null || amount === null) {
+    return { reason: problems.join('; ') }
+  }
+
+  return {
+    bookingDate,
+    valueDate,
+    // The concept is copied whole: nothing is split out of it, ever.
+    description: cellAt(cells, header.columns.description),
+    amount,
+    // This bank reports no running balance and none is ever invented (R17, R19).
+    balance: null,
+    currency: cellAt(cells, header.columns.currency),
+    // Single point of the sign rule (feature 8): 0 is `neutral`, not an income.
+    type: deriveMovementTypeFromAmount(amount),
+  }
+}
+
+function cellAt(cells: string[], position: number | undefined): string {
+  return position === undefined ? '' : (cells[position] ?? '').trim()
+}
+
+/** Normalizes a header cell: accents stripped, lowercased, spaces collapsed. */
+function normalizeHeader(value: string): string {
+  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+}

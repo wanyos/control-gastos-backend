@@ -540,6 +540,92 @@ Sin cuerpo de petición.
 
 ---
 
+## Parser de MyInvestor (sin base de datos)
+
+> **Feature "myinvestor-statement" (2026-08-11, ADR-014).** Convierte el
+> **extracto CSV de la cuenta corriente** de MyInvestor (la copia local que dejó
+> la ingesta de la f5) en movimientos estructurados, **sin base de datos, sin
+> deduplicar y sin mover nada en Drive**. Devuelve el **mismo contrato**
+> `ParsedMovement` / `ParsedStatement` que Bankinter (ver §Modelo `ParsedMovement`
+> más arriba): el módulo del banco no declara su propia forma de movimiento.
+> El volcado va al mismo `var/parsed/` **gitignoreado**; el endpoint solo expone la
+> ruta relativa `<banco>/<año>/<archivo>.json`. Sin autenticación nueva.
+
+> 📌 **Dos datos que este banco NO aporta y que salen como `null` explícito**
+> (nunca `0`, nunca `""` y **sin ningún campo aparte que lo anuncie** —ADR-013
+> descartó `providesBalance`):
+>
+> - `balance` en **todos** los movimientos: el extracto no trae columna de saldo, y
+>   el parser **no lo calcula ni lo acumula**. Consecuencia para la importación: el
+>   saldo de esta cuenta se obtiene sumando desde `Account.initialBalance` (la rama
+>   que ADR-011 describía como excepcional), así que `initialBalance` es su **único
+>   ancla**.
+> - `accountIban` en el resultado: el archivo no tiene preámbulo ni IBAN, y no se
+>   deduce del nombre del archivo, de la carpeta ni de los conceptos. El alta
+>   automática de cuenta (`MISSING_ACCOUNT_DATA`, 422) **no** puede funcionar con
+>   este extracto: esa cuenta se da de alta **a mano** por `POST /api/accounts`.
+
+Columnas reales del extracto (`;` como separador, UTF-8, BOM tolerado), mapeadas
+**por nombre** de cabecera y no por posición:
+`Fecha de operación | Fecha de valor | Concepto | Importe | Divisa` →
+`bookingDate | valueDate | description | amount | currency`. Los importes se
+interpretan aunque mezclen separador de miles dentro del mismo archivo
+(`-50`, `-7,99`, `-5000`, `-25.000`, `25.149,95`). **No** se deduplica. Una línea no
+interpretable va a `unparsedRows` (`{ row, reason }`, con `row` 1-based contando la
+cabecera) sin detener el resto, y **no consume `daySequence`**.
+
+### `POST /api/parser/myinvestor`
+
+Acción **explícita** de parseo. Recorre las copias locales de MyInvestor
+(`var/drive-read/myinvestor/<año>/`), aplica el parser **por extensión**
+(`.csv` → extracto; cualquier otra → `ignored`) y escribe el resultado de cada
+extracto en `var/parsed/myinvestor/<año>/<archivo>.json`. Read-only respecto a
+Drive y a la base de datos: **no** descarga, **no** mueve, **no** persiste en BD.
+Reejecutarlo sobre los mismos archivos produce **exactamente el mismo resultado**.
+
+Sin cuerpo de petición.
+
+**Respuesta 200**
+```json
+{
+  "parsedCount": 1,
+  "failedCount": 0,
+  "ignoredCount": 1,
+  "statements": [
+    {
+      "bank": "myinvestor",
+      "year": "2026",
+      "file": "extracto.csv",
+      "accountIban": null,
+      "movements": 12,
+      "unparsedRows": 0,
+      "dumpPath": "myinvestor/2026/extracto.csv.json"
+    }
+  ],
+  "failed": [],
+  "ignored": [
+    {
+      "bank": "myinvestor",
+      "year": "2026",
+      "file": "deposito.txt",
+      "reason": "extensión no soportada por este parser ('.txt')"
+    }
+  ]
+}
+```
+
+- `accountIban`: **siempre `null`** en este banco (ver la nota de arriba).
+- `dumpPath`: ruta del JSON volcado **relativa** a la carpeta de volcado local (no
+  se expone la ruta absoluta de la máquina).
+- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un fallo por
+  archivo NO cambia el código HTTP: la respuesta es **200** con el fallo dentro.
+- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
+  no maneja (los `.txt` con notas, y **de momento también los `.json` de producto**,
+  hasta que exista la feature que los lee). **No** son un fallo: son visibles y
+  quedan fuera de la lista de cosas que arreglar.
+
+---
+
 ## Endpoints de operación (no de dominio)
 
 Para monitorización; el frontend no los consume.

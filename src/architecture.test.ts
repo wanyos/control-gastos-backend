@@ -8,6 +8,7 @@ import type { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { buildApp } from './app.js'
+import { normalizeBankName } from './lib/drive-structure.js'
 
 const srcDir = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
@@ -42,6 +43,10 @@ describe('architecture invariants', () => {
       'lib/drive.ts',
       'lib/drive-structure.ts',
       'lib/drive-structure.test.ts',
+      // The parsed-movement contract every bank parser returns (feature 11):
+      // shared shape, never shared format-reading code.
+      'lib/parsed-statement.ts',
+      'lib/parsed-statement.test.ts',
       'plugins/drive.ts',
       'plugins/error-handler.ts',
       'modules/accounts/accounts.routes.ts',
@@ -74,6 +79,24 @@ describe('architecture invariants', () => {
       'modules/bankinter/bankinter.parser.test.ts',
       'modules/bankinter/bankinter.service.test.ts',
       'modules/bankinter/bankinter.routes.test.ts',
+      // Second bank with its own parser module (feature 10): same pattern, its
+      // own format-reading code, the same shared output contract.
+      'modules/myinvestor/myinvestor.format.ts',
+      'modules/myinvestor/myinvestor.statement.parser.ts',
+      'modules/myinvestor/myinvestor.service.ts',
+      'modules/myinvestor/myinvestor.routes.ts',
+      'modules/myinvestor/myinvestor.types.ts',
+      'modules/myinvestor/myinvestor.fixture.ts',
+      'modules/myinvestor/myinvestor.format.test.ts',
+      'modules/myinvestor/myinvestor.statement.parser.test.ts',
+      'modules/myinvestor/myinvestor.service.test.ts',
+      'modules/myinvestor/myinvestor.routes.test.ts',
+      // investments is a partial folder on purpose: feature 9 is schema plus
+      // migration, with no HTTP surface (no routes/service/schema/types).
+      // Precedent: modules/health/. The importer feature will add its service
+      // here, so this list only grows: it checks that a file exists, never that
+      // it is the only one.
+      'modules/investments/investments.model.test.ts',
     ]
 
     const missing = expected.filter((file) => !existsSync(join(srcDir, file)))
@@ -168,6 +191,118 @@ describe('architecture invariants', () => {
 
     for (const file of files) {
       expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
+  it('keeps the myinvestor parser module free of data access (no "prisma" reference)', () => {
+    const files = [
+      'modules/myinvestor/myinvestor.format.ts',
+      'modules/myinvestor/myinvestor.statement.parser.ts',
+      'modules/myinvestor/myinvestor.service.ts',
+      'modules/myinvestor/myinvestor.routes.ts',
+      'modules/myinvestor/myinvestor.types.ts',
+    ]
+
+    for (const file of files) {
+      expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
+  it('shares no parsing code between bank modules (one parser per bank)', () => {
+    const bankModules = ['bankinter', 'myinvestor']
+    const myinvestorDir = join(srcDir, 'modules/myinvestor')
+    // What a bank module may import: vendor/node, its own files, the shared
+    // error classes, `lib/` (the output contract) and the single sign helper of
+    // `modules/movements/`, which is NOT a bank module.
+    const allowedRelative = ['./', '../../errors/', '../../lib/', '../movements/']
+
+    const forbiddenImports = sourceFiles(myinvestorDir)
+      .flatMap((file) =>
+        [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)]
+          .map((match) => match[1])
+          .filter(
+            (specifier) =>
+              specifier.startsWith('.') &&
+              !allowedRelative.some((prefix) => specifier.startsWith(prefix)),
+          )
+          .map((specifier) => `${relative(srcDir, file)} -> ${specifier}`),
+      )
+      .sort()
+
+    expect(forbiddenImports).toEqual([])
+
+    // And no other bank module reaches into it. `app.ts` is the composition
+    // root and registers every module: it is the single expected importer.
+    const outsideImporters = sourceFiles(srcDir)
+      .filter(
+        (file) => !relative(srcDir, file).replace(/\\/g, '/').startsWith('modules/myinvestor/'),
+      )
+      .filter((file) => readFileSync(file, 'utf8').includes('myinvestor'))
+      .map((file) => relative(srcDir, file).replace(/\\/g, '/'))
+
+    expect(outsideImporters).toEqual(['app.ts'])
+    // Neither bank module names the other one.
+    for (const bank of bankModules) {
+      const others = bankModules.filter((name) => name !== bank)
+      for (const file of sourceFiles(join(srcDir, 'modules', bank))) {
+        const source = readFileSync(file, 'utf8')
+        for (const other of others) {
+          expect(source).not.toContain(`modules/${other}`)
+          expect(source).not.toContain(`../${other}/`)
+        }
+      }
+    }
+  })
+
+  it('normalizes the bank name to the slug of its Drive folder and its module', () => {
+    expect(normalizeBankName('MyInvestor')).toBe('myinvestor')
+    expect(existsSync(join(srcDir, 'modules', normalizeBankName('MyInvestor')))).toBe(true)
+  })
+
+  it('declares the parsed movement contract in ONE module only (feature 11)', () => {
+    const contract = 'lib/parsed-statement.ts'
+    const declarations = [
+      /(?:interface|type)\s+ParsedMovement\b/,
+      /(?:interface|type)\s+UnparsedRow\b/,
+      /(?:interface|type)\s+ParsedMovementType\b/,
+    ]
+
+    const offenders = sourceFiles(srcDir)
+      .filter((file) => relative(srcDir, file).replace(/\\/g, '/') !== contract)
+      .filter((file) => {
+        const source = readFileSync(file, 'utf8')
+        return declarations.some((declaration) => declaration.test(source))
+      })
+      .map((file) => relative(srcDir, file))
+
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps the contract free of database and bank-specific knowledge (feature 11)', () => {
+    const contract = readFileSync(join(srcDir, 'lib/parsed-statement.ts'), 'utf8')
+
+    // It is derived from the data model, but it is NOT the data model.
+    expect(contract.toLowerCase()).not.toContain('prisma')
+    expect(contract).not.toContain('accountId')
+    expect(contract).not.toContain('transferId')
+    expect(contract).not.toContain('origin')
+    // And it is not a shared parser: it imports nothing (no bank module, no
+    // spreadsheet library), so no format-reading code can live here.
+    expect(contract).not.toMatch(/^\s*import\s/m)
+  })
+
+  it('takes the income/expense/neutral decision in a single place (feature 11)', () => {
+    const parsers = sourceFiles(join(srcDir, 'modules')).filter((file) =>
+      file.endsWith('.parser.ts'),
+    )
+
+    expect(parsers.length).toBeGreaterThan(0)
+    for (const parser of parsers) {
+      const source = readFileSync(parser, 'utf8')
+      expect(source).toContain('deriveMovementTypeFromAmount')
+      // No parser re-implements the sign rule (this is what used to say
+      // `amount < 0 ? 'expense' : 'income'`).
+      expect(source).not.toMatch(/amount\s*[<>]=?\s*0\s*\?/)
     }
   })
 

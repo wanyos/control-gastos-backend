@@ -790,3 +790,109 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 
 ---
 
+## 2026-08-11 — Feature 10: myinvestor-statement (SDD)
+
+> Informe completo del implementer:
+> [`progress/implementations/myinvestor-statement.md`](implementations/myinvestor-statement.md).
+> Review: [`progress/reviews/myinvestor-statement.md`](reviews/myinvestor-statement.md).
+> Resumen de cierre: [`progress/summaries/myinvestor-statement.md`](summaries/myinvestor-statement.md).
+> Spec: [`specs/myinvestor-statement/`](../specs/myinvestor-statement/decisions.md).
+
+- **Agente:** leader (orquestando) + spec-author (re-especificación y corte) +
+  implementer + reviewer. **SDD**: puerta de aprobación humana pasada el
+  2026-08-11 sobre un `decisions.md` **sin ningún punto 🔴**.
+- **⚠️ La antigua F10 `myinvestor-parser` se partió en dos** (aprobado por el
+  humano; historial en
+  [`CHANGELOG-respec.md`](../specs/myinvestor-statement/CHANGELOG-respec.md)):
+  tenía **70 requirements** —muy por encima del tope de ~15 de `docs/specs.md`
+  §2— y sus cinco puntos rojos pendientes eran **todos** del JSON de producto.
+  - **F10 `myinvestor-statement`** (esta): **el extracto CSV** que genera el
+    banco. Formato que no se elige.
+  - **F13 `myinvestor-products`**: **los JSON de producto**, que escribe el
+    humano a mano y cuyo formato **sí** se diseña. Sigue en `spec_ready`
+    esperando sus cinco 🔴. **Aquí no se escribió ni una línea de eso.**
+  - La numeración `R<n>` **no se tocó** al repartir: los huecos de cada spec son
+    la otra feature, y cada documento dice dónde buscarlos.
+  - Además, la spec se **re-especificó** antes contra el contrato de la F11
+    (fuera `MyinvestorMovement`, `balanceAfter` → `balance`, fuera
+    `providesBalance`, y `daySequence` nueva).
+- **Qué hace:** el backend entiende el **extracto de la cuenta corriente de
+  MyInvestor** (`.csv` separado por `;`) y lo convierte en movimientos
+  estructurados volcados a un JSON local revisable. **Segundo banco con parser
+  propio**: la norma «un parser por banco» pasa de escrita a demostrada.
+  Endpoint `POST /api/parser/myinvestor` (mismo prefijo `/api/parser` que
+  Bankinter). **Sin base de datos, sin Prisma, sin mover nada en Drive y sin
+  interfaz.**
+- **Lo que este banco NO da, dicho en voz alta:** `balance: null` en **todos** los
+  movimientos y `accountIban: null` en el resultado — clave **presente y nula**,
+  nunca `0`, nunca `''` y **sin ningún campo aparte que lo anuncie**
+  (`providesBalance` lo descartó ADR-013). El parser **no acumula ni calcula
+  ningún saldo**, ni en una variable local.
+- **Conformidad con el contrato de la F11:** el módulo **consume**
+  [`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts) y solo declara
+  [`MyinvestorStatementResult = ParsedStatement<'myinvestor'>`](../src/modules/myinvestor/myinvestor.types.ts#L19);
+  emite `daySequence` con `assignDaySequence(drafts, statementOrder)` y
+  [`statementOrder = 'newest-first'`](../src/modules/myinvestor/myinvestor.statement.parser.ts#L9)
+  (verificado sobre la muestra real), con las filas de `unparsedRows` **sin
+  consumir número**; y **importa** `deriveMovementTypeFromAmount` (importe 0 →
+  `neutral`).
+- **Decisiones delegadas (ADR-014 en [`docs/architecture.md`](../docs/architecture.md)):**
+  módulo `src/modules/myinvestor/` (slug de `normalizeBankName`); CSV leído como
+  texto delimitado **sin ninguna librería** (cero dependencias nuevas, y
+  **prohibido** usar el parser de CSV transitivo de `exceljs`); cabecera
+  localizada **por nombre** de columna con prefijo ASCII para la única acentuada;
+  **el banco sale de la carpeta y el parser lo decide la extensión**
+  (`.csv` → extracto; el resto → `ignored[]`); errores por archivo aislados en
+  `failed[]` con respuesta **200**; y volcado determinista en
+  `var/parsed/myinvestor/<año>/` con rutas **relativas**.
+- **Cambios (alto nivel):** 10 archivos nuevos en `src/modules/myinvestor/`
+  (tipos, formato, parser puro, servicio, ruta, fixture sintético y 4 tests);
+  `src/app.ts` registra la ruta; **3 guardianes nuevos** en
+  `src/architecture.test.ts` (módulo sin `prisma`, aislamiento entre módulos de
+  banco, slug = nombre del módulo) y 10 entradas al árbol esperado. Docs:
+  **ADR-014** + árbol, `docs/api-contract.md` con el endpoint y el modelo, y
+  **`docs/dar-de-alta-un-banco.md` gana el paso que le faltaba**: dar de alta un
+  banco obliga a crear **su módulo de parser**.
+- **Piezas que la F13 va a consumir y que quedan construidas con el nombre y la
+  ubicación que su spec da por hechos** (verificado por el reviewer, su spec no
+  queda mintiendo): `parseAmountText` en `myinvestor.format.ts`, el recorrido +
+  `failed[]` + `ignored[]` + aislamiento + determinismo en
+  `myinvestor.service.ts`, la ruta en `myinvestor.routes.ts` y
+  `FailedFile`/`IgnoredFile` en `myinvestor.types.ts`.
+- **Verificación:** `./init.sh` en verde — **280 tests en 22 ficheros** (línea
+  base 233/18: **+47 tests, +4 ficheros**). `lint`, `format:check` y `typecheck`
+  también verdes. **Sin dependencias, sin variables de entorno y sin tocar Prisma
+  ni la base de datos.** Fixtures **sintéticos**, sin red: ningún dato financiero
+  real se versiona.
+- **Cierre:** reviewer **APROBADO con cero cambios requeridos**; feature 10
+  marcada `done`. Verificó a mano la aritmética de `daySequence` contra el
+  fixture, confirmó el `'newest-first'` sobre la muestra real y juzgó que el test
+  que lee el fuente del parser **vale y no es tautológico** (cubre el acumulador
+  local que un test de salida no puede ver). Dio la razón a las dos declaraciones
+  del implementer.
+- **Cuatro anotaciones NO bloqueantes del reviewer — deuda conocida, no
+  despistes:**
+  1. **Redacción de R2.** Pide un guardián de que «ningún archivo de `src/`
+     importa `modules/myinvestor/`», lo que **contradice su propio `design.md`
+     §1 y R51** (la ruta hay que registrarla en `app.ts`). El guardián
+     implementado exige que el **único** importador externo sea `app.ts` y que
+     ningún módulo de banco nombre a otro. El defecto es del spec, no del código.
+  2. **`error` vs `reason`.** Bankinter devuelve los fallos con la clave `error`
+     y MyInvestor con `reason` (lo que pedía el spec). Unificarlo exigía tocar el
+     módulo de Bankinter, que las tasks prohibían: **se hizo bien en no tocarlo**.
+     Conviene unificarlo la próxima vez que se toque ese endpoint, **antes** de
+     que el frontend consuma los dos.
+  3. **Un `;` dentro de un campo** se reporta como «número de columnas
+     inesperado» en `unparsedRows` en vez de parsearse (no hay soporte de
+     comillas). Visible, no silencioso; anotado en el ADR-014 para reevaluarlo
+     con el caso real delante.
+  4. **Matiz del `row` 1-based:** el número que se reporta es el de **línea del
+     archivo**, así que con un preámbulo por delante no coincide con «la enésima
+     fila de datos». Es lo que se quería (coincide con lo que ve el humano al
+     abrir el archivo), pero conviene tenerlo presente al leer un `reason`.
+- **Consecuencias operativas para el humano (siguen en pie):** sin IBAN, **la
+  cuenta corriente de MyInvestor hay que darla de alta a mano** por
+  `POST /api/accounts` (`findOrCreateAccountFromMetadata` devolvería
+  `MISSING_ACCOUNT_DATA`, 422); y sin saldo en el archivo, **`initialBalance` es
+  el único ancla** del saldo de esa cuenta — la rama que ADR-011 describía como
+  excepcional pasa a ser la normal para este banco.

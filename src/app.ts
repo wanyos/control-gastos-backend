@@ -7,6 +7,7 @@ import categoriesRoutes from './modules/categories/categories.routes.js'
 import healthRoutes from './modules/health/health.routes.js'
 import ingestaRoutes from './modules/ingesta/ingesta.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
+import myinvestorRoutes from './modules/myinvestor/myinvestor.routes.js'
 import drivePlugin from './plugins/drive.js'
 import errorHandlerPlugin from './plugins/error-handler.js'
 import prismaPlugin from './plugins/prisma.js'
@@ -36,6 +37,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(movementsRoutes, { prefix: '/api/movements' })
   app.register(ingestaRoutes, { prefix: '/api/ingesta' })
   app.register(bankinterRoutes, { prefix: '/api/parser' })
+  app.register(myinvestorRoutes, { prefix: '/api/parser' })
 
   return app
 }

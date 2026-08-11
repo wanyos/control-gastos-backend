@@ -1,0 +1,97 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
+/**
+ * Test helper (not a test): builds a synthetic MyInvestor-shaped statement CSV
+ * in memory. Every figure, concept and account number here is INVENTED: no real
+ * bank data is ever copied into the repository (the real samples live in the
+ * gitignored `var/drive-read/`), and no test touches the network.
+ *
+ * The layout mirrors the real export: `;` as the delimiter, five columns, UTF-8,
+ * `\n` line endings and no balance column.
+ */
+
+/** The five columns of the real export, in the order the bank writes them. */
+export const myinvestorHeaders = [
+  'Fecha de operación',
+  'Fecha de valor',
+  'Concepto',
+  'Importe',
+  'Divisa',
+]
+
+/** A data row, or `null` for a blank line. */
+export type CsvRow = string[] | null
+
+export interface StatementCsvFixture {
+  /** Prepend the UTF-8 BOM, as some re-exports do. */
+  bom?: boolean
+  /** Lines written before the header row (to move the header off line 1). */
+  preamble?: string[]
+  /** Header cells; defaults to the five real column names. */
+  headers?: string[]
+  /** Data rows; `null` writes a blank line. */
+  rows?: CsvRow[]
+  /** End the file with a newline, as the real export does. Default `true`. */
+  trailingNewline?: boolean
+}
+
+export function buildStatementCsv(fixture: StatementCsvFixture = {}): Buffer {
+  const lines = [
+    ...(fixture.preamble ?? []),
+    (fixture.headers ?? myinvestorHeaders).join(';'),
+    ...(fixture.rows ?? myinvestorSampleRows()).map((row) => (row === null ? '' : row.join(';'))),
+  ]
+  const text = lines.join('\n') + (fixture.trailingNewline === false ? '' : '\n')
+  return Buffer.from(`${fixture.bom ? '\uFEFF' : ''}${text}`, 'utf8')
+}
+
+/**
+ * The canonical synthetic rows used across the tests, in the direction the bank
+ * exports (most recent first). They cover every acceptance criterion:
+ * - the five numeric shapes that coexist in one file (`-50`, `-7,99`, `-5000`,
+ *   `-25.000`, `25.149,95`),
+ * - three movements of the SAME booking date, plus a fourth unreadable row of
+ *   that same day (so it can be proved it consumes no `daySequence`),
+ * - two identical rows (no deduplication),
+ * - an accented concept with `€` (UTF-8 decoding),
+ * - a concept with a contract number and double spaces (copied verbatim),
+ * - an amount of `0` (which must become `neutral`),
+ * - an impossible calendar date (`31/02`),
+ * - a concept holding an IBAN-shaped string (which must NOT become the
+ *   `accountIban`).
+ */
+export function myinvestorSampleRows(): CsvRow[] {
+  return [
+    ['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR'],
+    ['12/03/2026', '12/03/2026', 'IMPORTE ILEGIBLE', 'mil trescientos', 'EUR'],
+    ['12/03/2026', '13/03/2026', 'SUSCRIPCIÓN AÑO PREMIUM €', '-7,99', 'EUR'],
+    ['12/03/2026', '12/03/2026', 'TRASPASO  0000000000000  ORDEN', '-25.000', 'EUR'],
+    null,
+    ['10/03/2026', '10/03/2026', 'ABONO NOMINA FICTICIA', '25.149,95', 'EUR'],
+    ['09/03/2026', '09/03/2026', 'PAGO DUPLICADO PRUEBA', '-5000', 'EUR'],
+    ['09/03/2026', '09/03/2026', 'PAGO DUPLICADO PRUEBA', '-5000', 'EUR'],
+    ['08/03/2026', '08/03/2026', 'AJUSTE A CERO', '0', 'EUR'],
+    ['07/03/2026', '31/02/2026', 'FECHA IMPOSIBLE', '-1', 'EUR'],
+    ['06/03/2026', '06/03/2026', 'TRANSFERENCIA A ES0012345678901234567890', '-12,34', 'EUR'],
+  ]
+}
+
+/** The canonical fixture: header on line 1, the sample rows below it. */
+export function myinvestorSampleFixture(): StatementCsvFixture {
+  return { rows: myinvestorSampleRows() }
+}
+
+/** Writes a local copy where the drive-read feature would leave it. */
+export async function writeLocalCopy(
+  sourceBaseDir: string,
+  year: string,
+  file: string,
+  content: Buffer | string,
+): Promise<string> {
+  const dir = join(sourceBaseDir, 'myinvestor', year)
+  await mkdir(dir, { recursive: true })
+  const path = join(dir, file)
+  await writeFile(path, content)
+  return path
+}

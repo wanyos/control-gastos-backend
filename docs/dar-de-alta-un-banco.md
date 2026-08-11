@@ -63,6 +63,47 @@ await createBank(app.drive, app.config.driveRootFolderId, 'santander')
 > quieres ejecutarlo suelto, un `tsx` de usar y tirar que construya la app y
 > llame a `createBank` sirve como smoke manual.
 
+## Después de la carpeta: crear el módulo de parser de ese banco (código)
+
+> Añadido el 2026-08-11 con la feature 10 (`myinvestor-statement`), el **segundo
+> banco** del repo y el primer caso que lo demuestra. La regla ya estaba escrita en
+> [`docs/conventions.md` §Parsers de banco](conventions.md#parsers-de-banco);
+> lo que faltaba era este paso operativo.
+
+La carpeta de Drive solo resuelve **dónde se dejan** los archivos. Para que el
+backend sepa **leerlos**, ese banco necesita **su propio módulo de parser**:
+
+```
+src/modules/<banco>/          ← mismo slug que la carpeta de Drive
+  <banco>.<entrada>.parser.ts #   parser puro: Buffer -> resultado (sin BD, sin Drive)
+  <banco>.format.ts           #   números/fechas de ESE banco (si los necesita)
+  <banco>.service.ts          #   recorre var/drive-read/<banco>/<año>/ y vuelca JSON
+  <banco>.routes.ts           #   POST /api/parser/<banco>
+  <banco>.types.ts            #   SOLO lo suyo (ver abajo)
+  <banco>.fixture.ts          #   fixtures SINTÉTICOS en memoria (nunca datos reales)
+```
+
+Tres reglas que no se negocian:
+
+1. **Ningún banco hereda el parser de otro.** El código que **lee el formato** no
+   se comparte: el formato de cada banco cambia sin avisar y un parser compartido
+   convierte el cambio de uno en una regresión para todos.
+2. **La forma de la salida SÍ es común.** El módulo **consume** el contrato de
+   [`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts) (ADR-013) y
+   **no** vuelve a declarar `ParsedMovement`, `UnparsedRow` ni
+   `ParsedMovementType`: solo su alias `<Banco>StatementResult =
+   ParsedStatement<'<banco>'>`. Hay un guardián en
+   [`src/architecture.test.ts`](../src/architecture.test.ts) que rechaza una
+   segunda declaración.
+3. **Lo que el banco no aporta es `null` explícito** (nunca `0` ni `""`), la
+   posición dentro del día la emite el parser con
+   [`assignDaySequence`](../src/lib/parsed-statement.ts#L96), y el tipo
+   ingreso/gasto/neutral se decide **importando**
+   [`deriveMovementTypeFromAmount`](../src/modules/movements/movements.service.ts#L33).
+
+Ejemplos vivos que se pueden copiar tal cual: `src/modules/bankinter/` (`.xlsx`,
+ADR-010) y `src/modules/myinvestor/` (`.csv`, ADR-014).
+
 ## Reglas del nombre de banco (las aplica `normalizeBankName`)
 
 El backend normaliza la entrada antes de usarla como nombre de carpeta:

@@ -88,6 +88,20 @@ src/
       bankinter.types.ts   #   SOLO lo suyo: BankinterParseResult = ParsedStatement<'bankinter'>
                            #   + resúmenes de su ejecución local (ADR-013)
       bankinter.fixture.ts #   helper de test: genera .xlsx sintético en memoria (exceljs)
+    myinvestor/            # parser del extracto .csv de MyInvestor (myinvestor-statement)
+      myinvestor.format.ts #   números y fechas de ESTE banco (compartido solo dentro)
+      myinvestor.statement.parser.ts # parser puro (buffer .csv -> movimientos), sin BD/Drive
+      myinvestor.service.ts #  lee copias locales de la f5, parsea y vuelca JSON (read-only)
+      myinvestor.routes.ts #   POST /api/parser/myinvestor
+      myinvestor.types.ts  #   SOLO lo suyo: MyinvestorStatementResult =
+                           #   ParsedStatement<'myinvestor'> + resúmenes de ejecución (ADR-014)
+      myinvestor.fixture.ts #  helper de test: genera el CSV sintético en memoria
+    investments/           # inversiones: productos y su valoración (ADR-012)
+      investments.model.test.ts  # CARPETA PARCIAL a propósito: la f9 es esquema +
+                                 #   migración, sin superficie HTTP (precedente:
+                                 #   health/). La completará la feature de
+                                 #   importación con su *.service.ts, y más
+                                 #   adelante las rutas de patrimonio.
   generated/prisma/      # cliente Prisma generado (no se versiona)
 ```
 
@@ -934,6 +948,117 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     `providesBalance`): se re-espeficará contra este contrato antes de implementarse,
     que es el orden acordado (F11 → F10).
   - **Sin dependencias, sin variables de entorno y sin tocar Prisma ni la BD.**
+
+### ADR-014: Parser del extracto de MyInvestor — módulo por banco, CSV leído sin librería, sin saldo y sin IBAN
+
+- **Fecha:** 2026-08-11
+- **Estado:** aceptada (implementada en la feature #10, spec re-especificado contra
+  el contrato de la F11 y **cortado** en dos: los archivos JSON de producto son la
+  F13 `myinvestor-products`)
+- **Contexto:** **segundo banco del repo con parser propio** y primero con **varias
+  entradas** (la segunda, los archivos de producto, la trae la F13). La norma
+  «Parsers de banco» de `docs/conventions.md` ya fija el módulo por banco y, desde
+  el 2026-08-11, **una única forma de salida** (ADR-013). De las decisiones que el
+  `intent` delegó, este ADR resuelve las del extracto: banco por carpeta o por
+  contenido, taxonomía de errores del servicio, disparo y volcado, y dependencias.
+  **Premisa que lo condiciona todo:** el extracto lo **genera el banco** y hay que
+  aceptarlo como viene (fechas `dd/mm/aaaa`, separador de miles a medias, ninguna
+  columna de saldo). No hay formato que elegir.
+- **Decisión:**
+  1. **Módulo [`src/modules/myinvestor/`](../src/modules/myinvestor/myinvestor.statement.parser.ts)**
+     (slug de [`normalizeBankName`](../src/lib/drive-structure.ts#L66)), con su
+     parser puro del extracto, su servicio, su ruta y un normalizador de números y
+     fechas compartido **solo dentro del banco**
+     ([`myinvestor.format.ts`](../src/modules/myinvestor/myinvestor.format.ts)),
+     que la F13 reutilizará y ampliará. Disjunto de `src/modules/investments/`
+     (feature 9). **El módulo no declara la forma de un movimiento parseado:
+     consume el contrato de ADR-013** y solo declara
+     [`MyinvestorStatementResult = ParsedStatement<'myinvestor'>`](../src/modules/myinvestor/myinvestor.types.ts#L19)
+     y los resúmenes de su ejecución local.
+  2. **El extracto se lee como texto delimitado por `;`, decodificado
+     explícitamente como UTF-8** (con BOM tolerado), con la **cabecera localizada
+     por nombre** de columna (insensible a mayúsculas/acentos, y con **prefijo
+     ASCII** `fecha de operaci` para la única columna acentuada, que así sobrevive a
+     un acento corrompido) y **no por posición**.
+  3. **Este banco no da saldo ni IBAN.** Cada movimiento sale con `balance: null` y
+     el resultado con `accountIban: null`, que es la representación que ADR-013 fija
+     para "no viene en el fichero". **Sin campo `providesBalance`** (ADR-013 lo
+     descartó: duplicaría el mismo hecho). **El parser no inventa ni calcula el
+     saldo**, ni siquiera en una variable local. Consecuencia para la importación:
+     la rama de ADR-011 que suma desde `Account.initialBalance` —pensada como
+     excepcional— es el **camino normal** de esta cuenta, y la cuenta habrá que
+     **crearla a mano** (sin IBAN, `findOrCreateAccountFromMetadata` devuelve
+     `MISSING_ACCOUNT_DATA`).
+  4. **Una única regla de números para todo el banco**
+     ([`parseAmountText`](../src/modules/myinvestor/myinvestor.format.ts#L28)): con
+     coma → decimal español; sin coma y con puntos cada tres dígitos → miles; en
+     otro caso, punto decimal. El caso ambiguo (`1.500`) se resuelve como **mil
+     quinientos** porque el error de esa elección es visible a simple vista y el
+     contrario (`25.000` → 25) borraría tres ceros en silencio. Vive **dentro** del
+     módulo y **no sube a `src/lib/`**.
+  5. **Qué parser aplica se decide por la extensión** (`.csv` → extracto; el resto →
+     `ignored[]`), y **el banco sale de la carpeta** (`<banco>/<año>/`), nunca del
+     contenido: mirar dentro obligaría a adivinar antes de decidir y crearía una
+     segunda fuente de verdad frente a la carpeta.
+  6. **Errores por archivo y aislados**: `failed[]` (archivo no interpretable),
+     `ignored[]` (extensión que este parser no maneja: los `.txt` con notas y, de
+     momento, los `.json` de producto) y `unparsedRows[]` (líneas del extracto, con
+     su número 1-based y su motivo). Respuesta **200** con los fallos dentro:
+     el 200 dice "el proceso corrió", los `failed[]` dicen qué no salió. **Ninguna
+     subclase de error nueva** (`ValidationError` se usa dentro del parser puro para
+     el fallo estructural y el servicio lo convierte en una entrada de `failed[]`).
+  7. **Cero dependencias nuevas**: `split(';')`. El archivo no usa comillas ni
+     escapes. Queda **prohibido** usar el parser de CSV que llega como dependencia
+     **transitiva** de `exceljs`: no está en `package.json` y una actualización
+     ajena rompería este parser.
+  8. **Disparo y volcado por el camino existente:** `POST /api/parser/myinvestor`
+     bajo el prefijo `/api/parser` que ya existía, origen
+     `var/drive-read/myinvestor/<año>/`, volcado `var/parsed/myinvestor/<año>/` con
+     `<archivo>.json` por extracto y rutas **relativas** en la respuesta.
+     Determinismo: años y archivos recorridos **ordenados** y serialización estable.
+  9. **MyInvestor exporta `'newest-first'`** (verificado sobre la muestra real: las
+     fechas de operación bajan de `06/08/2026` a `08/07/2026`). Ese argumento es lo
+     único que aporta el banco a
+     [`assignDaySequence`](../src/lib/parsed-statement.ts#L96). **Solo se numeran
+     las filas parseadas**: las de `unparsedRows` no consumen número. Y la regla del
+     signo **se importa, no se copia**
+     ([`deriveMovementTypeFromAmount`](../src/modules/movements/movements.service.ts#L33)),
+     de modo que el importe 0 sale `neutral` por el mismo camino que en Bankinter.
+- **Alternativas consideradas:**
+  - **Agrupar el parser por recurso funcional (`modules/investments/`) en vez de por
+    banco:** descartada — contradice la norma vigente y partiría en dos módulos las
+    **dos entradas del mismo banco**, que llegan por la misma carpeta de Drive, se
+    disparan juntas y comparten el normalizador de números.
+  - **Añadir un parser de CSV (`csv-parse`, `papaparse`):** sería lo correcto con
+    comillas, campos multilínea o delimitadores variables. Este archivo no los
+    tiene. Si algún día un concepto trae un `;`, esa línea cae en `unparsedRows` con
+    su motivo —**visible, no silenciosa**— y se reevalúa con el caso real delante.
+  - **Mirar el contenido en vez de la extensión** para decidir qué parser aplica:
+    funciona, pero convierte un archivo corrupto en "no sé ni qué querías que fuera
+    esto"; con la extensión el motivo es accionable.
+  - **Subcarpetas en Drive (`extracto/`, `productos/`):** cambiaría la estructura que
+    fijaron las features 4 y 5 y obligaría a tocar la ingesta. Coste
+    desproporcionado para distinguir dos extensiones.
+  - **Campo `providesBalance: false`** (lo que proponía el spec original): descartado
+    ya por ADR-013.
+- **Consecuencias:**
+  - **Sin dependencias, sin variables de entorno y sin migración.** `docs/stack.md`
+    no cambia; `.gitignore` tampoco (`var/drive-read/` y `var/parsed/` ya están
+    cubiertos con sus dos guardianes).
+  - **Segundo banco con parser propio**: la norma «un parser por banco» pasa de
+    escrita a demostrada, y `docs/dar-de-alta-un-banco.md` gana el paso que le
+    faltaba (crear el módulo de parser).
+  - **Tres guardianes nuevos** en [`architecture.test.ts`](../src/architecture.test.ts):
+    el módulo sin `prisma`, el aislamiento entre módulos de banco (solo se permiten
+    imports de `errors/`, `lib/`, del propio módulo, de vendor y del helper único del
+    signo en `modules/movements/`; `app.ts` es el único importador externo por ser la
+    raíz de composición) y el slug del banco igual al nombre de su módulo.
+  - **Límite conocido:** una línea del CSV con un `;` dentro de un campo se reporta
+    como no interpretable (número de columnas inesperado) en vez de parsearse.
+  - **La F13 amplía este módulo**, no lo duplica: añade el parser de productos, una
+    función de fecha ISO a `myinvestor.format.ts` y una rama `.json` al servicio.
+  - **Contrato con la feature de importación:** para este banco tendrá que (a) no
+    esperar saldo y (b) no esperar IBAN.
 
 ## Qué NO hacer
 
