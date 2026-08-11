@@ -15,9 +15,12 @@ y coordinar**, nunca implementar.
 2. Lee `docs/stack.md` para entender el entorno técnico (lenguaje, framework,
    versiones).
 3. Lee `feature_list.json` y `progress/current.md`.
-4. Si existe `docs/related-projects.md` con contenido real (no solo TEMPLATE),
+4. Lee `docs/roadmap.md`: te dice en qué etapa del recorrido cae la tarea, qué
+   cabos sueltos están abiertos y cuáles no tienen dueño todavía. Si la tarea
+   resuelve uno, dilo al humano al arrancar.
+5. Si existe `docs/related-projects.md` con contenido real (no solo TEMPLATE),
    léelo: el cambio puede afectar a proyectos hermanos.
-5. Ejecuta `./init.sh`. Si falla, paras y reportas.
+6. Ejecuta `./init.sh`. Si falla, paras y reportas.
 
 ## El humano es dueño del QUÉ (regla previa a todo lo demás)
 
@@ -70,11 +73,21 @@ Mira el status de la primera feature no-`done` / no-`blocked` en
 
 1. Lanza **1 subagente `spec-author`**.
 2. El `spec-author` redacta
-   `specs/<name>/{requirements.md, design.md, tasks.md}` y cambia el status
-   a `spec_ready`.
-3. **PARAS**. No lanzas implementer. Tu mensaje al humano:
-   > "Spec listo en `specs/<name>/`. Revísalo y di **'aprobado'** para
-   > continuar con la implementación, o pídeme cambios."
+   `specs/<name>/{decisions.md, requirements.md, design.md, tasks.md}` y cambia
+   el status a `spec_ready`.
+3. **PARAS**. No lanzas implementer. Tu mensaje al humano enlaza
+   **`decisions.md` y solo ese**:
+   > "Decisiones en `specs/<name>/decisions.md` — una página. Di **'aprobado'**
+   > o dime qué cambiar. Los otros tres archivos son material del implementer;
+   > no hace falta que los abras."
+
+   ❌ **Nunca le pidas al humano que lea `requirements.md`, `design.md` o
+   `tasks.md`.** Si necesita más detalle de una decisión, se lo resumes tú.
+
+4. **Si pide cambios:** el `spec-author` los aplica y devuelve un **changelog de
+   cinco líneas**. Tú le pasas ese changelog, no el documento reescrito. Releer
+   una spec entera por una aclaración es lo que hace que el método se sienta
+   interminable (`docs/specs.md` §Las cuatro reglas de revisabilidad).
 
 ### Caso B — status == `pending` SIN `"sdd": true`
 

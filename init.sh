@@ -157,7 +157,7 @@
 #   "$PYBIN" - <<'PY'
 # import json, sys
 # try:
-#     with open("feature_list.json") as fp:
+#     with open("feature_list.json", encoding="utf-8") as fp:
 #         data = json.load(fp)
 #     valid = {"pending", "in_progress", "done", "blocked"}
 #     features = data.get("features", [])
@@ -422,7 +422,10 @@ if [ -n "$PYBIN" ]; then
   "$PYBIN" - <<'PY'
 import json, os, sys
 try:
-    with open("feature_list.json") as fp:
+    # encoding explícito: feature_list.json es UTF-8, pero en Windows el
+    # encoding por defecto de Python es cp1252, que decodifica mal las tildes
+    # y revienta con cualquier carácter fuera de su tabla.
+    with open("feature_list.json", encoding="utf-8") as fp:
         data = json.load(fp)
     valid = {"pending", "spec_ready", "in_progress", "done", "blocked"}
     features = data.get("features", [])
@@ -438,7 +441,13 @@ try:
             sys.exit(1)
         if f.get("sdd") and f.get("status") in requires_spec:
             spec_dir = os.path.join("specs", f.get("name", ""))
-            for fname in ("requirements.md", "design.md", "tasks.md"):
+            required = ["requirements.md", "design.md", "tasks.md"]
+            # decisions.md es la hoja de revisión del humano: se exige mientras la
+            # feature está en la puerta o en curso. Las cerradas antes de que
+            # existiera la regla no se tocan.
+            if f.get("status") in ("spec_ready", "in_progress"):
+                required.insert(0, "decisions.md")
+            for fname in required:
                 if not os.path.isfile(os.path.join(spec_dir, fname)):
                     spec_errors.append(
                         f"feature {f.get('id')} ({f.get('name')}) en "
@@ -480,7 +489,14 @@ elif command -v node >/dev/null 2>&1; then
         }
         if (f.sdd && requiresSpec.has(f.status)) {
           const specDir = path.join("specs", f.name || "");
-          for (const fname of ["requirements.md", "design.md", "tasks.md"]) {
+          const required = ["requirements.md", "design.md", "tasks.md"];
+          // decisions.md es la hoja de revisión del humano: se exige mientras la
+          // feature está en la puerta o en curso. Las cerradas antes de que
+          // existiera la regla no se tocan.
+          if (f.status === "spec_ready" || f.status === "in_progress") {
+            required.unshift("decisions.md");
+          }
+          for (const fname of required) {
             if (!fs.existsSync(path.join(specDir, fname))) {
               specErrors.push(`feature ${f.id} (${f.name}) en ${f.status} sin ${specDir}/${fname}`);
             }

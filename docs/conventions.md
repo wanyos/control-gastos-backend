@@ -19,6 +19,15 @@
 - **Prosa de la documentación:** los `docs/` se redactan en español (idioma de
   trabajo); solo los identificadores de código, rutas y modelos citados en ellos
   van en inglés.
+- **Todo se lee en UTF-8, siempre declarado.** Los `.md`, `.json` y `.sh` del
+  repositorio son UTF-8 y el contenido en español lleva **tildes con
+  normalidad**. La única condición es que **todo script o herramienta que lea un
+  fichero del repo declare el encoding explícitamente**, sin confiar nunca en el
+  del sistema: en Windows el de Python es `cp1252` y decodifica mal las tildes
+  (revienta con cualquier carácter fuera de su tabla). Portada del frontend el
+  2026-08-11, después de que `init.sh` fallara al validar `feature_list.json`.
+  La causa se ataca en el lector (`open(..., encoding="utf-8")`,
+  `init.sh:425`), no evitando caracteres en el contenido.
 - **Nombres de archivos y carpetas SIEMPRE en inglés** (decidido 2026-07-11),
   incluidos los artefactos del harness y los `name` de las features en
   `feature_list.json`. La única excepción sigue siendo la prosa (contenido)
@@ -119,6 +128,27 @@ class NotFoundError extends AppError {
 ## Estructura de carpetas (recordatorio)
 
 > Coherente con `docs/architecture.md`. Si hay conflicto, manda architecture.md.
+
+## Parsers de banco
+
+> **Norma global** (decidida 2026-08-10). Aplica a todo fichero que entre por
+> Drive, tanto si lo genera el banco como si lo escribe el humano.
+
+- **Un parser por banco, sin excepciones.** Cada banco tiene su módulo
+  `src/modules/<banco>/`, donde `<banco>` es el mismo nombre normalizado que su
+  carpeta de Drive (`normalizeBankName`, `src/lib/drive-structure.ts:52`). No
+  existen parsers "genéricos" compartidos entre bancos.
+- **Un banco puede tener varias entradas.** Un mismo módulo lee todos los
+  formatos que ese banco aporta —por ejemplo un `.xlsx` de movimientos de la
+  cuenta corriente y varios `.json` de productos de inversión—. Lo que no se
+  comparte es el parser **entre** bancos; **dentro** de un banco, sí.
+- **Por qué:** el formato de cada banco evoluciona por su cuenta y sin avisar.
+  Un parser compartido convierte el cambio de un banco en una regresión para
+  todos los demás; uno por banco deja el daño contenido en su módulo y en su
+  suite, y permite borrar un banco entero sin tocar el resto.
+- **Consecuencia al dar de alta un banco:** además de crear su carpeta en Drive
+  (`docs/dar-de-alta-un-banco.md`), hace falta su propio módulo de parser.
+  Ningún banco hereda el de otro.
 
 ## Comentarios
 

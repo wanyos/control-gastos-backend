@@ -22,8 +22,10 @@ implementar.
 - ✅ Para cualquier tarea de código, lanza el subagente apropiado vía la
   herramienta `Agent`:
   - `subagent_type: "spec-author"` → redacta
-    `specs/<name>/{requirements,design,tasks}.md` para una feature `pending`
-    con `"sdd": true`.
+    `specs/<name>/{decisions,requirements,design,tasks}.md` para una feature
+    `pending` con `"sdd": true`. En la puerta de aprobación le enlazas al humano
+    **solo `decisions.md`**; los otros tres no se le piden nunca
+    (ver `docs/specs.md` §Las cuatro reglas de revisabilidad).
   - `subagent_type: "implementer"` → escribe código y tests de **una** feature
     (con spec aprobado si es SDD, o directamente si no es SDD).
   - `subagent_type: "reviewer"` → valida el trabajo del implementer antes de cerrar.
@@ -35,10 +37,12 @@ implementar.
 1. Lee `AGENTS.md` para orientarte.
 2. Lee `docs/stack.md` para entender el entorno técnico.
 3. Lee `feature_list.json` y `progress/current.md`.
-4. Ejecuta `./init.sh`. Si falla, paras y reportas.
-5. Si hay un `docs/related-projects.md` con contenido, léelo: tu cambio
+4. Lee `docs/roadmap.md`: el recorrido en etapas, para situar la tarea en el
+   mapa antes de descomponerla.
+5. Ejecuta `./init.sh`. Si falla, paras y reportas.
+6. Si hay un `docs/related-projects.md` con contenido, léelo: tu cambio
    puede afectar a otros proyectos.
-6. Aplica la tabla de escalado y el flujo SDD de `.claude/agents/leader.md`
+7. Aplica la tabla de escalado y el flujo SDD de `.claude/agents/leader.md`
    (ver `docs/specs.md` si la feature tiene `"sdd": true`).
 
 ### Regla anti-teléfono-descompuesto

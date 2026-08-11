@@ -100,6 +100,8 @@
   adapter) y `.env` no se autocarga. No bajar a 6.x sin revisitar esa config.
 - Versiones declaradas con rango caret (`^`) en `package.json`; el pin exacto
   vive en `pnpm-lock.yaml`.
+- **TypeScript 7: aparcado** hasta que `typescript-eslint` lo soporte (≥ 7.1).
+  Subir antes deja el lint sin poder analizar `src/**/*.ts`.
 - **Librerías explícitamente prohibidas:** ninguna registrada todavía
   (decisión del humano — añádelas aquí si las hay).
 

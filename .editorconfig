@@ -1,0 +1,21 @@
+root = true
+
+# Código. Refleja las reglas de docs/conventions.md §Estilo del lenguaje
+# (2 espacios, 100 columnas), que impone Prettier.
+[*.{js,mjs,cjs,ts,mts,cts}]
+charset = utf-8
+indent_size = 2
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+end_of_line = lf
+max_line_length = 100
+
+# Ficheros de texto/datos con contenido en español (tildes) o leídos por scripts.
+# charset explícito para que ningún lector caiga al encoding del sistema (cp1252
+# en Windows). No se recorta el espacio final: en Markdown dos espacios son salto.
+# Ver docs/conventions.md §Idioma, regla de UTF-8.
+[*.{md,json,sh,prisma}]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true

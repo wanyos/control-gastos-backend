@@ -11,10 +11,12 @@
 1. Ejecuta `./init.sh` y verifica que termina sin errores. Si falla, **para**
    y resuelve el entorno antes de tocar código.
 2. Lee `progress/current.md` para entender en qué estado quedó la última sesión.
-3. Lee `feature_list.json` y elige **una** tarea. Si tiene `"sdd": true`
+3. Lee `docs/roadmap.md` para situar esa sesión en el recorrido completo: qué
+   etapa está en curso, qué cabos sueltos hay abiertos y qué resuelve tu tarea.
+4. Lee `feature_list.json` y elige **una** tarea. Si tiene `"sdd": true`
    pasa por **Spec Driven Development** (ver `docs/specs.md` y §4 de este
    archivo). Si no, sigue el flujo simple.
-4. Lee `docs/specs.md` antes de tocar cualquier spec o feature `sdd: true`.
+5. Lee `docs/specs.md` antes de tocar cualquier spec o feature `sdd: true`.
 
 ## 2. Mapa del repositorio
 
@@ -22,8 +24,10 @@
 |-------------------------------|-----------------------------------------------------------------------------------------------------------|---------------|
 | `feature_list.json`           | Lista de tareas con estado (`pending` / `spec_ready` / `in_progress` / `done` / `blocked`)                | Siempre, al empezar |
 | `progress/current.md`         | Estado de la sesión actual                                                                                | Siempre, al empezar |
+| `docs/roadmap.md`             | El recorrido completo en etapas: dónde está el proyecto, qué falta y qué cabo suelto resuelve cada etapa   | Siempre, al empezar y al cerrar |
 | `progress/history.md`         | Bitácora append-only de sesiones anteriores                                                               | Si necesitas contexto histórico |
-| `specs/<feature>/`            | `requirements.md` + `design.md` + `tasks.md` (Kiro-style)                                                 | Antes de implementar cualquier feature con `"sdd": true` |
+| `specs/<feature>/decisions.md` | **Para el humano.** Una página con las decisiones. Es lo único que se le pide leer en la puerta          | Cuando el humano revisa un spec |
+| `specs/<feature>/`            | `requirements.md` + `design.md` + `tasks.md` (Kiro-style). Material del implementer y del reviewer         | Antes de implementar cualquier feature con `"sdd": true` |
 | `docs/stack.md`               | Lenguaje, framework, librerías, versiones                                                                 | Antes de tocar dependencias |
 | `docs/architecture.md`        | Qué significa "hacer un buen trabajo" en este proyecto                                                    | Antes de implementar |
 | `docs/conventions.md`         | Reglas de estilo, nombres, estructura                                                                     | Antes de escribir código |
@@ -58,9 +62,12 @@ pending → [spec-author] → spec_ready → ⏸ HUMANO → in_progress → [imp
 
 1. El leader detecta la primera feature `pending` con `"sdd": true`.
 2. El leader lanza `spec-author`, que crea
-   `specs/<name>/{requirements,design,tasks}.md` y marca el status como
+   `specs/<name>/{decisions,requirements,design,tasks}.md` y marca el status como
    `spec_ready`.
-3. **Pausa.** El humano lee el spec en `specs/<name>/` y aprueba (o pide cambios).
+3. **Pausa.** El humano lee **solo `specs/<name>/decisions.md`** —una página— y
+   aprueba (o pide cambios). Los otros tres no se le piden nunca; si necesita más
+   detalle, el leader se lo resume (ver `docs/specs.md` §Las cuatro reglas de
+   revisabilidad).
 4. Una vez aprobado, el leader cambia el status a `in_progress` y lanza `implementer`.
 5. El implementer ejecuta `tasks.md` una a una, marcándolas `[x]`.
 6. El reviewer verifica trazabilidad `R<n>` ↔ test y tasks completas;
@@ -85,9 +92,15 @@ Antes de terminar:
 
 1. Ejecuta `./init.sh` — todo verde.
 2. Si la tarea está acabada: marca `status: "done"` en `feature_list.json`.
-3. Mueve el resumen de `progress/current.md` al final de `progress/history.md`.
-4. Vacía `progress/current.md` dejando solo la plantilla.
-5. No dejes archivos temporales, ni logs de debug, ni TODOs sin contexto.
+3. **Actualiza `docs/roadmap.md`**, en el mismo paso en que vacías
+   `current.md`: cambia el estado de la etapa tocada y tacha el cabo suelto que
+   la feature haya resuelto. Normalmente son **dos líneas**; si necesitas más,
+   el detalle va en el `intent` de la feature, no en el mapa. Si la feature
+   cambió una decisión de producto, corrige también `../docs/ideas.md`
+   (workspace): es lo que evita que el mapa y el producto se desincronicen.
+4. Mueve el resumen de `progress/current.md` al final de `progress/history.md`.
+5. Vacía `progress/current.md` dejando solo la plantilla.
+6. No dejes archivos temporales, ni logs de debug, ni TODOs sin contexto.
 
 ## 6. Si te bloqueas
 

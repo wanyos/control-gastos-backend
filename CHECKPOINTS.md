@@ -55,8 +55,16 @@
 ## C7 — Spec Driven Development (solo si la feature tiene `"sdd": true`)
 
 - [ ] Toda feature con `"sdd": true` en estado `spec_ready`, `in_progress`
-      o `done` tiene su carpeta `specs/<name>/` con los 3 archivos:
-      `requirements.md`, `design.md`, `tasks.md`.
+      o `done` tiene su carpeta `specs/<name>/` con `requirements.md`,
+      `design.md` y `tasks.md`.
+- [ ] Además, si está en `spec_ready` o `in_progress`, tiene `decisions.md`
+      (la hoja es de revisión: no se exige retroactivamente a features cerradas
+      antes de que existiera la regla).
+- [ ] `decisions.md` cabe en **una página**, tiene los cuatro bloques del
+      formato (🔴 confirma / ✅ ya cerradas / ⚙️ técnicas / 📌 consecuencias) y
+      no más de 6 puntos en el bloque 🔴 (`docs/specs.md` §Las cuatro reglas).
+- [ ] El spec no pasa de **~15 requirements**; si se pasa, la razón está dicha
+      explícitamente en `decisions.md` o la feature debió partirse.
 - [ ] `requirements.md` usa EARS estricto (ver `docs/specs.md`).
 - [ ] Toda feature `done` con `"sdd": true` tiene todas sus tasks marcadas
       `[x]` en `tasks.md`.

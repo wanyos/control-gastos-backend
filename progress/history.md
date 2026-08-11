@@ -564,3 +564,71 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   la **importación** (mapear el JSON del parser a la BD invirtiendo el array de
   Bankinter, auto-alta de cuenta, dedup y mover a `procesados/`); después,
   **categorización por reglas** y **detección de traspasos**.
+## 2026-08-11 — Tareas de harness previas a la F9 (archivadas a posteriori)
+
+> Se añaden **después** de la entrada de la feature 9 aunque ocurrieron antes que
+> ella: se quedaron en `current.md` y se archivan al cerrar la sesión, sin editar
+> nada anterior (append-only).
+
+### (1) El mapa del proyecto: `docs/roadmap.md`
+
+- **Agente:** leader (sin tocar código de aplicación).
+- **Plan:** el humano sintió que perdía el control del proyecto al leer una spec
+  con decisiones que no recordaba. La causa real era otra: `docs/ideas.md` del
+  workspace llevaba desde el 2026-08-04 sin actualizarse y **contradecía al código
+  en cinco puntos** del modelo del flujo (cuenta de efectivo, `type = transfer`,
+  alta manual de movimientos, dedup sin `daySequence`, «será la feature 6»).
+- **Cambios:** nuevo [`docs/roadmap.md`](../docs/roadmap.md) — el recorrido en
+  diez etapas (E0–E9) con su estado, el eje «por cada banco» que la lista plana de
+  features escondía, seis cabos sueltos con su columna de «lo resuelve» y los
+  deberes del humano. Cableado al harness para que se lea al empezar
+  ([`AGENTS.md`](../AGENTS.md) §1 y §2, `CLAUDE.md`,
+  [`.claude/agents/leader.md`](../.claude/agents/leader.md)) y **se actualice al
+  cerrar** cada feature (§5, en el mismo paso en que se vacía `current.md`).
+  `docs/ideas.md` corregido: las cinco divergencias marcadas con 🔄 y su fecha —no
+  borradas, para ver qué se decidió y cuándo cambió—, y la tabla «de idea a
+  features» rellena tras diez features vacía.
+- **Verificación:** sin código; `./init.sh` en verde (197 tests, 16 ficheros).
+- **Cierre:** responde a «¿por dónde voy?», la pregunta que ninguno de los otros
+  cuatro documentos de estado contestaba.
+
+### (2) Reordenar leer → parsear → guardar, y el contrato que faltaba
+
+- **Agente:** leader.
+- **Plan:** el humano preguntó si el parser debía ir a la par de la lectura y si
+  debía basarse en el modelo de la BD. Revisando el código apareció un hallazgo
+  urgente **porque la F10 estaba en la puerta y lo iba a cementar**:
+  `ParsedMovement`, `UnparsedRow` y `ParsedMovementType` viven dentro de
+  [`src/modules/bankinter/bankinter.types.ts:9`](../src/modules/bankinter/bankinter.types.ts#L9)
+  y la spec de F10 los volvía a declarar, **ya divergiendo** (Bankinter emite
+  `income|expense`; MyInvestor `income|expense|neutral`). La versión correcta de
+  tres vías existía desde la F8 en
+  [`movements.service.ts:33`](../src/modules/movements/movements.service.ts#L33)
+  y los dos parsers la reimplementaban mal. El design de la F8 lo había predicho
+  por escrito (`specs/data-model/design.md:584`).
+- **Cambios:** orden nuevo **F9 → F11 → F10 → F12** (E3 y E4 intercambiadas en el
+  roadmap: el modelo va antes que los parsers porque la salida del parser se
+  deriva de él). Dos features nuevas en `feature_list.json`: **F11
+  `parsed-movement-contract`** (saca los tipos a un módulo compartido, `balance` y
+  `accountIban` opcionales, `type` a tres vías reutilizando el helper y
+  `daySequence` emitido por cada parser; único cambio de comportamiento: el
+  importe 0 pasa de `income` a `neutral`) y **F12 `import`**. Norma escrita en
+  [`docs/conventions.md`](../docs/conventions.md) §Parsers de banco: un parser por
+  banco, y **el contrato no es el modelo de la BD** aunque se derive de él. Del
+  banco #3 en adelante, parser e importación son **una sola feature**.
+- **Bonus — agujero de encoding:** al añadir las features, `init.sh` se puso rojo
+  (`'charmap' codec can't decode byte 0x8f`): su validador de Python abría
+  `feature_list.json` sin declarar encoding y en Windows caía a `cp1252`. Es el
+  mismo incidente que el frontend tuvo en su feature #5 (commit `9649ec1`, «se
+  ataca la causa, no el síntoma») y que al backend nunca le llegó. Arreglado igual
+  que allí: `init.sh:425` → `open(..., encoding="utf-8")`, regla en
+  `docs/conventions.md` §Idioma y **`.editorconfig` creado** (el backend no tenía).
+- **Verificación:** `./init.sh` en verde — 197 tests, 16 ficheros, 12 features.
+- **Cierre:** ⚠️ los `intent` de F11 y F12 son **borrador del agente**, marcados
+  con `_intent_es_borrador` en `feature_list.json`. El QUÉ es del humano: hasta que
+  los cierre no se deriva `acceptance` ni se lanza a nadie. La F10 se
+  **re-especifica** contra el contrato de la F11 con changelog de cinco líneas
+  (`docs/specs.md` §Regla 3), no reescribiendo el documento.
+
+---
+

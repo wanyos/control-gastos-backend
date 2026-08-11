@@ -25,12 +25,61 @@ Cada feature con `"sdd": true` tiene una carpeta dedicada en cuanto deja
 
 ```
 specs/<feature-name>/
+├── decisions.md      # PARA EL HUMANO: una página, las decisiones y nada más
 ├── requirements.md   # QUÉ se necesita (EARS notation)
 ├── design.md         # CÓMO se construirá (decisiones técnicas)
 └── tasks.md          # PASOS concretos a implementar
 ```
 
 El `feature-name` coincide con el campo `name` de `feature_list.json`.
+
+## Las cuatro reglas de revisabilidad
+
+> Fijadas el 2026-08-10 tras tres días atascados en dos specs de 3.844 líneas y 95
+> requirements. **El diagnóstico:** el spec se escribe para el agente pero se le da a
+> revisar al humano, y son dos públicos distintos. EARS, procedencia, trazabilidad y ADR
+> son maquinaria para el `implementer` y el `reviewer`; el humano necesita **las
+> decisiones**. Antes no existía ningún artefacto para él.
+
+### 1. `decisions.md` es obligatorio y es lo único que se le pide leer al humano
+
+Formato y reglas de estilo en **`docs/decisions-template.md`** (hermana de
+`docs/intent-template.md`, la de entrada, y de `docs/summary-template.md`, la de salida:
+esta es la de **revisión**).
+
+Una página. Cada decisión, **una línea**. Estructura fija:
+
+- **🔴 Confirma o corrige** — solo lo que tiene consecuencia real para el humano, con la
+  alternativa concreta al lado. Si hay más de 6, el spec está mezclando decisiones suyas
+  con decisiones técnicas.
+- **✅ Ya cerradas por él** — lo que decidió en la conversación, para que no lo re-litigue.
+- **⚙️ Técnicas** — decididas, listadas para que las vea, sin pedirle visto bueno.
+- **📌 Consecuencias que le tocan a él** — lo que tendrá que hacer a mano, que es fácil de
+  perder entre features.
+
+En la puerta de aprobación se le enlaza **`decisions.md`, nunca los otros tres**. Si algo
+no le convence, se cambia en los archivos técnicos: él no los abre.
+
+### 2. Tope de tamaño: si no cabe en ~15 requirements, son dos features
+
+El tamaño del spec es un **síntoma**, no una causa: una spec de 67 requirements sale de
+una feature que hace tres cosas. El `spec-author` que se pase del tope **para y propone
+el corte** en vez de escribir. Vale pasarse con una razón dicha en voz alta; no vale
+llegar a 40 sin comentarlo.
+
+### 3. Revisión por diff: nunca «vuelve a leerte el documento»
+
+Cuando el humano corrige algo, el agente devuelve un **changelog de cinco líneas**: qué
+cambió, dónde y por qué. Re-emitir el documento entero para que localice la diferencia
+es tirarle horas encima y es la causa de que una aclaración pequeña se sienta como
+empezar de cero.
+
+### 4. Sin las entradas reales no se escribe el spec
+
+Si una feature depende de un fichero, un formato o un dato externo, **no se escribe hasta
+tenerlo delante**. Se pide y se espera. Escribir sobre un formato supuesto costó dos
+reescrituras completas en la semana del 2026-08-10; el mismo spec, con las muestras
+reales, salió a la primera.
 
 ## Estados de una feature
 
