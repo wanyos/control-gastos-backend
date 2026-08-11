@@ -460,23 +460,38 @@ Sin cuerpo de petición.
 > nombres nuevos. Solo cambian los nombres de campo: el comportamiento del parser
 > (columnas, detección de cabecera, interpretación de fechas/importes) no cambia.
 
-### Modelo `ParsedMovement`
+> ⚠️ Breaking change (feature "parsed-movement-contract", 2026-08-11): el modelo
+> del parser deja de ser de Bankinter y pasa a ser **el contrato común de todos los
+> parsers de banco** (`src/lib/parsed-statement.ts`, ADR-013). Tres cambios
+> observables: (1) un importe **0** sale como `"neutral"` y ya **no** como
+> `"income"` —se alinea con el modelo de la BD—; (2) cada movimiento trae
+> **`daySequence`** (posición dentro de su día, `1` = el **más antiguo** del día); y (3)
+> `accountIban` y `balance` pueden ser **`null`** cuando el archivo no los trae
+> (`null`, nunca `""` ni `0`). Aún **NO** consumido por el frontend. El resto del
+> comportamiento del parser de Bankinter no cambia: mismas columnas, misma
+> detección de cabecera, misma interpretación de fechas e importes y los mismos
+> valores para el mismo archivo.
 
-Refleja las columnas reales del extracto de Bankinter: `Fecha contable | Fecha
-valor | Descripción | Importe | Saldo | Divisa`.
+### Modelo `ParsedMovement` (contrato común de todos los bancos)
 
-| Campo         | Tipo                      | Descripción                                                  |
-| ------------- | ------------------------- | ----------------------------------------------------------- |
-| `bookingDate` | string (ISO `YYYY-MM-DD`) | Fecha contable.                                             |
-| `valueDate`   | string (ISO `YYYY-MM-DD`) | Fecha valor.                                                |
-| `description` | string                    | Descripción del movimiento.                                 |
-| `amount`      | number                    | Importe con signo, en euros (negativo = salida).            |
-| `balance`     | number                    | Saldo tras el movimiento, en euros.                         |
-| `currency`    | string                    | Divisa del movimiento (p. ej. `"EUR"`); `""` si no aparece. |
-| `type`        | `"income"` \| `"expense"` | Derivado del signo del importe.                             |
+Lo devuelve el parser de **cualquier** banco. En Bankinter se llena con sus
+columnas reales `Fecha contable | Fecha valor | Descripción | Importe | Saldo |
+Divisa`; un banco que no reporte saldo (o IBAN) deja esos campos en `null`.
+
+| Campo         | Tipo                                     | Descripción                                                          |
+| ------------- | ---------------------------------------- | -------------------------------------------------------------------- |
+| `bookingDate` | string (ISO `YYYY-MM-DD`)                | Fecha contable.                                                      |
+| `valueDate`   | string (ISO `YYYY-MM-DD`)                | Fecha valor.                                                         |
+| `description` | string                                   | Descripción del movimiento.                                          |
+| `amount`      | number                                   | Importe con signo, en euros (negativo = salida).                     |
+| `balance`     | number \| `null`                         | Saldo tras el movimiento; `null` = **el archivo no lo trae** (≠ 0).  |
+| `currency`    | string                                   | Divisa del movimiento (p. ej. `"EUR"`); `""` si no aparece.          |
+| `type`        | `"income"` \| `"expense"` \| `"neutral"` | Derivado del signo del importe; **`0` → `"neutral"`**.               |
+| `daySequence` | number                                   | Posición dentro de su `bookingDate`; `1` = el **más antiguo** de ese día, creciendo hacia el más reciente (no es el orden de aparición en el archivo). Solo se numeran los movimientos parseados: una fila de `unparsedRows` no consume número. |
 
 > El resultado completo de un archivo tiene la forma `{ bank: "bankinter",
-> accountIban, movements: ParsedMovement[], unparsedRows: { row, reason }[] }`
+> accountIban, movements: ParsedMovement[], unparsedRows: { row, reason }[] }`,
+> con `accountIban` a `null` cuando el archivo no lo trae (nunca `""`),
 > y es lo que se escribe en el JSON local. `amount` y `balance` se interpretan tanto
 > desde el número nativo del Excel como desde texto español (coma decimal / punto
 > de miles, `1.234,56` → `1234.56`). **No** se deduplica: dos filas idénticas
@@ -516,6 +531,8 @@ Sin cuerpo de petición.
 
 - `movements` / `unparsedRows`: número de movimientos parseados y de filas no
   reconocidas; el detalle completo está en el JSON volcado.
+- `accountIban`: puede ser **`null`** si ese archivo no trae la línea del IBAN
+  (antes de 2026-08-11 era `""`; ver el breaking change de arriba).
 - `dumpPath`: ruta del JSON volcado **relativa** a la carpeta de volcado local (no
   se expone la ruta absoluta de la máquina).
 - `failed[]`: `{ bank, year, file, error }` con el `error` sanitizado (sin

@@ -720,3 +720,73 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 
 ---
 
+## 2026-08-11 — Feature 11: parsed-movement-contract (no-SDD)
+
+> Informe completo del implementer:
+> [`progress/implementations/parsed-movement-contract.md`](implementations/parsed-movement-contract.md).
+> Review: [`progress/reviews/parsed-movement-contract.md`](reviews/parsed-movement-contract.md).
+> Resumen de cierre: [`progress/summaries/parsed-movement-contract.md`](summaries/parsed-movement-contract.md).
+
+- **Agente:** leader (orquestando) + **cierre del `intent` por el humano** +
+  implementer + reviewer. Sin SDD: el contrato fueron el `intent` y los **10
+  criterios de `acceptance`** de `feature_list.json`.
+- **Qué hace:** «cómo es un movimiento parseado» deja de vivir **dentro** del
+  módulo de Bankinter y pasa a un único archivo compartido que no es de ningún
+  banco, [`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts)
+  (`ParsedMovementType`, `ParsedMovement`, `UnparsedRow`, `ParsedStatement<Bank>`
+  y el helper `assignDaySequence`). Bankinter se queda solo con lo suyo:
+  [`BankinterParseResult = ParsedStatement<'bankinter'>`](../src/modules/bankinter/bankinter.types.ts#L14).
+  Un banco nuevo **se adapta al contrato**; lo que se comparte es la FORMA de la
+  salida, **nunca** el código que lee el formato.
+- **Las dos decisiones que cerró el humano:**
+  1. **El importe 0 pasa de `income` a `neutral` aquí**, reutilizando
+     [`deriveMovementTypeFromAmount`](../src/modules/movements/movements.service.ts#L33)
+     de la F8 en vez de reimplementar la regla del signo. Es el **único** cambio
+     de comportamiento de la feature y **cierra el cabo suelto #2** del roadmap.
+  2. **`daySequence` lo emite cada parser**, no el importador: `1` es el
+     movimiento **más antiguo** de su `bookingDate`. Lo único bank-specific es
+     decir en qué sentido exporta el banco
+     ([`statementOrder = 'newest-first'`](../src/modules/bankinter/bankinter.parser.ts#L10),
+     verificado con los saldos de la muestra real: 24 816,16 − 188,67 = 24 627,49).
+- **Decisiones delegadas (ADR-013 en [`docs/architecture.md`](../docs/architecture.md)):**
+  el contrato vive en `lib/` («lo que usan todos y no es de nadie»; `modules/` es
+  un directorio por recurso); **el dato que no viene en el fichero es `null`**,
+  nunca `0` ni `''` —con la clave presente en el JSON volcado—, que es lo que
+  necesita MyInvestor (no trae ni saldo ni IBAN); y el contrato **no gana nada
+  más** para el importador (`origin`, `status`, `transferId`, `accountId` los pone
+  él: meterlos aquí lo convertiría en el modelo de la BD).
+- **Cambios (alto nivel):** dos archivos nuevos (`src/lib/parsed-statement.ts` y
+  su test); `bankinter.types.ts` pierde las tres declaraciones propias;
+  `bankinter.parser.ts` importa el contrato, numera con `assignDaySequence` y
+  devuelve `accountIban: null` en vez de `''` cuando el extracto no lo trae.
+  **Tres guardianes nuevos** en `src/architecture.test.ts`: ninguna segunda
+  declaración de esos tipos en `src/`, el contrato sin BD y **sin ningún import**,
+  y todo `*.parser.ts` usando el helper del signo. Docs: **ADR-013**,
+  `docs/conventions.md` §Parsers de banco apuntando ya al archivo y sus líneas, y
+  `docs/api-contract.md` con la nota de **breaking change** (`type` puede ser
+  `"neutral"`, `daySequence` nuevo, `accountIban`/`balance` pueden ser `null`)
+  **aún no consumido por el frontend**.
+- **Hallazgo registrado:** **no existía** ningún test que fijara el comportamiento
+  viejo del importe 0 (`0 → income`); la regla vivía solo en un ternario del
+  parser. El reviewer lo confirmó con `git show HEAD`. Se añadió el test que
+  faltaba, ya con el comportamiento nuevo.
+- **No regresión demostrada:** el test
+  `produces exactly the same movements and values as before the shared contract`
+  compara con `toEqual` el **resultado entero** (5 movimientos campo a campo + la
+  fila 15 no reconocida) contra los valores de la F7; el reviewer verificó que no
+  es un subconjunto. Las funciones que leen el formato (cabecera, fechas,
+  importes) están **intactas**.
+- **Verificación:** `./init.sh` en verde — **233 tests en 18 ficheros** (línea base
+  220/17: +13). `lint` y `format:check` también verdes. Sin dependencias ni
+  variables de entorno nuevas; **sin tocar Prisma ni la base de datos**.
+- **Cierre:** reviewer **APROBADO**; feature 11 marcada `done`. Nits del reviewer
+  aplicados (rótulos de enlace de `conventions.md`, prosa «1 = el más antiguo del
+  día» en vez de «el primero», y el supuesto de que `daySequence` **solo numera lo
+  parseado** escrito en el contrato y en ADR-013 para quien haga la F12).
+  Fuera de scope y anotados, no aplicados: renombrar `balance` → `balanceAfter` y
+  `currency: ''` → nullable. **Siguiente paso acordado: re-especificar la F10
+  (MyInvestor) contra este contrato** — su `design.md` §13 todavía declara
+  `MyinvestorMovement`, `balanceAfter` y `providesBalance`.
+
+---
+

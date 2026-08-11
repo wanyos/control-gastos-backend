@@ -61,6 +61,29 @@ describe('parseLocalBankinterCopies', () => {
     expect(dumped.unparsedRows).toEqual([{ row: 15, reason: expect.stringContaining('importe') }])
   })
 
+  it('reports a null accountIban (never "") when the statement does not carry it', async () => {
+    await writeCopy(
+      '2026',
+      'sin-iban.xlsx',
+      await buildStatementXlsx({
+        headers: ['Fecha contable', 'Fecha valor', 'Descripción', 'Importe', 'Saldo'],
+        rows: [['01/02/2026', '01/02/2026', 'ALGO', 10, 100]],
+      }),
+    )
+
+    const result = await parseLocalBankinterCopies(sourceDir, dumpDir)
+
+    expect(result.parsedCount).toBe(1)
+    expect(result.parsed[0].accountIban).toBeNull()
+    const dumped = JSON.parse(
+      await readFile(join(dumpDir, 'bankinter', '2026', 'sin-iban.xlsx.json'), 'utf8'),
+    ) as BankinterParseResult
+    // The JSON dump keeps the key with an explicit null: "not in the file" is
+    // visible to whoever reads the dump, and is not an empty string.
+    expect(dumped.accountIban).toBeNull()
+    expect(dumped.movements[0].daySequence).toBe(1)
+  })
+
   it('does nothing when there are no local Bankinter copies (source dir absent)', async () => {
     const result = await parseLocalBankinterCopies(sourceDir, dumpDir)
 

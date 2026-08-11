@@ -58,6 +58,7 @@ src/
     prisma.ts            #   fábrica de PrismaClient (driver adapter pg)
     drive.ts             #   fábrica del cliente de Drive + checkDriveConnection
     drive-structure.ts   #   estructura en Drive (files.*): carpetas, subir, mover (ADR-008)
+    parsed-statement.ts  #   CONTRATO de salida de todo parser de banco (ADR-013)
   errors/                # clases de error de dominio (AppError, ...)
   modules/                 # un directorio por recurso (vertical slice)
     accounts/              # cuentas bancarias (data-model, ADR-011)
@@ -84,7 +85,8 @@ src/
       bankinter.parser.ts  #   parser puro (buffer .xlsx -> movimientos + IBAN), sin BD/Drive
       bankinter.service.ts #   lee copias locales de la f5, parsea y vuelca JSON (read-only)
       bankinter.routes.ts  #   POST /api/parser/bankinter
-      bankinter.types.ts   #   modelo (MovimientoParseado, BankinterParseResult, ...)
+      bankinter.types.ts   #   SOLO lo suyo: BankinterParseResult = ParsedStatement<'bankinter'>
+                           #   + resúmenes de su ejecución local (ADR-013)
       bankinter.fixture.ts #   helper de test: genera .xlsx sintético en memoria (exceljs)
   generated/prisma/      # cliente Prisma generado (no se versiona)
 ```
@@ -829,6 +831,109 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - **Si algún día se quiere el detalle** (participaciones, valor liquidativo,
     ISIN, desglose de la cartera), todo son **columnas nullable añadidas después**:
     un `ADD COLUMN` barato, sin migrar datos.
+
+### ADR-013: Contrato común de movimiento parseado — un módulo compartido en `lib/parsed-statement.ts`, el dato ausente es `null`, `daySequence` lo emite cada parser y el importe 0 pasa a `neutral`
+
+- **Fecha:** 2026-08-11
+- **Estado:** aceptada (implementada en la feature #11, sin SDD)
+- **Contexto:** con dos bancos ya había **tres** copias del mismo tipo y una
+  divergencia silenciosa: `ParsedMovement` vivía **dentro** de
+  [`src/modules/bankinter/`](../src/modules/bankinter/bankinter.types.ts) con
+  `type: 'income'|'expense'`, la spec de la F10 lo re-declaraba con `neutral`, y la
+  versión correcta de 3 vías existía desde la F8 en
+  [`movements.service.ts:33`](../src/modules/movements/movements.service.ts#L33).
+  El `intent` (cerrado por el humano el 2026-08-11) confirmó dos puntos con
+  consecuencia —**el importe 0 pasa a `neutral` en esta feature** y **`daySequence`
+  lo emite cada parser**— y delegó cuatro decisiones: dónde vive el módulo
+  compartido y cómo se llama, cómo se representa un dato que **no viene** en el
+  fichero, cómo se propaga el cambio sin tocar más comportamiento, y si el contrato
+  debe incluir ya algo más que necesite el importador.
+- **Decisión:**
+  1. **Ubicación y nombre: [`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts).**
+     Es la carpeta transversal que la regla de este documento reserva a lo que
+     "lo usan todos y no es de nadie"; `modules/` está reservado a **recursos**, y
+     el contrato no es un recurso ni tiene rutas. Declara `ParsedMovementType`,
+     `ParsedMovement`, `UnparsedRow`, `ParsedStatement<Bank>`, `ParsedMovementDraft`,
+     `StatementOrder` y el helper `assignDaySequence`. **No importa nada**
+     (guardián en `architecture.test.ts`): sin Prisma, sin `exceljs`, sin módulo de
+     banco.
+  2. **El dato ausente es `null`, nunca `0` ni `''`:** `balance: number | null` y
+     `accountIban: string | null`. Es la representación que ya usa la BD
+     (`Movement.balanceAfter` nullable) y la que la F10 propone para MyInvestor, que
+     **no trae ninguno de los dos**. Consecuencia inmediata: Bankinter deja de
+     devolver `accountIban: ''` cuando el preámbulo no trae IBAN y devuelve `null`;
+     en el JSON volcado la clave sigue presente, así que "no viene en el fichero" es
+     **visible** para quien lo lea.
+  3. **`daySequence` en el contrato, calculado por el helper compartido
+     `assignDaySequence(drafts, fileOrder)`.** `1` es **el movimiento más antiguo
+     de ese `bookingDate`** y el número crece hacia el más reciente del mismo día
+     (no es el orden de aparición en el fichero). Lo único que aporta el banco es
+     el argumento que dice cómo exporta (`'newest-first'` para Bankinter,
+     verificado con los saldos de la muestra real). Numerar **no es leer el
+     formato**, así que compartirlo no rompe la norma «un parser por banco»; lo
+     que sí la rompería es que el importador lo calculara, porque el importador
+     sería bank-specific.
+  4. **La regla del signo se importa, no se copia:** el parser llama a
+     [`deriveMovementTypeFromAmount`](../src/modules/movements/movements.service.ts#L33)
+     de la F8. Con ello el **importe 0 pasa de `income` a `neutral`** — el **único**
+     cambio de comportamiento de la feature, y el cabo suelto #2 del roadmap.
+  5. **El contrato NO gana nada más para el importador.** Repasada la tabla de
+     mapeo de `specs/data-model/design.md` §9, el importador ya tiene todo lo que
+     necesita (`bookingDate`, `valueDate`, `description`, `amount`, `balance`,
+     `currency`, `daySequence`, `accountIban`, `bank`); el resto (`origin`,
+     `status`, `transferId`, `accountId`) lo pone **él**, y meterlo aquí convertiría
+     el contrato en el modelo de la BD, que es justo lo que el `intent` prohíbe.
+- **Alternativas consideradas:**
+  - **Renombrar `balance` → `balanceAfter`** para que el mapeo al `Movement` sea
+    literal: descartada — el criterio de no-regresión de la feature pide que, salvo
+    el importe 0, el mismo `.xlsx` produzca lo mismo que antes, y un renombrado es
+    un segundo cambio de forma no pedido. El mapeo queda documentado en la tabla
+    (una línea), y `balance` es el nombre que ya publica `api-contract.md` desde la
+    F7. **Anotado como sugerencia fuera de scope** para quien escriba el importador.
+  - **Campo de statement `providesBalance: false`** (lo que propone hoy la spec de
+    la F10): descartada — `balance: null` por línea ya dice que ese dato no viene, y
+    una constante por banco duplica ese conocimiento y hay que mantener los dos
+    coherentes. La F10 se re-espeficará contra esta decisión.
+  - **Dejar el contrato en `src/modules/shared/` o en un `src/contracts/` nuevo:**
+    descartadas — `modules/` es "un directorio por recurso" (ADR-004) y un
+    `modules/shared` es exactamente el cajón de sastre que la norma evita; una
+    quinta carpeta transversal para un archivo no compensa frente a `lib/`, que ya
+    aloja piezas de dominio-infraestructura como `drive-structure.ts`.
+  - **Mover `deriveMovementTypeFromAmount` al módulo compartido** para que el parser
+    no dependa de `modules/movements/`: descartada — el `acceptance` nombra el
+    helper **en su ubicación actual**, y moverlo obligaría a cambiar el tipo de
+    retorno (hoy es el `MovementType` de Prisma, que es lo que garantiza que parser
+    y BD no puedan divergir).
+- **Consecuencias:**
+  - **Breaking change en el JSON del parser** (`var/parsed/**` y por tanto el
+    resultado de `POST /api/parser/bankinter`): `accountIban` puede ser `null`,
+    cada movimiento gana `daySequence` y un importe 0 sale `neutral`. **Aún no
+    consumido por el frontend**; anotado en `docs/api-contract.md`.
+  - **`bankinter.parser.ts` importa ahora `modules/movements/movements.service.ts`**
+    y, por transitividad, el cliente de Prisma. El parser sigue **sin tocar la BD**
+    (el guardián "no prisma reference" del módulo sigue verde) y el helper es una
+    función pura de un número; el coste es una dependencia de carga, no de datos.
+    Alternativa si algún día molesta: mover el helper al contrato (ver arriba).
+  - **Tres guardianes nuevos** en `src/architecture.test.ts`: una sola declaración
+    de los tipos del contrato en todo `src/`, el contrato sin BD ni imports, y todo
+    `*.parser.ts` usando el helper del signo sin reimplementar la regla. Un tercer
+    banco que copie los tipos pone la suite en rojo.
+  - 📌 **Supuesto que la F12 (importación) tiene que conocer: `daySequence` numera
+    solo los movimientos PARSEADOS.** Una fila que acabó en `unparsedRows` no
+    consume número, así que la secuencia de un día es siempre
+    `1..movimientos-de-ese-día` y no tiene huecos. Consecuencia: si esa fila se
+    recupera después (parser corregido, nueva descarga), ese día **se renumera** y
+    los números ya guardados de ese día dejan de coincidir — es el mismo tipo de
+    límite que el "día partido entre dos descargas" de ADR-011, y produce un
+    duplicado **visible**, no una pérdida silenciosa. Escrito también en el
+    contrato, junto al campo
+    ([`parsed-statement.ts`](../src/lib/parsed-statement.ts)), que es donde lo
+    va a leer quien implemente la importación.
+  - **La spec de la F10 (MyInvestor) queda desalineada a propósito** en tres puntos
+    (`MyinvestorMovement` propio, `balanceAfter` en vez de `balance`,
+    `providesBalance`): se re-espeficará contra este contrato antes de implementarse,
+    que es el orden acordado (F11 → F10).
+  - **Sin dependencias, sin variables de entorno y sin tocar Prisma ni la BD.**
 
 ## Qué NO hacer
 

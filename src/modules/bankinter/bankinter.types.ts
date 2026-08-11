@@ -1,51 +1,25 @@
-/** Whether a movement is money in (`income`) or money out (`expense`). */
-export type ParsedMovementType = 'income' | 'expense'
+import type { ParsedStatement } from '../../lib/parsed-statement.js'
 
 /**
- * A single parsed movement from a Bankinter statement row. The fields mirror the
- * real Bankinter export columns: `Fecha contable | Fecha valor | Descripción |
- * Importe | Saldo | Divisa` (the parser maps them by header name, not position).
+ * Bankinter does NOT declare its own movement shape: the contract every bank
+ * parser returns lives in `src/lib/parsed-statement.ts` (feature 11). What stays
+ * here is only what is Bankinter's own: the bank literal and the summaries of
+ * its local parse run.
+ *
+ * The real export columns this parser maps by header name (not by position) are
+ * `Fecha contable | Fecha valor | Descripción | Importe | Saldo | Divisa`, which
+ * fill `bookingDate | valueDate | description | amount | balance | currency`.
+ * `accountIban` comes from the preamble line and is `null` when it is absent.
  */
-export interface ParsedMovement {
-  /** Accounting date, ISO `YYYY-MM-DD`. */
-  bookingDate: string
-  /** Value date, ISO `YYYY-MM-DD`. */
-  valueDate: string
-  /** Description column ("Descripción"). */
-  description: string
-  /** Signed amount in euros (negative = money out). */
-  amount: number
-  /** Balance after the movement ("Saldo"), in euros. */
-  balance: number
-  /** Currency of the movement ("Divisa"), e.g. `'EUR'`; `''` when absent. */
-  currency: string
-  /** Derived from the sign of `amount`. */
-  type: ParsedMovementType
-}
-
-/** A statement row that could not be interpreted; it is reported, never dropped. */
-export interface UnparsedRow {
-  /** 1-based row number in the sheet. */
-  row: number
-  /** Human-readable reason the row was not interpretable. */
-  reason: string
-}
-
-/** Full result of parsing a Bankinter `.xlsx` statement. */
-export interface BankinterParseResult {
-  bank: 'bankinter'
-  /** IBAN extracted from the metadata preamble; `''` when it cannot be found. */
-  accountIban: string
-  movements: ParsedMovement[]
-  unparsedRows: UnparsedRow[]
-}
+export type BankinterParseResult = ParsedStatement<'bankinter'>
 
 /** Summary of one local `.xlsx` copy that was parsed and dumped to JSON. */
 export interface ParsedFileSummary {
   bank: string
   year: string
   file: string
-  accountIban: string
+  /** IBAN of the statement, or `null` when the file does not carry it. */
+  accountIban: string | null
   /** Number of parsed movements. */
   movements: number
   /** Number of rows that could not be interpreted. */

@@ -1,7 +1,13 @@
 import ExcelJS from 'exceljs'
 
 import { ValidationError } from '../../errors/app-error.js'
-import type { BankinterParseResult, ParsedMovement, UnparsedRow } from './bankinter.types.js'
+import { assignDaySequence } from '../../lib/parsed-statement.js'
+import type { ParsedMovementDraft, UnparsedRow } from '../../lib/parsed-statement.js'
+import { deriveMovementTypeFromAmount } from '../movements/movements.service.js'
+import type { BankinterParseResult } from './bankinter.types.js'
+
+/** Bankinter writes the most recent movement first (verified on a real export). */
+const statementOrder = 'newest-first'
 
 /** Header names (accent/case-insensitive) mapped to the movement fields. */
 type ColumnField = 'bookingDate' | 'valueDate' | 'description' | 'amount' | 'balance' | 'currency'
@@ -26,6 +32,11 @@ interface SheetRow {
  * Parses the content of a Bankinter `.xlsx` bank statement into structured
  * movements plus the account IBAN, WITHOUT touching a database, Drive or moving
  * anything. It is pure: content in, structured result out.
+ *
+ * The shape it returns is the shared contract of `src/lib/parsed-statement.ts`,
+ * not a Bankinter-specific model: only the code that READS the `.xlsx` is
+ * Bankinter's own. Bankinter exports the most recent movement first, so that
+ * (bank-specific) knowledge is what it passes to `assignDaySequence`.
  *
  * It skips the metadata preamble, locates the header row robustly (by column
  * name, not a fixed position) and maps each following data row to a
@@ -54,7 +65,7 @@ export async function parseBankinterXlsx(content: Buffer): Promise<BankinterPars
     throw new ValidationError('Bankinter header row not found: not a recognizable statement')
   }
 
-  const movements: ParsedMovement[] = []
+  const drafts: ParsedMovementDraft[] = []
   const unparsedRows: UnparsedRow[] = []
 
   for (const row of rows) {
@@ -68,11 +79,16 @@ export async function parseBankinterXlsx(content: Buffer): Promise<BankinterPars
     if ('reason' in parsed) {
       unparsedRows.push({ row: row.rowNumber, reason: parsed.reason })
     } else {
-      movements.push(parsed)
+      drafts.push(parsed)
     }
   }
 
-  return { bank: 'bankinter', accountIban, movements, unparsedRows }
+  return {
+    bank: 'bankinter',
+    accountIban,
+    movements: assignDaySequence(drafts, statementOrder),
+    unparsedRows,
+  }
 }
 
 /** Reads every non-empty row into a `{ rowNumber, cells[] }` (1-based cells). */
@@ -91,10 +107,11 @@ function collectRows(worksheet: ExcelJS.Worksheet): SheetRow[] {
 
 /**
  * Extracts the account IBAN from the preamble line `MOVIMIENTOS DE LA CUENTA
- * <IBAN>`. Returns `''` when no such line is present. Spaces inside the IBAN are
+ * <IBAN>`. Returns `null` when no such line is present: the contract says an
+ * absent datum is `null`, never an empty string. Spaces inside the IBAN are
  * removed and the token is validated to look like an IBAN (2 letters + 2 digits).
  */
-function findIban(rows: SheetRow[]): string {
+function findIban(rows: SheetRow[]): string | null {
   for (const row of rows) {
     for (const cell of row.cells) {
       const text = cellToString(cell)
@@ -108,7 +125,7 @@ function findIban(rows: SheetRow[]): string {
       }
     }
   }
-  return ''
+  return null
 }
 
 /**
@@ -132,7 +149,7 @@ function findHeaderRow(rows: SheetRow[]): { rowNumber: number; columns: ColumnMa
 }
 
 /** Maps a single data row to a movement, or to a reason it is not interpretable. */
-function parseDataRow(row: SheetRow, columns: ColumnMap): ParsedMovement | { reason: string } {
+function parseDataRow(row: SheetRow, columns: ColumnMap): ParsedMovementDraft | { reason: string } {
   const problems: string[] = []
 
   const rawBookingDate = cellAt(row, columns.bookingDate)
@@ -170,7 +187,8 @@ function parseDataRow(row: SheetRow, columns: ColumnMap): ParsedMovement | { rea
     amount,
     balance,
     currency: cellToString(cellAt(row, columns.currency)),
-    type: amount < 0 ? 'expense' : 'income',
+    // Single point of the sign rule (feature 8): 0 is `neutral`, not an income.
+    type: deriveMovementTypeFromAmount(amount),
   }
 }
 

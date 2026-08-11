@@ -385,6 +385,51 @@
       ],
       "sdd": true,
       "status": "done"
+    },
+    {
+      "id": 11,
+      "name": "parsed-movement-contract",
+      "title": "Contrato común de movimiento parseado (un solo sitio, no uno por banco)",
+      "_intent_cerrado_por_el_humano": "Cerrado por el humano el 2026-08-11 sobre el borrador del agente, confirmando sus dos puntos con consecuencia: (1) el importe 0 pasa de 'income' a 'neutral' en esta feature, cerrando el cabo suelto #2 del roadmap; (2) daySequence lo emite cada parser, no el importador. El resto del borrador se acepta tal cual.",
+      "intent": {
+        "que_quiero": "Que todos los parsers de banco devuelvan la misma forma de movimiento, definida en un solo sitio compartido, en vez de que cada banco se invente la suya dentro de su módulo. Hoy ParsedMovement vive dentro de src/modules/bankinter/ y la spec de MyInvestor vuelve a declarar los mismos tres tipos, y ya divergen: el type de Bankinter no tiene 'neutral' y el de MyInvestor sí. Quiero que esa forma común salga del modelo de datos que ya tengo en la base de datos, para que guardar un movimiento sea un mapeo directo y no una traducción distinta por banco. Los campos que solo trae algún banco (el saldo de cada línea, el IBAN de la cuenta) deben poder faltar sin que nada se rompa: MyInvestor no los trae. Y quiero que la posición de cada línea dentro de su día la ponga ya el parser del banco, porque el sentido en que exporta cada banco es cosa suya y no de quien guarda.",
+        "por_que": "Es lo que permite que la norma de un parser por banco escale. Con dos bancos ya hay tres copias del mismo tipo y una diferencia silenciosa entre ellas; con siete bancos, quien guarde en la base de datos tendría que conocer siete formas distintas. El design de la feature 8 ya lo avisó por escrito: cuando haya un segundo banco, conviene que cada parser emita la posición ya normalizada. Ese segundo banco está ahora mismo en la puerta de aprobación, así que este es el momento más barato: después habría que retocar los dos parsers y el importador.",
+        "como_se_que_esta_bien": [
+          "La forma de un movimiento parseado está definida en un único archivo compartido, fuera del módulo de cualquier banco, y el parser de Bankinter la usa en vez de la suya.",
+          "El saldo de la línea y el IBAN de la cuenta se pueden omitir: un banco que no los trae parsea igual y el resultado deja claro que ese dato no viene en el archivo.",
+          "Un importe 0 se marca como 'neutral', igual que en la base de datos, y no como ingreso: hoy el parser de Bankinter lo trata como ingreso y eso está mal.",
+          "Esa decisión de ingreso/gasto/neutral se toma en un solo sitio, reutilizando el helper que ya existe en el modelo, no reimplementada en cada parser.",
+          "Cada movimiento sale del parser con su posición dentro del día ya puesta, contando desde el más antiguo del día, sea cual sea el orden en que el banco exporte su archivo.",
+          "Salvo el cambio del importe 0, para el mismo archivo de Bankinter salen exactamente los mismos movimientos y los mismos valores que antes."
+        ],
+        "que_no_quiero": [
+          "No hacer un parser compartido entre bancos: lo que se comparte es la FORMA de la salida, no el código que lee el formato. Cada banco sigue teniendo su módulo.",
+          "No que el contrato sea el modelo de la base de datos: el parser no sabe de cuentas, ni de identificadores internos, ni de si un movimiento ya existe. Representa el archivo.",
+          "No guardar nada en la base de datos ni tocar el esquema Prisma: eso es la feature siguiente.",
+          "No cambiar qué columnas lee el parser de Bankinter, ni cómo detecta la cabecera, ni cómo interpreta fechas e importes.",
+          "No tocar el módulo de MyInvestor: su spec se ajusta aparte, después de esto."
+        ],
+        "delego_en_agente": [
+          "Dónde vive exactamente el archivo compartido y cómo se llama; que lo proponga y me lo marque.",
+          "Cómo se representa que un dato no viene en el archivo (ausente, nulo, o un campo aparte que lo diga), sabiendo que el saldo de MyInvestor no existe y no debe parecer un cero.",
+          "Cómo se propaga el cambio por tipos, parser, service y tests de Bankinter sin cambiar más comportamiento que el del importe 0.",
+          "Si conviene que el contrato incluya ya algo más que necesite el importador, mirando la tabla de mapeo que dejó escrita el design de la feature 8."
+        ]
+      },
+      "acceptance": [
+        "La forma del movimiento parseado (el movimiento, la fila no reconocida y el tipo) está declarada en UN único módulo compartido fuera de src/modules/<banco>/, y el módulo de Bankinter la importa en vez de declarar la suya: no queda ninguna declaración duplicada de esos tipos en el repositorio (deriva de: 'definida en un único archivo compartido, fuera del módulo de cualquier banco, y el parser de Bankinter la usa en vez de la suya')",
+        "En el contrato, el saldo de la línea y el IBAN de la cuenta son opcionales, y su ausencia se distingue de un cero o de una cadena vacía: un banco que no los trae parsea igual y el resultado deja claro que ese dato no viene en el archivo (deriva de: 'se pueden omitir... el resultado deja claro que ese dato no viene en el archivo'; lo exige MyInvestor, que no trae ninguno de los dos)",
+        "Un importe 0 se emite como 'neutral' y NO como ingreso, alineado con el modelo de la base de datos; es el único cambio de comportamiento de la feature y el test de Bankinter que lo cubría cambia de expectativa a propósito (deriva de: 'un importe 0 se marca como neutral... hoy el parser de Bankinter lo trata como ingreso y eso está mal'; confirmado por el humano el 2026-08-11)",
+        "La decisión ingreso/gasto/neutral se toma en UN solo sitio reutilizando el helper que ya existe desde la feature 8 (deriveMovementTypeFromAmount en src/modules/movements/movements.service.ts), sin reimplementarlo en ningún parser (deriva de: 'esa decisión se toma en un solo sitio, reutilizando el helper que ya existe en el modelo')",
+        "Cada movimiento sale del parser con su posición dentro del día (daySequence) ya puesta, contando desde el más antiguo del día, sea cual sea el orden en que el banco exporte su archivo; el importador no calcula esa posición (deriva de: 'cada movimiento sale del parser con su posición dentro del día ya puesta'; confirmado por el humano el 2026-08-11 frente a la alternativa de calcularlo al guardar)",
+        "Salvo el cambio del importe 0, para el mismo .xlsx de Bankinter salen exactamente los mismos movimientos, las mismas filas no reconocidas y los mismos valores que antes (deriva de: 'salen exactamente los mismos movimientos y los mismos valores que antes')",
+        "El contrato NO es el modelo de la base de datos: no conoce cuentas, ni identificadores internos, ni si un movimiento ya existe; representa el archivo. Y NO se comparte el código que lee el formato: cada banco conserva su módulo (deriva de los 'que_no_quiero' + docs/conventions.md §Parsers de banco)",
+        "La feature NO toca el esquema Prisma ni la base de datos, NO cambia qué columnas lee el parser de Bankinter ni cómo detecta la cabecera ni cómo interpreta fechas e importes, y NO toca el módulo de MyInvestor (deriva de los 'que_no_quiero')",
+        "Cada criterio tiene al menos un test concreto mapeado en progress/implementations/parsed-movement-contract.md; ./init.sh termina en verde incluida la suite completa; y las decisiones delegadas (dónde vive el módulo compartido y cómo se llama, cómo se representa el dato ausente, y si el contrato incluye ya algo más que necesite el importador) quedan anotadas como ADR en docs/architecture.md donde aplique, con docs/conventions.md §Parsers de banco actualizado para apuntar al contrato",
+        "docs/api-contract.md queda actualizado si el renombrado o los campos opcionales cambian la respuesta de POST /api/parser/bankinter, con nota de breaking change aún no consumido por el frontend (deriva de la regla de proyecto sobre breaking changes)"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

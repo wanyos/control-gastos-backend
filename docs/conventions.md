@@ -150,6 +150,55 @@ class NotFoundError extends AppError {
   (`docs/dar-de-alta-un-banco.md`), hace falta su propio módulo de parser.
   Ningún banco hereda el de otro.
 
+### Lo que NO es propio de cada banco: la forma de la salida
+
+> Precisión de la norma, decidida el 2026-08-11 al aparecer el segundo banco.
+
+- **Cada banco tiene su parser; todos devuelven el mismo contrato.** El tipo de un
+  movimiento parseado vive en **un único módulo compartido**, fuera de cualquier
+  `src/modules/<banco>/`. Un banco nuevo **se adapta al contrato**; no declara sus
+  propios `ParsedMovement`, `UnparsedRow` ni `ParsedMovementType`.
+- **Dónde está el contrato (implementado en la F11, 2026-08-11):**
+  [`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts) — declara
+  [`ParsedMovementType`](../src/lib/parsed-statement.ts#L19),
+  [`ParsedMovement`](../src/lib/parsed-statement.ts#L22),
+  [`UnparsedRow`](../src/lib/parsed-statement.ts#L60),
+  [`ParsedStatement<Bank>`](../src/lib/parsed-statement.ts#L68) y el helper
+  [`assignDaySequence`](../src/lib/parsed-statement.ts#L96). Un guardián de
+  [`architecture.test.ts`](../src/architecture.test.ts) rechaza cualquier segunda
+  declaración de esos tipos en `src/`. El módulo de un banco solo declara **lo
+  suyo**: p. ej.
+  [`bankinter.types.ts`](../src/modules/bankinter/bankinter.types.ts#L14) se queda
+  con `BankinterParseResult = ParsedStatement<'bankinter'>` y los resúmenes de su
+  ejecución local.
+- **Por qué no contradice lo anterior:** la norma prohíbe compartir el *código que
+  lee el formato*, porque el formato cambia sin avisar y un parser compartido
+  convierte el cambio de un banco en una regresión para todos. El *tipo de salida*
+  es lo contrario: la interfaz estable contra la que cada banco se adapta solo, y
+  lo que permite que el importador no tenga que conocer ~7 formas distintas.
+- **El contrato se deriva del modelo de datos, pero no es el modelo.** No lleva
+  claves foráneas, ni `origin`/`status`/`transferId`, ni sabe si un movimiento ya
+  existe; y sí lleva cosas que la BD no tiene (`unparsedRows`). Lo que solo trae
+  algún banco —el saldo de la línea, el IBAN— es **opcional**: MyInvestor no los
+  aporta y eso no se disimula inventando un cero.
+- **Cada parser emite `daySequence` ya normalizado**: `1` es **el movimiento más
+  antiguo de ese `bookingDate`**, y el número crece hacia el más reciente del
+  mismo día (no es el orden de aparición en el fichero). El sentido en que exporta
+  cada banco es conocimiento suyo: Bankinter exporta de más reciente a más
+  antiguo. Si lo calculara el importador, el importador sería bank-specific y
+  dejaría de poder compartirse. La numeración la hace el helper compartido
+  [`assignDaySequence`](../src/lib/parsed-statement.ts#L96); lo único que pone el
+  banco es el argumento que dice cómo exporta
+  ([`bankinter.parser.ts:10`](../src/modules/bankinter/bankinter.parser.ts#L10)).
+  **Solo se numeran los movimientos parseados:** una fila que acabó en
+  `unparsedRows` no consume número (importa para la F12, ver ADR-013).
+- **La decisión ingreso/gasto/neutral se toma en un solo sitio:**
+  [`deriveMovementTypeFromAmount`](../src/modules/movements/movements.service.ts#L33).
+  Ningún parser la reimplementa: el de Bankinter lo **importa**
+  ([`bankinter.parser.ts:191`](../src/modules/bankinter/bankinter.parser.ts#L191))
+  y un guardián de `architecture.test.ts` comprueba que todo `*.parser.ts` lo usa
+  y que ninguno vuelve a escribir la regla del signo.
+
 ## Comentarios
 
 - **Los mínimos y lo más cortos posible.** Solo se comenta cuando es realmente
