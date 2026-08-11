@@ -165,6 +165,19 @@ Un apunte del extracto. **Solo entra por importación** (ver
 > muta** al identificarlo. Quién rellena `transferId` es una feature posterior;
 > hoy la columna existe y viaja siempre `null`.
 
+### Inversiones — sin endpoints todavía
+
+La capa de inversiones (`InvestmentProduct` y `Valuation`) **existe en la base de
+datos** desde la feature 9 (`docs/data-model.md` §Parte 2, ADR-012) pero **ninguna
+ruta la sirve**: esa feature fue esquema y migración, igual que la 8 hizo con el
+flujo. No hay modelo ni endpoint que documentar aquí todavía; se añadirán cuando
+una feature abra esa superficie. Mismo patrón que el servicio interno de
+estructura en Drive (ADR-008), que tampoco tiene endpoints.
+
+> La columna `Movement.productId` que esa feature añadió **no forma parte de esta
+> respuesta**: `serializeMovement` mapea campo a campo, así que el `Movement` del
+> contrato es exactamente el de la tabla de arriba, sin cambios.
+
 ## Endpoints
 
 ### `GET /api/accounts`

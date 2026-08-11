@@ -652,6 +652,184 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - **Sin dependencias nuevas y sin variables de entorno nuevas** (todo con
     Prisma/Postgres ya presentes): `docs/stack.md` no cambia.
 
+### ADR-012: Modelo de datos de inversiones — un `InvestmentProduct` único con la parte del depósito en columnas nullable, `Valuation` como serie, `invested` en la foto, clave natural `(bank, name)`, recarga por UPSERT y cero SQL crudo
+
+- **Fecha:** 2026-08-11
+- **Estado:** aceptada (implementada en la feature #9; las dos decisiones marcadas
+  en rojo se confirmaron **tal cual** en la puerta de aprobación humana)
+- **Contexto:** la feature #9 llena el hueco que la feature 8 dejó reservado a
+  propósito en `docs/data-model.md` ("idea #3, patrimonio e inversiones, se añade
+  encima sin tocar lo anterior"). Hay **un** banco de inversión con varios fondos,
+  un ETF, varios depósitos y una cartera automatizada, más una cuenta corriente
+  que ya encaja tal cual en el modelo del flujo. Lo que se quiere saber es
+  deliberadamente simple: cuánto he metido, cuánto vale hoy y cuánto gano o
+  pierdo. **Alcance: solo esquema + migración**, igual que la feature 8. **Premisa
+  clave:** los productos no vendrán de un export del banco sino de un **fichero de
+  texto escrito a mano** por el humano → **el fichero se hace a medida del modelo,
+  no al revés**. El `intent` delegó cinco decisiones: materialización en Prisma
+  (tipos, enum, precisión decimal, índices), las claves naturales y la resolución
+  del recargado, cómo se vigila que un depósito no tenga valoraciones, si
+  `marketValue` incluye el efectivo sin invertir, y dónde se documenta todo.
+- **Decisión:**
+  1. **Un solo modelo `InvestmentProduct`** con lo común (`bank`, `name`, `type`,
+     `currency`, `openedAt`, `closedAt`) y la parte específica del depósito
+     (`principal`, `interestRate`, `expectedGain`, `maturityDate`) como **columnas
+     nullable de la misma tabla**. **Sin tabla por tipo.** `fund`, `etf` y
+     `managed_portfolio` son tres valores del enum con **campos idénticos**; la
+     cartera automatizada es **un** producto con su valor total, **sin desglose**.
+     `bank` es un `String` con el slug de la carpeta de Drive, mismo criterio que
+     `Account.bank` (sin FK ni tabla de bancos: el registro de bancos vive en
+     Drive, ADR-008, y duplicarlo en BD sería una segunda fuente de verdad).
+  2. **`Valuation` es la foto periódica** de un producto que fluctúa, con
+     `invested`, `marketValue`, `gain`, `gainPercent` y `uninvestedCash`.
+     **`invested` vive en la foto, no en el producto**, porque crece con las
+     aportaciones mensuales: ponerlo en el producto obligaría a pisarlo cada mes y
+     perdería la serie. **`principal` sí va en el producto**: se contrata una vez y
+     no fluctúa; por eso un depósito **no** tiene valoraciones.
+  3. **Regla 4 — la valoración se lee, no se calcula.** Los cinco números se
+     guardan tal como vienen; **nunca** se persiste `gain = marketValue −
+     invested`; campo ausente → `NULL`, jamás un valor calculado.
+  4. **Regla 5 — una aportación no se crea, se marca.** La aportación ya es un
+     `Movement` del extracto; lo único propio es `Movement.productId` (nullable,
+     indexado, **reservado sin escritor**). Regla de agregación gemela a la del
+     traspaso: **un movimiento con `productId != null` no cuenta como gasto ni como
+     ingreso** en los totales globales. Un reembolso es `income` + `productId`, sin
+     columna nueva. En esta feature la regla se **documenta**; su implementación en
+     `computeTotals` llega con el escritor de la columna.
+  5. **Claves naturales:** `@@unique([bank, name])` para el producto (basta porque
+     el nombre lo escribe el humano, luego es estable → caen `isin` y la segunda
+     clave compuesta) y `@@unique([productId, date])` para la foto.
+  6. **Recargar el mismo fichero es un UPSERT** sobre `(productId, date)`: gana el
+     último, `updatedAt` avanza. Es una resolución de conflicto **distinta** a la
+     del flujo, donde un duplicado importado se **descarta**. 📌 Como cada fichero
+     mensual **re-afirma** las condiciones de todos los productos, el futuro
+     importador tendrá que hacer **UPSERT también del producto** sobre
+     `@@unique([bank, name])`, no un `create`: **dos upserts, no uno**.
+  7. **Cero SQL crudo:** los tres índices son declarativos, así que Prisma los
+     conoce y **no puede haber drift** — a diferencia de la feature 8, que arrastra
+     ese riesgo con sus dos índices escritos a mano (parcial y `NULLS NOT
+     DISTINCT`, que Prisma 7 no expresa).
+  8. **Sin `origin` ni `status` en `Valuation`** (sus dos razones de ser en
+     `Movement` —mantener PARCIAL el índice de dedup y alimentar la pantalla de
+     revisión— no existen aquí) y **solo `closedAt` en el producto**, sin enum
+     `status` (un booleano derivable duplicado acaba desincronizado y además
+     perdería **cuándo** se cerró). Su escritor lo aporta el importador del
+     fichero: el humano escribe `closedAt` **una sola vez**, en la última aparición
+     del producto, y **dejar de escribir un producto NO lo cierra** — un olvido es
+     indistinguible de un cierre, y convertir una ausencia en un hecho es la
+     inferencia que no debe hacer un sistema con dinero dentro. `openedAt`, en
+     cambio, **se queda `NULL`**: el formato del fichero no lo lleva.
+  9. 🔴 **Un depósito no tiene valoraciones = regla del SERVICIO**, no restricción
+     de BD (**confirmado por el humano en la puerta, 2026-08-11**): coherente con
+     las demás reglas de negocio del proyecto, mantiene el cero SQL crudo, y un
+     `CHECK` **no puede consultar otra tabla** (haría falta un trigger o
+     desnormalizar el `type` en `Valuation`). Coste asumido y explícito: hoy nada
+     impide insertar una `Valuation` sobre un `deposit`; el test lo deja escrito
+     como **límite conocido** y se pondría rojo si alguien añadiera un `CHECK` en
+     silencio.
+  10. 🔴 **Precisión** (**confirmada por el humano en la puerta, 2026-08-11**):
+      `Decimal(10,2)` para todos los importes (**heredado del flujo**; si se sube
+      el techo, se sube en las dos capas a la vez), `Decimal(6,4)` para
+      `interestRate` (**TAE EN PORCENTAJE**: `2.7500` = 2,75 %) y `Decimal(7,4)`
+      para `gainPercent` (con signo, hasta ±999,9999 %). Un depósito guarda **una
+      sola** TAE y **un solo** `expectedGain`: los **aplicados**; si el banco
+      publica una segunda TAE hipotética (p. ej. "sin Premium"), **no se guarda** —
+      es información comercial, no una condición del producto contratado.
+      **`gain` y `gainPercent` se quedan `NULL`-ables en la BD** aunque el fichero
+      los exija: la restricción vive donde puede dar un mensaje útil (el parser
+      dice qué producto y qué campo falta; una columna `NOT NULL` solo daría un
+      `P2011`), y es un seguro sin coste ante un cambio futuro del formato.
+  11. ✅ **`marketValue` NO incluye `uninvestedCash`** (la suposición que el
+      `intent` pidió dejar visible; confirmada por el humano y por la aritmética de
+      las muestras reales: en la cartera, `10.301,63 + 1.559,58 = 11.861,21`,
+      exactamente el valor de mercado, con los `58,37 €` de efectivo fuera). El
+      patrimonio de un producto es **`marketValue + uninvestedCash`**, sin doble
+      conteo. Era el único punto capaz de dar un patrimonio equivocado.
+  12. **Sin endpoints, sin parser, sin importador y sin servicio:** el módulo
+      `src/modules/investments/` recibe de esta feature **únicamente** su test
+      (`investments.model.test.ts`), verificado sobre el diff y **no** por un
+      guardián de árbol: el módulo está **diseñado para crecer** (el servicio del
+      importador y, después, las rutas de patrimonio), así que congelar su
+      contenido sería incorrecto por construcción. `docs/api-contract.md` anota que
+      la capa de inversiones todavía no expone superficie HTTP.
+  13. 📌 **Dos hechos del extracto del banco de inversión que afectan al saldo del
+      flujo** (sin cambio de esquema): (a) ese banco **no da saldo por
+      movimiento**, así que `Movement.balanceAfter` será siempre `NULL` para esa
+      cuenta y la rama "sumar desde `initialBalance`" que ADR-011 decisión 3
+      describió como **caso excepcional** pasa a ser el **camino normal** —
+      `computeAccountBalance` ya lo soporta sin tocar código, pero
+      **`Account.initialBalance` deja de ser decorativo: es el único ancla del
+      saldo de esa cuenta**; y (b) tampoco trae **IBAN**, así que
+      `findOrCreateAccountFromMetadata` devolverá `MISSING_ACCOUNT_DATA` (422) y
+      esa cuenta habrá que darla de alta **a mano** — que es exactamente el camino
+      previsto por ADR-011 decisión 9 y ADR-005 para este caso.
+- **Alternativas consideradas:**
+  - **Modelar los productos como `Account` y las valoraciones como `Movement`:**
+    descartada — es la más tentadora y la peor. **Contaminaría el flujo en vez de
+    construir encima**: un producto no tiene IBAN (clave natural obligatoria y
+    única de `Account`), una valoración no tiene fecha valor ni descripción ni
+    saldo corrido, y meterlas en `Movement` las arrastraría al índice de dedup, a
+    los totales globales y al cálculo del saldo.
+  - **Una tabla por tipo de producto** (`Fund`, `Etf`, `Deposit`, …): descartada
+    por el humano en el `que_no_quiero`. Multiplicaría por cuatro las consultas de
+    patrimonio para tres tipos con **campos idénticos**, y obligaría a un `UNION` o
+    a herencia simulada.
+  - **Autorreferencia `parentId` para desglosar la cartera automatizada:**
+    descartada por el humano ("la quiero como un producto con su valor total").
+    Añadiría un nivel de agregación que nadie va a consultar y obligaría a decidir
+    si el padre suma o duplica a los hijos.
+  - **Guardar la última valoración como columnas del producto** (`lastValue`,
+    `lastGain`…): descartada — **perdería la serie**, que es justo lo que el humano
+    pide conservar, y haría imposible distinguir "subió porque metí dinero" de
+    "subió porque el mercado subió".
+  - **Derivar `gain`** (restando `marketValue − invested` o sumando los `Movement`
+    enlazados por `productId`): descartada — el `que_no_quiero` lo prohíbe y la
+    suma de movimientos **no es** el capital invertido (le faltan aportaciones
+    anteriores a la primera importación, movimientos internos del banco de
+    inversión y comisiones).
+  - **`isin` y segunda clave `(bank, name, maturityDate)`:** descartadas —
+    resuelven la amenaza de que un **banco** renombre un producto, y aquí el nombre
+    lo escribe el humano en su propio fichero.
+  - **`CHECK` (o trigger) para impedir valoraciones de un depósito:** descartada —
+    rompería el cero SQL crudo y un `CHECK` no puede consultar otra tabla.
+  - **`units` / `unitPrice` (participaciones y valor liquidativo) y `alias`:**
+    descartadas por el humano — nivel de detalle que no quiere y que complicaría el
+    fichero manual.
+  - **Versionar las fotos de la misma fecha** en vez de sobrescribir: descartada —
+    el humano pidió "que gane el último"; multiplicaría filas y obligaría a filtrar
+    "la última" en cada consulta.
+  - **Guardar las dos TAE del depósito** (la aplicada y la hipotética): descartada
+    — duplicaría el ancho del depósito para responder una pregunta que nadie hace y
+    ataría el modelo a la mecánica comercial de **un** banco concreto.
+- **Consecuencias:**
+  - **Todo aditivo:** ninguna columna, índice o enum del flujo se modifica; la
+    única línea que lo toca es `Movement.productId`. La suite del flujo
+    (`accounts`, `categories`, `movements`) pasa **sin cambios en sus archivos**.
+  - **Cero SQL crudo y cero riesgo de drift** en esta capa (contraste explícito con
+    ADR-011).
+  - **Sin dependencias ni variables de entorno nuevas** → `docs/stack.md` no
+    cambia. **Sin endpoints** → `docs/api-contract.md` solo gana una nota.
+  - **Columnas reservadas sin escritor:** `Movement.productId` (lo escribirá el
+    enlace de aportaciones), `InvestmentProduct.closedAt` (lo escribirá el
+    importador del fichero) y `openedAt` (sin escritor previsto: se queda `NULL`).
+    Hasta que `productId` se rellene, una aportación a un fondo **cuenta como
+    gasto** en los totales globales (asumido: no hay dashboards todavía, mismo
+    trade-off que `transferId` en ADR-011).
+  - **Divergencia consciente con ADR-011:** allí `transferId` nació sin escritor
+    **pero** `computeTotals` ya lo excluía. Aquí el alcance congela los servicios
+    del flujo, así que la exclusión de `productId` se implementará **con** su
+    escritor. Efecto práctico hoy: **cero**, porque `productId` es siempre `null`.
+  - **Contrato con el futuro importador:** **dos upserts**, el del producto sobre
+    `(bank, name)` y el de la foto sobre `(productId, date)`.
+  - **Límite conocido:** la BD **no** impide una valoración sobre un depósito
+    (regla de servicio, sin servicio todavía).
+  - **Límite conocido:** renombrar un producto en el fichero crea un producto nuevo
+    y deja la serie anterior colgando del nombre viejo (precio de la clave
+    natural).
+  - **Si algún día se quiere el detalle** (participaciones, valor liquidativo,
+    ISIN, desglose de la cartera), todo son **columnas nullable añadidas después**:
+    un `ADD COLUMN` barato, sin migrar datos.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

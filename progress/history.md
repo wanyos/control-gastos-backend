@@ -564,6 +564,94 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   la **importación** (mapear el JSON del parser a la BD invirtiendo el array de
   Bankinter, auto-alta de cuenta, dedup y mover a `procesados/`); después,
   **categorización por reglas** y **detección de traspasos**.
+
+## 2026-08-11 — Feature 9: investments-data-model (SDD)
+
+> Informe completo del implementer:
+> [`progress/implementations/investments-data-model.md`](implementations/investments-data-model.md).
+> Review: [`progress/reviews/investments-data-model.md`](reviews/investments-data-model.md).
+> Resumen de cierre: [`progress/summaries/investments-data-model.md`](summaries/investments-data-model.md).
+
+- **Agente:** leader (orquestando) + spec-author + **puerta humana (2 decisiones
+  confirmadas)** + implementer + reviewer. SDD:
+  `specs/investments-data-model/{requirements,design,tasks}.md` (28 requirements,
+  20 tasks) fue la fuente de verdad, no el `acceptance` original.
+- **Qué hace:** llena el hueco que la feature 8 dejó reservado a propósito — ahora
+  la base de datos sabe guardar **inversiones**. `InvestmentProduct` es la
+  abstracción única del producto (banco, nombre, tipo, divisa, alta y cierre) con
+  las **cuatro columnas del depósito dentro y nullable** (capital, TAE, ganancia
+  final, vencimiento); `Valuation` es la **foto** de un producto en una fecha
+  (invertido, valor de mercado, ganancia, porcentaje, efectivo sin invertir), que
+  conserva la **serie** mes a mes. **Alcance idéntico al de la feature 8 con el
+  flujo: solo esquema + migración.** Sin endpoints, sin parser, sin importador y
+  sin servicio.
+- **Las dos decisiones de la puerta humana (confirmadas tal cual las proponía el
+  spec):**
+  1. **Que un depósito no tenga valoraciones es regla del SERVICIO, no de la BD.**
+     Se conserva el **cero SQL crudo**: los tres índices son declarativos, Prisma
+     los conoce y el esquema no puede desincronizarse. Un `CHECK` además **no
+     puede consultar otra tabla** (haría falta un trigger). Coste asumido y
+     escrito: hoy nada impide insertar una `Valuation` sobre un `deposit`, y hay
+     un test que lo deja como **límite conocido** y se pondría rojo si alguien
+     añadiera el `CHECK` en silencio.
+  2. **Los importes se quedan en `Decimal(10,2)`** (techo ~100 M €), heredado del
+     flujo: que las dos capas tengan el mismo techo importa más que el techo. Si
+     se sube, se sube **en las dos a la vez**.
+- **Cambios (alto nivel):** `prisma/schema.prisma` **+77 líneas y −0** (enum
+  `InvestmentProductType` de cuatro valores, `model InvestmentProduct`, `model
+  Valuation` y, dentro de `Movement`, la columna reservada `productId` con su
+  relación e índice); migración `20260811152117_investments` **100 % generada**,
+  sin una línea de SQL a mano, sin `CHECK`, sin `DROP` ni `ALTER COLUMN` sobre el
+  flujo; módulo nuevo `src/modules/investments/` con **un solo archivo**, su test
+  (`investments.model.test.ts`); `architecture.test.ts` con **una entrada aditiva**
+  al árbol. **Sin dependencias ni variables de entorno nuevas** → `stack.md` sin
+  tocar. Deliberadamente **no** se escribió el guardián de "esta carpeta solo tiene
+  un archivo": el módulo está diseñado para crecer con el servicio del importador.
+- **Decisiones delegadas que cierra (ADR-012):** clave natural `(bank, name)` para
+  el producto —cae el `isin`: el nombre lo escribe el humano en su propio fichero,
+  luego es estable— y `(productId, date)` para la foto; **recargar el mismo fichero
+  es un UPSERT** que gana el último, **al revés que el flujo**, donde un duplicado
+  importado se descarta (una valoración es una medición que puede corregirse, un
+  movimiento es un hecho inmutable); **`interestRate` es la TAE en PORCENTAJE**
+  (`2.7500` = 2,75 %) y del depósito se guarda **una sola**, la aplicada; y ✅ el
+  único punto capaz de dar un patrimonio equivocado, **`marketValue` NO incluye
+  `uninvestedCash`**, confirmado por el humano y por la aritmética de las muestras
+  reales (`10.301,63 + 1.559,58 = 11.861,21`, con los `58,37 €` fuera): el
+  patrimonio de un producto es **su suma**, sin doble conteo.
+- **Docs:** `data-model.md` retitulado a `# Modelo de datos`, con **cinco reglas**
+  (nuevas: *la valoración se lee, no se calcula* y *una aportación no se crea, se
+  marca*), `## Parte 1 — Flujo` (prosa intacta) y `## Parte 2 — Inversiones` nueva;
+  `architecture.md` con **ADR-012** y el árbol actualizado; `api-contract.md` con
+  una nota de que la capa de inversiones **no expone endpoints todavía** (y que
+  `Movement.productId` no se filtra a la respuesta: `serializeMovement` mapea campo
+  a campo).
+- **Verificación:** `bash ./init.sh` → typecheck OK + **220 tests** en 17 archivos
+  + `[OK] Entorno listo` (la suite estaba en **197 / 16**: **+23 tests, +1 fichero,
+  0 tests modificados**, que es la prueba de que la capa es aditiva); `lint` y
+  `format:check` verdes; `prisma migrate dev` posterior responde *"Already in
+  sync"* → **cero drift**. El reviewer verificó además de forma independiente el
+  **77/0** del schema, aplicó el historial sobre una **BD limpia** creada al efecto
+  y comprobó una a una las **21 referencias de línea** del mapa de trazabilidad.
+  De los 28 requirements, **nueve son de proceso** (R17, R18, R19, R21, R23, R24,
+  R25, R26, R27), verificados por checklist sobre el diff.
+- **Cierre:** feature 9 `investments-data-model` → **done** (reviewer
+  **APPROVED**). Dos desviaciones declaradas y aceptadas: se **revirtió el
+  realineado de `prisma format`** sobre líneas preexistentes de `model Movement`
+  para que el diff fuera estrictamente aditivo (el schema queda fuera de la forma
+  canónica, como ya estaba), y las secciones de la Parte 1 de `data-model.md`
+  **bajaron un nivel de encabezado** con la prosa intacta. Límites conocidos: la BD
+  no impide una valoración sobre un depósito, y **renombrar** un producto en el
+  fichero crearía uno nuevo dejando la serie colgando del nombre viejo (precio de
+  la clave natural). Columnas reservadas sin escritor: `Movement.productId`,
+  `InvestmentProduct.closedAt` y `openedAt` (esta última **sin escritor previsto**:
+  el fichero no lleva el campo). ⚠️ **Deuda anotada, no aplicada:** quien escriba
+  `Movement.productId` deberá excluir en esa misma feature los movimientos con
+  producto de `computeTotals`, o las aportaciones mensuales seguirán contando como
+  gasto. Y 📌 **deber del humano:** la cuenta corriente de MyInvestor hay que darla
+  de alta **a mano** y con un `initialBalance` correcto — su extracto no trae IBAN
+  ni saldo por línea, así que ese saldo inicial será el **único ancla** de esa
+  cuenta. Orden acordado a partir de aquí: **F11 → F10 → F12**.
+
 ## 2026-08-11 — Tareas de harness previas a la F9 (archivadas a posteriori)
 
 > Se añaden **después** de la entrada de la feature 9 aunque ocurrieron antes que

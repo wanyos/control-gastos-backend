@@ -51,6 +51,17 @@ enum MovementStatus {
   pending_review
 }
 
+// `fund`, `etf` and `managed_portfolio` carry exactly the same fields: a
+// managed portfolio is one product with its total value, never broken down
+// into what it holds. `deposit` is the only one with a specific part
+// (see docs/architecture.md ADR-012).
+enum InvestmentProductType {
+  fund
+  etf
+  managed_portfolio
+  deposit
+}
+
 // ── Models ────────────────────────────────────────────────
 model Account {
   id             Int         @id @default(autoincrement())
@@ -107,11 +118,77 @@ model Movement {
   // order and is part of the dedup index key.
   daySequence Int?
 
+  // The investment product this money went to. Nothing writes it yet: marking
+  // a contribution is a later feature. It is NOT a source for Valuation.invested.
+  product   InvestmentProduct? @relation(fields: [productId], references: [id])
+  productId Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([accountId, bookingDate, daySequence])
   @@index([transferId])
+  @@index([productId])
   // Dedup of imported movements: PARTIAL unique index created with raw SQL in
   // the migration (Prisma 7 cannot express it in the schema).
+}
+
+/// What every investment product has, whatever its type. One table only: the
+/// deposit-specific columns live here and stay NULL for the other types.
+model InvestmentProduct {
+  id       Int                   @id @default(autoincrement())
+  bank     String
+  name     String
+  type     InvestmentProductType
+  currency String                @default("EUR")
+
+  openedAt DateTime? @db.Date
+  // NULL = still open. No `status` enum: a boolean derived from this date is a
+  // second source of truth that ends up out of sync.
+  closedAt DateTime? @db.Date
+
+  // Deposit-specific part (NULL in fund / etf / managed_portfolio). Written
+  // once when the deposit is signed; it does not fluctuate, so a deposit has
+  // no Valuation rows (business rule watched by the service, ADR-012).
+  principal    Decimal?  @db.Decimal(10, 2)
+  // APR AS A PERCENTAGE: 2.7500 means 2.75 %, never a fraction.
+  interestRate Decimal?  @db.Decimal(6, 4)
+  expectedGain Decimal?  @db.Decimal(10, 2)
+  maturityDate DateTime? @db.Date
+
+  valuations Valuation[]
+  movements  Movement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Natural key: the name is written by hand in the product file, so it is
+  // stable. Reloading the same file upserts on it.
+  @@unique([bank, name])
+}
+
+/// The periodic snapshot of a product that fluctuates. Every number is stored
+/// as the file reports it; nothing here is ever computed (rule 4).
+model Valuation {
+  id        Int               @id @default(autoincrement())
+  product   InvestmentProduct @relation(fields: [productId], references: [id])
+  productId Int
+  date      DateTime          @db.Date
+
+  // `invested` lives in the snapshot, not in the product: it grows with the
+  // monthly contributions, so it is a fact of the date.
+  invested       Decimal  @db.Decimal(10, 2)
+  // What it is worth today. It does NOT include uninvestedCash: the net worth
+  // of a product is marketValue + uninvestedCash (ADR-012).
+  marketValue    Decimal  @db.Decimal(10, 2)
+  gain           Decimal? @db.Decimal(10, 2)
+  gainPercent    Decimal? @db.Decimal(7, 4)
+  uninvestedCash Decimal? @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One snapshot per product and date. Reloading the same file overwrites it
+  // (upsert): the last load wins, unlike the flow, where a duplicate is dropped.
+  @@unique([productId, date])
 }

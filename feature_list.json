@@ -6,7 +6,13 @@
     "require_tests_to_close": true,
     "require_approved_spec_to_implement": true,
     "human_writes_intent_first": "Toda feature DEBE tener un bloque 'intent' escrito por el humano ANTES de que el leader derive 'acceptance'. El leader traduce la intención a criterios técnicos; NUNCA se inventa el QUÉ. Si una feature no tiene 'intent', el leader se detiene y lo pide. Ver docs/intent-template.md.",
-    "valid_status": ["pending", "spec_ready", "in_progress", "done", "blocked"],
+    "valid_status": [
+      "pending",
+      "spec_ready",
+      "in_progress",
+      "done",
+      "blocked"
+    ],
     "sdd_required_when": "feature has \"sdd\": true"
   },
   "features": [
@@ -291,14 +297,14 @@
           "Si al extracto le falta el dato necesario (p. ej. IBAN), no se crea a ciegas: se me devuelve un error para crearla a mano.",
           "Cuando pido los datos por la API, los campos salen en inglés con los nombres del modelo validado (incluidas las dos fechas, saldo y divisa).",
           "Aplico la migración sobre una base limpia y las tablas se crean sin error; el Expense del bootstrap deja de ser el modelo.",
-      "Un extracto con tres lineas identicas el mismo dia (misma fecha, mismo concepto, mismo importe) se guarda como tres movimientos, no como uno; y reimportar ese mismo extracto no crea duplicados.",
+          "Un extracto con tres lineas identicas el mismo dia (misma fecha, mismo concepto, mismo importe) se guarda como tres movimientos, no como uno; y reimportar ese mismo extracto no crea duplicados.",
           "Si intento algo incoherente (un importe cero o negativo, una cuenta o categoría inexistente, o una categoría de tipo distinto al del movimiento), el backend lo rechaza con un error claro."
         ],
         "que_no_quiero": [
           "Nada de inversiones ni patrimonio (idea #3) todavía: solo el flujo; se añade encima después.",
           "No hay cuenta de efectivo: el efectivo se ve a traves de los movimientos que el banco reporta (retiradas de cajero).",
-      "Nada de alta ni de borrado de movimientos por API (ni sus validaciones): un movimiento que no venga del banco no debe existir ni tocar el saldo. El efectivo se agota en la retirada de cajero, que ya es un movimiento del extracto: no hace falta saber en que se gasto ese dinero.",
-      "Nada de endpoints ni logica de traspasos: no se crean, no se enlazan y no se detectan parejas aqui; tampoco existe un type 'transfer' ni un campo 'direction' (el type que reporto el banco ya dice si resta o suma). El emparejado de las dos piernas (manual o automatico) es una feature posterior, encima de la importacion.",
+          "Nada de alta ni de borrado de movimientos por API (ni sus validaciones): un movimiento que no venga del banco no debe existir ni tocar el saldo. El efectivo se agota en la retirada de cajero, que ya es un movimiento del extracto: no hace falta saber en que se gasto ese dinero.",
+          "Nada de endpoints ni logica de traspasos: no se crean, no se enlazan y no se detectan parejas aqui; tampoco existe un type 'transfer' ni un campo 'direction' (el type que reporto el banco ya dice si resta o suma). El emparejado de las dos piernas (manual o automatico) es una feature posterior, encima de la importacion.",
           "Nada de multi-divisa real: todo en euros; el campo currency existe pero no hay conversión.",
           "El disparo de la importación desde Drive (leer la carpeta, parsear y persistir en lote, deduplicar, mover a procesados/) es la feature siguiente; aquí solo dejo el modelo, el alta manual y el servicio de creación de cuenta listos para que la importación los use.",
           "No construir interfaz web (es del frontend, otra sesión).",
@@ -315,7 +321,7 @@
       "acceptance": [
         "El esquema Prisma define las tablas del flujo según docs/data-model.md y el intent: Account (cuenta bancaria con banco, alias, tipo, IBAN y saldo inicial; SIN cuenta de efectivo), Category (jerárquica con parentId de un nivel y kind gasto/ingreso) y Movement (type expense/income más el tratamiento que se decida para el importe 0, sin valor 'transfer' y sin columna 'direction'; con transferId nullable como enlace entre las dos piernas de un traspaso), en inglés y con los campos que aporta el parser (bookingDate, valueDate, balanceAfter, currency) (deriva de: 'la BD real del flujo según data-model.md' + 'no hay cuenta de efectivo' + 'alineado con el parser' + 'un traspaso es un movimiento más')",
         "Existe una migración que, aplicada sobre una base limpia, crea todas las tablas sin error (deriva de: 'aplico la migración sobre BD limpia, las tablas se crean sin error')",
-    "El índice de deduplicación de movimientos importados incluye la posición del movimiento dentro de su día (daySequence), de modo que varias líneas idénticas legítimas del mismo extracto se guardan todas y una reimportación del mismo periodo no duplica nada (deriva de: 'guardar la posicion de cada linea del extracto para no tener problemas con el saldo')",
+        "El índice de deduplicación de movimientos importados incluye la posición del movimiento dentro de su día (daySequence), de modo que varias líneas idénticas legítimas del mismo extracto se guardan todas y una reimportación del mismo periodo no duplica nada (deriva de: 'guardar la posicion de cada linea del extracto para no tener problemas con el saldo')",
         "Se puede crear y listar una cuenta bancaria (con IBAN y saldo inicial) por la API (deriva de: 'creo una cuenta con IBAN y saldo inicial, queda guardada y la listo')",
         "Los movimientos se pueden listar por la API (mas recientes primero, con cuenta y categoria embebidas) y NO existe endpoint para crearlos ni para borrarlos: entran solo por importacion (deriva de: 'si lo hago en el banco queda reflejado... no creo que sea necesario tener movimientos a mano... eliminar movimientos lo mismo... el saldo no quiero que se controle a mano')",
         "Un traspaso entre dos cuentas propias son dos Movement ordinarios que ya llegan de los extractos (expense en origen, income en destino) enlazados por un transferId compartido: no hay endpoint que los cree ni que los enlace, el saldo de cada cuenta ya los incluye (viene del balanceAfter del extracto) y los totales globales excluyen todo movimiento con transferId (deriva de: 'un traspaso es un movimiento mas, no necesita crearse nada ni un endpoint; solo que no cuente ni como ingreso ni como gasto')",
@@ -325,6 +331,57 @@
         "El Expense/Category placeholder del bootstrap y sus endpoints /api/expenses se eliminan (base de datos limpia con el modelo nuevo), y el cambio se documenta como breaking change en docs/api-contract.md (deriva de: 'quitar las tablas viejas y los endpoints, dejar la BD limpia' + regla de breaking change)",
         "docs/api-contract.md queda actualizado con los modelos y endpoints nuevos en inglés (Account, Category, Movement), y docs/data-model.md se actualiza para reflejar el modelo final (sin cuenta de efectivo, con IBAN/valueDate/balanceAfter/currency y description) (deriva de: 'todo en inglés' + 'usar data-model.md')",
         "Cada criterio tiene al menos un test concreto mapeado en progress/implementations/data-model.md; ./init.sh termina en verde incluida la suite completa; y las decisiones delegadas (índices/dedup, ubicación del servicio de auto-alta de cuenta, tratamiento del importe 0, cómo reemplazar el Expense) quedan anotadas como ADR en docs/architecture.md donde aplique, con docs/stack.md actualizado si hay dependencias nuevas (deriva del cierre estándar del proyecto)"
+      ],
+      "sdd": true,
+      "status": "done"
+    },
+    {
+      "id": 9,
+      "name": "investments-data-model",
+      "title": "Modelo de datos de inversiones: productos y su valoración periódica (Prisma + migración)",
+      "intent": {
+        "que_quiero": "Que la base de datos sepa persistir mis inversiones. Tengo un solo banco de inversión con varios productos: fondos, un ETF (tengo uno de oro), varios depósitos y una cartera automatizada. En ese banco tengo además una cuenta corriente normal, que va con el modelo del flujo que ya existe y no necesita nada nuevo. Lo que quiero saber no va más allá de esto: cuánto he ingresado en cada sitio contando las aportaciones que hago de forma recurrente, qué valor tiene ese capital ahora mismo si vendo o cancelo la inversión, y cuánto estoy ganando o perdiendo. Datos simples. Para modelarlo quiero una primera abstracción de lo que es un producto de inversión, donde se recogen los datos principales, y después cada uno con sus partes concretas. Un fondo, una cartera automatizada y un ETF son exactamente lo mismo y llevan los mismos datos: capital invertido, tanto por ciento de ganancias o pérdidas, valor de mercado, e incluso en algunos el dinero que está sin invertir. Un depósito es distinto: total invertido, tanto por ciento ofrecido, ganancias finales y fecha de vencimiento. Estos datos se leen del archivo tal cual, no hay que calcular nada. Hay que tener en cuenta que en los fondos el capital invertido crece con el tiempo porque hago aportaciones mensuales, así que la foto de un producto es de una fecha concreta y quiero conservar la serie. Modelado de la forma más sencilla posible: si en el futuro aparece un producto que no entra dentro del modelo, entonces se creará su parte específica.",
+        "por_que": "Ya tenemos la estructura principal de la base de datos y el siguiente paso es enriquecerla con la parte de las inversiones, para tenerlas todas monitorizadas. Hoy no hay dónde guardar ni los productos ni su evolución, así que el patrimonio no existe en la aplicación. La feature 8 dejó este hueco reservado a propósito en docs/data-model.md para añadirlo encima sin tocar lo anterior.",
+        "como_se_que_esta_bien": [
+          "Doy de alta un fondo, un ETF y una cartera automatizada y los tres admiten exactamente los mismos datos; doy de alta un depósito y guarda además sus condiciones propias (capital, tanto por ciento ofrecido, ganancia final y vencimiento), que en los otros tres quedan vacías.",
+          "Guardo la foto de un fondo en una fecha con capital invertido, valor de mercado, ganancia, tanto por ciento y dinero sin invertir tal como vienen en el archivo, y los recupero idénticos; incluidos los negativos cuando estoy perdiendo.",
+          "Guardo tres fotos del mismo fondo en tres meses distintos, con el capital invertido creciendo por mis aportaciones, y se conservan las tres sin pisarse: puedo ver la serie.",
+          "Un producto que no trae dinero sin invertir se guarda sin ese dato, y otro que sí lo trae lo conserva.",
+          "Volver a cargar el mismo archivo no duplica nada: la foto de un producto en una fecha es única y se queda con el último dato cargado.",
+          "Un movimiento de la cuenta corriente puede quedar enlazado al producto de inversión al que fue ese dinero, y se recupera enlazado.",
+          "Aplico la migración sobre una base limpia y las tablas se crean sin error, y todo lo que ya funcionaba del flujo (cuentas, movimientos, categorías) sigue funcionando exactamente igual."
+        ],
+        "que_no_quiero": [
+          "Nada de participaciones ni de valor liquidativo: revisé lo que puedo sacar de cada inversión y ese nivel de detalle o es muy complejo o no se adapta a lo que quiero.",
+          "No desglosar la cartera automatizada en los fondos que lleva dentro: la quiero como un producto con su valor total, igual que un fondo.",
+          "No calcular la ganancia ni el tanto por ciento restando o dividiendo: esos datos vienen en el archivo y se guardan tal cual.",
+          "El depósito no necesita foto periódica: sus condiciones se escriben una vez al contratarlo y no fluctúan.",
+          "Nada de tabla aparte por cada tipo de producto: una sola tabla con lo común y las columnas propias del depósito vacías en los demás.",
+          "Nada de endpoints, ni parser, ni importador: aquí solo el modelo y la migración, igual que la feature 8 hizo con el flujo. El archivo de los productos de inversión será un simple archivo de texto que escribiré a mano (quizá una plantilla JSON), y su formato se define en la feature del parser.",
+          "No tocar nada del modelo del flujo, salvo añadir la columna que permite enlazar un movimiento con el producto al que fue el dinero.",
+          "No construir interfaz web (es del frontend, otra sesión)."
+        ],
+        "delego_en_agente": [
+          "Cómo materializar el modelo en Prisma/Postgres: nombres en inglés de las tablas y campos, enum de tipos de producto, precisión decimal de cada importe y de los porcentajes, e índices. Que lo proponga en el design y me lo marque.",
+          "La clave natural que identifica un producto entre cargas del archivo, y la que identifica una foto; y qué pasa exactamente al recargar el mismo archivo (que no duplique y que gane el último).",
+          "Cómo se vigila que un depósito no tenga fotos periódicas: como regla del servicio o como restricción en la base de datos. Que proponga cuál y por qué.",
+          "Si el valor de mercado que dan mis productos ya incluye el dinero sin invertir o van aparte: que deje planteada la suposición de forma visible para que yo la confirme, porque de eso depende que el patrimonio total no cuente dos veces lo mismo.",
+          "Dónde y cómo se documenta todo esto: docs/data-model.md, el ADR en docs/architecture.md y la nota en docs/api-contract.md."
+        ]
+      },
+      "acceptance": [
+        "El esquema Prisma define una única tabla de producto de inversión con los datos comunes (banco, nombre, tipo, divisa, alta y cierre) y, en esa misma tabla, las columnas propias del depósito (capital, tanto por ciento ofrecido, ganancia final y vencimiento), vacías en los demás tipos: no hay una tabla por cada tipo de producto (deriva de: 'una primera abstracción de lo que es un producto de inversión, donde se recogen los datos principales, y después cada uno con sus partes concretas' + 'nada de tabla aparte por cada tipo de producto')",
+        "Fondo, ETF y cartera automatizada son tres valores distintos del tipo de producto pero admiten exactamente los mismos campos, y la cartera automatizada se guarda como un producto único con su valor total, sin desglose de los fondos que lleva dentro (deriva de: 'un fondo, una cartera automatizada y un ETF son exactamente lo mismo y llevan los mismos datos' + 'no desglosar la cartera automatizada')",
+        "Existe una tabla de valoración que guarda, por producto y fecha, el capital invertido, el valor de mercado, la ganancia, el tanto por ciento y el dinero sin invertir, tal como vienen en el archivo; ningún valor derivable se persiste calculado (deriva de: 'capital invertido, tanto por ciento de ganancias o pérdidas, valor de mercado, e incluso en algunos el dinero que está sin invertir' + 'estos datos se leen del archivo tal cual, no hay que calcular nada')",
+        "El capital invertido vive en la valoración y no en el producto, de modo que varias fotos del mismo producto en fechas distintas se conservan todas sin pisarse y la serie queda disponible (deriva de: 'en los fondos el capital invertido crece con el tiempo porque hago aportaciones mensuales' + 'guardo tres fotos del mismo fondo en tres meses distintos y se conservan las tres sin pisarse')",
+        "La ganancia y el tanto por ciento admiten valores negativos y se recuperan idénticos a como se guardaron (deriva de: 'los recupero idénticos; incluidos los negativos cuando estoy perdiendo')",
+        "El dinero sin invertir es opcional: un producto que no lo trae se guarda sin ese dato y otro que sí lo trae lo conserva (deriva de: 'un producto que no trae dinero sin invertir se guarda sin ese dato, y otro que sí lo trae lo conserva')",
+        "Un depósito guarda solo sus condiciones, escritas una vez, y no tiene valoraciones periódicas (deriva de: 'el depósito no necesita foto periódica: sus condiciones se escriben una vez al contratarlo y no fluctúan')",
+        "La valoración de un producto en una fecha es única: recargar el mismo archivo no duplica filas y el dato queda con el último valor cargado (deriva de: 'volver a cargar el mismo archivo no duplica nada: la foto de un producto en una fecha es única y se queda con el último dato cargado')",
+        "Un movimiento del flujo puede quedar enlazado al producto de inversión al que fue el dinero, mediante una columna nullable que esta feature deja reservada y sin escritor; ningún otro campo, índice o enum del modelo del flujo se modifica (deriva de: 'un movimiento de la cuenta corriente puede quedar enlazado al producto de inversión al que fue ese dinero' + 'no tocar nada del modelo del flujo, salvo añadir la columna que permite enlazar un movimiento con el producto')",
+        "Existe una migración que, aplicada sobre una base limpia, crea las tablas nuevas sin error, y la suite completa del flujo (cuentas, movimientos, categorías) sigue pasando sin cambios (deriva de: 'aplico la migración sobre una base limpia y las tablas se crean sin error, y todo lo que ya funcionaba del flujo sigue funcionando exactamente igual')",
+        "Esta feature no añade ningún endpoint, ni parser, ni importador: solo el modelo y la migración (deriva de: 'nada de endpoints, ni parser, ni importador: aquí solo el modelo y la migración, igual que la feature 8 hizo con el flujo')",
+        "Cada criterio tiene al menos un test concreto mapeado en progress/implementations/investments-data-model.md; ./init.sh termina en verde incluida la suite completa; y las decisiones delegadas (materialización en Prisma con su precisión decimal e índices, claves naturales, cómo se vigila que un depósito no tenga valoraciones, y la suposición sobre si el valor de mercado incluye el dinero sin invertir) quedan anotadas como ADR en docs/architecture.md y reflejadas en docs/data-model.md y docs/api-contract.md (deriva del cierre estándar del proyecto + los cinco puntos de delego_en_agente)"
       ],
       "sdd": true,
       "status": "done"
