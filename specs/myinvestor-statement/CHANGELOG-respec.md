@@ -102,7 +102,7 @@ R76**, todos en productos.
 
 | Pieza | La construye | La usa |
 |---|---|---|
-| `myinvestor.format.ts` → `parseAmountText` (la regla del separador de miles) | **F10** (R10) | la F13 la **importa**; tiene prohibido escribir una segunda |
+| `myinvestor.format.ts` → `parseAmountText` (la regla del separador de miles) | **F10** (R10) | ⚠️ **superado el 2026-08-11** (última sección de este archivo): la F13 **ya no la usa**, porque sus números van como número JSON nativo. Sigue prohibido escribir una segunda |
 | `myinvestor.format.ts` → `parseIsoDate` | **F13**, añadida al **mismo archivo** | solo la F13 (el extracto no necesita ISO estricto) |
 | `myinvestor.service.ts`: recorrido de carpetas, `failed[]`, `ignored[]`, aislamiento por archivo, determinismo | **F10** (R25, R47, R49, R55, R56) | la F13 **añade una rama** (`.json`, su R76) y el volcado `products.json` |
 | `myinvestor.routes.ts` (`POST /api/parser/myinvestor`) | **F10** (R51) | la F13 **no la toca**: el mismo botón devuelve además los productos |
@@ -177,3 +177,134 @@ de su `decisions.md`.
    como enlace; lo dejo como estaba porque no es una referencia rota a la carpeta del
    corte.
 
+
+---
+
+# Las cuatro decisiones del humano sobre la F13, propagadas (2026-08-11)
+
+> **Corrección, no spec nuevo** (`docs/specs.md` §Regla 3). Solo se ha tocado
+> [`specs/myinvestor-products/`](../myinvestor-products/); la F13 sigue en `spec_ready`,
+> `feature_list.json` no se ha tocado, y **nada de esta carpeta ni del código de la F10
+> se ha modificado**. La numeración `R<n>` se ha mantenido: lo que cambia se ha editado
+> en su sitio y lo nuevo continúa la numeración global (**R77**).
+
+## El diff en cinco líneas
+
+1. **Los números de los archivos de producto son número JSON nativo** (`1312.72`), no
+   texto en formato español. **R26 se reescribe en su sitio** (exige número nativo, sin
+   separador de miles ni símbolos) y **R27 también** (era la regla del punto sin coma,
+   que solo tenía sentido con texto; ahora exige conservar el valor tal cual, sin
+   redondear ni reformatear). `design.md` §6.1 se reescribe entera con la propuesta
+   anterior conservada como **alternativa descartada**. **Las fechas no cambian.**
+2. **La F13 deja de depender de `parseAmountText`.** La tabla «Qué construye la F10 y
+   aquí solo se consume» de `requirements.md` lo dice explícitamente, igual que la tabla
+   de archivos de `design.md` §1, el ADR borrador (§11 punto 2), los riesgos (§15) y el
+   preámbulo y la T7 de `tasks.md`. **La F10 no se toca:** el `.csv` la sigue usando.
+3. **Nuevo R77 — un valor numérico que llega como texto es un fallo del archivo**, con
+   motivo explícito ("se espera un número sin comillas") y **sin interpretarlo nunca**,
+   ni siquiera `"1312.72"`. Entra en la tabla de errores (`design.md` §9.1), en la
+   cobertura del `intent` (punto 11), en la Procedencia como **(humano)**, y en T7, T8 y
+   T4b. **R41 se reescribe en su sitio** para cubrir lo que no es texto (`true`, `[]`).
+   Las plantillas de §7.1/§7.2, R29, R36, R38 y R39 pasan sus ejemplos a números nativos.
+4. **La plantilla copiable se va a Drive y `docs/myinvestor-product-files.md` cambia de
+   papel:** se queda en el repo como **referencia del formato** (tabla de campos y reglas)
+   y deja de ser "de donde copias". **R60 y T13 se editan en su sitio**; el deber de crear
+   la copia en Drive, en una carpeta **hermana de `notas-banco/`**, va a las
+   «consecuencias que te tocan a ti» de `decisions.md`, no como requirement.
+5. **`decisions.md` reescrito:** el bloque 🔴 pasa de 5 puntos a **1** (la lista de
+   campos); los cinco cerrados se mueven a **✅ Ya las cerraste tú** con fecha; la técnica
+   nº 5 pierde "la interpretación de los números"; y la lista de ignorados pasa al bloque
+   **⚠️ Incoherencias heredadas** explicando que **pierde su motivo (`.txt`) pero se queda
+   como red**. La sección 🟥 «lo que decidí yo» desaparece de la hoja (ya no hay nada
+   pendiente ahí) y sus cinco puntos quedan marcados **APROBADOS 2026-08-11** en la
+   Procedencia de `requirements.md`.
+
+## Lo que NO se ha tocado, a propósito
+
+- **La decisión 3 (se acabaron los `.txt`) no cambia una sola línea del spec de la F13.**
+  La lista `ignored[]` y su justificación viven en el spec del extracto, **ya
+  implementado y cerrado**. Lo único que quedaba por hacer era dejar dicho por qué sigue
+  existiendo: está en `decisions.md` de la F13, en «incoherencias heredadas».
+- **Las decisiones 🔴 nº 2, 3, 4 y 5** se han marcado aprobadas y **no se ha cambiado ni
+  una palabra de su contenido** en requirements, design ni tasks.
+
+## ⚠️ Una corrección al porqué de la decisión 2 (el sitio de la plantilla)
+
+La decisión **no cambia** —la carpeta hermana de `notas-banco/` es la buena—, pero uno de
+los dos motivos que la sostenían no es exacto y no lo propago en silencio: una carpeta
+**dentro del banco** (`notas-banco/myinvestor/plantillas/`) **no** se tomaría por un año,
+porque el listado filtra por nombre de cuatro cifras
+([`drive-structure.ts:399`](../../src/lib/drive-structure.ts#L399)). El motivo que sí se
+sostiene es el otro: **cualquier carpeta colgada de `notas-banco/` se toma por un banco**
+([`:365`](../../src/lib/drive-structure.ts#L365)), sin ningún filtro de nombre. Queda
+anotado tal cual en `decisions.md`.
+
+## Lo único que sigue bloqueando la F13
+
+**La lista de campos.** Se ha escrito para el humano, en una página, en
+`specs/myinvestor-products/CAMPOS-para-cerrar.md` (⚠️ **renombrado el 2026-08-11 a**
+[`CAMPOS-cerrados.md`](../myinvestor-products/CAMPOS-cerrados.md), ver la sección
+siguiente):
+una tabla por tipo, con qué es cada campo, si es obligatorio, su origen y **qué hay que
+teclear cada mes**. **No he decidido nada por él**: las cuatro casillas marcadas 🟥/🟠 y
+la pregunta de si el archivo del depósito se reescribe cada mes están planteadas, no
+resueltas.
+
+---
+
+# Las tres casillas de la lista de campos, cerradas (2026-08-11)
+
+> **Corrección, no spec nuevo** (`docs/specs.md` §Regla 3). Solo
+> [`specs/myinvestor-products/`](../myinvestor-products/). La F13 sigue en `spec_ready`,
+> `feature_list.json` intacto, `src/` intacto, esta carpeta intacta salvo este archivo.
+> **Ni un `R<n>` nuevo ni renumerado:** las tres decisiones confirman lo que la spec ya
+> decía, así que solo cambia el texto que las presentaba como abiertas.
+
+## El diff en cinco líneas
+
+1. **`decisions.md` se queda con CERO 🔴.** El bloque «Confirma o corrige» ya no es una
+   tabla: dice explícitamente **«NINGUNO»** y que la feature se puede aprobar de un
+   vistazo, igual que el del extracto. Las tres nuevas van a **✅ Ya las cerraste tú**,
+   que pasa de 6 a **9** con fecha.
+2. **`closedAt` es campo del archivo, decidido por él.** Deja de estar marcado 🟥
+   *inventado sin dueño* en `design.md` §7.3 (las dos filas) y pasa a **TÚ
+   (2026-08-11)**; §8 dice ahora que con esto la columna `InvestmentProduct.closedAt` de
+   la F9 —reservada y sin escritor— **ya tiene quien la rellene**; y la Procedencia de
+   **R30/R31** lo recoge como delegación **confirmada**. El requirement no cambia.
+3. **Cadencia del depósito: solo al contratar y al vencer.** Escrita donde la va a
+   encontrar: `design.md` §8 (bloque 📌 nuevo), la fila `date` de §7.3, la T13 (la
+   plantilla documentada tiene que decirlo) y las «consecuencias que te tocan a ti» de
+   `decisions.md`. **Ningún requirement cambia**: el parser no tiene memoria ni espera
+   cadencia alguna (R31).
+4. **R46 (choque producto+fecha) revisado contra esa cadencia y sigue en pie**, anotado
+   en `design.md` §9.2: el caso que atrapa **no** es "he escrito el producto dos meses
+   seguidos" —eso son dos `date` distintas— sino **la copia duplicada** (`fondo.json` +
+   `fondo (1).json` que Drive crea al subir dos veces), que es el escenario de ADR-009 y
+   el más probable en los dos tipos.
+5. **`CAMPOS-para-cerrar.md` → [`CAMPOS-cerrados.md`](../myinvestor-products/CAMPOS-cerrados.md).**
+   Se conserva (es lo único que responde *"¿cuánto me cuesta esto cada mes?"*, que ni
+   `decisions.md` ni `design.md` §7.3 contestan) pero **reescrito como registro**: título
+   y encabezado dicen que no se le pide nada, desaparecen las marcas 🟥/🟠, la columna
+   «¿lo tecleas cada mes?» pasa a **«¿cuándo lo escribes?»** y se añade la tabla «Lo que
+   decidiste el 2026-08-11». Enlaces reapuntados en `decisions.md`, `requirements.md`,
+   `design.md` y `tasks.md`; `currency` pierde el marcado de dudoso sin más cambio.
+
+## Coste mensual que queda escrito (era la pregunta de fondo)
+
+**5 valores** por fondo o ETF (1 fecha + 4 números), **6** en la cartera automatizada, y
+**nada** en los depósitos: su archivo se escribe **dos veces en toda su vida**.
+
+## ADR-012 de la F9: **no hace falta tocarlo** (verificado)
+
+El ADR ya anticipaba este escritor: *"Su escritor lo aporta el importador del fichero: el
+humano escribe `closedAt` una sola vez, en la última aparición del producto"*
+([`architecture.md:732`](../../docs/architecture.md#L732)), y su lista de columnas
+reservadas dice *"`InvestmentProduct.closedAt` (lo escribirá el importador del fichero)"*
+([`:829`](../../docs/architecture.md#L829)). **La decisión del humano lo confirma en vez
+de contradecirlo** y sigue siendo cierto que el escritor en base de datos es el importador
+(F12), no esta feature. **No he tocado nada de la F9, que está implementada y
+commiteada.**
+
+## Lo que sigue estando pendiente de la F13
+
+**Nada del humano.** Solo que la F10 esté `done` para poder ampliar su módulo.

@@ -21,9 +21,14 @@
 > **Alcance: entender los archivos, no guardarlos.** Sin base de datos, sin esquema
 > Prisma, sin enlazar movimientos con productos y sin mover nada en Drive.
 >
-> ⏸️ **Esta feature es SDD y tiene los CINCO puntos 🔴 pendientes** del visto bueno del
-> humano (`decisions.md`). **No se implementa hasta que los cierre**, porque los cinco
-> cambian lo que hay que escribir.
+> ✅ **Esta spec NO tiene nada pendiente del visto bueno del humano.** El 2026-08-11
+> cerró los CINCO puntos 🔴 (cuatro aprobados tal cual, el nº 1 cambiado a **número JSON
+> nativo**) y las TRES casillas que quedaban de la lista de campos (`closedAt` como campo
+> del archivo, `currency` opcional que no escribe, y el archivo del depósito **solo al
+> contratar y al vencer**). Ver [`decisions.md`](decisions.md),
+> [`CAMPOS-cerrados.md`](CAMPOS-cerrados.md) y
+> [`../myinvestor-statement/CHANGELOG-respec.md`](../myinvestor-statement/CHANGELOG-respec.md).
+> La implementación solo espera a que la F10 `myinvestor-statement` esté `done`.
 
 ## Qué construye la F10 y aquí solo se consume
 
@@ -33,7 +38,7 @@
 | Pieza | Quién la construye | Qué hace esta feature |
 | --- | --- | --- |
 | `src/modules/myinvestor/` (el módulo) | **F10** | añade sus archivos dentro |
-| `myinvestor.format.ts` → `parseAmountText` | **F10** (R10) | lo **importa** tal cual (R26, R27) |
+| `myinvestor.format.ts` → `parseAmountText` | **F10** (R10) | **no lo usa.** Desde el 2026-08-11 los números de los archivos de producto son **número JSON nativo** (🔴 nº 1 cerrado), así que aquí no hay texto que interpretar. Sigue siendo del `.csv` del extracto y **no se toca** |
 | `myinvestor.format.ts` → `parseIsoDate` | **esta feature** | lo añade **al archivo que ya existe**, no crea otro |
 | `myinvestor.service.ts` (recorrido, `failed[]`, `ignored[]`, aislamiento, volcado) | **F10** (R47, R49, R52, R55, R56) | **extiende** la rama de la extensión (R76) y añade el volcado de productos (R53) |
 | `myinvestor.routes.ts` (`POST /api/parser/myinvestor`) | **F10** (R51) | **no la toca**: el mismo disparo devuelve además los productos |
@@ -83,23 +88,21 @@ archivo solo aparece como procedencia (`file`).
 
 ### R26
 
-El sistema DEBE aceptar los valores numéricos de los archivos de producto escritos
-como cadena, tanto en formato español (`"1.312,72"`, `"-3,47"`) como en formato simple
-(`"1312.72"`, `"-3.47"`), tolerando el símbolo `€`, el símbolo `%` y los espacios,
-**reutilizando `parseAmountText` de la F10** sin duplicar la regla.
+El sistema DEBE exigir que todos los valores numéricos de los archivos de producto sean
+**número JSON nativo** (`1312.72`, `-3.47`, `25000`), con el punto como separador
+decimal y sin separador de miles, sin símbolo de moneda ni de porcentaje.
 
-*Verificación:* test parametrizado con `"1.312,72 €"`, `"1312.72"`, `"-3,47 %"`,
-`"-3.47"`, `" 62,72 "` → 1312.72, 1312.72, −3.47, −3.47, 62.72; y comprobación de que
-el parser de productos **importa** el helper en vez de reimplementarlo.
+*Verificación:* test parametrizado con `1312.72`, `-3.47`, `25000` y `62.72` → los
+cuatro se aceptan con ese valor exacto; y comprobación de que el parser de productos
+**no importa** `parseAmountText`.
 
 ### R27
 
-CUANDO una cadena numérica no lleva coma y sus puntos separan grupos de exactamente
-tres dígitos (`"25.000"`, `"1.312.000"`), el sistema DEBE interpretar esos puntos como
-separador de miles.
+El sistema DEBE conservar el valor numérico leído tal cual, sin redondearlo, sin
+reformatearlo y sin fijarle un número de decimales.
 
-*Verificación:* test con `"25.000"` → 25000; `"1.312.000"` → 1312000; y el contraste
-`"1312.72"` → 1312.72 y `"1.5"` → 1.5.
+*Verificación:* test con `1312.7`, `1312.72` y `25000` → salen 1312.7, 1312.72 y 25000
+(no `1312.70` ni `25000.00`); y test con `1312.725` → sale 1312.725, no 1312.73.
 
 ### R28
 
@@ -112,9 +115,9 @@ archivos de producto (`date`, `maturityDate`, `closedAt`).
 ### R29
 
 El sistema DEBE interpretar `interestRate` y `gainPercent` como **porcentaje**, no como
-fracción (`"3"` es 3 %, `"2,75"` es 2,75 %).
+fracción (`3` es 3 %, `2.75` es 2,75 %).
 
-*Verificación:* test que comprueba que `"2,75"` → `2.75` (y no `0.0275`); la semántica
+*Verificación:* test que comprueba que `2.75` → `2.75` (y no `0.0275`); la semántica
 queda escrita en la plantilla documentada (R60).
 
 ### R30
@@ -176,7 +179,7 @@ claves no admitidas para su tipo (R44).
 El sistema DEBE emitir `uninvestedCash` como dato independiente, sin sumarlo a
 `marketValue` ni a ningún total.
 
-*Verificación:* test con `marketValue: "11.861,21"` y `uninvestedCash: "58,37"` → el
+*Verificación:* test con `marketValue: 11861.21` y `uninvestedCash: 58.37` → el
 resultado devuelve 11861.21 y 58.37 por separado y **no** existe en él ningún campo con
 el valor 11919.58.
 
@@ -193,16 +196,16 @@ desconocida (R44), y el modelo del resultado tiene un único campo de tipo de in
 
 El sistema DEBE conservar el signo negativo de `gain` y `gainPercent`.
 
-*Verificación:* test con `gain: "-1.234,56"` y `gainPercent: "-3,47"` → −1234.56 y
-−3.47.
+*Verificación:* test con `gain: -1234.56` y `gainPercent: -3.47` → −1234.56 y −3.47
+(el signo del número nativo se conserva, no se normaliza a positivo).
 
 ### R39
 
 El sistema NO DEBE calcular, corregir ni completar ningún valor a partir de los demás:
 emite los valores leídos aunque no cuadren entre ellos.
 
-*Verificación:* test con `invested: "1.000,00"`, `marketValue: "1.100,00"` y
-`gain: "80,00"` (que no cuadra) → el resultado devuelve **80**, no 100; y con un
+*Verificación:* test con `invested: 1000`, `marketValue: 1100` y
+`gain: 80` (que no cuadra) → el resultado devuelve **80**, no 100; y con un
 `gainPercent` que tampoco cuadra → se devuelve el escrito.
 
 ---
@@ -223,11 +226,13 @@ todos los campos obligatorios que faltan.
 
 ### R41
 
-SI un valor numérico de un archivo de producto no es interpretable ENTONCES el sistema
-DEBE reportarlo en `failed` nombrando el campo y el valor recibido.
+SI un campo numérico de un archivo de producto trae un valor que no es un número JSON
+finito (booleano, objeto, lista o un número no representable) ENTONCES el sistema DEBE
+reportarlo en `failed` nombrando el campo y el valor recibido.
 
-*Verificación:* test con `marketValue: "mil trescientos"` → `failed` con un `reason`
-que contiene `marketValue` y el texto recibido.
+*Verificación:* test con `marketValue: true` y con `marketValue: []` → `failed` con un
+`reason` que contiene `marketValue` y el valor recibido. El caso del **texto** tiene su
+propio motivo, más explícito (R77).
 
 ### R42
 
@@ -280,6 +285,18 @@ mismo archivo, en lugar de reportar solo el primero.
 *Verificación:* test con un archivo al que le falta un campo, tiene un número ilegible
 y una clave desconocida → un único `failed` cuyo `reason` menciona los tres.
 
+### R77
+
+SI un campo numérico de un archivo de producto viene como **texto** (`"1312.72"`,
+`"1.312,72"`, `"1.312,72 €"`) ENTONCES el sistema DEBE reportarlo en `failed` nombrando
+el campo, el valor recibido y que se espera un número sin comillas, y NO DEBE
+interpretar ese texto.
+
+*Verificación:* test parametrizado con `marketValue: "1312.72"`, `"1.312,72"` y
+`"1.312,72 €"` → los tres van a `failed` con un `reason` que nombra `marketValue` y el
+valor recibido, y en los tres el producto **no** aparece en `products` con el valor
+1312.72.
+
 ---
 
 ## G. Encaminamiento y volcado
@@ -308,9 +325,12 @@ menciona, y ninguno pasa por el parser del otro.
 
 ### R60
 
-El sistema DEBE documentar en `docs/myinvestor-product-files.md` una plantilla copiable
-por cada tipo de producto, con la tabla de campos y su origen (modelo de la feature 9 /
-muestra real / propuesto por el agente) y las reglas de formato de números y fechas.
+El sistema DEBE documentar en `docs/myinvestor-product-files.md` **la referencia del
+formato en el repo**: una plantilla por cada tipo de producto, la tabla de campos con su
+origen (modelo de la feature 9 / muestra real / propuesto por el agente) y las reglas de
+formato de números y fechas. Este documento es **la fuente de verdad del formato**; la
+copia que el humano usa cada mes vive en Drive y **no la crea ni la valida el sistema**
+(ver `decisions.md` §📌).
 
 *Verificación:* checklist del reviewer contra el archivo nuevo; el contenido literal de
 la plantilla está en `design.md` §7.
@@ -378,7 +398,7 @@ Los puntos del `intent` que caen de este lado del corte (los del extracto se cub
 | 8 | El efectivo sin invertir, aparte del valor de mercado | **R36** |
 | 9 | Los campos que solo traen algunos productos se pueden omitir sin que falle | **R32** |
 | 10 | Ganancias y porcentajes negativos se interpretan como negativos | **R38** |
-| 11 | Un archivo mal escrito se reporta aparte diciendo qué archivo y qué está mal; los demás se parsean igual | **R40-R46, R48** (+ R47 de la F10) |
+| 11 | Un archivo mal escrito se reporta aparte diciendo qué archivo y qué está mal; los demás se parsean igual | **R40-R46, R48, R77** (+ R47 de la F10) |
 | 12 | El parser no calcula nada: salen los valores escritos aunque no cuadren | **R39** |
 | 13 | El resultado parseado se puede ver en un JSON local | **R53, R76** |
 | 14 | Parsear dos veces los mismos archivos da exactamente el mismo resultado | **R55 de la F10**, que este resultado hereda |
@@ -396,6 +416,9 @@ De los `que_no_quiero`: **R31** (no inferir cierres) y **R39** (no calcular).
 
 > **Cinco de las ocho que quedaban vivas tras el corte** caen de este lado (las otras
 > tres están en la spec del extracto). Ninguna cambia el modelo de la feature 9.
+> ✅ **Las cinco quedaron APROBADAS por el humano el 2026-08-11**, tal cual estaban
+> escritas. Se conservan aquí con su razonamiento para que el reviewer siga viendo de
+> dónde salió cada una.
 
 - **R23 + R24 (la fecha del depósito es obligatoria) — (añadido).** Para los productos
   que fluctúan, `date` es la fecha de la foto y sale del modelo (`Valuation.date`). Un
@@ -404,7 +427,10 @@ De los `que_no_quiero`: **R31** (no inferir cierres) y **R39** (no calcular).
   te dice cuándo transcribiste esas condiciones. Decido **exigirla también en el
   depósito**, con el significado *"fecha en que tomé esta nota"*. **Alternativa:**
   hacerla opcional solo para el depósito (y perder R46 para ese tipo).
-  **← REVISAR EN APROBACIÓN (🔴 nº 2 de `decisions.md`).**
+  **✅ APROBADA por el humano el 2026-08-11 (🔴 nº 2 de `decisions.md`).** El mismo día
+  cerró la **cadencia**: el archivo del depósito se escribe **solo al contratarlo y al
+  vencer**, no cada mes, así que esa `date` es literalmente *"el día que escribí esto"*.
+  No cambia ningún requirement.
 - **R44 (las claves desconocidas son un error, salvo las que empiezan por `_`) —
   (añadido).** El `intent` no dice nada de las claves que sobran. Decido rechazarlas
   porque es lo único que atrapa una **errata silenciosa**: si escribes `uninvestedCash`
@@ -412,24 +438,24 @@ De los `que_no_quiero`: **R31** (no inferir cierres) y **R39** (no calcular).
   opcional) y el efectivo desaparece del patrimonio. El coste es que no puedes dejar
   notas sueltas en el archivo; por eso las claves que empiezan por `_` se ignoran a
   propósito y sirven de escape.
-  **← REVISAR EN APROBACIÓN (🔴 nº 4 de `decisions.md`).**
+  **✅ APROBADA por el humano el 2026-08-11 (🔴 nº 4 de `decisions.md`).**
 - **R46 (dos archivos con el mismo producto y fecha: gana el primero alfabético) —
   (añadido).** El `intent` no contempla el caso; tú pediste el reporte de errores y este
   es uno de los que hay que definir. Decido **conservar uno y reportar el otro** (en vez
   de tirar los dos), y que el criterio sea el orden alfabético del nombre de archivo
   para que el resultado sea determinista (R55 de la F10). **Alternativa:** rechazar los
   dos y obligarte a arreglarlo antes de ver nada.
-  **← REVISAR EN APROBACIÓN (🔴 nº 3 de `decisions.md`).**
+  **✅ APROBADA por el humano el 2026-08-11 (🔴 nº 3 de `decisions.md`).**
 - **R48 (un archivo roto reporta TODOS sus problemas de golpe) — (añadido).** El
   `intent` pide "qué archivo y qué está mal". Añado que sea **todo** lo que está mal, no
   el primer problema: si no, arreglas un campo, vuelves a lanzar, y aparece el
-  siguiente. **← REVISAR EN APROBACIÓN.**
+  siguiente. **✅ APROBADA por el humano el 2026-08-11.**
 - **R53 (los productos se vuelcan a un único `products.json` por año, no un volcado por
   archivo) — (añadido sobre una delegación).** Delegaste "dónde se vuelca el JSON
   local", y el camino que ya existe es un volcado **por archivo**. Para los productos
   eso daría `fondo.json.json`, que es exactamente la confusión origen/volcado que hay
   que evitar, y además el choque de R46 es un hecho **del conjunto**, no de un archivo.
-  **← REVISAR EN APROBACIÓN (🔴 nº 5 de `decisions.md`).**
+  **✅ APROBADA por el humano el 2026-08-11 (🔴 nº 5 de `decisions.md`).**
 > Las cinco de arriba son **todas** las propuestas mías que quedaban vivas de este lado
 > del corte (las otras tres están en la spec del extracto). **R26-R29 no está en esta
 > lista**: es una delegación tuya resuelta (ver abajo), aunque también sea el 🔴 nº 1 de
@@ -440,8 +466,10 @@ De los `que_no_quiero`: **R31** (no inferir cierres) y **R39** (no calcular).
 - **R33-R39, R60 — (delegado #1)** "La propuesta concreta de campos de cada tipo de
   producto… que marque cuáles salen del modelo, cuáles de la muestra y cuáles se ha
   inventado". La propuesta completa, campo a campo y con su origen marcado, está en
-  `design.md` §7, y se documenta en `docs/myinvestor-product-files.md` (R60). 🔴 **Esta
-  lista la cierras tú antes de implementar.**
+  `design.md` §7, y se documenta en `docs/myinvestor-product-files.md` (R60). ✅ **Lista
+  CERRADA por el humano el 2026-08-11**, con sus tres últimas casillas (`closedAt` como
+  campo del archivo, `currency` opcional que no escribe, y el archivo del depósito solo
+  al contratar y al vencer); registro en [`CAMPOS-cerrados.md`](CAMPOS-cerrados.md).
 - **R23, R24 — (delegado #2)** "Cómo se nombran los archivos de producto y de dónde sale
   a qué producto y a qué fecha corresponde cada uno". Decido: **la identidad y la fecha
   van dentro del archivo**, y el nombre del archivo es libre (solo se usa para
@@ -451,14 +479,19 @@ De los `que_no_quiero`: **R31** (no inferir cierres) y **R39** (no calcular).
   Decido: **por la extensión** (`.csv` / `.json`). El banco sale de la carpeta (R25, ya
   implementado por la F10). Alternativa descartada (mirar el contenido) en `design.md`
   §5.
-- **R26, R27, R28, R29 — (delegado #4)** "El formato exacto de números y fechas en los
-  JSON que escribo a mano". Decido: **números como cadena** aceptando el formato español
-  y el simple, regla explícita para el punto sin coma (la misma de la F10, reutilizada
-  sin duplicar), y **fechas siempre `AAAA-MM-DD`**. Razonamiento en `design.md` §6.
-- **R30, R31 — (delegado #5)** "Cómo digo que un producto ya no está". Decido: un campo
-  `closedAt` opcional que escribes **una sola vez**, y la regla dura de que **dejar de
-  escribir un producto NO lo cierra**. Alternativa descartada (`"closed": true`) en
-  `design.md` §8.
+- **R26, R27, R28, R29 — (delegado #4, CERRADO POR EL HUMANO el 2026-08-11)** "El
+  formato exacto de números y fechas en los JSON que escribo a mano". Propuse números
+  **como cadena** en formato español; **el humano lo cambió**: los números van como
+  **número JSON nativo** (`1312.72`), sin comillas, sin separador de miles y sin
+  símbolos. **Fechas sin cambio: siempre `AAAA-MM-DD`.** Consecuencia directa: esta
+  feature **ya no usa `parseAmountText`**. Razonamiento en `design.md` §6.
+- **R30, R31 — (delegado #5, CONFIRMADO POR EL HUMANO el 2026-08-11)** "Cómo digo que un
+  producto ya no está". Decido: un campo `closedAt` opcional que escribes **una sola
+  vez**, y la regla dura de que **dejar de escribir un producto NO lo cierra**.
+  Alternativa descartada (`"closed": true`) en `design.md` §8. **El humano lo cerró como
+  campo del archivo en los dos tipos**, con lo que la columna `InvestmentProduct.closedAt`
+  de la F9 —reservada y sin escritor— **ya tiene quien la escriba** (el futuro importador,
+  a partir de este campo).
 - **R40-R46, R48 — (delegado #6)** "Cómo se reportan los errores… y qué pasa con el
   resto de archivos cuando uno está roto". Decido la taxonomía completa, con acumulación
   de motivos; el aislamiento por archivo lo aporta la F10 (R47). `design.md` §9.
@@ -485,6 +518,10 @@ De los `que_no_quiero`: **R31** (no inferir cierres) y **R39** (no calcular).
   negativos cuando estoy perdiendo".
 - **R39 — (humano)** "El parser no calcula nada: los valores que yo escriba son los que
   salen, aunque no cuadren entre ellos".
+- **R77 — (humano, 2026-08-11)** Sale del cierre del 🔴 nº 1: *"que un valor llegue como
+  texto debe caer en la lista de fallos con un motivo claro, no interpretarse por si
+  acaso"*. Es el caso de error que aparece al cambiar a número JSON nativo, y encaja en
+  la frase 11 del `intent` ("un archivo mal escrito se reporta aparte").
 - **R40, R41, R42, R43, R45 — (humano)** "Si un archivo está mal escrito… no se pierde
   en silencio: se reporta aparte diciendo qué archivo y qué está mal, y los demás
   archivos se parsean igual".

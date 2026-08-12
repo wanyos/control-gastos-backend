@@ -18,7 +18,14 @@
 > estricto porque se puede elegir.
 >
 > Las decisiones delegadas se marcan **⭐ DECISIÓN PROPIA (aprobar en la puerta)**.
-> 🔴 **La lista de campos de §7 la cierra el humano antes de implementar.**
+>
+> ✅ **Actualizado el 2026-08-11 con las decisiones del humano** (diff en
+> [`../myinvestor-statement/CHANGELOG-respec.md`](../myinvestor-statement/CHANGELOG-respec.md)):
+> los números de los archivos de producto van como **número JSON nativo** (§6.1, cambia
+> respecto a lo que se propuso) y las otras cuatro decisiones 🔴 quedan aprobadas tal
+> cual. ✅ **La lista de campos de §7 quedó CERRADA ese mismo día** (registro para el
+> humano en [`CAMPOS-cerrados.md`](CAMPOS-cerrados.md)): **no queda nada pendiente de su
+> visto bueno.**
 
 ## 1. Estado de partida → estado final
 
@@ -33,7 +40,8 @@ dentro y extiende dos funciones existentes.
 src/modules/myinvestor/
   myinvestor.product.parser.ts            # parser puro de un JSON de producto (§7, §9)
   myinvestor.product.parser.test.ts
-docs/myinvestor-product-files.md          # plantillas por tipo + tabla de campos (R60)
+docs/myinvestor-product-files.md          # REFERENCIA del formato en el repo (R60);
+                                          # la copia que el humano usa vive en Drive
 progress/implementations/myinvestor-products.md   # mapa de trazabilidad (R75)
 ```
 
@@ -41,7 +49,7 @@ progress/implementations/myinvestor-products.md   # mapa de trazabilidad (R75)
 
 | Archivo | Qué se le añade | Qué NO se toca |
 | --- | --- | --- |
-| `myinvestor.format.ts` | `parseIsoDate` (`AAAA-MM-DD` estricto) | `parseAmountText` y `parseStatementDate`: se **importan**, no se tocan (R26) |
+| `myinvestor.format.ts` | `parseIsoDate` (`AAAA-MM-DD` estricto) | `parseAmountText` y `parseStatementDate`: **no se tocan y aquí ya no se usan** — son del `.csv` del extracto (R26) |
 | `myinvestor.types.ts` | `ParsedProduct`, `ParsedValuation`, `ParsedDepositTerms`, `MyinvestorProductsResult` y el resumen de producto | el alias del contrato del extracto |
 | `myinvestor.service.ts` | la rama `.json` → parser de productos (R76), el choque `(name, date)` (R46) y el volcado `products.json` (R53) | el recorrido de carpetas, `failed[]`/`ignored[]`, el aislamiento y el volcado del extracto |
 | `myinvestor.service.test.ts` | los casos de productos | los casos del extracto |
@@ -121,42 +129,63 @@ Es decisión del humano, no del agente. El diseño solo la aprovecha: un archivo
 tumba **un producto**, no la foto del mes entero, y el aislamiento del fallo (§9) sale
 gratis del servicio que ya construyó la F10.
 
-## 6. ⭐ DECISIÓN PROPIA — Números y fechas en los JSON escritos a mano (R26-R29)
+## 6. ✅ CERRADO POR EL HUMANO — Números y fechas en los JSON escritos a mano (R26-R29, R77)
 
 La pregunta real: la persona que escribe estos archivos está mirando una web que pone
 `1.312,72 €`, `5,02 %` y `03/11/26`. ¿Qué le pedimos que teclee?
 
-### 6.1 Los números van como **cadena**, en español o en formato simple
+> 🔄 **Cambiado el 2026-08-11.** Esta sección proponía **números como cadena en formato
+> español**; el humano decidió lo contrario: **número JSON nativo**. Las fechas **no
+> cambian** (§6.2 sigue igual). El razonamiento de la propuesta descartada se conserva
+> abajo como alternativa, porque explica el caso de error de R77.
+
+### 6.1 Los números van como **número JSON nativo**
 
 ```json
-"marketValue": "1.312,72"     ✅   "marketValue": "1312.72"      ✅
-"marketValue": "1.312,72 €"   ✅   "marketValue": " 62,72 "      ✅
-"marketValue": 1312.72        ❌ (rechazado con motivo, ver abajo)
+"marketValue": 1312.72        ✅   "gainPercent": -3.47          ✅
+"principal": 25000            ✅   "uninvestedCash": 58.37       ✅
+"marketValue": "1312.72"      ❌ (texto: rechazado con motivo, R77)
+"marketValue": "1.312,72"     ❌ (texto: rechazado con motivo, R77)
+"marketValue": "1.312,72 €"   ❌ (texto: rechazado con motivo, R77)
 ```
+
+Reglas de escritura, que son las de JSON y ninguna más:
+
+- **Punto decimal**, nunca coma. **Sin separador de miles**: `25000`, no `25.000` ni
+  `"25.000"`.
+- **Sin símbolos**: ni `€` ni `%`. La unidad la da el campo (`currency` para el dinero,
+  §6.3 para los porcentajes).
+- **El signo va en el número**: `-3.47`.
 
 Tres razones, en orden de peso:
 
-1. **Un número JSON mal escrito destruye el archivo entero; una cadena mal escrita solo
-   estropea un campo.** Si escribes `"marketValue": 1.312,72` (que es lo que estás
-   viendo en pantalla), el archivo deja de ser JSON válido y **pierdes el producto
-   entero** con un error de sintaxis que no te dice qué campo era. Con comillas, ese
-   mismo texto es un valor perfectamente parseable, y si además fuera ilegible, el
-   reporte te diría exactamente *"`marketValue`: no entiendo «…»"*.
-2. **Se transcribe lo que se ve.** La conversión mental (quitar el punto, cambiar la
-   coma por punto) es un paso extra que solo existe para comodidad de la máquina, y es
-   donde se cometen los errores a las once de la noche.
-3. **El dinero no pasa por un `double` innecesariamente.** El destino final es un
-   `Decimal(10,2)` de Postgres (feature 9), que acepta una cadena directamente.
+1. **Un número es un número en todas las capas.** No hay interpretación, luego no hay
+   nada que interpretar mal: lo que `JSON.parse` devuelve es exactamente lo que va al
+   volcado. La ambigüedad `1.312` (¿mil trescientos doce o uno coma tres?) **deja de
+   existir en el archivo**, en vez de resolverse con una regla heurística.
+2. **El parser de productos deja de depender del normalizador del extracto.** Es la
+   consecuencia práctica: `parseAmountText` sigue siendo del `.csv` (y **no se toca**,
+   la F10 está cerrada), pero **aquí no se importa**. Menos acoplamiento entre las dos
+   entradas del banco.
+3. **La errata típica es visible al instante.** Escribir `1.312,72` sin comillas rompe
+   el JSON y el archivo se reporta como sintaxis inválida; escribirlo con comillas cae
+   en R77 con un motivo explícito. Los dos caminos avisan; ninguno adivina.
 
-**La regla de interpretación es la de la F10, y se reutiliza sin duplicarla:**
-[`parseAmountText`](../myinvestor-statement/design.md) (§3.3 de esa spec) — con coma →
-decimal español; sin coma y con puntos cada tres dígitos → separador de miles; en otro
-caso, punto decimal. **Que sea la misma función para las dos entradas es deliberado:**
-dos reglas parecidas pero distintas para el mismo banco es una trampa garantizada.
+**Un valor numérico que llega como texto se rechaza (R77), nunca se interpreta**, ni
+siquiera cuando el texto es interpretable sin ambigüedad (`"1312.72"`). Interpretarlo
+"por si acaso" es lo que convierte un formato estricto en dos formatos, y dos formatos
+en una regla que hay que recordar cada mes.
 
-**Un número JSON nativo se rechaza con un motivo que explica que se esperan comillas**,
-en vez de aceptarse en silencio: aceptar los dos tipos sería aceptar también que un día
-escribas `1.312,72` sin comillas y descubras el problema como un error de sintaxis.
+- **Alternativa descartada — números como cadena en formato español** (`"1.312,72 €"`),
+  que era la propuesta original: transcribes lo que ves en la web, sin conversión
+  mental, y una cadena ilegible estropea **un campo** en vez de romper el archivo
+  entero. **Coste que la hunde:** obliga a arrastrar `parseAmountText` a esta feature y
+  a mantener viva la regla heurística del punto sin coma para un formato que **se puede
+  diseñar**; el humano prefiere teclear el número ya normalizado y que el sistema no
+  adivine nada.
+- **Alternativa descartada — aceptar los dos (número y cadena):** es la peor de las
+  tres. Convierte el formato en "lo que pilles" y garantiza que un día convivan
+  `1312.72` y `"1.312,72"` en la misma carpeta.
 
 ### 6.2 Las fechas van **siempre** en `AAAA-MM-DD`, aunque en la web se vean de otro modo
 
@@ -196,7 +225,7 @@ escribas `1.312,72` sin comillas y descubras el problema como un error de sintax
 
 ### 6.3 Los porcentajes van en **porcentaje**, nunca en fracción
 
-`"gainPercent": "5,02"` es 5,02 %. `"interestRate": "3"` es una TAE del 3 %.
+`"gainPercent": 5.02` es 5,02 %. `"interestRate": 3` es una TAE del 3 %.
 
 Es la misma semántica que la feature 9 fijó para `InvestmentProduct.interestRate`
 (`Decimal(6,4)`, `2.7500` = 2,75 %). Las dos capas dicen lo mismo con las mismas
@@ -206,9 +235,10 @@ intereses.
 
 ## 7. ⭐ DECISIÓN PROPIA — Los campos de cada tipo de producto (R33-R39, R60)
 
-🔴 **Esta es la sección que el humano cierra antes de implementar.** Todo sale de la
-muestra real o del esquema de la feature 9; lo que no sale de ninguno de los dos está
-marcado como **inventado**.
+✅ **Cerrada por el humano el 2026-08-11** (registro en
+[`CAMPOS-cerrados.md`](CAMPOS-cerrados.md)). Todo sale de la muestra real o del esquema
+de la feature 9; lo que no salía de ninguno de los dos lo decidió él ese día y se marca
+**TÚ (2026-08-11)**.
 
 ### 7.1 Plantilla A — `fund`, `etf`, `managed_portfolio` (los tres, idénticos)
 
@@ -218,10 +248,10 @@ marcado como **inventado**.
   "name": "Fondo Indexado Global",
   "date": "2026-08-31",
   "currency": "EUR",
-  "invested": "1.250,00",
-  "marketValue": "1.312,72",
-  "gain": "62,72",
-  "gainPercent": "5,02",
+  "invested": 1250,
+  "marketValue": 1312.72,
+  "gain": 62.72,
+  "gainPercent": 5.02,
   "uninvestedCash": null,
   "closedAt": null
 }
@@ -238,11 +268,11 @@ automatizada y un ETF son exactamente lo mismo"). En la cartera automatizada,
   "name": "Cartera Automatizada",
   "date": "2026-08-31",
   "currency": "EUR",
-  "invested": "10.301,63",
-  "marketValue": "11.861,21",
-  "gain": "1.559,58",
-  "gainPercent": "15,14",
-  "uninvestedCash": "58,37",
+  "invested": 10301.63,
+  "marketValue": 11861.21,
+  "gain": 1559.58,
+  "gainPercent": 15.14,
+  "uninvestedCash": 58.37,
   "closedAt": null
 }
 ```
@@ -255,26 +285,26 @@ automatizada y un ETF son exactamente lo mismo"). En la cartera automatizada,
   "name": "Depósito PREMIUM 3 meses",
   "date": "2026-08-31",
   "currency": "EUR",
-  "principal": "5.000,00",
-  "interestRate": "3",
-  "expectedGain": "37,39",
+  "principal": 5000,
+  "interestRate": 3,
+  "expectedGain": 37.39,
   "maturityDate": "2026-11-03",
   "closedAt": null
 }
 ```
 
-### 7.3 🔴 Tabla de origen de cada campo — lo que el humano revisa de un vistazo
+### 7.3 ✅ Tabla de origen de cada campo — cerrada por el humano el 2026-08-11
 
 Leyenda: **MODELO** = existe como columna en el esquema de la feature 9. **MUESTRA** =
-el dato está en los archivos reales que aportó el humano. **INVENTADO** = lo introduce
-el agente y no sale de ninguno de los dos.
+el dato está en los archivos reales que aportó el humano. **TÚ (2026-08-11)** = no salía
+de ninguno de los dos; lo propuso el agente y **lo cerró el humano ese día**.
 
 | Campo | A: fund/etf/portfolio | B: deposit | Origen | Nota |
 | --- | --- | --- | --- | --- |
 | `type` | obligatorio | obligatorio | **MODELO** | enum `InvestmentProductType` (f9 R2): `fund` \| `etf` \| `managed_portfolio` \| `deposit` |
 | `name` | obligatorio | obligatorio | **MODELO** + **MUESTRA** (parcial) | `InvestmentProduct.name`, clave natural (f9 R6). En la muestra del depósito sí sale (`Depósito PREMIUM 3 meses`); en las de fondo y cartera **no hay nombre** y lo pone el humano |
-| `date` | obligatorio | obligatorio | **MODELO** (A) / 🟥 **INVENTADO** (B) | En A es `Valuation.date` (f9 R8). En B **no existe en el modelo** (un depósito no tiene fotos) ni en la muestra: lo pido igual como *"fecha en que tomé esta nota"*, para poder detectar el choque de R46 y para saber cuándo se transcribieron esas condiciones |
-| `currency` | opcional (def. `"EUR"`) | opcional (def. `"EUR"`) | **MODELO** | `InvestmentProduct.currency` con `@default("EUR")`. La muestra solo trae el símbolo `€` |
+| `date` | obligatorio | obligatorio | **MODELO** (A) / **TÚ (2026-08-11)** (B) | En A es `Valuation.date` (f9 R8), la fecha de la foto mensual. En B **no existe en el modelo** (un depósito no tiene fotos) ni en la muestra: es *"el día que escribí esto"*, para detectar el choque de R46 y saber cuándo se transcribieron las condiciones. 📌 **Cadencia cerrada el 2026-08-11: el archivo del depósito se escribe SOLO al contratarlo y al vencer**, no cada mes |
+| `currency` | opcional (def. `"EUR"`) | opcional (def. `"EUR"`) | **MODELO** | `InvestmentProduct.currency` con `@default("EUR")`. La muestra solo trae el símbolo `€`. ✅ **Cerrado el 2026-08-11: se queda como opcional y el humano no lo escribirá nunca** |
 | `invested` | obligatorio | ✗ no aplica | **MODELO** + **MUESTRA** | `Valuation.invested`; muestra: `Invertido 1.250,00 €` |
 | `marketValue` | obligatorio | ✗ | **MODELO** + **MUESTRA** | `Valuation.marketValue`; muestra: `Valor de mercado 1.312,72 €` |
 | `gain` | obligatorio | ✗ | **MODELO** + **MUESTRA** | `Valuation.gain`; muestra: `62,72 €`. Con signo |
@@ -284,8 +314,8 @@ el agente y no sale de ninguno de los dos.
 | `interestRate` | ✗ | obligatorio | **MODELO** + **MUESTRA** (parcial) | `InvestmentProduct.interestRate`; muestra: **dos** TAE (`2 % sin Premium`, `3 % con Premium`) y se guarda **solo la aplicada** (§7.4) |
 | `expectedGain` | ✗ | obligatorio | **MODELO** + **MUESTRA** (parcial) | `InvestmentProduct.expectedGain`; muestra: `37,39 €` (con Premium) y `25,02 €` (sin). Solo el que se aplica |
 | `maturityDate` | ✗ | obligatorio | **MODELO** + **MUESTRA** | `InvestmentProduct.maturityDate`; muestra: `03/11/26` → se escribe `2026-11-03` (§6.2) |
-| `closedAt` | opcional | opcional | **MODELO** + 🟥 **INVENTADO como campo del archivo** | La columna existe (f9 R7) pero la feature 9 la dejó **sin escritor**. Que el escritor sea un campo opcional del archivo es propuesta mía (§8) |
-| `_cualquier_cosa` | opcional | opcional | 🟥 **INVENTADO** | Claves que empiezan por `_`: se ignoran. Es el hueco para dejarte notas, ya que las claves desconocidas se rechazan (§9) |
+| `closedAt` | opcional | opcional | **MODELO** + **TÚ (2026-08-11)** como campo del archivo | La columna existe (f9 R7) pero la feature 9 la dejó **sin escritor**. ✅ **Cerrado el 2026-08-11: el escritor es este campo del archivo, en los dos tipos**, escrito una sola vez (§8) |
+| `_cualquier_cosa` | opcional | opcional | **TÚ (2026-08-11)**, con el 🔴 nº 4 | Claves que empiezan por `_`: se ignoran. Es el hueco para dejar notas, ya que las claves desconocidas se rechazan (§9) |
 
 **Campos deliberadamente FUERA del archivo:**
 
@@ -336,11 +366,20 @@ Consecuencias:
 ## 8. ⭐ DECISIÓN PROPIA — Cómo se declara que un producto ya no está (R30, R31)
 
 **Un campo `closedAt` opcional, escrito una sola vez, en la última aparición del
-producto** (el mes en que vence el depósito o reembolsas el fondo).
+producto** (el mes en que vence el depósito o reembolsas el fondo). ✅ **Cerrado por el
+humano el 2026-08-11**: es él quien lo escribe, en los dos tipos, y con eso la columna
+`InvestmentProduct.closedAt` de la feature 9 —reservada y sin escritor— **ya tiene quien
+la rellene** (el futuro importador, a partir de este campo).
+
+📌 **Cadencia del depósito (cerrada el 2026-08-11):** su archivo **no se escribe cada
+mes**, solo **al contratarlo y al vencer**; el segundo es el que lleva `closedAt`. No
+cambia nada del parser —que no tiene memoria ni espera ninguna cadencia (R31)— pero es lo
+que hay que leer para entender por qué un depósito aparece dos veces en toda su vida y
+un fondo, doce veces al año.
 
 ```json
 { "type": "deposit", "name": "Depósito PREMIUM 3 meses", "date": "2026-11-30",
-  "…": "…", "closedAt": "2026-11-03" }
+  "_resto": "…", "closedAt": "2026-11-03" }
 ```
 
 🔴 **Regla dura que se conserva: dejar de escribir un producto NO lo cierra.**
@@ -376,7 +415,8 @@ Esta feature **no inventa listas nuevas**; añade motivos a `failed[]`.
 | --- | --- | --- |
 | JSON sintácticamente roto (R45) | `failed` | el archivo y el problema de sintaxis |
 | Campo obligatorio ausente (R40) | `failed` | **todos** los campos que faltan, no el primero |
-| Número no interpretable (R41) | `failed` | el **campo** y el **valor recibido** |
+| Valor que no es un número JSON (R41) | `failed` | el **campo** y el **valor recibido** |
+| Número escrito como **texto** (R77) | `failed` | el campo, el valor recibido y *"se espera un número sin comillas"*. **Nunca se interpreta** (§6.1) |
 | Tipo de producto desconocido (R42) | `failed` | el valor recibido y **los cuatro admitidos** |
 | Fecha inválida o en otro formato (R43) | `failed` | el campo y `AAAA-MM-DD` |
 | Clave desconocida (R44) | `failed` | las claves sobrantes, con nombre |
@@ -391,6 +431,11 @@ Esta feature **no inventa listas nuevas**; añade motivos a `failed[]`.
    `b.json` describen el mismo `(name, date)` exige haberlos leído los dos, así que se
    resuelve **en el servicio**, después de parsear, no en el parser puro. Gana el primero
    por orden alfabético para que el resultado sea determinista (R55 de la F10).
+   ✔️ **Sigue teniendo sentido con la cadencia cerrada el 2026-08-11** (el depósito se
+   escribe solo dos veces): el caso que atrapa no es "he escrito el producto dos meses
+   seguidos" —eso son dos `date` distintas y es lo normal— sino **la copia duplicada**
+   (`fondo.json` y `fondo (1).json` que Drive crea al subir dos veces), que es
+   exactamente el escenario que documenta ADR-009 y el más probable en los dos tipos.
 
 El **aislamiento por archivo** (R47) no se implementa aquí: el bucle con su `try` ya
 existe en el servicio de la F10 y esta rama entra dentro de él.
@@ -404,8 +449,8 @@ reason }`), no lanza; el servicio lo convierte en una entrada de `failed[]`.
 
 ### 9.4 Qué sale y qué no sale en los motivos
 
-Los motivos citan **el nombre del campo y el valor recibido** (`marketValue: no
-interpretable ('mil trescientos')`), porque sin el valor el mensaje no sirve para
+Los motivos citan **el nombre del campo y el valor recibido** (`marketValue: se espera
+un número sin comillas, recibido "1.312,72"`), porque sin el valor el mensaje no sirve para
 arreglar nada. No se vuelca el archivo entero ni rutas absolutas de la máquina. Todo
 esto vive en local y en un volcado gitignoreado.
 
@@ -435,7 +480,7 @@ el archivo de origen no tiene:
 
 | El origen tiene | El volcado tiene |
 | --- | --- |
-| `"marketValue": "1.312,72"` (texto español) | `"marketValue": 1312.72` (número normalizado) |
+| un objeto plano tal como lo escribiste | la **estructura interpretada**: `valuation` y `depositTerms` separados según el tipo, más `bank` y `file` de procedencia |
 | `"maturityDate": "2026-11-03"` (una fecha entre otras) | la fecha **validada**, y el archivo rechazado si no lo era |
 | un producto por archivo, sueltos | **todos** los del año juntos, en orden determinista |
 | nada sobre lo que salió mal | `failed[]`, `ignored[]` y el choque de duplicados |
@@ -487,9 +532,10 @@ Cuatro barreras, las dos primeras ya existentes:
   1. **Un JSON por producto**, encaminado **por la extensión** (`.json`) dentro del
      servicio que ya existe; el banco sale de la carpeta y el producto y la fecha, del
      contenido.
-  2. **Números como cadena** (español o simple), interpretados con **el mismo
-     `parseAmountText` del extracto**, sin duplicar la regla; un número JSON nativo se
-     rechaza con motivo.
+  2. **Números como número JSON nativo** (`1312.72`), con punto decimal, sin separador
+     de miles y sin símbolos; **un valor numérico escrito como texto se rechaza con
+     motivo y nunca se interpreta**. En consecuencia, **este parser no usa
+     `parseAmountText`**, que queda como pieza exclusiva del extracto.
   3. **Fechas siempre `AAAA-MM-DD`** (`parseIsoDate`, añadido al `myinvestor.format.ts`
      que ya existe); los porcentajes en **porcentaje**, nunca fracción.
   4. **`closedAt` opcional escrito una sola vez**; **dejar de escribir un producto NO lo
@@ -500,7 +546,9 @@ Cuatro barreras, las dos primeras ya existentes:
   6. **Un `products.json` por año**, no un volcado por archivo.
   7. **Cero dependencias nuevas** y **ninguna subclase de error nueva**.
 - **Alternativas consideradas:** identidad del producto en el nombre del archivo;
-  números como número JSON; aceptar `dd/mm/aaaa` (y `dd/mm/aa`); `"closed": true` en vez
+  números como cadena en formato español (propuesta original, **descartada por el
+  humano** el 2026-08-11); aceptar los dos formatos a la vez; aceptar `dd/mm/aaaa` (y
+  `dd/mm/aa`); `"closed": true` en vez
   de `closedAt`; guardar las dos TAE del depósito; un volcado por archivo de producto;
   validar con AJV; mirar el contenido en vez de la extensión. Cada una con su porqué en
   §5, §6, §7, §8, §9 y §10.
@@ -634,7 +682,7 @@ dumpBaseDir)` de la F10 gana en su resultado `products: ParsedProductSummary[]`.
 | Archivo de test | Cubre |
 | --- | --- |
 | `myinvestor.format.test.ts` (ampliado) | R28 |
-| `myinvestor.product.parser.test.ts` (nuevo) | R21, R22, R23, R24, R26, R27, R29, R30, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R48 |
+| `myinvestor.product.parser.test.ts` (nuevo) | R21, R22, R23, R24, R26, R27, R29, R30, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R48, R77 |
 | `myinvestor.service.test.ts` (ampliado) | R31, R46, R53, R76 |
 | `src/architecture.test.ts` | R73 |
 
@@ -643,13 +691,13 @@ dumpBaseDir)` de la F10 gana en su resultado `products: ParsedProductSummary[]`.
 
 ## 15. Riesgos y notas para el implementer
 
-- ⏸️ **NO empieces hasta que (a) la F10 `myinvestor-statement` esté `done` y (b) el
-  humano cierre los CINCO puntos 🔴 de `decisions.md`**, empezando por la lista de campos
-  de §7. Si la cierra distinta, cambia §7, la plantilla de T13 y los tests antes de
-  escribir el parser.
+- ⏸️ **NO empieces hasta que la F10 `myinvestor-statement` esté `done`.** Es la única
+  espera que queda: los CINCO puntos 🔴 y la lista de campos de §7 están **cerrados**
+  (2026-08-11, registro en [`CAMPOS-cerrados.md`](CAMPOS-cerrados.md)).
 - 🔴 **No re-crees nada de la F10.** Ni `myinvestor.format.ts`, ni el servicio, ni la
-  ruta, ni `failed[]`/`ignored[]`. Se **amplían**. Si te ves escribiendo un segundo
-  normalizador de números, para: es el mismo banco y la misma regla (§6.1).
+  ruta, ni `failed[]`/`ignored[]`. Se **amplían**. Y **no escribas ningún normalizador de
+  números aquí**: los valores llegan ya como número JSON (§6.1); `parseAmountText` es del
+  extracto y no se importa ni se duplica.
 - 🔴 **`pnpm`, NUNCA npm.** Y **cero dependencias nuevas**: `JSON.parse` es nativo y la
   validación va a mano (§9.5).
 - 🔴 **Los fixtures son sintéticos.** Nunca copies datos de `var/drive-read/` a un test.

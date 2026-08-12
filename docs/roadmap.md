@@ -39,9 +39,10 @@ el primer parser nacido directamente contra el contrato. La antigua F10 se
 **partió en dos** (70 requirements escondían dos features): los JSON de producto
 son ahora la **F13**, que te espera con cinco decisiones.
 
-**Lo que te toca decidir a ti**, y es lo único que bloquea el mapa: los cinco
-puntos rojos de la **F13**, y cerrar el `intent` de la **F12** (la importación),
-que sigue en borrador del agente. Todo lo demás puede avanzar sin ti.
+**Ya no hay nada esperándote.** El 2026-08-11 cerraste los cinco puntos rojos de
+la F13, sus tres casillas de campos y el `intent` de la F12: no queda ningún
+`intent` en borrador del agente ni ninguna decisión pendiente de tu visto bueno.
+Las dos features que quedan (F13 y F12) están listas para arrancar.
 
 ---
 
@@ -163,12 +164,21 @@ de mapeo):
 4. Mover a `procesados/` **cuando el dato está en la base de datos**, no al
    descargar. **Cierra el cabo suelto #1.**
 
-**Orden acordado (2026-08-11):** F9 → F11 → F10 → F12. La F9 ya está ✅.
+**Orden acordado (2026-08-11):** F9 → F11 → F10 → F12. Las tres primeras ✅.
 
-> 🔴 **Bloqueo actual: F11 y F12 tienen el `intent` en BORRADOR del agente**,
-> marcado con `_intent_es_borrador` en [`feature_list.json`](../feature_list.json).
-> El QUÉ es tuyo: hasta que los cierres no se deriva `acceptance` ni se lanza a
-> nadie. Es lo único que separa al proyecto de seguir avanzando.
+**`intent` cerrado por el humano el 2026-08-11**, con tres decisiones que fijan
+el alcance:
+
+1. **El fichero se mueve a `procesados/` cuando el dato está guardado**, no al
+   descargarlo. Retoca el flujo de la F5 y **cierra el cabo suelto #1**.
+2. **Una importación parcial guarda lo bueno y reporta el resto**, en vez de
+   todo-o-nada: una línea rara no bloquea el mes entero, y como los movimientos
+   no se crean a mano, bloquearlo dejaría el mes sin forma de entrar.
+3. **Los productos de inversión NO se guardan aquí:** su regla de duplicado es la
+   contraria (recargar **sobrescribe**), y mezclarlas es lo que obligó a partir
+   la F10 en dos. Serán una feature propia.
+
+Falta su spec (`sdd: true`): `acceptance` ya derivado, 12 criterios.
 
 ### E6 — Enriquecer lo importado ⬜
 

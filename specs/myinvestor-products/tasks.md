@@ -12,10 +12,14 @@
 
 - ⏸️ **NO implementes nada hasta que la F10 `myinvestor-statement` esté `done`.** Esta
   feature **amplía** su módulo: si no existe, no hay nada que ampliar.
-- 🔴 **NO implementes nada hasta que el humano cierre los CINCO puntos 🔴 de
-  `decisions.md`**, empezando por la lista de campos de `design.md` §7. Si la cierra
-  distinta de la propuesta, actualiza §7, la plantilla de T13 y los tests de T8 **antes**
-  de escribir el parser.
+- ✅ **No queda nada pendiente del humano.** Los CINCO puntos 🔴 de `decisions.md` y la
+  **lista de campos** (`design.md` §7, registro en
+  [`CAMPOS-cerrados.md`](CAMPOS-cerrados.md)) se cerraron el **2026-08-11**. La única
+  espera es que la F10 esté `done`.
+- 🔴 **Los números de los archivos de producto son NÚMERO JSON NATIVO** (`1312.72`), no
+  texto: **no importes `parseAmountText` ni escribas ningún normalizador aquí**
+  (`design.md` §6.1). Un valor numérico que llegue como texto es un fallo del archivo
+  (R77), nunca se interpreta.
 - 🔴 **No re-crees nada de la F10:** `myinvestor.format.ts`, `myinvestor.service.ts`,
   `myinvestor.routes.ts`, `myinvestor.fixture.ts` y los tipos `FailedFile`/`IgnoredFile`
   **ya existen**. Se **amplían** (§1). Un segundo normalizador de números para el mismo
@@ -51,26 +55,30 @@
       (`parseMyinvestorProduct(file, content)`): `JSON.parse` con captura, validación a
       mano de `type` (los cuatro valores), `name`, `date`, `currency` (def. `'EUR'`),
       `closedAt`, y de los campos obligatorios **según el tipo** (valoración para
-      `fund`/`etf`/`managed_portfolio`; condiciones para `deposit`); **importa**
-      `parseAmountText` y `parseIsoDate` del formato del banco, sin reimplementar
-      ninguna regla; trata ausente y `null` como no informado; **acumula todos los
+      `fund`/`etf`/`managed_portfolio`; condiciones para `deposit`); los campos numéricos
+      se exigen como **número JSON nativo y finito**, conservando el valor tal cual (sin
+      redondear ni reformatear) y **rechazando el texto** con un motivo explícito (R77);
+      **importa** `parseIsoDate` del formato del banco y **no importa `parseAmountText`**
+      (`design.md` §6.1); trata ausente y `null` como no informado; **acumula todos los
       problemas** del archivo en un solo `reason`; rechaza claves desconocidas salvo las
       que empiezan por `_`; **no calcula ni corrige ningún valor**; emite
       `uninvestedCash` aparte, nunca sumado; **devuelve** el motivo, no lanza. Cubre:
       R21, R22, R23, R24, R26, R27, R29, R30, R32, R33, R34, R35, R36, R37, R38, R39,
-      R40, R41, R42, R43, R44, R45, R48.
+      R40, R41, R42, R43, R44, R45, R48, R77.
 
 - [ ] T8 — Crear `src/modules/myinvestor/myinvestor.product.parser.test.ts`: los cuatro
       tipos parsean; nombre y fecha salen del contenido y no del nombre del archivo;
       campo opcional ausente ≡ `null`; `uninvestedCash` presente/ausente y **nunca**
       sumado a `marketValue`; `gain`/`gainPercent` negativos; `gain` incoherente con
       `marketValue − invested` → se devuelve el escrito; depósito con una segunda TAE →
-      clave desconocida; `closedAt` presente/ausente; los formatos numéricos español y
-      simple. Y los seis casos de error de archivo: sintaxis rota, campo(s) ausente(s),
-      número ilegible, `type` desconocido, fecha en otro formato, clave desconocida, y
-      un archivo con tres problemas → un solo `reason` con los tres. Cubre: R21, R22,
-      R23, R24, R26, R27, R29, R30, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41,
-      R42, R43, R44, R45, R48.
+      clave desconocida; `closedAt` presente/ausente; enteros y decimales conservados
+      tal cual (`25000`, `1312.7`, `1312.725`). Y los siete casos de error de archivo:
+      sintaxis rota, campo(s) ausente(s), valor que no es número (`true`, `[]`),
+      **valor numérico como texto** (`"1312.72"`, `"1.312,72"`, `"1.312,72 €"`) → fallo
+      con motivo y **sin interpretar**, `type` desconocido, fecha en otro formato, clave
+      desconocida, y un archivo con tres problemas → un solo `reason` con los tres.
+      Cubre: R21, R22, R23, R24, R26, R27, R29, R30, R32, R33, R34, R35, R36, R37, R38,
+      R39, R40, R41, R42, R43, R44, R45, R48, R77.
 
 ## Fase 3 — Encaminamiento y volcado (ampliar el servicio de la F10)
 
@@ -91,7 +99,8 @@
 
 - [ ] T4b — Ampliar `myinvestor.fixture.ts` con el generador **sintético** de archivos
       JSON de producto (uno por tipo, variantes con errata, con clave desconocida, con
-      número ilegible y con fecha en otro formato). **Datos inventados.** Cubre: (apoyo
+      un valor numérico que no es número, con un valor numérico **como texto** y con
+      fecha en otro formato). **Datos inventados.** Cubre: (apoyo
       de T8 y T10b).
 
 - [ ] T12b — Ampliar `myinvestor.routes.test.ts` con un caso que deja archivos de
@@ -100,11 +109,17 @@
 
 ## Fase 4 — Documentación
 
-- [ ] T13 — Crear `docs/myinvestor-product-files.md` con las **dos plantillas copiables**
-      (`design.md` §7.1 y §7.2), la **tabla de origen de cada campo** (§7.3, marcando
-      modelo / muestra / inventado), las reglas de formato de números y fechas (§6), la
-      regla de la TAE única (§7.4), la del efectivo aparte (§7.5), la de `closedAt` (§8)
-      y la convención de nombre de archivo **recomendada** (§5.3). Cubre: R60.
+- [ ] T13 — Crear `docs/myinvestor-product-files.md` como **referencia del formato en el
+      repo** (la copia que el humano usa cada mes vive en Drive, fuera de `notas-banco/`,
+      y no la crea ni la valida el sistema): las **dos plantillas** (`design.md` §7.1 y
+      §7.2, con los números ya como **número JSON nativo**), la **tabla de origen de cada
+      campo** (§7.3, marcando modelo / muestra / decidido por el humano), las reglas de
+      formato de números y fechas (§6, incluida la regla de que un número como texto es un
+      fallo), la regla de la TAE única (§7.4), la del efectivo aparte (§7.5), la de
+      `closedAt` (§8, **escrito una sola vez por el humano en los dos tipos**), la
+      **cadencia** (mensual para fondo/ETF/cartera; el depósito **solo al contratar y al
+      vencer**, §8) y la convención de nombre de archivo **recomendada** (§5.3).
+      Cubre: R60.
 
 - [ ] T14b — Ampliar `docs/api-contract.md` con el modelo del resultado de productos
       dentro de la sección del endpoint `POST /api/parser/myinvestor` que creó la F10.

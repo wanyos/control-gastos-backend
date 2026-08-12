@@ -485,7 +485,6 @@
       "id": 12,
       "name": "import",
       "title": "Importación: del archivo parseado a la base de datos",
-      "_intent_es_borrador": "⚠️ BORRADOR escrito por el agente el 2026-08-11 a partir de la conversación y de progress/current.md, NO por el humano. El humano lo corrige o lo reescribe y quita este campo. Hasta entonces NO se deriva acceptance ni se lanza spec-author (regla human_writes_intent_first).",
       "intent": {
         "que_quiero": "Que lo que los parsers entienden se guarde de verdad en la base de datos. Hoy leo los archivos de Drive, los parseo y el resultado se queda en un JSON local: ninguna línea escribe un movimiento. Quiero que, al importar, los movimientos parseados se guarden en su cuenta, que la cuenta se cree sola cuando el archivo trae IBAN y banco, y que si le faltan esos datos se me avise para crearla a mano en vez de crearla a ciegas. Volver a importar el mismo archivo no debe duplicar nada, y las líneas idénticas legítimas del mismo día se tienen que guardar todas. Y quiero que el archivo se mueva a procesados/ cuando el dato está guardado, no al descargarlo: hoy 'procesado' significa 'descargado', y si falla la importación me quedo sin saberlo.",
         "por_que": "Es el eslabón que une todo lo que hay hecho y el único que falta para que la aplicación sirva para algo: la conexión con Drive, la estructura de carpetas, la lectura, los parsers y el modelo de datos están, pero no se tocan entre sí. Hasta que esto exista no hay ni un dato real en la base de datos, así que no hay saldos, no hay dashboards y no hay nada que el frontend pueda enseñar.",
@@ -497,6 +496,7 @@
           "Vuelvo a importar el mismo archivo y no se duplica ni un movimiento.",
           "Un extracto con tres líneas idénticas el mismo día guarda los tres movimientos, no uno.",
           "El archivo solo aparece en procesados/ después de que sus movimientos estén guardados; si la importación falla, sigue pendiente en Drive y puedo reintentarlo.",
+          "Si un fichero trae alguna linea que el parser no entendio, los movimientos buenos SI se guardan y las lineas problematicas se me reportan: una sola linea rara no me bloquea el mes entero (decidido el 2026-08-11).",
           "Una línea que el parser no entendió no se pierde en silencio: se me reporta y el resto se importa igual."
         ],
         "que_no_quiero": [
@@ -507,18 +507,32 @@
           "No permitir crear ni borrar movimientos a mano por la API: siguen entrando solo por aquí.",
           "No construir interfaz web.",
           "No rehacer la conexión ni la estructura de Drive: se reutilizan.",
-          "No inventar un saldo para el banco que no lo trae."
+          "No inventar un saldo para el banco que no lo trae.",
+          "No guardar los productos de inversion ni sus valoraciones: eso es una feature aparte. Su regla de duplicado es la contraria a la de los movimientos (recargar el mismo fichero SOBRESCRIBE, en vez de descartarse), y mezclar las dos aqui es el tipo de cosa que obligo a partir la feature 10 en dos (decidido el 2026-08-11)."
         ],
         "delego_en_agente": [
           "Cómo se dispara la importación y su forma exacta en la API, sabiendo que hoy la lectura ya expone detección y proceso, y que el frontend quiere un aviso de 'N nuevos' y un botón; que proponga si se reutilizan esos endpoints o nacen otros, y actualice api-contract.md.",
           "Cómo se retoca el flujo de la feature 5 para que el movimiento a procesados/ pase a ocurrir tras guardar, sin romper la idempotencia que ya tiene.",
-          "Cómo se guardan sin duplicar apoyándose en el índice único parcial que ya existe, y qué se reporta de lo que se descartó por duplicado.",
-          "Qué pasa cuando un archivo importa a medias: si se guarda lo bueno y se reporta el resto, o no se guarda nada; que lo proponga con el trade-off.",
-          "Qué se hace con los archivos de producto de inversión de MyInvestor, sabiendo que su modelo llega en la feature 9: si entran aquí o en una feature aparte; que marque el límite."
+          "Cómo se guardan sin duplicar apoyándose en el índice único parcial que ya existe, y qué se reporta de lo que se descartó por duplicado."
         ]
       },
       "sdd": true,
-      "status": "pending"
+      "status": "pending",
+      "_intent_cerrado_por_el_humano": "Cerrado por el humano el 2026-08-11 sobre el borrador del agente, resolviendo sus tres puntos con consecuencia: (1) el fichero se mueve a procesados/ CUANDO EL DATO ESTA GUARDADO, no al descargarlo — retoca el flujo de la feature 5 y cierra el cabo suelto nº1 del roadmap; (2) una importacion parcial GUARDA LO BUENO y reporta el resto, en vez de todo-o-nada; (3) el guardado de los productos de inversion NO entra aqui: es una feature aparte, porque su regla de duplicado es la contraria (recargar sobrescribe). El resto del borrador se acepta tal cual.",
+      "acceptance": [
+        "Los movimientos que devuelve un parser se guardan en la base de datos como Movement de su cuenta, con origin='imported' y status='pending_review', siguiendo la tabla de mapeo que dejo escrita el design de la feature 8 §9; al listarlos por la API aparecen del mas reciente al mas antiguo (deriva de: 'importo el extracto que ya tengo descargado y sus movimientos aparecen al listarlos por la API')",
+        "Si la cuenta del fichero no existia y el fichero trae IBAN y banco, se crea sola reutilizando el servicio de auto-alta que ya existe desde la feature 8, y la respuesta dice con que datos se creo (deriva de: 'se ha creado sola con el IBAN y el banco del archivo, y se me dice con que datos')",
+        "SI al fichero le falta el IBAN ENTONCES no se crea ninguna cuenta a ciegas y se devuelve un error diferenciable del resto, para dar de alta la cuenta a mano (deriva de: 'no se crea ninguna cuenta a ciegas: se me devuelve un error que distingo del resto'; le pasa a MyInvestor, cuyo extracto no trae IBAN)",
+        "Reimportar el mismo fichero no duplica ni un movimiento, apoyandose en el indice unico parcial que ya existe desde la feature 8, y se reporta cuantos se descartaron por duplicado (deriva de: 'vuelvo a importar el mismo archivo y no se duplica ni un movimiento')",
+        "Un extracto con tres lineas identicas el mismo dia guarda los tres movimientos, no uno, gracias al daySequence que ya emite cada parser desde la feature 11 (deriva de: 'un extracto con tres lineas identicas el mismo dia guarda los tres movimientos')",
+        "El fichero solo se mueve a procesados/ DESPUES de que sus movimientos esten guardados; si la importacion falla, sigue pendiente en Drive y se puede reintentar. Esto retoca el flujo que dejo la feature 5 —donde 'procesado' significa hoy 'descargado'— sin romper la idempotencia que ya tiene (deriva de: 'el archivo solo aparece en procesados/ despues de que sus movimientos esten guardados'; confirmado por el humano el 2026-08-11, cierra el cabo suelto nº1 del roadmap)",
+        "Una importacion parcial guarda los movimientos buenos y reporta aparte las lineas que el parser no entendio, sin perder ninguna en silencio y sin bloquear el resto del fichero (deriva de: 'una linea que el parser no entendio no se pierde en silencio: se me reporta y el resto se importa igual'; el humano eligio esto frente a todo-o-nada el 2026-08-11)",
+        "El saldo de una cuenta sale del balanceAfter del movimiento mas reciente y NO de sumar movimientos; para un banco que no reporta saldo por linea el campo queda null y no se inventa (deriva de: 'el saldo sale del saldo que traia la ultima linea del extracto, no de sumar movimientos' + 'no inventar un saldo para el banco que no lo trae')",
+        "La feature NO categoriza, NO asigna forma de pago, NO empareja las dos piernas de un traspaso ni rellena transferId, NO enlaza aportaciones con productId, NO da por confirmado lo importado (entra como pending_review y asi se queda), NO permite crear ni borrar movimientos a mano por la API, NO construye interfaz y NO rehace la conexion ni la estructura de Drive (deriva de los 'que_no_quiero')",
+        "El guardado de los productos de inversion y sus valoraciones queda FUERA de esta feature (deriva de: decision del humano del 2026-08-11; su regla de duplicado es la contraria, recargar sobrescribe)",
+        "La importacion es determinista y re-ejecutable: volver a parsear e importar desde el crudo conservado en Drive reconstruye lo mismo, que es lo unico que hoy hace las veces de copia de seguridad de los movimientos (deriva del cabo suelto nº6 del roadmap)",
+        "Cada requirement R<n> del spec tiene al menos un test concreto que lo cubre, mapeado en progress/implementations/import.md; ./init.sh termina en verde incluida la suite completa; docs/api-contract.md queda actualizado con el disparo de la importacion y sus errores; y las decisiones delegadas quedan anotadas como ADR en docs/architecture.md donde aplique"
+      ]
     },
     {
       "id": 13,
