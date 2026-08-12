@@ -26,3 +26,6 @@ npm-debug.log*
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Artefacto de compilacion incremental de TypeScript: cambia en cada tsc.
+tsconfig.tsbuildinfo

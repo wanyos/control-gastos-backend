@@ -1,0 +1,17 @@
+# Finales de línea: LF en el repositorio y LF en el disco, también en Windows.
+#
+# Sin este archivo manda `core.autocrlf`, que en Windows viene a `true` y
+# convierte a CRLF al sacar los archivos del repositorio. El contenido
+# commiteado sigue siendo correcto (LF), pero el árbol de trabajo queda con
+# CRLF y `format:check` se pone rojo en cuanto un archivo se vuelve a extraer
+# —al cambiar de rama, por ejemplo— aunque nadie lo haya editado.
+#
+# `.editorconfig` ya pide `end_of_line = lf`; esto es lo que hace que git lo
+# respete.
+* text=auto eol=lf
+
+# Binarios: que git no los toque.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.xlsx binary
