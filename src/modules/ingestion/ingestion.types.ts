@@ -27,7 +27,10 @@ export interface DetectionResult {
   banks: PendingBank[]
 }
 
-/** A file successfully downloaded, copied locally and moved to `procesados`. */
+/**
+ * A file successfully downloaded and copied locally. It is NOT moved: it stays
+ * pending in Drive until the importer stores its movements (feature 12).
+ */
 export interface ProcessedFile {
   bank: string
   year: string
@@ -37,7 +40,7 @@ export interface ProcessedFile {
   path: string
 }
 
-/** A file whose read or copy failed; its original was NOT moved to `procesados`. */
+/** A file whose read or local copy failed; nothing was written for it. */
 export interface FailedFile {
   bank: string
   year: string
@@ -47,7 +50,7 @@ export interface FailedFile {
   error: string
 }
 
-/** Outcome of the explicit process action. */
+/** Outcome of the explicit download action. */
 export interface ProcessResult {
   processedCount: number
   failedCount: number

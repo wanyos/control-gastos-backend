@@ -5,13 +5,9 @@ import { AppError } from '../../errors/app-error.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import {
   downloadFileContent,
-  ensureFolder,
   listBankFolders,
   listPendingFiles,
   listYearFolders,
-  moveFileToProcessed,
-  processedFolderName,
-  type BankYearFolders,
 } from '../../lib/drive-structure.js'
 import type {
   DetectionResult,
@@ -20,7 +16,7 @@ import type {
   PendingYear,
   ProcessResult,
   ProcessedFile,
-} from './ingesta.types.js'
+} from './ingestion.types.js'
 
 /**
  * Non-destructive detection: walks every bank folder discovered under the root
@@ -61,13 +57,17 @@ export async function detectPending(
 }
 
 /**
- * Explicit process action: for every pending file across all bank/year folders,
- * downloads its content as-is (no parsing), writes a local copy under
- * `dumpBaseDir/<bank>/<year>/<name>` and ONLY after the copy is written moves the
- * original to `<bank>/<year>/procesados/` (reusing feature 4's move). Files are
- * handled one by one: a read/copy/move failure for one file is isolated, reported
- * in `failed` (its original is never moved) and does not stop the rest. Running it
- * with nothing pending does nothing and duplicates no copies (idempotent).
+ * Explicit download action: for every pending file across all bank/year folders,
+ * downloads its content as-is (no parsing) and writes a local copy under
+ * `dumpBaseDir/<bank>/<year>/<name>`. It does NOT move anything in Drive: a file
+ * only reaches `procesados/` once its movements are stored, which is the
+ * importer's job (`POST /api/import`, feature 12). This endpoint is what lets the
+ * file of a bank with no parser yet be inspected before writing one.
+ *
+ * Files are handled one by one: a read/copy failure for one file is isolated,
+ * reported in `failed` and does not stop the rest. Running it with nothing
+ * pending does nothing, and running it again rewrites the same local copy
+ * without duplicating it (idempotent).
  */
 export async function processPending(
   client: AppDriveClient,
@@ -85,14 +85,6 @@ export async function processPending(
       if (pending.length === 0) {
         continue
       }
-      // Resolve (reuse or create) the procesados/ folder once per year.
-      const processedFolderId = await ensureFolder(client, processedFolderName, year.id)
-      const folders: BankYearFolders = {
-        bankFolderId: bank.id,
-        yearFolderId: year.id,
-        processedFolderId,
-      }
-
       for (const file of pending) {
         try {
           const content = await downloadFileContent(client, file.id)
@@ -100,8 +92,6 @@ export async function processPending(
           const targetPath = join(dumpBaseDir, bank.name, year.name, file.name)
           await mkdir(dirname(targetPath), { recursive: true })
           await writeFile(targetPath, content)
-          // The move happens only after the local copy is written successfully.
-          await moveFileToProcessed(client, file.id, folders)
           processed.push({
             bank: bank.name,
             year: year.name,

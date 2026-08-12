@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { detectPending, processPending } from './ingesta.service.js'
+import { detectPending, processPending } from './ingestion.service.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import { DriveConnectionError } from '../../errors/app-error.js'
 
@@ -132,7 +132,7 @@ describe('detectPending', () => {
 })
 
 describe('processPending', () => {
-  it('copies each pending file locally and moves the original to procesados', async () => {
+  it('copies each pending file locally WITHOUT moving the original (R15)', async () => {
     const { client, update, create } = buildClient(twoBankTree(), {
       create: vi.fn(async () => ({ data: { id: 'proc-sa-2025' } })),
     })
@@ -169,26 +169,26 @@ describe('processPending', () => {
     expect(bkCopy.equals(Buffer.from('content-of-f1'))).toBe(true)
     expect(saCopy.equals(Buffer.from('content-of-f2'))).toBe(true)
 
-    // Both originals moved into their procesados/.
-    expect(update).toHaveBeenCalledTimes(2)
-    const moves = update.mock.calls.map((call) => call[0])
-    expect(moves).toContainEqual(
-      expect.objectContaining({
-        fileId: 'f1',
-        addParents: 'proc-bk-2026',
-        removeParents: 'y-bk-2026',
-      }),
-    )
-    expect(moves).toContainEqual(
-      expect.objectContaining({
-        fileId: 'f2',
-        addParents: 'proc-sa-2025',
-        removeParents: 'y-sa-2025',
-      }),
-    )
-    // santander/2025 had no procesados/, so it was created once under the year.
-    expect(create).toHaveBeenCalledOnce()
-    expect(create.mock.calls[0][0].requestBody.parents).toEqual(['y-sa-2025'])
+    // Nothing was moved and no procesados/ was even resolved: both originals
+    // stay pending in Drive until the importer stores their movements (R15).
+    expect(update).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('stays idempotent: a second run rewrites the same copy and still moves nothing (R15)', async () => {
+    const { client, update, create } = buildClient(twoBankTree())
+
+    const first = await processPending(client, 'root', dumpDir)
+    const second = await processPending(client, 'root', dumpDir)
+
+    // The files are still pending, so the second run reports them again and
+    // overwrites the same local copies: no duplicate file, no new state.
+    expect(second).toEqual(first)
+    expect(await readdir(join(dumpDir, 'bankinter', '2026'))).toEqual(['movs.xlsx'])
+    const copy = await readFile(join(dumpDir, 'bankinter', '2026', 'movs.xlsx'))
+    expect(copy.equals(Buffer.from('content-of-f1'))).toBe(true)
+    expect(update).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
   })
 
   it('does nothing and duplicates no copies when there is nothing pending (idempotent)', async () => {
@@ -238,12 +238,12 @@ describe('processPending', () => {
     expect(result.failed[0]).toMatchObject({ fileId: 'f1', name: 'movs.xlsx' })
     // Error is sanitized: the token never leaks.
     expect(result.failed[0].error).not.toContain('1//fake-token-value')
-    // The original was NOT moved and no local copy was written.
+    // No local copy was written (and nothing is ever moved here anyway).
     expect(update).not.toHaveBeenCalled()
     await expect(readdir(dumpDir)).resolves.toEqual([])
   })
 
-  it('does not move a file whose local copy fails to write', async () => {
+  it('reports a file whose local copy fails to write, without touching Drive', async () => {
     // Make the bank subdir path collide with an existing file so mkdir fails.
     await writeFile(join(dumpDir, 'bankinter'), 'i am a file, not a directory')
     const tree: Tree = {
@@ -266,11 +266,10 @@ describe('processPending', () => {
     expect(result.processedCount).toBe(0)
     expect(result.failed).toHaveLength(1)
     expect(result.failed[0]).toMatchObject({ fileId: 'f1' })
-    // Copy failed => the original stays put (never moved).
     expect(update).not.toHaveBeenCalled()
   })
 
-  it('isolates a per-file failure and still processes the healthy files', async () => {
+  it('isolates a per-file failure and still copies the healthy files', async () => {
     const tree: Tree = {
       folders: {
         root: [{ id: 'b-bankinter', name: 'bankinter' }],
@@ -300,9 +299,8 @@ describe('processPending', () => {
     expect(result.failedCount).toBe(1)
     expect(result.processed[0]).toMatchObject({ fileId: 'good' })
     expect(result.failed[0]).toMatchObject({ fileId: 'bad' })
-    // Only the healthy file was moved.
-    expect(update).toHaveBeenCalledOnce()
-    expect(update.mock.calls[0][0].fileId).toBe('good')
+    // The healthy file got its local copy; neither file was moved in Drive.
+    expect(update).not.toHaveBeenCalled()
     const goodCopy = await readFile(join(dumpDir, 'bankinter', '2026', 'ok.xlsx'))
     expect(goodCopy.equals(Buffer.from('content-of-good'))).toBe(true)
   })

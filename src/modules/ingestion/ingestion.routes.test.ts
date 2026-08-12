@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import ingestaRoutes from './ingesta.routes.js'
+import ingestionRoutes from './ingestion.routes.js'
+import { buildApp } from '../../app.js'
 import type { AppConfig } from '../../config/env.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import errorHandlerPlugin from '../../plugins/error-handler.js'
@@ -50,12 +51,12 @@ function driveDouble() {
 
 async function buildTestApp(drive: AppDriveClient, dumpBaseDir: string): Promise<FastifyInstance> {
   // buildApp() decorates `drive` with the real client and decorate cannot be
-  // overridden, so the ingesta routes are exercised on a bare app with a double.
+  // overridden, so the ingestion routes are exercised on a bare app with a double.
   const app = Fastify()
   app.decorate('config', { driveRootFolderId: 'root' } as unknown as AppConfig)
   app.decorate('drive', drive)
   app.register(errorHandlerPlugin)
-  app.register(ingestaRoutes, { prefix: '/api/ingesta', dumpBaseDir })
+  app.register(ingestionRoutes, { prefix: '/api/ingestion', dumpBaseDir })
   await app.ready()
   return app
 }
@@ -70,12 +71,12 @@ afterEach(async () => {
   await rm(dumpDir, { recursive: true, force: true })
 })
 
-describe('GET /api/ingesta/pending', () => {
+describe('GET /api/ingestion/pending', () => {
   it('returns 200 with the pending detection', async () => {
     const { client } = driveDouble()
     const app = await buildTestApp(client, dumpDir)
 
-    const response = await app.inject({ method: 'GET', url: '/api/ingesta/pending' })
+    const response = await app.inject({ method: 'GET', url: '/api/ingestion/pending' })
 
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({
@@ -100,7 +101,7 @@ describe('GET /api/ingesta/pending', () => {
     const client = { files: { list } } as unknown as AppDriveClient
     const app = await buildTestApp(client, dumpDir)
 
-    const response = await app.inject({ method: 'GET', url: '/api/ingesta/pending' })
+    const response = await app.inject({ method: 'GET', url: '/api/ingestion/pending' })
 
     expect(response.statusCode).toBe(503)
     expect(response.json()).toMatchObject({ statusCode: 503, code: 'DRIVE_CONNECTION_ERROR' })
@@ -109,21 +110,59 @@ describe('GET /api/ingesta/pending', () => {
   })
 })
 
-describe('POST /api/ingesta/process', () => {
-  it('returns 200, writes the local copy and moves the original', async () => {
+describe('POST /api/ingestion/process', () => {
+  it('returns 200, writes the local copy and does NOT move the original (R15)', async () => {
     const { client, update } = driveDouble()
     const app = await buildTestApp(client, dumpDir)
 
-    const response = await app.inject({ method: 'POST', url: '/api/ingesta/process' })
+    const response = await app.inject({ method: 'POST', url: '/api/ingestion/process' })
 
     expect(response.statusCode).toBe(200)
     expect(response.json()).toMatchObject({ processedCount: 1, failedCount: 0 })
 
     const copy = await readFile(join(dumpDir, 'bankinter', '2026', 'movs.xlsx'))
     expect(copy.equals(Buffer.from('raw-bytes'))).toBe(true)
-    expect(update).toHaveBeenCalledOnce()
-    expect(update.mock.calls[0][0].fileId).toBe('f1')
+    // The file stays pending in Drive: only the importer moves it, and only
+    // after storing its movements.
+    expect(update).not.toHaveBeenCalled()
 
     await app.close()
+  })
+})
+
+// The Spanish routes are gone (feature 12, breaking change): they fall through
+// to the central 404 handler, and the same capabilities live in English.
+describe('retired /api/ingesta/* surface (R20)', () => {
+  let app: FastifyInstance
+
+  beforeEach(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    await app.close()
+  })
+
+  it('GET /api/ingesta/pending returns 404 with the standard error body', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/ingesta/pending' })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('POST /api/ingesta/process returns 404 with the standard error body', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/ingesta/process' })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('registers the same capabilities under /api/ingestion/*', () => {
+    // Asserted on the real app (not the double) so it is the wiring of
+    // `src/app.ts` that is checked, without touching the network.
+    expect(app.hasRoute({ method: 'GET', url: '/api/ingestion/pending' })).toBe(true)
+    expect(app.hasRoute({ method: 'POST', url: '/api/ingestion/process' })).toBe(true)
+    expect(app.hasRoute({ method: 'POST', url: '/api/import' })).toBe(true)
   })
 })
