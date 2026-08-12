@@ -898,3 +898,5 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   excepcional pasa a ser la normal para este banco.
 
 - 2026-08-12 — F12 `import`: la app **guarda datos de verdad** — `POST /api/import` baja de Drive, parsea, escribe los movimientos en su cuenta (creada sola con el IBAN del fichero) y solo entonces mueve el fichero a `procesados/`; reimportar no duplica. De paso, `ingesta` → `ingestion` (`/api/ingesta/*` → 404) → [resumen](summaries/import.md)
+
+- 2026-08-12 — F13 `myinvestor-products`: el módulo de MyInvestor lee ya **su segunda entrada** — los `.json` de producto de inversión que escribes a mano (fondo, ETF, cartera y depósito) — desde el mismo `POST /api/parser/myinvestor`, encaminados por extensión, con los errores de cada archivo acumulados en un solo motivo y un `products.json` por año para revisarlos. Sin base de datos → [resumen](summaries/myinvestor-products.md)

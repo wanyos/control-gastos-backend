@@ -720,14 +720,74 @@ interpretan aunque mezclen separador de miles dentro del mismo archivo
 interpretable va a `unparsedRows` (`{ row, reason }`, con `row` 1-based contando la
 cabecera) sin detener el resto, y **no consume `daySequence`**.
 
+### Productos de inversión: la segunda entrada del mismo banco
+
+> **Feature "myinvestor-products" (2026-08-12, ADR-016).** El mismo banco aporta
+> además **archivos `.json` de producto de inversión escritos a mano** por el
+> humano (fondos, ETF, cartera automatizada y depósitos), uno por producto y por
+> foto. **El mismo endpoint los devuelve**: se distinguen del extracto **por la
+> extensión** (`.csv` → extracto, `.json` → producto) y el banco sigue saliendo de
+> la carpeta. Sigue sin haber base de datos: solo parseo y volcado.
+>
+> El **formato del archivo** (plantillas, tabla de campos, reglas de números y
+> fechas) es `docs/myinvestor-product-files.md`, no este contrato.
+
+Modelo de un producto parseado, tal como aparece en el volcado:
+
+```json
+{
+  "bank": "myinvestor",
+  "file": "fondo-indexado-global-2026-08-31.json",
+  "type": "fund",
+  "name": "Fondo Indexado Global",
+  "date": "2026-08-31",
+  "currency": "EUR",
+  "closedAt": null,
+  "valuation": {
+    "invested": 800,
+    "marketValue": 947.25,
+    "gain": 147.25,
+    "gainPercent": 18.41,
+    "uninvestedCash": null
+  },
+  "depositTerms": null
+}
+```
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `bank` | `string` | siempre `"myinvestor"`; sale de la carpeta, nunca del contenido |
+| `file` | `string` | **procedencia**: el nombre del archivo de origen. No decide ni el nombre ni la fecha |
+| `type` | `string` | `fund` \| `etf` \| `managed_portfolio` \| `deposit` |
+| `name` | `string` | identidad del producto, escrita dentro del archivo |
+| `date` | `string` | ISO `YYYY-MM-DD`: la fecha de la foto (del apunte, en un depósito) |
+| `currency` | `string` | `"EUR"` si el archivo no la trae |
+| `closedAt` | `string \| null` | ISO; `null` = vivo. **Dejar de escribir un producto NO lo cierra** |
+| `valuation` | objeto \| `null` | `null` en `deposit` |
+| `depositTerms` | objeto \| `null` | `null` en los otros tres tipos |
+
+`valuation` (los productos que fluctúan): `invested`, `marketValue`, `gain`,
+`gainPercent` (**porcentaje** con signo: `7.01` es 7,01 %) y `uninvestedCash`
+(`number | null`, **aparte** de `marketValue` y **nunca sumado** dentro de él ni de
+ningún total).
+
+`depositTerms` (solo `deposit`): `principal`, `interestRate` (la **única** TAE, la
+que se aplica, en porcentaje), `expectedGain` y `maturityDate` (ISO).
+
+Todos los importes son **números**, emitidos **tal cual se escribieron**: sin
+redondear, sin fijar decimales y sin recalcular nada. Si los valores de un archivo no
+cuadran entre ellos, salen como están: el parser **no calcula**.
+
 ### `POST /api/parser/myinvestor`
 
 Acción **explícita** de parseo. Recorre las copias locales de MyInvestor
 (`var/drive-read/myinvestor/<año>/`), aplica el parser **por extensión**
-(`.csv` → extracto; cualquier otra → `ignored`) y escribe el resultado de cada
-extracto en `var/parsed/myinvestor/<año>/<archivo>.json`. Read-only respecto a
-Drive y a la base de datos: **no** descarga, **no** mueve, **no** persiste en BD.
-Reejecutarlo sobre los mismos archivos produce **exactamente el mismo resultado**.
+(`.csv` → extracto; `.json` → producto de inversión; cualquier otra → `ignored`) y
+escribe el resultado de cada extracto en
+`var/parsed/myinvestor/<año>/<archivo>.json` y el de **todos los productos del año**
+en `var/parsed/myinvestor/<año>/products.json`. Read-only respecto a Drive y a la
+base de datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo
+sobre los mismos archivos produce **exactamente el mismo resultado**.
 
 Sin cuerpo de petición.
 
@@ -735,6 +795,7 @@ Sin cuerpo de petición.
 ```json
 {
   "parsedCount": 1,
+  "productCount": 1,
   "failedCount": 0,
   "ignoredCount": 1,
   "statements": [
@@ -746,6 +807,17 @@ Sin cuerpo de petición.
       "movements": 12,
       "unparsedRows": 0,
       "dumpPath": "myinvestor/2026/extracto.csv.json"
+    }
+  ],
+  "products": [
+    {
+      "bank": "myinvestor",
+      "year": "2026",
+      "file": "fondo-indexado-global-2026-08-31.json",
+      "type": "fund",
+      "name": "Fondo Indexado Global",
+      "date": "2026-08-31",
+      "dumpPath": "myinvestor/2026/products.json"
     }
   ],
   "failed": [],
@@ -762,14 +834,25 @@ Sin cuerpo de petición.
 
 - `accountIban`: `null` salvo que el archivo traiga la línea de preámbulo
   `iban;<IBAN>` que escribe el humano (ver la nota de arriba).
+- `parsedCount` cuenta **extractos**; `productCount`, **productos**.
+- `products[]`: un **resumen** por producto parseado (`bank`, `year`, `file`, `type`,
+  `name`, `date`, `dumpPath`). El producto completo, con su `valuation` o sus
+  `depositTerms`, vive en el volcado del año.
 - `dumpPath`: ruta del JSON volcado **relativa** a la carpeta de volcado local (no
-  se expone la ruta absoluta de la máquina).
-- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un fallo por
+  se expone la ruta absoluta de la máquina). Todos los productos de un año comparten
+  `<banco>/<año>/products.json`: **un volcado por año**, no uno por archivo. Ese
+  volcado contiene `{ bank, year, products[], failed[], ignored[] }` de ese año, y
+  solo se escribe si el año tiene algún `.json` de producto.
+- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado, para las dos
+  entradas. Un archivo de producto mal escrito acumula **todos** sus problemas en un
+  solo `reason` (campos obligatorios que faltan, valores que no son números, un
+  número escrito **como texto**, fechas en otro formato, claves desconocidas, o el
+  choque con otro archivo que declara el mismo producto y fecha). Un fallo por
   archivo NO cambia el código HTTP: la respuesta es **200** con el fallo dentro.
 - `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
-  no maneja (los `.txt` con notas, y **de momento también los `.json` de producto**,
-  hasta que exista la feature que los lee). **No** son un fallo: son visibles y
-  quedan fuera de la lista de cosas que arreglar.
+  no maneja (los `.txt` con notas, una hoja de cálculo suelta…). **No** son un
+  fallo: son visibles y quedan fuera de la lista de cosas que arreglar. Los `.json`
+  de producto **ya no caen aquí**: tienen su parser desde la feature 13.
 
 ---
 

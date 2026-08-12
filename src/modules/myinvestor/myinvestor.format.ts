@@ -52,6 +52,37 @@ export function parseAmountText(value: unknown): number | null {
 }
 
 /**
+ * Parses a date written by hand in the product files, where the ONLY accepted
+ * shape is a strict ISO `YYYY-MM-DD` (feature 13, R28): the bank's web shows
+ * a two-digit year (`dd/mm/aa`), which has three readings and no way to pick one.
+ *
+ * Validates the calendar day too, so `2026-02-31` is `null` instead of rolling
+ * over into March, and `2026-13-01` is `null`. Returns `null` for anything
+ * else, so the caller reports the file instead of guessing a date.
+ */
+export function parseIsoDate(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) {
+    return null
+  }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const probe = new Date(Date.UTC(year, month - 1, day))
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day
+  ) {
+    return null
+  }
+  return value
+}
+
+/**
  * Parses a statement date `dd/mm/yyyy` into ISO `YYYY-MM-DD`, validating it is
  * a real calendar day: `31/02/2026` is `null`, never rolled over into March.
  */

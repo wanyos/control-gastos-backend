@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseAmountText, parseStatementDate } from './myinvestor.format.js'
+import { parseAmountText, parseIsoDate, parseStatementDate } from './myinvestor.format.js'
 
 describe('parseAmountText (R10)', () => {
   it('reads the five numeric shapes that coexist in a single statement', () => {
@@ -12,14 +12,14 @@ describe('parseAmountText (R10)', () => {
   })
 
   it('drops the currency symbol, the percent sign and the spaces', () => {
-    expect(parseAmountText('1.312,72 €')).toBe(1312.72)
+    expect(parseAmountText('3.210,40 €')).toBe(3210.4)
     expect(parseAmountText('-3,47 %')).toBe(-3.47)
     expect(parseAmountText(' 12,50 ')).toBe(12.5)
   })
 
   it('treats dots that group three digits as thousands, and any other dot as decimal', () => {
-    expect(parseAmountText('1.312.000')).toBe(1312000)
-    expect(parseAmountText('1312.72')).toBe(1312.72)
+    expect(parseAmountText('3.210.000')).toBe(3210000)
+    expect(parseAmountText('3210.40')).toBe(3210.4)
     expect(parseAmountText('1.5')).toBe(1.5)
   })
 
@@ -56,5 +56,35 @@ describe('parseStatementDate (R9)', () => {
     expect(parseStatementDate('01/08/26')).toBeNull()
     expect(parseStatementDate('')).toBeNull()
     expect(parseStatementDate(42)).toBeNull()
+  })
+})
+
+describe('parseIsoDate (R28)', () => {
+  it('accepts a strict YYYY-MM-DD and returns it unchanged', () => {
+    expect(parseIsoDate('2027-04-15')).toBe('2027-04-15')
+    expect(parseIsoDate('2026-08-31')).toBe('2026-08-31')
+    expect(parseIsoDate('2028-02-29')).toBe('2028-02-29')
+  })
+
+  it('rejects the formats the bank web shows, instead of guessing the century', () => {
+    expect(parseIsoDate('15/04/27')).toBeNull()
+    expect(parseIsoDate('15/04/2027')).toBeNull()
+  })
+
+  it('rejects a day that does not exist instead of rolling it over', () => {
+    expect(parseIsoDate('2026-13-01')).toBeNull()
+    expect(parseIsoDate('2026-02-31')).toBeNull()
+    expect(parseIsoDate('2026-02-29')).toBeNull()
+    expect(parseIsoDate('2026-00-10')).toBeNull()
+  })
+
+  it('rejects loose shapes: padding, whitespace and non-strings', () => {
+    expect(parseIsoDate('2026-8-31')).toBeNull()
+    expect(parseIsoDate(' 2026-08-31 ')).toBeNull()
+    expect(parseIsoDate('2026-08-31T00:00:00Z')).toBeNull()
+    expect(parseIsoDate('')).toBeNull()
+    expect(parseIsoDate(20260831)).toBeNull()
+    expect(parseIsoDate(null)).toBeNull()
+    expect(parseIsoDate(undefined)).toBeNull()
   })
 })

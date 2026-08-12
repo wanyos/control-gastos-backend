@@ -590,7 +590,7 @@
         "Cada criterio tiene al menos un test concreto con archivos de ejemplo sintéticos (sin datos financieros reales ni red) mapeado en progress/implementations/myinvestor-products.md; ./init.sh termina en verde incluida la suite completa; y cualquier dependencia nueva queda documentada en docs/stack.md, con ADR si la decisión lo amerita (deriva del cierre estándar del proyecto)"
       ],
       "sdd": true,
-      "status": "spec_ready"
+      "status": "done"
     }
   ]
 }

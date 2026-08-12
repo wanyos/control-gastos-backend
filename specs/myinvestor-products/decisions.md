@@ -26,7 +26,8 @@ casillas de la lista de campos las cerraste el **2026-08-11**; están abajo, en 
 
 ## ✅ Ya las cerraste tú (9, el 2026-08-11)
 
-- **Los números van como número JSON puro** (`1312.72`), no entre comillas en formato
+- **Los números van como número JSON puro** (`8440.60`, cifra de ejemplo **inventada**
+  como todas las de este spec, `docs/conventions.md` §Tests), no entre comillas en formato
   español. **Las fechas no cambian: siempre `AAAA-MM-DD`.** Un valor numérico que llegue
   como texto se reporta como fallo del archivo, con su motivo, y **no se interpreta**.
 - **`date` es obligatorio también en el depósito**, con el significado "el día que tomé

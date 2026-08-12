@@ -92,14 +92,18 @@ src/
       bankinter.types.ts   #   SOLO lo suyo: BankinterParseResult = ParsedStatement<'bankinter'>
                            #   + resúmenes de su ejecución local (ADR-013)
       bankinter.fixture.ts #   helper de test: genera .xlsx sintético en memoria (exceljs)
-    myinvestor/            # parser del extracto .csv de MyInvestor (myinvestor-statement)
+    myinvestor/            # las DOS entradas de MyInvestor: extracto .csv + productos .json
       myinvestor.format.ts #   números y fechas de ESTE banco (compartido solo dentro)
       myinvestor.statement.parser.ts # parser puro (buffer .csv -> movimientos), sin BD/Drive
-      myinvestor.service.ts #  lee copias locales de la f5, parsea y vuelca JSON (read-only)
-      myinvestor.routes.ts #   POST /api/parser/myinvestor
+      myinvestor.product.parser.ts   # parser puro de UN .json de producto escrito a mano,
+                           #   sin BD/Drive y sin usar el normalizador del .csv (ADR-016)
+      myinvestor.service.ts #  lee copias locales de la f5, encamina por extensión y vuelca
+                           #   JSON: uno por extracto + un products.json por año (read-only)
+      myinvestor.routes.ts #   POST /api/parser/myinvestor (un solo disparo, las dos entradas)
       myinvestor.types.ts  #   SOLO lo suyo: MyinvestorStatementResult =
-                           #   ParsedStatement<'myinvestor'> + resúmenes de ejecución (ADR-014)
-      myinvestor.fixture.ts #  helper de test: genera el CSV sintético en memoria
+                           #   ParsedStatement<'myinvestor'> + los tipos de producto
+                           #   (ParsedProduct, ParsedValuation, ...) + resúmenes (ADR-014/016)
+      myinvestor.fixture.ts #  helper de test: CSV y JSON de producto sintéticos en memoria
     investments/           # inversiones: productos y su valoración (ADR-012)
       investments.model.test.ts  # CARPETA PARCIAL a propósito: la f9 es esquema +
                                  #   migración, sin superficie HTTP (precedente:
@@ -1137,6 +1141,79 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     parseadas. Si un fichero con filas no interpretables se reimporta tras mejorar su
     parser, ese día se renumera y pueden aparecer duplicados **visibles** de ese día.
     Sin dueño todavía.
+
+### ADR-016: Archivos de producto de MyInvestor — un JSON por producto escrito a mano, números JSON nativos, fechas ISO estrictas y claves cerradas
+
+- **Fecha:** 2026-08-12.
+- **Estado:** aceptada (feature 13 `myinvestor-products`).
+- **Contexto:** MyInvestor tiene **dos entradas** y la norma «Parsers de banco» de
+  `docs/conventions.md` lo contempla explícitamente: dentro de un banco sí se comparte.
+  El ADR-014 fijó el módulo, el servicio, la ruta y el normalizador de números del
+  extracto; aquí se decide el formato de la **segunda entrada**, que es el **primer
+  formato escrito por el humano** en vez de exportado por un banco. Esa es toda la
+  diferencia: un formato que se puede **diseñar** en vez de aceptar.
+- **Decisión:**
+  1. **Un JSON por producto**, encaminado **por la extensión** (`.json`) dentro del
+     servicio que ya existía; el banco sale de la carpeta y el producto y la fecha,
+     **de dentro del archivo** (el nombre del archivo es libre y solo se usa para
+     reportar y como procedencia).
+  2. **Números como número JSON nativo** (`947.25`), con punto decimal, sin separador
+     de miles y sin símbolos. Un valor numérico escrito **como texto se rechaza con
+     motivo y no se interpreta nunca**, ni siquiera cuando sería inequívoco. En
+     consecuencia este parser **no importa `parseAmountText`**, que queda como pieza
+     exclusiva del `.csv`: menos acoplamiento entre las dos entradas del banco.
+  3. **Fechas siempre `AAAA-MM-DD`** (`parseIsoDate`, añadido al `myinvestor.format.ts`
+     que ya existía, no un segundo archivo de formato); los porcentajes en
+     **porcentaje**, nunca en fracción.
+  4. **`closedAt` opcional escrito una sola vez** por el humano, en los dos tipos;
+     **dejar de escribir un producto NO lo cierra** y el sistema no infiere nada de una
+     ausencia. Con esto la columna `InvestmentProduct.closedAt` de ADR-012 **ya tiene
+     escritor**.
+  5. **Errores acumulados por archivo** en el `failed[]` que ya construyó el extracto:
+     un archivo roto reporta **todos** sus problemas de golpe. **Clave desconocida =
+     error**, salvo las que empiezan por `_` (las notas del humano), porque es lo único
+     que atrapa una errata silenciosa en un campo opcional. El choque `(name, date)` se
+     resuelve **en el servicio** —el parser ve un archivo cada vez— conservando el
+     primero por orden alfabético.
+  6. **Un `products.json` por año**, no un volcado por archivo: el volcado es la
+     **interpretación** (estructura, fechas validadas, todo el año junto y lo que falló),
+     no una copia del origen.
+  7. **El parser no calcula nada** y **el efectivo sin invertir va aparte**, jamás
+     sumado a `marketValue` ni a ningún total.
+  8. **Cero dependencias nuevas** (`JSON.parse` es nativo, la validación va a mano),
+     **ninguna subclase de error nueva** y **sin base de datos**: guardar los productos
+     tiene la regla de duplicado contraria (recargar **sobrescribe**) y es de otra
+     feature.
+- **Alternativas consideradas:** la identidad del producto en el **nombre del archivo**
+  (Drive renombra a `fondo (1).json` y renombrar crearía otro producto); **números como
+  cadena en formato español** (era la propuesta del spec, **descartada por el humano**
+  el 2026-08-11: obligaba a arrastrar `parseAmountText` y su heurística del punto sin
+  coma a un formato que se puede diseñar); **aceptar los dos formatos a la vez** (la
+  peor: garantiza que un día convivan `947.25` y `"947,25"`); aceptar `dd/mm/aaaa` y
+  `dd/mm/aa` (con dos cifras hay que inventarse el siglo); `"closed": true` en vez de
+  `closedAt` (pierde **cuándo**, que es lo que necesita el patrimonio a una fecha
+  pasada); guardar las **dos TAE** del depósito (dos columnas para responder «¿y si no
+  tuviera Premium?»); un **volcado por archivo** (`fondo.json.json`, y sin sitio donde
+  reportar el choque, que es un hecho del conjunto); **validar con AJV** (es la
+  herramienta de la capa HTTP y acumula peor los motivos); **mirar el contenido** en vez
+  de la extensión (convierte un archivo corrupto en «no sé ni qué querías que fuera»).
+- **Consecuencias:**
+  - **El módulo del banco queda completo:** sus dos entradas, **un solo disparo**
+    (`POST /api/parser/myinvestor` no cambia; su resultado gana `products[]`).
+  - **El guardián del signo de `architecture.test.ts` se acota** a los parsers que
+    devuelven el contrato de `lib/parsed-statement.ts`: un parser de producto no tiene
+    movimientos de los que derivar un signo.
+  - **Lo que el humano hereda:** la plantilla que copia cada mes vive en Drive, en una
+    carpeta **hermana** de `notas-banco/` (todo lo que cuelga de ahí se toma por un
+    banco). La referencia del formato en el repo es
+    [`docs/myinvestor-product-files.md`](myinvestor-product-files.md), y **nadie
+    comprueba que las dos coincidan**.
+  - **Límite conocido:** subir dos archivos con el mismo nombre en el mismo
+    `<banco>/<año>/` hace que la ingesta pise la copia local (ADR-009); la convención de
+    nombre recomendada lo evita, pero **no se valida**.
+  - **Contrato con la importación:** los productos **todavía no se guardan**. Quien lo
+    haga tendrá que hacer los dos upserts de ADR-012 y enlazar movimientos con
+    productos, y su regla de recarga es **sobrescribir**, no descartar duplicados.
 
 ## Qué NO hacer
 

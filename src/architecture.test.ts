@@ -96,6 +96,10 @@ describe('architecture invariants', () => {
       'modules/myinvestor/myinvestor.routes.ts',
       'modules/myinvestor/myinvestor.types.ts',
       'modules/myinvestor/myinvestor.fixture.ts',
+      // Second ENTRY of the same bank (feature 13): the hand-written product
+      // files. Same module, its own format-reading code (ADR-016).
+      'modules/myinvestor/myinvestor.product.parser.ts',
+      'modules/myinvestor/myinvestor.product.parser.test.ts',
       'modules/myinvestor/myinvestor.format.test.ts',
       'modules/myinvestor/myinvestor.statement.parser.test.ts',
       'modules/myinvestor/myinvestor.service.test.ts',
@@ -239,6 +243,7 @@ describe('architecture invariants', () => {
     const files = [
       'modules/myinvestor/myinvestor.format.ts',
       'modules/myinvestor/myinvestor.statement.parser.ts',
+      'modules/myinvestor/myinvestor.product.parser.ts',
       'modules/myinvestor/myinvestor.service.ts',
       'modules/myinvestor/myinvestor.routes.ts',
       'modules/myinvestor/myinvestor.types.ts',
@@ -333,9 +338,13 @@ describe('architecture invariants', () => {
   })
 
   it('takes the income/expense/neutral decision in a single place (feature 11)', () => {
-    const parsers = sourceFiles(join(srcDir, 'modules')).filter((file) =>
-      file.endsWith('.parser.ts'),
-    )
+    // The rule is about MOVEMENT parsers, which are the ones that return the
+    // shared contract of `lib/parsed-statement.ts`. A bank may have other
+    // entries with no movements at all (feature 13: the investment product
+    // files of myinvestor), and there is no sign to derive there.
+    const parsers = sourceFiles(join(srcDir, 'modules'))
+      .filter((file) => file.endsWith('.parser.ts'))
+      .filter((file) => readFileSync(file, 'utf8').includes('lib/parsed-statement.js'))
 
     expect(parsers.length).toBeGreaterThan(0)
     for (const parser of parsers) {

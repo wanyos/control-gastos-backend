@@ -12,8 +12,14 @@
 > **MUESTRA** = está en las capturas reales que enviaste ·
 > **TÚ (2026-08-11)** = no salía de ninguno de los dos y lo cerraste tú ese día.
 >
-> Los números van **sin comillas y sin símbolos** (`1312.72`, `-3.47`, `25000`) y las
+> Los números van **sin comillas y sin símbolos** (`8440.60`, `-3.47`, `25000`) y las
 > fechas siempre `AAAA-MM-DD`.
+>
+> 🔒 **Todas las cifras, nombres de producto y fechas de este documento son INVENTADOS a
+> propósito** (`docs/conventions.md` §Tests: ningún dato real, ni siquiera del dueño del
+> proyecto, en un archivo versionado). Ilustran **la forma** —cuántos decimales, qué
+> signo, qué formato de fecha—, nunca un saldo verdadero. **No los "corrijas" con los
+> valores de tus capturas:** esas viven solo en `var/drive-read/`, que está gitignoreada.
 
 ---
 
@@ -25,11 +31,11 @@
 | `name` | El nombre con el que tú reconoces el producto. Es su identidad: si lo cambias, para el sistema es otro producto | Obligatorio | **MODELO** (+ muestra parcial: en tus capturas de fondo y cartera **no aparece nombre**, lo pones tú) | Se copia y no cambia |
 | `date` | El día de la **foto**: cuándo miraste la web | Obligatorio | **MODELO** (`Valuation.date`) | **Cada mes** — 1 fecha |
 | `currency` | La moneda. Si no la escribes, se asume `EUR` | Opcional | **MODELO** | **Nunca** (decidido: no lo escribes) |
-| `invested` | Lo que has metido en el producto | Obligatorio | **MODELO** + **MUESTRA** (`Invertido 1.250,00 €`) | **Cada mes** — 1 número |
-| `marketValue` | Lo que vale hoy | Obligatorio | **MODELO** + **MUESTRA** (`Valor de mercado 1.312,72 €`) | **Cada mes** — 1 número |
-| `gain` | Lo que ganas o pierdes, en euros. Con signo | Obligatorio | **MODELO** + **MUESTRA** (`62,72 €`) | **Cada mes** — 1 número |
-| `gainPercent` | Lo mismo en porcentaje (`5.02` = 5,02 %). Con signo | Obligatorio | **MODELO** + **MUESTRA** (`5,02 %`) | **Cada mes** — 1 número |
-| `uninvestedCash` | El efectivo que está ahí sin invertir. **Va aparte, nunca sumado al valor de mercado** | Opcional | **MODELO** + **MUESTRA** (`Efectivo 58,37 €`, **solo** en la cartera) | **Cada mes en la cartera** (1 número); en fondo y ETF no lo escribes |
+| `invested` | Lo que has metido en el producto | Obligatorio | **MODELO** + **MUESTRA** (ej. inventado: `Invertido 8.000,00 €`) | **Cada mes** — 1 número |
+| `marketValue` | Lo que vale hoy | Obligatorio | **MODELO** + **MUESTRA** (ej. inventado: `Valor de mercado 8.440,60 €`) | **Cada mes** — 1 número |
+| `gain` | Lo que ganas o pierdes, en euros. Con signo | Obligatorio | **MODELO** + **MUESTRA** (ej. inventado: `440,60 €`) | **Cada mes** — 1 número |
+| `gainPercent` | Lo mismo en porcentaje (`5.51` = 5,51 %). Con signo | Obligatorio | **MODELO** + **MUESTRA** (ej. inventado: `5,51 %`) | **Cada mes** — 1 número |
+| `uninvestedCash` | El efectivo que está ahí sin invertir. **Va aparte, nunca sumado al valor de mercado** | Opcional | **MODELO** + **MUESTRA** (ej. inventado: `Efectivo 900,00 €`; **solo** en la cartera) | **Cada mes en la cartera** (1 número); en fondo y ETF no lo escribes |
 | `closedAt` | El día que reembolsaste el producto | Opcional | **MODELO** (la columna) + **TÚ (2026-08-11)** como campo del archivo | **Una sola vez**, el último mes del producto |
 
 **Lo que tecleas cada mes en un fondo o un ETF: 5 cosas** (la fecha y 4 números).
@@ -47,13 +53,13 @@ plantilla y no se toca.
 | Campo | Qué es | ¿Obligatorio? | Origen | ¿Cuándo lo escribes? |
 |---|---|---|---|---|
 | `type` | `deposit` | Obligatorio | **MODELO** | Al contratar |
-| `name` | El nombre del depósito (`Depósito PREMIUM 3 meses`) | Obligatorio | **MODELO** + **MUESTRA** | Al contratar |
+| `name` | El nombre del depósito (ej. inventado: `Depósito DEMO 6 meses`) | Obligatorio | **MODELO** + **MUESTRA** | Al contratar |
 | `date` | **"El día que escribí esto"**, no una foto mensual | Obligatorio | **TÚ (2026-08-11)** — un depósito no tiene fotos; esta fecha sirve para saber cuándo transcribiste las condiciones y para detectar que has escrito dos veces lo mismo | Al contratar y al vencer |
 | `currency` | La moneda, `EUR` por defecto | Opcional | **MODELO** | **Nunca** (decidido: no lo escribes) |
-| `principal` | El dinero que metiste | Obligatorio | **MODELO** + **MUESTRA** (`Importe total 5.000,00 €`) | Al contratar |
-| `interestRate` | La TAE **que se te aplica** (`3` = 3 %). La otra TAE de la web (la de sin Premium) **no se guarda** | Obligatorio | **MODELO** + **MUESTRA** (parcial: la muestra trae **dos**) | Al contratar |
-| `expectedGain` | Los intereses brutos que vas a cobrar al vencimiento | Obligatorio | **MODELO** + **MUESTRA** (`37,39 €` con Premium) | Al contratar |
-| `maturityDate` | El día que vence | Obligatorio | **MODELO** + **MUESTRA** (`03/11/26` → se escribe `2026-11-03`) | Al contratar |
+| `principal` | El dinero que metiste | Obligatorio | **MODELO** + **MUESTRA** (ej. inventado: `Importe total 30.000,00 €`) | Al contratar |
+| `interestRate` | La TAE **que se te aplica** (ej. inventado: `4` = 4 %). La otra TAE de la web (la que no se te aplica) **no se guarda** | Obligatorio | **MODELO** + **MUESTRA** (parcial: la muestra trae **dos**) | Al contratar |
+| `expectedGain` | Los intereses brutos que vas a cobrar al vencimiento | Obligatorio | **MODELO** + **MUESTRA** (ej. inventado: `250,00 €`, el de la TAE aplicada) | Al contratar |
+| `maturityDate` | El día que vence | Obligatorio | **MODELO** + **MUESTRA** (ej. inventado: `04/07/27` → se escribe `2027-07-04`) | Al contratar |
 | `closedAt` | El día que venció de verdad | Opcional | **MODELO** (la columna) + **TÚ (2026-08-11)** como campo del archivo | **Una sola vez**, en el archivo del vencimiento |
 
 **Lo que tecleas al mes en un depósito: nada.** Escribes su archivo **dos veces en toda

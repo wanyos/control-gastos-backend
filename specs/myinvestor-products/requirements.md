@@ -21,6 +21,12 @@
 > **Alcance: entender los archivos, no guardarlos.** Sin base de datos, sin esquema
 > Prisma, sin enlazar movimientos con productos y sin mover nada en Drive.
 >
+> 🔒 **Todas las cifras, nombres de producto y fechas de las *Verificaciones* son
+> INVENTADOS a propósito** (`docs/conventions.md` §Tests: ningún dato real, tampoco del
+> dueño del proyecto, en un archivo versionado). Ilustran la forma del caso de test, no
+> un saldo verdadero; **no los sustituyas por los de las capturas reales**, que viven
+> solo en `var/drive-read/` (gitignoreada).
+>
 > ✅ **Esta spec NO tiene nada pendiente del visto bueno del humano.** El 2026-08-11
 > cerró los CINCO puntos 🔴 (cuatro aprobados tal cual, el nº 1 cambiado a **número JSON
 > nativo**) y las TRES casillas que quedaban de la lista de campos (`closedAt` como campo
@@ -89,10 +95,10 @@ archivo solo aparece como procedencia (`file`).
 ### R26
 
 El sistema DEBE exigir que todos los valores numéricos de los archivos de producto sean
-**número JSON nativo** (`1312.72`, `-3.47`, `25000`), con el punto como separador
+**número JSON nativo** (`8440.60`, `-3.47`, `25000`), con el punto como separador
 decimal y sin separador de miles, sin símbolo de moneda ni de porcentaje.
 
-*Verificación:* test parametrizado con `1312.72`, `-3.47`, `25000` y `62.72` → los
+*Verificación:* test parametrizado con `8440.60`, `-3.47`, `25000` y `440.60` → los
 cuatro se aceptan con ese valor exacto; y comprobación de que el parser de productos
 **no importa** `parseAmountText`.
 
@@ -101,21 +107,21 @@ cuatro se aceptan con ese valor exacto; y comprobación de que el parser de prod
 El sistema DEBE conservar el valor numérico leído tal cual, sin redondearlo, sin
 reformatearlo y sin fijarle un número de decimales.
 
-*Verificación:* test con `1312.7`, `1312.72` y `25000` → salen 1312.7, 1312.72 y 25000
-(no `1312.70` ni `25000.00`); y test con `1312.725` → sale 1312.725, no 1312.73.
+*Verificación:* test con `8440.6`, `8440.65` y `25000` → salen 8440.6, 8440.65 y 25000
+(no `8440.60` ni `25000.00`); y test con `8440.655` → sale 8440.655, no 8440.66.
 
 ### R28
 
 El sistema DEBE exigir el formato `AAAA-MM-DD` en todos los campos de fecha de los
 archivos de producto (`date`, `maturityDate`, `closedAt`).
 
-*Verificación:* test con `'2026-11-03'` → aceptado; con `'03/11/26'`, `'03/11/2026'` y
-`'2026-13-01'` → el archivo va a `failed` (R43).
+*Verificación:* test con `'2027-07-04'` → aceptado; con `'04/07/27'`, `'04/07/2027'` y
+`'2027-13-01'` → el archivo va a `failed` (R43).
 
 ### R29
 
 El sistema DEBE interpretar `interestRate` y `gainPercent` como **porcentaje**, no como
-fracción (`3` es 3 %, `2.75` es 2,75 %).
+fracción (`4` es 4 %, `2.75` es 2,75 %).
 
 *Verificación:* test que comprueba que `2.75` → `2.75` (y no `0.0275`); la semántica
 queda escrita en la plantilla documentada (R60).
@@ -125,7 +131,7 @@ queda escrita en la plantilla documentada (R60).
 El sistema DEBE aceptar un campo `closedAt` opcional en cualquier producto, con el que
 el humano declara la fecha en que ese producto dejó de existir.
 
-*Verificación:* test con un producto con `closedAt: '2026-11-03'` → se conserva; sin
+*Verificación:* test con un producto con `closedAt: '2027-07-04'` → se conserva; sin
 `closedAt` → sale `null`.
 
 ### R31
@@ -179,9 +185,9 @@ claves no admitidas para su tipo (R44).
 El sistema DEBE emitir `uninvestedCash` como dato independiente, sin sumarlo a
 `marketValue` ni a ningún total.
 
-*Verificación:* test con `marketValue: 11861.21` y `uninvestedCash: 58.37` → el
-resultado devuelve 11861.21 y 58.37 por separado y **no** existe en él ningún campo con
-el valor 11919.58.
+*Verificación:* test con `marketValue: 24000.60` y `uninvestedCash: 900.00` → el
+resultado devuelve 24000.60 y 900.00 por separado y **no** existe en él ningún campo con
+el valor 24900.60.
 
 ### R37
 
@@ -189,7 +195,7 @@ El sistema DEBE admitir un **solo** tipo de interés por depósito (`interestRat
 que se aplica).
 
 *Verificación:* test con un depósito que declara una segunda TAE (cualquier clave
-adicional del estilo `interestRateWithoutPremium`) → el archivo va a `failed` por clave
+adicional del estilo `secondInterestRate`) → el archivo va a `failed` por clave
 desconocida (R44), y el modelo del resultado tiene un único campo de tipo de interés.
 
 ### R38
@@ -247,7 +253,7 @@ sistema DEBE reportarlo en `failed` listando los cuatro valores admitidos.
 SI un campo de fecha de un archivo de producto no cumple `AAAA-MM-DD` ENTONCES el
 sistema DEBE reportarlo en `failed` nombrando el campo e indicando el formato esperado.
 
-*Verificación:* test con `maturityDate: "03/11/26"` → `failed` con un `reason` que
+*Verificación:* test con `maturityDate: "04/07/27"` → `failed` con un `reason` que
 contiene `maturityDate` y `AAAA-MM-DD`.
 
 ### R44
@@ -287,15 +293,15 @@ y una clave desconocida → un único `failed` cuyo `reason` menciona los tres.
 
 ### R77
 
-SI un campo numérico de un archivo de producto viene como **texto** (`"1312.72"`,
-`"1.312,72"`, `"1.312,72 €"`) ENTONCES el sistema DEBE reportarlo en `failed` nombrando
+SI un campo numérico de un archivo de producto viene como **texto** (`"8440.60"`,
+`"8.440,60"`, `"8.440,60 €"`) ENTONCES el sistema DEBE reportarlo en `failed` nombrando
 el campo, el valor recibido y que se espera un número sin comillas, y NO DEBE
 interpretar ese texto.
 
-*Verificación:* test parametrizado con `marketValue: "1312.72"`, `"1.312,72"` y
-`"1.312,72 €"` → los tres van a `failed` con un `reason` que nombra `marketValue` y el
+*Verificación:* test parametrizado con `marketValue: "8440.60"`, `"8.440,60"` y
+`"8.440,60 €"` → los tres van a `failed` con un `reason` que nombra `marketValue` y el
 valor recibido, y en los tres el producto **no** aparece en `products` con el valor
-1312.72.
+8440.60.
 
 ---
 
@@ -482,7 +488,7 @@ De los `que_no_quiero`: **R31** (no inferir cierres) y **R39** (no calcular).
 - **R26, R27, R28, R29 — (delegado #4, CERRADO POR EL HUMANO el 2026-08-11)** "El
   formato exacto de números y fechas en los JSON que escribo a mano". Propuse números
   **como cadena** en formato español; **el humano lo cambió**: los números van como
-  **número JSON nativo** (`1312.72`), sin comillas, sin separador de miles y sin
+  **número JSON nativo** (`8440.60`), sin comillas, sin separador de miles y sin
   símbolos. **Fechas sin cambio: siempre `AAAA-MM-DD`.** Consecuencia directa: esta
   feature **ya no usa `parseAmountText`**. Razonamiento en `design.md` §6.
 - **R30, R31 — (delegado #5, CONFIRMADO POR EL HUMANO el 2026-08-11)** "Cómo digo que un

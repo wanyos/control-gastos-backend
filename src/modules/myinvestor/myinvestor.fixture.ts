@@ -82,6 +82,66 @@ export function myinvestorSampleFixture(): StatementCsvFixture {
   return { rows: myinvestorSampleRows() }
 }
 
+/**
+ * Synthetic product files (feature 13). Same rule as the CSV above and one step
+ * stricter: NOTHING here is real. Product names, FIGURES, rates and dates are
+ * invented, and no real file of `var/drive-read/` is ever copied into a test.
+ *
+ * A figure is a personal datum on its own: an invented product name next to a
+ * real amount still discloses the position. So the numbers below are round,
+ * of a different order of magnitude, and match no real holding; what they keep
+ * from the real files is only the SHAPE (decimals, signs, a percentage below
+ * ten, a cash remainder much smaller than the market value).
+ *
+ * `Record<string, unknown>` on purpose: the tests need to build files that are
+ * WRONG (an unknown key, a number written as text, a date in another format),
+ * which a `ParsedProduct` would not let them express.
+ */
+export type ProductFile = Record<string, unknown>
+
+/** A fund/ETF/managed-portfolio file, with every field of the template. */
+export function buildProductFund(overrides: ProductFile = {}): ProductFile {
+  return {
+    type: 'fund',
+    name: 'Fondo Sintetico Global',
+    date: '2026-08-31',
+    invested: 800,
+    marketValue: 947.25,
+    gain: 147.25,
+    gainPercent: 18.41,
+    ...overrides,
+  }
+}
+
+/** A managed portfolio, the only type that usually carries uninvested cash. */
+export function buildProductPortfolio(overrides: ProductFile = {}): ProductFile {
+  return buildProductFund({
+    type: 'managed_portfolio',
+    name: 'Cartera Sintetica',
+    uninvestedCash: 12.05,
+    ...overrides,
+  })
+}
+
+/** A deposit file, with the four conditions and no valuation field. */
+export function buildProductDeposit(overrides: ProductFile = {}): ProductFile {
+  return {
+    type: 'deposit',
+    name: 'Deposito Sintetico 3 meses',
+    date: '2026-08-31',
+    principal: 1200,
+    interestRate: 1.5,
+    expectedGain: 4.5,
+    maturityDate: '2027-04-15',
+    ...overrides,
+  }
+}
+
+/** Serializes a product file the way the human would write it. */
+export function buildProductJson(product: ProductFile): string {
+  return `${JSON.stringify(product, null, 2)}\n`
+}
+
 /** Writes a local copy where the drive-read feature would leave it. */
 export async function writeLocalCopy(
   sourceBaseDir: string,

@@ -7,7 +7,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { buildApp } from '../../app.js'
 import errorHandlerPlugin from '../../plugins/error-handler.js'
-import { buildStatementCsv, writeLocalCopy } from './myinvestor.fixture.js'
+import {
+  buildProductDeposit,
+  buildProductFund,
+  buildProductJson,
+  buildStatementCsv,
+  writeLocalCopy,
+} from './myinvestor.fixture.js'
 import myinvestorRoutes from './myinvestor.routes.js'
 
 let sourceDir: string
@@ -45,6 +51,7 @@ describe('POST /api/parser/myinvestor', () => {
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({
       parsedCount: 1,
+      productCount: 0,
       failedCount: 0,
       ignoredCount: 0,
       statements: [
@@ -58,6 +65,7 @@ describe('POST /api/parser/myinvestor', () => {
           dumpPath: 'myinvestor/2026/extracto.csv.json',
         },
       ],
+      products: [],
       failed: [],
       ignored: [],
     })
@@ -109,12 +117,55 @@ describe('POST /api/parser/myinvestor', () => {
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({
       parsedCount: 0,
+      productCount: 0,
       failedCount: 0,
       ignoredCount: 0,
       statements: [],
+      products: [],
       failed: [],
       ignored: [],
     })
+
+    await app.close()
+  })
+
+  it('returns the products of the same bank in the same call (R76)', async () => {
+    await writeLocalCopy(sourceDir, '2026', 'extracto.csv', buildStatementCsv())
+    await writeLocalCopy(sourceDir, '2026', 'fondo.json', buildProductJson(buildProductFund()))
+    await writeLocalCopy(
+      sourceDir,
+      '2026',
+      'deposito.json',
+      buildProductJson(buildProductDeposit()),
+    )
+    const app = await buildTestApp()
+
+    const response = await app.inject({ method: 'POST', url: '/api/parser/myinvestor' })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      parsedCount: 1,
+      productCount: 2,
+      failedCount: 0,
+      ignoredCount: 0,
+      products: [
+        {
+          bank: 'myinvestor',
+          year: '2026',
+          file: 'deposito.json',
+          type: 'deposit',
+          name: 'Deposito Sintetico 3 meses',
+          date: '2026-08-31',
+          dumpPath: 'myinvestor/2026/products.json',
+        },
+        { file: 'fondo.json', type: 'fund', dumpPath: 'myinvestor/2026/products.json' },
+      ],
+    })
+    // The dump path stays relative: no absolute machine path in the body.
+    expect(response.body).not.toContain(dumpDir)
+    await expect(
+      readFile(join(dumpDir, 'myinvestor', '2026', 'products.json'), 'utf8'),
+    ).resolves.toContain('Fondo Sintetico Global')
 
     await app.close()
   })

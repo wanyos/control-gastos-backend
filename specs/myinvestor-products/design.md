@@ -26,6 +26,13 @@
 > cual. ✅ **La lista de campos de §7 quedó CERRADA ese mismo día** (registro para el
 > humano en [`CAMPOS-cerrados.md`](CAMPOS-cerrados.md)): **no queda nada pendiente de su
 > visto bueno.**
+>
+> 🔒 **Todas las cifras, nombres de producto y fechas de los ejemplos de este documento
+> (§6, §7, §8, §12) son INVENTADOS a propósito.** Lo exige `docs/conventions.md` §Tests:
+> ningún dato real —incluidos los del dueño del proyecto— en un archivo versionado. Los
+> ejemplos ilustran **la forma** (decimales, signo, formato de fecha, relación aritmética
+> entre campos), nunca un saldo verdadero. **No los sustituyas por los valores de las
+> capturas reales:** esas viven solo en `var/drive-read/`, que está gitignoreada.
 
 ## 1. Estado de partida → estado final
 
@@ -132,7 +139,8 @@ gratis del servicio que ya construyó la F10.
 ## 6. ✅ CERRADO POR EL HUMANO — Números y fechas en los JSON escritos a mano (R26-R29, R77)
 
 La pregunta real: la persona que escribe estos archivos está mirando una web que pone
-`1.312,72 €`, `5,02 %` y `03/11/26`. ¿Qué le pedimos que teclee?
+importes como `8.440,60 €`, porcentajes como `5,51 %` y fechas como `04/07/27`. ¿Qué le
+pedimos que teclee?
 
 > 🔄 **Cambiado el 2026-08-11.** Esta sección proponía **números como cadena en formato
 > español**; el humano decidió lo contrario: **número JSON nativo**. Las fechas **no
@@ -142,11 +150,11 @@ La pregunta real: la persona que escribe estos archivos está mirando una web qu
 ### 6.1 Los números van como **número JSON nativo**
 
 ```json
-"marketValue": 1312.72        ✅   "gainPercent": -3.47          ✅
-"principal": 25000            ✅   "uninvestedCash": 58.37       ✅
-"marketValue": "1312.72"      ❌ (texto: rechazado con motivo, R77)
-"marketValue": "1.312,72"     ❌ (texto: rechazado con motivo, R77)
-"marketValue": "1.312,72 €"   ❌ (texto: rechazado con motivo, R77)
+"marketValue": 8440.60        ✅   "gainPercent": -3.47          ✅
+"principal": 25000            ✅   "uninvestedCash": 900.00      ✅
+"marketValue": "8440.60"      ❌ (texto: rechazado con motivo, R77)
+"marketValue": "8.440,60"     ❌ (texto: rechazado con motivo, R77)
+"marketValue": "8.440,60 €"   ❌ (texto: rechazado con motivo, R77)
 ```
 
 Reglas de escritura, que son las de JSON y ninguna más:
@@ -161,22 +169,23 @@ Tres razones, en orden de peso:
 
 1. **Un número es un número en todas las capas.** No hay interpretación, luego no hay
    nada que interpretar mal: lo que `JSON.parse` devuelve es exactamente lo que va al
-   volcado. La ambigüedad `1.312` (¿mil trescientos doce o uno coma tres?) **deja de
-   existir en el archivo**, en vez de resolverse con una regla heurística.
+   volcado. La ambigüedad `8.440` (¿ocho mil cuatrocientos cuarenta u ocho coma
+   cuarenta y cuatro?) **deja de existir en el archivo**, en vez de resolverse con una
+   regla heurística.
 2. **El parser de productos deja de depender del normalizador del extracto.** Es la
    consecuencia práctica: `parseAmountText` sigue siendo del `.csv` (y **no se toca**,
    la F10 está cerrada), pero **aquí no se importa**. Menos acoplamiento entre las dos
    entradas del banco.
-3. **La errata típica es visible al instante.** Escribir `1.312,72` sin comillas rompe
+3. **La errata típica es visible al instante.** Escribir `8.440,60` sin comillas rompe
    el JSON y el archivo se reporta como sintaxis inválida; escribirlo con comillas cae
    en R77 con un motivo explícito. Los dos caminos avisan; ninguno adivina.
 
 **Un valor numérico que llega como texto se rechaza (R77), nunca se interpreta**, ni
-siquiera cuando el texto es interpretable sin ambigüedad (`"1312.72"`). Interpretarlo
+siquiera cuando el texto es interpretable sin ambigüedad (`"8440.60"`). Interpretarlo
 "por si acaso" es lo que convierte un formato estricto en dos formatos, y dos formatos
 en una regla que hay que recordar cada mes.
 
-- **Alternativa descartada — números como cadena en formato español** (`"1.312,72 €"`),
+- **Alternativa descartada — números como cadena en formato español** (`"8.440,60 €"`),
   que era la propuesta original: transcribes lo que ves en la web, sin conversión
   mental, y una cadena ilegible estropea **un campo** en vez de romper el archivo
   entero. **Coste que la hunde:** obliga a arrastrar `parseAmountText` a esta feature y
@@ -185,19 +194,19 @@ en una regla que hay que recordar cada mes.
   adivine nada.
 - **Alternativa descartada — aceptar los dos (número y cadena):** es la peor de las
   tres. Convierte el formato en "lo que pilles" y garantiza que un día convivan
-  `1312.72` y `"1.312,72"` en la misma carpeta.
+  `8440.60` y `"8.440,60"` en la misma carpeta.
 
 ### 6.2 Las fechas van **siempre** en `AAAA-MM-DD`, aunque en la web se vean de otro modo
 
 ```json
 "date": "2026-08-31"          ✅
-"maturityDate": "2026-11-03"  ✅   (la web pone 03/11/26)
-"maturityDate": "03/11/26"    ❌   "maturityDate": "03/11/2026"   ❌
+"maturityDate": "2027-07-04"  ✅   (la web pone 04/07/27)
+"maturityDate": "04/07/27"    ❌   "maturityDate": "04/07/2027"   ❌
 ```
 
-- **El año de dos cifras es ambiguo de verdad, no en teoría.** `03/11/26` tiene tres
-  lecturas posibles (3 de noviembre de 2026, 11 de marzo de 2026, 26 de noviembre de
-  2003) y ninguna forma de saber cuál. Y la muestra demuestra que **este banco usa dos
+- **El año de dos cifras es ambiguo de verdad, no en teoría.** `04/07/27` tiene tres
+  lecturas posibles (4 de julio de 2027, 7 de abril de 2027, 27 de julio de
+  2004) y ninguna forma de saber cuál. Y la muestra demuestra que **este banco usa dos
   formatos distintos a la vez**: `dd/mm/aaaa` en el extracto y `dd/mm/aa` en la ficha del
   depósito. Aceptar los dos en el archivo escrito a mano sería importar esa ambigüedad
   al único sitio donde no tenemos por qué sufrirla.
@@ -209,7 +218,7 @@ en una regla que hay que recordar cada mes.
 - **Es el formato que el resto del proyecto ya habla:** el parser del extracto emite ISO,
   el contrato de la API expone ISO y Prisma guarda `@db.Date`.
 - **Coste real:** teclear 4-5 fechas al mes en otro orden del que las ves. **El parser
-  no adivina**: un `03/11/26` se rechaza con un motivo que dice el formato esperado
+  no adivina**: un `04/07/27` se rechaza con un motivo que dice el formato esperado
   (R43), en vez de interpretarlo y acertar el 70 % de las veces.
 
 - **Alternativa descartada — aceptar `dd/mm/aaaa` también en los JSON:** "es lo que ve
@@ -225,12 +234,12 @@ en una regla que hay que recordar cada mes.
 
 ### 6.3 Los porcentajes van en **porcentaje**, nunca en fracción
 
-`"gainPercent": 5.02` es 5,02 %. `"interestRate": 3` es una TAE del 3 %.
+`"gainPercent": 5.51` es 5,51 %. `"interestRate": 4` es una TAE del 4 %.
 
 Es la misma semántica que la feature 9 fijó para `InvestmentProduct.interestRate`
 (`Decimal(6,4)`, `2.7500` = 2,75 %). Las dos capas dicen lo mismo con las mismas
 palabras, que es lo único que protege del error clásico de este campo: un depósito al
-3 % guardado como `0.03` se leería como 0,03 % y **nadie lo notaría** hasta calcular
+4 % guardado como `0.04` se leería como 0,04 % y **nadie lo notaría** hasta calcular
 intereses.
 
 ## 7. ⭐ DECISIÓN PROPIA — Los campos de cada tipo de producto (R33-R39, R60)
@@ -248,10 +257,10 @@ de la feature 9; lo que no salía de ninguno de los dos lo decidió él ese día
   "name": "Fondo Indexado Global",
   "date": "2026-08-31",
   "currency": "EUR",
-  "invested": 1250,
-  "marketValue": 1312.72,
-  "gain": 62.72,
-  "gainPercent": 5.02,
+  "invested": 8000,
+  "marketValue": 8440.60,
+  "gain": 440.60,
+  "gainPercent": 5.51,
   "uninvestedCash": null,
   "closedAt": null
 }
@@ -268,11 +277,11 @@ automatizada y un ETF son exactamente lo mismo"). En la cartera automatizada,
   "name": "Cartera Automatizada",
   "date": "2026-08-31",
   "currency": "EUR",
-  "invested": 10301.63,
-  "marketValue": 11861.21,
-  "gain": 1559.58,
-  "gainPercent": 15.14,
-  "uninvestedCash": 58.37,
+  "invested": 20000.50,
+  "marketValue": 24000.60,
+  "gain": 4000.10,
+  "gainPercent": 20.00,
+  "uninvestedCash": 900.00,
   "closedAt": null
 }
 ```
@@ -282,13 +291,13 @@ automatizada y un ETF son exactamente lo mismo"). En la cartera automatizada,
 ```json
 {
   "type": "deposit",
-  "name": "Depósito PREMIUM 3 meses",
+  "name": "Depósito DEMO 6 meses",
   "date": "2026-08-31",
   "currency": "EUR",
-  "principal": 5000,
-  "interestRate": 3,
-  "expectedGain": 37.39,
-  "maturityDate": "2026-11-03",
+  "principal": 30000,
+  "interestRate": 4,
+  "expectedGain": 250.00,
+  "maturityDate": "2027-07-04",
   "closedAt": null
 }
 ```
@@ -298,22 +307,25 @@ automatizada y un ETF son exactamente lo mismo"). En la cartera automatizada,
 Leyenda: **MODELO** = existe como columna en el esquema de la feature 9. **MUESTRA** =
 el dato está en los archivos reales que aportó el humano. **TÚ (2026-08-11)** = no salía
 de ninguno de los dos; lo propuso el agente y **lo cerró el humano ese día**.
+🔒 **Los valores de ejemplo de la columna «Nota» son inventados** (ver el aviso de
+cabecera y `docs/conventions.md` §Tests): lo que dice **MUESTRA** es que *el campo* está
+en la captura, no que ese número lo esté.
 
 | Campo | A: fund/etf/portfolio | B: deposit | Origen | Nota |
 | --- | --- | --- | --- | --- |
 | `type` | obligatorio | obligatorio | **MODELO** | enum `InvestmentProductType` (f9 R2): `fund` \| `etf` \| `managed_portfolio` \| `deposit` |
-| `name` | obligatorio | obligatorio | **MODELO** + **MUESTRA** (parcial) | `InvestmentProduct.name`, clave natural (f9 R6). En la muestra del depósito sí sale (`Depósito PREMIUM 3 meses`); en las de fondo y cartera **no hay nombre** y lo pone el humano |
+| `name` | obligatorio | obligatorio | **MODELO** + **MUESTRA** (parcial) | `InvestmentProduct.name`, clave natural (f9 R6). En la muestra del depósito sí sale (ej. inventado: `Depósito DEMO 6 meses`); en las de fondo y cartera **no hay nombre** y lo pone el humano |
 | `date` | obligatorio | obligatorio | **MODELO** (A) / **TÚ (2026-08-11)** (B) | En A es `Valuation.date` (f9 R8), la fecha de la foto mensual. En B **no existe en el modelo** (un depósito no tiene fotos) ni en la muestra: es *"el día que escribí esto"*, para detectar el choque de R46 y saber cuándo se transcribieron las condiciones. 📌 **Cadencia cerrada el 2026-08-11: el archivo del depósito se escribe SOLO al contratarlo y al vencer**, no cada mes |
 | `currency` | opcional (def. `"EUR"`) | opcional (def. `"EUR"`) | **MODELO** | `InvestmentProduct.currency` con `@default("EUR")`. La muestra solo trae el símbolo `€`. ✅ **Cerrado el 2026-08-11: se queda como opcional y el humano no lo escribirá nunca** |
-| `invested` | obligatorio | ✗ no aplica | **MODELO** + **MUESTRA** | `Valuation.invested`; muestra: `Invertido 1.250,00 €` |
-| `marketValue` | obligatorio | ✗ | **MODELO** + **MUESTRA** | `Valuation.marketValue`; muestra: `Valor de mercado 1.312,72 €` |
-| `gain` | obligatorio | ✗ | **MODELO** + **MUESTRA** | `Valuation.gain`; muestra: `62,72 €`. Con signo |
-| `gainPercent` | obligatorio | ✗ | **MODELO** + **MUESTRA** | `Valuation.gainPercent`; muestra: `5,02 %`. En porcentaje, con signo |
-| `uninvestedCash` | **opcional** | ✗ | **MODELO** + **MUESTRA** | `Valuation.uninvestedCash`; muestra: `Efectivo 58,37 €`, **solo** en la cartera. Va **aparte**, nunca sumado (§7.5) |
-| `principal` | ✗ | obligatorio | **MODELO** + **MUESTRA** | `InvestmentProduct.principal`; muestra: `Importe total 5.000,00 €` |
-| `interestRate` | ✗ | obligatorio | **MODELO** + **MUESTRA** (parcial) | `InvestmentProduct.interestRate`; muestra: **dos** TAE (`2 % sin Premium`, `3 % con Premium`) y se guarda **solo la aplicada** (§7.4) |
-| `expectedGain` | ✗ | obligatorio | **MODELO** + **MUESTRA** (parcial) | `InvestmentProduct.expectedGain`; muestra: `37,39 €` (con Premium) y `25,02 €` (sin). Solo el que se aplica |
-| `maturityDate` | ✗ | obligatorio | **MODELO** + **MUESTRA** | `InvestmentProduct.maturityDate`; muestra: `03/11/26` → se escribe `2026-11-03` (§6.2) |
+| `invested` | obligatorio | ✗ no aplica | **MODELO** + **MUESTRA** | `Valuation.invested`; forma (ej. inventado): `Invertido 8.000,00 €` |
+| `marketValue` | obligatorio | ✗ | **MODELO** + **MUESTRA** | `Valuation.marketValue`; forma (ej. inventado): `Valor de mercado 8.440,60 €` |
+| `gain` | obligatorio | ✗ | **MODELO** + **MUESTRA** | `Valuation.gain`; forma (ej. inventado): `440,60 €`. Con signo |
+| `gainPercent` | obligatorio | ✗ | **MODELO** + **MUESTRA** | `Valuation.gainPercent`; forma (ej. inventado): `5,51 %`. En porcentaje, con signo |
+| `uninvestedCash` | **opcional** | ✗ | **MODELO** + **MUESTRA** | `Valuation.uninvestedCash`; forma (ej. inventado): `Efectivo 900,00 €`, **solo** en la cartera. Va **aparte**, nunca sumado (§7.5) |
+| `principal` | ✗ | obligatorio | **MODELO** + **MUESTRA** | `InvestmentProduct.principal`; forma (ej. inventado): `Importe total 30.000,00 €` |
+| `interestRate` | ✗ | obligatorio | **MODELO** + **MUESTRA** (parcial) | `InvestmentProduct.interestRate`; la muestra trae **dos** TAE (ej. inventado: `1 % sin bonificar`, `4 % bonificada`) y se guarda **solo la aplicada** (§7.4) |
+| `expectedGain` | ✗ | obligatorio | **MODELO** + **MUESTRA** (parcial) | `InvestmentProduct.expectedGain`; la muestra trae **dos** (ej. inventado: `250,00 €` con la TAE bonificada y `125,00 €` sin ella). Solo el que se aplica |
+| `maturityDate` | ✗ | obligatorio | **MODELO** + **MUESTRA** | `InvestmentProduct.maturityDate`; forma (ej. inventado): `04/07/27` → se escribe `2027-07-04` (§6.2) |
 | `closedAt` | opcional | opcional | **MODELO** + **TÚ (2026-08-11)** como campo del archivo | La columna existe (f9 R7) pero la feature 9 la dejó **sin escritor**. ✅ **Cerrado el 2026-08-11: el escritor es este campo del archivo, en los dos tipos**, escrito una sola vez (§8) |
 | `_cualquier_cosa` | opcional | opcional | **TÚ (2026-08-11)**, con el 🔴 nº 4 | Claves que empiezan por `_`: se ignoran. Es el hueco para dejar notas, ya que las claves desconocidas se rechazan (§9) |
 
@@ -329,10 +341,10 @@ de ninguno de los dos; lo propuso el agente y **lo cerró el humano ese día**.
 
 ### 7.4 Una sola TAE por depósito (R37)
 
-La ficha real muestra dos: `2 % TAE sin Premium` y `3 % TAE con Premium`, con sus dos
-intereses brutos (`25,02 €` / `37,39 €`). **El humano tiene Premium, así que su depósito
-está al 3 % y gana 37,39 €.** El otro par de números describe un producto que él no
-tiene.
+La ficha real muestra dos: una TAE base y otra bonificada, cada una con su interés bruto
+(ejemplo inventado: `1 % TAE sin bonificar` / `4 % TAE bonificada`, con `125,00 €` y
+`250,00 €`). **Al humano se le aplica la bonificada, así que su depósito se guarda con
+esa TAE y ese interés.** El otro par de números describe un producto que él no tiene.
 
 - El archivo lleva **un** `interestRate` y **un** `expectedGain`: los aplicados.
 - El modelo de la feature 9 **no cambia**: ya tiene exactamente un `interestRate` y un
@@ -341,19 +353,20 @@ tiene.
   (§9) y se entera.
 - **Alternativa descartada — guardar las dos y marcar cuál aplica:** obligaría a añadir
   dos columnas al modelo para guardar un dato que solo sirve para responder "¿y si no
-  tuviera Premium?", que no es ninguna de las preguntas que el humano dijo querer
+  tuviera la bonificación?", que no es ninguna de las preguntas que el humano dijo querer
   responder.
 
 ### 7.5 ✅ El efectivo va aparte — confirmado con la web delante
 
 El humano lo cerró literalmente: *"el efectivo queda fuera de cualquier total, eso
-siempre se queda como remanente; normalmente hago un ingreso de 300 € mensuales y una
-vez invertido ese dinero o una cantidad similar se queda como dinero metálico fuera del
+siempre se queda como remanente; normalmente hago un ingreso mensual […] y una vez
+invertido ese dinero o una cantidad similar se queda como dinero metálico fuera del
 resto de cantidades"*.
 
-Y la muestra lo confirma aritméticamente: en la cartera,
-`10.301,63 + 1.559,58 = 11.861,21` **exactamente** — el valor de mercado es
-invertido + ganancia y **no incluye** los `58,37 €` de efectivo.
+Y la muestra lo confirma aritméticamente: en la cartera, invertido + ganancia da el
+valor de mercado **exactamente**, y el efectivo queda fuera de esa suma. Con los números
+inventados de §7.1: `20.000,50 + 4.000,10 = 24.000,60`, y los `900,00 €` de efectivo
+**no** están dentro.
 
 Consecuencias:
 
@@ -378,8 +391,8 @@ que hay que leer para entender por qué un depósito aparece dos veces en toda s
 un fondo, doce veces al año.
 
 ```json
-{ "type": "deposit", "name": "Depósito PREMIUM 3 meses", "date": "2026-11-30",
-  "_resto": "…", "closedAt": "2026-11-03" }
+{ "type": "deposit", "name": "Depósito DEMO 6 meses", "date": "2027-07-31",
+  "_resto": "…", "closedAt": "2027-07-04" }
 ```
 
 🔴 **Regla dura que se conserva: dejar de escribir un producto NO lo cierra.**
@@ -450,7 +463,7 @@ reason }`), no lanza; el servicio lo convierte en una entrada de `failed[]`.
 ### 9.4 Qué sale y qué no sale en los motivos
 
 Los motivos citan **el nombre del campo y el valor recibido** (`marketValue: se espera
-un número sin comillas, recibido "1.312,72"`), porque sin el valor el mensaje no sirve para
+un número sin comillas, recibido "8.440,60"`), porque sin el valor el mensaje no sirve para
 arreglar nada. No se vuelca el archivo entero ni rutas absolutas de la máquina. Todo
 esto vive en local y en un volcado gitignoreado.
 
@@ -481,7 +494,7 @@ el archivo de origen no tiene:
 | El origen tiene | El volcado tiene |
 | --- | --- |
 | un objeto plano tal como lo escribiste | la **estructura interpretada**: `valuation` y `depositTerms` separados según el tipo, más `bank` y `file` de procedencia |
-| `"maturityDate": "2026-11-03"` (una fecha entre otras) | la fecha **validada**, y el archivo rechazado si no lo era |
+| `"maturityDate": "2027-07-04"` (una fecha entre otras) | la fecha **validada**, y el archivo rechazado si no lo era |
 | un producto por archivo, sueltos | **todos** los del año juntos, en orden determinista |
 | nada sobre lo que salió mal | `failed[]`, `ignored[]` y el choque de duplicados |
 
@@ -532,7 +545,7 @@ Cuatro barreras, las dos primeras ya existentes:
   1. **Un JSON por producto**, encaminado **por la extensión** (`.json`) dentro del
      servicio que ya existe; el banco sale de la carpeta y el producto y la fecha, del
      contenido.
-  2. **Números como número JSON nativo** (`1312.72`), con punto decimal, sin separador
+  2. **Números como número JSON nativo** (`8440.60`), con punto decimal, sin separador
      de miles y sin símbolos; **un valor numérico escrito como texto se rechaza con
      motivo y nunca se interpreta**. En consecuencia, **este parser no usa
      `parseAmountText`**, que queda como pieza exclusiva del extracto.
@@ -580,8 +593,8 @@ Además, **dos de sus puntos abiertos quedan cerrados, y los dos confirman el es
 
 | Punto abierto de la feature 9 | Respuesta del humano | Efecto en el esquema |
 | --- | --- | --- |
-| 🔴 **nº 1** — ¿`marketValue` incluye `uninvestedCash`? | **Van aparte.** *"El efectivo queda fuera de cualquier total, eso siempre se queda como remanente."* Y la muestra lo confirma: `10.301,63 + 1.559,58 = 11.861,21` exacto | **Ninguno.** Confirma su suposición: patrimonio = `marketValue + uninvestedCash` |
-| **TAE del depósito** | **Una sola: la que se aplica** (3 %, 37,39 €). La otra es información comercial | **Ninguno.** Ya tiene exactamente un `interestRate` y un `expectedGain` |
+| 🔴 **nº 1** — ¿`marketValue` incluye `uninvestedCash`? | **Van aparte.** *"El efectivo queda fuera de cualquier total, eso siempre se queda como remanente."* Y la muestra lo confirma: invertido + ganancia = valor de mercado, exacto, con el efectivo fuera (§7.5) | **Ninguno.** Confirma su suposición: patrimonio = `marketValue + uninvestedCash` |
+| **TAE del depósito** | **Una sola: la que se aplica** (la bonificada, con su interés bruto). La otra es información comercial | **Ninguno.** Ya tiene exactamente un `interestRate` y un `expectedGain` |
 
 ### 12.2 El **texto** del spec de la feature 9: ✅ ya corregido
 
@@ -607,7 +620,7 @@ export interface ParsedValuation {
   invested: number
   marketValue: number
   gain: number                   // con signo
-  gainPercent: number            // porcentaje con signo (5.02 = 5,02 %)
+  gainPercent: number            // porcentaje con signo (5.51 = 5,51 %)
   uninvestedCash: number | null  // APARTE de marketValue, jamás sumado (§7.5)
 }
 
@@ -666,7 +679,7 @@ dumpBaseDir)` de la F10 gana en su resultado `products: ParsedProductSummary[]`.
 > vocabulario que el parser del extracto ya usa, y el futuro importador quiere **un**
 > mapeo. No hay pérdida observable con dos decimales, y la conversión final a
 > `Decimal(10,2)` la hace el importador. **Alternativa anotada** por si algún día hay
-> tres decimales o importes enormes: emitir cadenas normalizadas (`"1312.72"`), que
+> tres decimales o importes enormes: emitir cadenas normalizadas (`"8440.60"`), que
 > Prisma acepta directamente para `Decimal`.
 
 ## 14. Estrategia de test (Nivel 2 de `docs/verification.md`)

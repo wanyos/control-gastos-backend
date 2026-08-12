@@ -120,7 +120,7 @@ la salida**, no el código que lee el formato.
 |---|---|---|
 | Bankinter | `.xlsx` de la cuenta | ✅ F6 + F7 (renombrado a inglés) |
 | MyInvestor · extracto | CSV de la cuenta corriente | ✅ **F10 `myinvestor-statement`** (2026-08-11) — primer parser nacido ya contra el contrato |
-| MyInvestor · productos | un JSON por producto de inversión | ⏸ **F13 `myinvestor-products`** — esperándote: tiene **5 puntos rojos** en su [`decisions.md`](../specs/myinvestor-products/decisions.md) |
+| MyInvestor · productos | un JSON por producto de inversión | 🟡 **F13 `myinvestor-products`** — implementada el 2026-08-12 (ADR-016), **pendiente del reviewer**. Su spec no tiene ningún punto rojo abierto desde el 2026-08-11 |
 | Los ~5 restantes | sin inventariar | ⬜ **no existen ni como feature** |
 
 **F11 `parsed-movement-contract`** ✅ (2026-08-11) — la pieza que faltaba, ya

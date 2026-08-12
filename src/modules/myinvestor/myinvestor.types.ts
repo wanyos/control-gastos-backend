@@ -50,12 +50,82 @@ export interface ParsedStatementSummary {
   dumpPath: string
 }
 
+/**
+ * The four investment products this bank holds (feature 9 `InvestmentProductType`).
+ * A fund, an ETF and a managed portfolio carry exactly the same fields; a deposit
+ * is the only different shape.
+ */
+export type InvestmentProductType = 'fund' | 'etf' | 'managed_portfolio' | 'deposit'
+
+/** The monthly photo of a product that fluctuates; absent on a deposit. */
+export interface ParsedValuation {
+  invested: number
+  marketValue: number
+  /** Signed: negative while the product loses money. */
+  gain: number
+  /** Percentage, never a fraction: `7.25` is 7,25 %. Signed. */
+  gainPercent: number
+  /** APART from `marketValue`, never added into it nor into any total (R36). */
+  uninvestedCash: number | null
+}
+
+/** The conditions of a deposit, written once when it is signed. */
+export interface ParsedDepositTerms {
+  principal: number
+  /** The APR that APPLIES, in percentage (`3` is 3 %); the commercial one is not kept. */
+  interestRate: number
+  expectedGain: number
+  /** ISO `YYYY-MM-DD`. */
+  maturityDate: string
+}
+
+/** One investment product read from one hand-written `.json` file. */
+export interface ParsedProduct {
+  bank: 'myinvestor'
+  /** Provenance: the source file name. It never decides the name nor the date. */
+  file: string
+  type: InvestmentProductType
+  name: string
+  /** ISO `YYYY-MM-DD`: the day of the photo (of the note, on a deposit). */
+  date: string
+  currency: string
+  /** ISO `YYYY-MM-DD`; `null` means alive. Missing the file does NOT close it. */
+  closedAt: string | null
+  /** `null` on a deposit. */
+  valuation: ParsedValuation | null
+  /** `null` on the other three types. */
+  depositTerms: ParsedDepositTerms | null
+}
+
+/** The dump of every product of one year: one `products.json` per year (R53). */
+export interface MyinvestorProductsResult {
+  bank: 'myinvestor'
+  year: string
+  products: ParsedProduct[]
+  failed: FailedFile[]
+  ignored: IgnoredFile[]
+}
+
+/** Summary of one parsed product, as the run result reports it. */
+export interface ParsedProductSummary {
+  bank: string
+  year: string
+  file: string
+  type: InvestmentProductType
+  name: string
+  date: string
+  /** Path of the year dump relative to the dump base dir (`<bank>/<year>/products.json`). */
+  dumpPath: string
+}
+
 /** Outcome of parsing every local MyInvestor copy under the source dir. */
 export interface MyinvestorParseRunResult {
   parsedCount: number
+  productCount: number
   failedCount: number
   ignoredCount: number
   statements: ParsedStatementSummary[]
+  products: ParsedProductSummary[]
   failed: FailedFile[]
   ignored: IgnoredFile[]
 }
