@@ -517,7 +517,7 @@
         ]
       },
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "_intent_cerrado_por_el_humano": "Cerrado por el humano el 2026-08-11 sobre el borrador del agente, resolviendo sus tres puntos con consecuencia: (1) el fichero se mueve a procesados/ CUANDO EL DATO ESTA GUARDADO, no al descargarlo — retoca el flujo de la feature 5 y cierra el cabo suelto nº1 del roadmap; (2) una importacion parcial GUARDA LO BUENO y reporta el resto, en vez de todo-o-nada; (3) el guardado de los productos de inversion NO entra aqui: es una feature aparte, porque su regla de duplicado es la contraria (recargar sobrescribe). El resto del borrador se acepta tal cual.",
       "acceptance": [
         "Los movimientos que devuelve un parser se guardan en la base de datos como Movement de su cuenta, con origin='imported' y status='pending_review', siguiendo la tabla de mapeo que dejo escrita el design de la feature 8 §9; al listarlos por la API aparecen del mas reciente al mas antiguo (deriva de: 'importo el extracto que ya tengo descargado y sus movimientos aparecen al listarlos por la API')",

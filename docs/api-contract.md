@@ -50,15 +50,21 @@ Códigos estables:
 | `VALIDATION_ERROR`      | 400  | El body o los params no cumplen el esquema de la ruta, o la operación es incoherente (p. ej. subcategoría de una subcategoría). |
 | `NOT_FOUND`             | 404  | El recurso pedido no existe, o la ruta no existe.          |
 | `CONFLICT`              | 409  | El recurso ya existe: `iban` de cuenta duplicado, o categoría raíz duplicada `(kind, name)`. |
-| `MISSING_ACCOUNT_DATA`  | 422  | Los metadatos de un extracto no bastan para crear la cuenta (falta `iban` y/o `bank`). **Reservado** (interno; lo devolverá la feature de importación, ningún endpoint lo emite hoy). |
+| `MISSING_ACCOUNT_DATA`  | 422  | Los metadatos de un extracto no bastan para resolver la cuenta (falta el `iban` en el fichero y su banco no tiene exactamente una cuenta dada de alta). **Ya no está reservado:** desde la feature 12 lo emite `POST /api/import` **dentro del informe de un fichero**, en una respuesta 200, no como cuerpo de error HTTP (ver la nota más abajo). |
 | `INTERNAL_SERVER_ERROR` | 500  | Error inesperado; el cuerpo no expone detalles internos.   |
 | `DRIVE_CONNECTION_ERROR`| 503  | No se puede hablar con Google Drive (token caducado, API deshabilitada, scope insuficiente…). |
 | `UNKNOWN_BANK`          | 404  | El banco (con formato válido) no está registrado en Drive. **Reservado** (interno; ningún endpoint lo devuelve todavía). |
 
+> **Nota (`MISSING_ACCOUNT_DATA`, feature "import", 2026-08-12):** es el **único**
+> código estable que **no** viaja como cuerpo de error HTTP. La importación reporta
+> por fichero dentro de un 200 (un fichero roto no invalida los demás), así que este
+> código aparece en `files[].error.code` de `POST /api/import`. Su `message` pide
+> escribir el IBAN **una vez** en el fichero; ninguna cuenta se crea nunca sin IBAN.
+>
 > **Nota (`DRIVE_CONNECTION_ERROR`, actualizada en la feature "drive-read",
 > 2026-08-03):** desde la feature 5 este código **sí** sale en el cuerpo de error
-> estándar. Los endpoints de ingesta (`GET /api/ingesta/pending` y
-> `POST /api/ingesta/process`) lo devuelven con `{ statusCode, code, message }`
+> estándar. Los endpoints de ingesta (`GET /api/ingestion/pending` y
+> `POST /api/ingestion/process`) lo devuelven con `{ statusCode, code, message }`
 > cuando falla una operación de Drive de nivel superior (p. ej. no se pueden ni
 > listar los bancos). El `message` va **sanitizado** (nunca incluye token ni URL
 > firmada). Nota histórica: hasta la feature 4 ningún endpoint de dominio lo
@@ -368,7 +374,22 @@ daySequence DESC`), cada uno con su `account` y su `category` embebidos.
 > repo **gitignoreada** (nunca se versiona); estos endpoints no exponen esa ruta
 > absoluta, solo la ruta relativa `<banco>/<año>/<archivo>`.
 
-### `GET /api/ingesta/pending`
+> ⚠️ **BREAKING CHANGE (feature "import", 2026-08-12).** Las rutas en español
+> **han desaparecido**: `/api/ingesta/pending` y `/api/ingesta/process` responden
+> ahora **404 `NOT_FOUND`** con el cuerpo de error estándar. Las mismas
+> capacidades están en `/api/ingestion/pending` y `/api/ingestion/process`. No se
+> mantienen alias. Motivo: la norma del proyecto es que todo identificador va en
+> inglés (`docs/conventions.md` §Idioma) y este era el último resto en español de
+> la API. **Aún NO consumido por el frontend**, así que el coste es cero.
+>
+> ⚠️ **Segundo cambio de comportamiento en la misma feature:**
+> `POST /api/ingestion/process` **ya no mueve** el archivo a `procesados/`; se
+> queda en descargar y copiar. Mover es ahora consecuencia de **guardar los
+> movimientos**, y eso lo hace [`POST /api/import`](#post-apiimport). Este endpoint
+> sigue existiendo porque es lo que permite inspeccionar el archivo de un banco del
+> que todavía no hay parser.
+
+### `GET /api/ingestion/pending`
 
 Detección **no destructiva**: recorre todas las carpetas de banco bajo la raíz y,
 dentro de cada `<banco>/<año>/`, cuenta y lista los archivos pendientes (los que
@@ -401,13 +422,14 @@ listan los bancos/años que tienen algún pendiente.
 
 ---
 
-### `POST /api/ingesta/process`
+### `POST /api/ingestion/process`
 
-Acción **explícita** de proceso. Por cada archivo pendiente (uno a uno): descarga
-su contenido **tal cual** (sin parsear), guarda una copia local y, **solo si la
-copia se escribió con éxito**, mueve el original a `<banco>/<año>/procesados/`. El
-fallo de un archivo (lectura o copia) se **aísla**: ese archivo NO se mueve, se
-reporta en `failed` y el resto continúa. Reejecutarlo sin pendientes no hace nada.
+Acción **explícita** de descarga. Por cada archivo pendiente (uno a uno): descarga
+su contenido **tal cual** (sin parsear) y guarda una copia local. **No mueve nada
+en Drive**: el archivo sigue pendiente hasta que la importación guarde sus
+movimientos. El fallo de un archivo (lectura o copia) se **aísla**: se reporta en
+`failed` y el resto continúa. Reejecutarlo sin pendientes no hace nada; con
+pendientes reescribe la misma copia local, sin duplicarla.
 
 Sin cuerpo de petición.
 
@@ -425,6 +447,8 @@ Sin cuerpo de petición.
 }
 ```
 
+- `processedCount` / `processed`: archivos **descargados y copiados**, no
+  «procesados» en el sentido de Drive (ninguno se ha movido).
 - `path`: ruta de la copia **relativa** a la carpeta de volcado local (no se
   expone la ruta absoluta de la máquina).
 - `error`: mensaje **sanitizado** para humanos; nunca contiene tokens ni secretos.
@@ -436,6 +460,119 @@ Sin cuerpo de petición.
 | Código HTTP | `code`                   | Cuándo                                            |
 | ----------- | ------------------------ | ------------------------------------------------- |
 | 503         | `DRIVE_CONNECTION_ERROR` | Fallo de Drive de nivel superior (mensaje sanitizado). |
+
+---
+
+## Importación (Drive → parser → base de datos)
+
+> **Feature "import" (2026-08-12).** El eslabón que faltaba: baja cada archivo
+> pendiente, lo parsea con el parser de su banco, **guarda sus movimientos** y solo
+> entonces lo mueve a `procesados/`. **No** categoriza, **no** empareja traspasos,
+> **no** confirma nada y **no** guarda productos de inversión: todo entra como
+> `origin: "imported"`, `status: "pending_review"`, sin categoría ni forma de pago.
+
+### `POST /api/import`
+
+Sin cuerpo de petición y sin autenticación nueva. Por cada archivo pendiente de
+cada `<banco>/<año>/`, en el orden en que Drive los lista (por nombre):
+
+1. elige el parser por el **banco de la carpeta** y por la **extensión**;
+2. descarga el contenido y escribe su copia cruda local (re-parseable sin volver a
+   bajar nada);
+3. parsea;
+4. resuelve la cuenta: con el `iban` del archivo la crea si no existía; sin `iban`
+   usa la **única** cuenta ya dada de alta de ese banco;
+5. guarda los movimientos en **una sola operación** (o entran todos los buenos de
+   ese archivo, o ninguno);
+6. **solo entonces** mueve el original a `<banco>/<año>/procesados/`.
+
+Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve**
+(sigue pendiente y se puede reintentar) y el resto continúa.
+
+**Estados por archivo**
+
+| `status`   | Qué significa                                                                 | ¿Se mueve? |
+| ---------- | ----------------------------------------------------------------------------- | ---------- |
+| `imported` | Sus movimientos están guardados (aunque alguna línea no se haya interpretado). | Sí         |
+| `skipped`  | Ningún parser lee ese banco, o su extensión no la lee el parser del banco.     | No         |
+| `failed`   | Falló la descarga, el parseo, la resolución de cuenta o el guardado.           | No         |
+
+**Respuesta 200**
+```json
+{
+  "importedCount": 39,
+  "duplicateCount": 2,
+  "unparsedCount": 1,
+  "failedCount": 1,
+  "skippedCount": 1,
+  "files": [
+    {
+      "bank": "bankinter", "year": "2026", "fileId": "1AbC...", "name": "movs.xlsx",
+      "status": "imported",
+      "account": {
+        "id": 3, "iban": "ES21012800...", "bank": "bankinter",
+        "alias": "bankinter ···0236", "type": "checking",
+        "created": true, "appliedDefaults": { "alias": true, "type": true }
+      },
+      "imported": 39,
+      "duplicates": 2,
+      "unparsedCount": 1,
+      "unparsedRows": [{ "row": 42, "reason": "importe no interpretable" }],
+      "movedToProcessed": true
+    },
+    {
+      "bank": "myinvestor", "year": "2026", "fileId": "9XyZ...", "name": "extracto.csv",
+      "status": "failed", "account": null, "imported": 0, "duplicates": 0,
+      "unparsedCount": 0, "unparsedRows": [], "movedToProcessed": false,
+      "error": {
+        "code": "MISSING_ACCOUNT_DATA",
+        "message": "No iban in the file and no account registered for bank myinvestor: add a line \"iban;<IBAN>\" at the top of one of its files, once."
+      }
+    },
+    {
+      "bank": "myinvestor", "year": "2026", "fileId": "5Qrs...", "name": "fondo-indexado.json",
+      "status": "skipped",
+      "reason": "extensión no soportada por el parser de myinvestor",
+      "movedToProcessed": false
+    }
+  ]
+}
+```
+
+- **Totales:** `importedCount` movimientos guardados, `duplicateCount` descartados
+  por ya existir, `unparsedCount` líneas que ningún parser supo interpretar,
+  `failedCount` y `skippedCount` archivos.
+- `imported` / `duplicates`: movimientos **guardados** y **descartados por
+  duplicado** de ese archivo. Reimportar el mismo archivo no duplica nada: sale
+  `imported: 0` y `duplicates: n`. Dos líneas idénticas del mismo día **no** son
+  duplicados (se distinguen por su posición dentro del día) y se guardan las dos.
+- `unparsedCount` / `unparsedRows`: cuántas líneas fallaron **y cuáles**, con su
+  número de fila y su motivo. Una línea ilegible **no** retiene el archivo: lo bueno
+  se guarda y el archivo se mueve igual.
+- `account`: la cuenta usada. `created: true` significa que se dio de alta en esta
+  llamada con el IBAN del archivo, y `appliedDefaults` dice qué valores se
+  rellenaron solos (`alias` derivado de banco + últimos 4 del IBAN, `type`
+  `"checking"`). **Nunca se crea una cuenta sin IBAN.**
+- `error`: `code` estable + `message` **sanitizado** (nunca tokens ni secretos ni
+  rutas absolutas de la máquina).
+- Un fallo por archivo **NO** cambia el código HTTP: la respuesta es 200 con el
+  detalle. Solo un fallo de Drive de nivel superior (no se pueden ni listar los
+  bancos) devuelve 503.
+- Reimportar un archivo ya movido exige devolverlo a mano en Drive de
+  `procesados/` a la carpeta del año.
+
+**Errores**
+| Código HTTP | `code`                   | Cuándo                                                 |
+| ----------- | ------------------------ | ------------------------------------------------------ |
+| 503         | `DRIVE_CONNECTION_ERROR` | Fallo de Drive de nivel superior (mensaje sanitizado).  |
+
+**Códigos que aparecen por archivo (dentro del 200)**
+| `code`                   | Cuándo                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| `MISSING_ACCOUNT_DATA`   | El archivo no trae `iban` y su banco tiene **cero** o **más de una** cuenta dada de alta. Escribe el IBAN una vez en el archivo. |
+| `VALIDATION_ERROR`       | El archivo no es un extracto reconocible para el parser de su banco.               |
+| `DRIVE_CONNECTION_ERROR` | Falló la descarga de **ese** archivo.                                              |
+| `INTERNAL_SERVER_ERROR`  | Cualquier otro fallo de ese archivo (mensaje sanitizado).                          |
 
 ---
 
@@ -492,7 +629,11 @@ Divisa`; un banco que no reporte saldo (o IBAN) deja esos campos en `null`.
 > El resultado completo de un archivo tiene la forma `{ bank: "bankinter",
 > accountIban, movements: ParsedMovement[], unparsedRows: { row, reason }[] }`,
 > con `accountIban` a `null` cuando el archivo no lo trae (nunca `""`),
-> y es lo que se escribe en el JSON local. `amount` y `balance` se interpretan tanto
+> y es lo que se escribe en el JSON local. De dónde sale ese `accountIban` es
+> conocimiento de cada banco: Bankinter lo trae en el preámbulo de su `.xlsx`; en
+> MyInvestor lo escribe el humano **una vez**, como línea `iban;<IBAN>` encima de la
+> cabecera del `.csv` (feature 12). Ningún parser lo infiere de un concepto con
+> forma de IBAN. `amount` y `balance` se interpretan tanto
 > desde el número nativo del Excel como desde texto español (coma decimal / punto
 > de miles, `1.234,56` → `1234.56`). **No** se deduplica: dos filas idénticas
 > aparecen las dos. Una fila no interpretable (fecha, importe o saldo ilegibles) va
@@ -560,10 +701,15 @@ Sin cuerpo de petición.
 >   saldo de esta cuenta se obtiene sumando desde `Account.initialBalance` (la rama
 >   que ADR-011 describía como excepcional), así que `initialBalance` es su **único
 >   ancla**.
-> - `accountIban` en el resultado: el archivo no tiene preámbulo ni IBAN, y no se
->   deduce del nombre del archivo, de la carpeta ni de los conceptos. El alta
->   automática de cuenta (`MISSING_ACCOUNT_DATA`, 422) **no** puede funcionar con
->   este extracto: esa cuenta se da de alta **a mano** por `POST /api/accounts`.
+> - ~~`accountIban` en el resultado~~ → **actualizado por la feature 12
+>   (2026-08-12)**: el banco sigue sin aportarlo, pero **el humano lo escribe a
+>   mano, una sola vez**, como línea de preámbulo `iban;ES30…` **encima** de la fila
+>   de cabecera. El parser lee **esa línea etiquetada y solo esa** (primera celda
+>   `iban`, sin distinguir mayúsculas ni espacios; el valor es la segunda celda) y
+>   emite su valor como `accountIban`. Sigue sin deducirse del nombre del archivo,
+>   de la carpeta ni de un concepto con forma de IBAN. Si la línea falta, está vacía
+>   o va por debajo de la cabecera, `accountIban` es `null`. Con ella, la cuenta se
+>   crea sola al importar y ya no hace falta darla de alta a mano.
 
 Columnas reales del extracto (`;` como separador, UTF-8, BOM tolerado), mapeadas
 **por nombre** de cabecera y no por posición:
@@ -614,7 +760,8 @@ Sin cuerpo de petición.
 }
 ```
 
-- `accountIban`: **siempre `null`** en este banco (ver la nota de arriba).
+- `accountIban`: `null` salvo que el archivo traiga la línea de preámbulo
+  `iban;<IBAN>` que escribe el humano (ver la nota de arriba).
 - `dumpPath`: ruta del JSON volcado **relativa** a la carpeta de volcado local (no
   se expone la ruta absoluta de la máquina).
 - `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un fallo por

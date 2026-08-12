@@ -77,10 +77,14 @@ src/
       movements.types.ts   #   (sin *.schema.ts: no hay body que validar)
     health/
       health.routes.ts
-    ingesta/               # lectura de archivos de banco desde Drive (drive-read)
-      ingesta.routes.ts    #   GET /api/ingesta/pending + POST /api/ingesta/process
-      ingesta.service.ts   #   detección + proceso (descarga tal cual, copia local, mover)
-      ingesta.types.ts     #   tipos de la respuesta (DetectionResult, ProcessResult, ...)
+    ingestion/             # lectura de archivos de banco desde Drive (drive-read)
+      ingestion.routes.ts  #   GET /api/ingestion/pending + POST /api/ingestion/process
+      ingestion.service.ts #   detección + descarga tal cual + copia local (NO mueve, ADR-015)
+      ingestion.types.ts   #   tipos de la respuesta (DetectionResult, ProcessResult, ...)
+    import/                # el importador: Drive -> parser -> base de datos (ADR-015)
+      import.routes.ts     #   POST /api/import
+      import.service.ts    #   recorrido, mapeo, dedup y movimiento a procesados/
+      import.types.ts      #   BankParserAdapter (registro inyectado) + informe por fichero
     bankinter/             # parser del extracto .xlsx de Bankinter (bankinter-parser)
       bankinter.parser.ts  #   parser puro (buffer .xlsx -> movimientos + IBAN), sin BD/Drive
       bankinter.service.ts #   lee copias locales de la f5, parsea y vuelca JSON (read-only)
@@ -416,7 +420,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 ### ADR-009: Lectura de banco desde Drive (`drive-read`) — endpoints HTTP de ingesta, proceso archivo-a-archivo con volcado local gitignoreado
 
 - **Fecha:** 2026-08-03
-- **Estado:** aceptada (implementada en la feature #5)
+- **Estado:** aceptada (implementada en la feature #5), **retocada por ADR-015**
+  (F12, 2026-08-12) en dos puntos: el módulo y sus rutas se llaman ahora
+  `ingestion` / `/api/ingestion/*` (las españolas responden 404) y
+  `POST /api/ingestion/process` **ya no mueve** el fichero a `procesados/` —mover
+  es consecuencia de guardar, y guardar es del importador—. Todo lo demás de este
+  ADR sigue vigente: descubrimiento dinámico, proceso archivo a archivo,
+  aislamiento del fallo, volcado local gitignoreado e idempotencia.
 - **Contexto:** la feature #5 hace la **primera lectura real** de archivos de banco
   desde Drive antes de escribir cualquier parser (feature 6): detectar pendientes,
   descargar el contenido **tal cual** (p. ej. el `.xlsx` de Bankinter), copiarlo a
@@ -954,7 +964,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 - **Fecha:** 2026-08-11
 - **Estado:** aceptada (implementada en la feature #10, spec re-especificado contra
   el contrato de la F11 y **cortado** en dos: los archivos JSON de producto son la
-  F13 `myinvestor-products`)
+  F13 `myinvestor-products`), **ampliada por ADR-015** (F12, 2026-08-12): el título
+  dice «sin IBAN» y ya no es exacto —el humano escribe una línea de preámbulo
+  `iban;ES…` **una sola vez** y el parser la lee—. Lo que **no** ha cambiado: el
+  IBAN se lee **solo** de esa línea etiquetada y **nunca** se infiere de un concepto
+  con forma de IBAN. Ese test de la F10 sigue en verde sin tocarlo.
 - **Contexto:** **segundo banco del repo con parser propio** y primero con **varias
   entradas** (la segunda, los archivos de producto, la trae la F13). La norma
   «Parsers de banco» de `docs/conventions.md` ya fija el módulo por banco y, desde
@@ -1058,7 +1072,71 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - **La F13 amplía este módulo**, no lo duplica: añade el parser de productos, una
     función de fecha ISO a `myinvestor.format.ts` y una rama `.json` al servicio.
   - **Contrato con la feature de importación:** para este banco tendrá que (a) no
-    esperar saldo y (b) no esperar IBAN.
+    esperar saldo y (b) ~~no esperar IBAN~~ → **corregido por ADR-015 (F12)**: el
+    humano escribe el IBAN **una vez** como línea de preámbulo `iban;ES…` y el
+    parser la lee. La restricción original —no inferirlo nunca de un concepto con
+    forma de IBAN— **sigue vigente y su test no se ha relajado**.
+
+### ADR-015: Importación — módulo `import/` con registro de parsers inyectado, dedup delegado en el índice parcial, `procesados/` como consecuencia del guardado, IBAN obligatorio e `ingesta` renombrado a `ingestion`
+
+- **Estado:** aceptada (feature 12 `import`, 2026-08-12).
+- **Contexto:** los parsers (F6, F10), el modelo de datos (F8, F9), el contrato
+  común (F11) y la fontanería de Drive (F4, F5) existían **sin tocarse entre sí**:
+  ninguna línea del proyecto convertía un fichero parseado en filas de `Movement`.
+  Faltaba la costura, y con ella cuatro decisiones que ningún ADR anterior tomaba:
+  quién elige el parser, quién descarta los duplicados, cuándo se considera
+  «procesado» un fichero y de dónde sale la cuenta.
+- **Decisión:**
+  1. **Módulo propio `src/modules/import/` y `POST /api/import`.** El importador no
+     es de un banco ni es «la ingesta»: es la costura. Módulo propio (ADR-004) y en
+     inglés (`docs/conventions.md` §Idioma). Sin cuerpo de petición y sin
+     autenticación nueva.
+  2. **El registro banco→parser se inyecta desde `app.ts`**, la raíz de composición,
+     como `BankParserAdapter[]` (`bank`, `extensions`, `parse`). Añadir un banco es
+     añadir una línea allí; el importador no cambia nunca y **sigue sin nombrar a
+     ningún banco**, que es lo que mantiene cierto el guardián de «un parser por
+     banco» (ADR-014). Alternativa descartada: un `import.registry.ts` dentro del
+     módulo, que habría obligado a relajar ese guardián.
+  3. **El dedup lo resuelve la base de datos**, con `createMany({ skipDuplicates })`
+     → `ON CONFLICT DO NOTHING` **sin target**, que es lo que cubre el índice único
+     **parcial** `Movement_imported_dedup_key` (ADR-011), que Prisma no sabe
+     expresar. Un solo `createMany` por fichero: o entran todos sus movimientos
+     buenos o ninguno. Alternativa descartada: consultar antes y filtrar en memoria
+     (una consulta de más y una carrera que el índice ya resuelve).
+  4. **`procesados/` es una consecuencia del guardado, no de la descarga.** Un
+     fichero se mueve solo tras persistir sus movimientos, y por eso
+     `POST /api/ingestion/process` **deja de mover**: se queda como descarga de la
+     copia cruda, que es lo que permite inspeccionar el fichero de un banco del que
+     todavía no hay parser (regla 4 de `docs/specs.md`). Un fichero con filas no
+     interpretables **sí** se mueve: se importa lo bueno y se reporta el resto.
+  5. **Ninguna cuenta se crea sin IBAN, por ninguna vía.** El IBAN viaja en el
+     fichero (en MyInvestor, la línea `iban;…` del preámbulo) y basta escribirlo
+     **una vez**: los ficheros siguientes de ese banco resuelven por su única cuenta
+     registrada. Cero o varias cuentas → `MISSING_ACCOUNT_DATA` dentro del informe
+     del fichero, sin importar y sin mover. La única vía de alta sigue siendo
+     `findOrCreateAccountFromMetadata` (F8), y un guardián comprueba que el módulo
+     no llama a `account.create`.
+  6. **`ingesta` → `ingestion`.** Módulo, archivos, símbolos y rutas pasan a inglés
+     (`/api/ingesta/*` → **404**). Entra aquí porque esta feature ya retoca esos
+     mismos archivos; hacerlo aparte serían dos ediciones y dos breaking changes.
+- **Alternativas descartadas:**
+  - **Convertir `POST /api/ingestion/process` en el importador:** un endpoint menos,
+    pero se pierde la descarga sin importar.
+  - **Importar desde las copias locales de `var/drive-read/`:** más fácil de probar,
+    pero entonces el movimiento a `procesados/` no podría depender del guardado.
+  - **Mapa banco→cuenta por configuración o `accountId` en la petición:** otra fuente
+    de verdad que se desincroniza, y rompe el disparo de un solo botón.
+- **Consecuencias:**
+  - **Sin dependencias nuevas y sin migración**: el modelo de la F8/F9 ya tenía todo.
+  - **Cabos sueltos nº 1 y nº 4 cerrados** (`docs/roadmap.md`).
+  - **`MISSING_ACCOUNT_DATA` deja de estar «reservado»**, y es el único código estable
+    del contrato que viaja **dentro de un 200**, en el informe de su fichero, no como
+    cuerpo de error HTTP.
+  - **Breaking change de contrato** (`/api/ingesta/*`), hoy sin consumidor.
+  - **Límite vivo heredado de ADR-013:** `daySequence` numera **solo** las filas
+    parseadas. Si un fichero con filas no interpretables se reimporta tras mejorar su
+    parser, ese día se renumera y pueden aparecer duplicados **visibles** de ese día.
+    Sin dueño todavía.
 
 ## Qué NO hacer
 

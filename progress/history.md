@@ -896,3 +896,5 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   `MISSING_ACCOUNT_DATA`, 422); y sin saldo en el archivo, **`initialBalance` es
   el único ancla** del saldo de esa cuenta — la rama que ADR-011 describía como
   excepcional pasa a ser la normal para este banco.
+
+- 2026-08-12 — F12 `import`: la app **guarda datos de verdad** — `POST /api/import` baja de Drive, parsea, escribe los movimientos en su cuenta (creada sola con el IBAN del fichero) y solo entonces mueve el fichero a `procesados/`; reimportar no duplica. De paso, `ingesta` → `ingestion` (`/api/ingesta/*` → 404) → [resumen](summaries/import.md)

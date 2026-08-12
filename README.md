@@ -64,14 +64,24 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `GET`  | `/api/accounts/:id`     | Una cuenta por id. |
 | `POST` | `/api/categories`       | Crea una categoría raíz o una subcategoría (un solo nivel). |
 | `GET`  | `/api/categories`       | Las categorías raíz con sus `children`. |
-| `GET`  | `/api/movements`        | Lista los movimientos, del más reciente al más antiguo. |
-| `GET`  | `/api/ingesta/pending`  | Archivos de banco pendientes en Drive. |
-| `POST` | `/api/ingesta/process`  | Descarga los pendientes y los mueve a `procesados/`. |
-| `POST` | `/api/parser/bankinter` | Parsea un extracto `.xlsx` de Bankinter a movimientos. |
+| `GET`  | `/api/movements`         | Lista los movimientos, del más reciente al más antiguo. |
+| `GET`  | `/api/ingestion/pending` | Archivos de banco pendientes en Drive. |
+| `POST` | `/api/ingestion/process` | Descarga los pendientes y guarda una copia local. **No mueve nada.** |
+| `POST` | `/api/import`            | **Importa:** descarga, parsea, guarda los movimientos y solo entonces mueve el archivo a `procesados/`. |
+| `POST` | `/api/parser/bankinter`  | Parsea un extracto `.xlsx` de Bankinter a movimientos (sin BD). |
+| `POST` | `/api/parser/myinvestor` | Parsea un extracto `.csv` de MyInvestor a movimientos (sin BD). |
 
 > ⚠️ **`/api/movements` es de solo lectura.** No hay alta ni borrado de
 > movimientos por API: entran únicamente por importación desde los ficheros del
 > banco. Si un movimiento existe, existe en el banco y llegará en su fichero.
+
+> ⚠️ **Breaking change (2026-08-12, feature 12):** las rutas en español
+> `/api/ingesta/*` **ya no existen** (responden 404); son ahora
+> `/api/ingestion/*`. Y `POST /api/ingestion/process` **ha dejado de mover** los
+> archivos a `procesados/`: mover es ahora consecuencia de **guardar** los
+> movimientos, y eso lo hace `POST /api/import`. Ese endpoint sigue existiendo
+> porque es lo que permite inspeccionar el archivo de un banco del que todavía no
+> hay parser.
 
 Ejemplo de creación de una cuenta:
 
@@ -103,8 +113,11 @@ gastos-backend/
 │   │   ├── accounts/        #   Cuentas bancarias
 │   │   ├── categories/      #   Catálogo de categorías (un nivel de subcategoría)
 │   │   ├── movements/       #   Movimientos: SOLO LECTURA + helpers de dominio
-│   │   ├── ingesta/         #   Lectura de archivos de banco desde Drive
+│   │   ├── ingestion/       #   Lectura de archivos de banco desde Drive (no mueve)
+│   │   ├── import/          #   Importador: Drive -> parser -> base de datos
 │   │   ├── bankinter/       #   Parser del extracto .xlsx de Bankinter
+│   │   ├── myinvestor/      #   Parser del extracto .csv de MyInvestor
+│   │   ├── investments/     #   Productos de inversión y sus valoraciones (esquema)
 │   │   └── health/          #   Rutas de estado
 │   └── generated/prisma/    # Cliente de Prisma generado (no se versiona)
 ├── prisma.config.ts         # Configuración del CLI de Prisma (Prisma 7)

@@ -99,6 +99,15 @@ export default async function accountRoutes(fastify: FastifyInstance) {
 - **Nombres de test:** descriptivos, en inglés.
 - **Estructura:** AAA (Arrange-Act-Assert); comprobar el **resultado concreto**,
   no solo "no lanza".
+- **Ningún dato real en un fixture** (regla reforzada el 2026-08-12, F12). Los
+  fixtures se construyen en código y **todo** en ellos es inventado: importes,
+  conceptos, números de contrato e **IBAN**. La regla incluye los datos del propio
+  dueño del proyecto, incluso los que él mismo pegue en una conversación: un
+  archivo de test se versiona, se comparte y lo leen herramientas, y a un fixture
+  solo se le pide estar **bien formado**, nunca ser cierto. Para un IBAN se usa el
+  de ejemplo público de la documentación española (`ES91 2100 0418 4502 0005 1332`)
+  o uno claramente sintético. Los datos reales viven en `var/drive-read/`, que está
+  gitignoreada.
 
 ## Manejo de errores
 
@@ -147,8 +156,17 @@ class NotFoundError extends AppError {
   todos los demás; uno por banco deja el daño contenido en su módulo y en su
   suite, y permite borrar un banco entero sin tocar el resto.
 - **Consecuencia al dar de alta un banco:** además de crear su carpeta en Drive
-  (`docs/dar-de-alta-un-banco.md`), hace falta su propio módulo de parser.
-  Ningún banco hereda el de otro.
+  (`docs/dar-de-alta-un-banco.md`), hace falta su propio módulo de parser y
+  **una línea en el registro de `src/app.ts`** que se le inyecta al importador
+  (ADR-015). Ningún banco hereda el de otro.
+- **El importador no conoce ningún banco.** `src/app.ts` es el **único** archivo de
+  `src/` que puede nombrar uno; un guardián de `architecture.test.ts` lo comprueba
+  también sobre `src/modules/import/`.
+- **El IBAN de la cuenta va en el fichero, una sola vez** (decidido 2026-08-12).
+  Si el banco no lo exporta, lo escribe el humano como línea de preámbulo
+  `iban;<IBAN>` **encima** de la cabecera; el parser la lee **solo si está
+  etiquetada así** y **nunca** infiere un IBAN por su forma dentro de un concepto.
+  Sin IBAN no se crea jamás una cuenta.
 
 ### Lo que NO es propio de cada banco: la forma de la salida
 

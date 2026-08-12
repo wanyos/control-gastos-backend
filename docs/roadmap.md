@@ -27,9 +27,9 @@ es el `intent` de una feature.
 
 ## Dónde estás ahora mismo 📍
 
-**Sabes traer ficheros del banco y sabes entenderlos. Todavía no sabes
-guardarlos.** Ninguna línea de código escribe hoy un `Movement` a partir de un
-fichero parseado: el parser vuelca a un JSON local y ahí se acaba el camino.
+**Ya sabes traer ficheros del banco, entenderlos y guardarlos.** Desde la F12
+(2026-08-12) `POST /api/import` cierra el camino entero: Drive → parser → base de
+datos → `procesados/`. Es la primera vez que la app **guarda datos de verdad**.
 
 **Ya tienes el sitio donde guardarlo todo (E3 ✅, F9) y la forma común en que los
 parsers hablan (F11 ✅).** Ambas cerradas el 2026-08-11.
@@ -39,10 +39,9 @@ el primer parser nacido directamente contra el contrato. La antigua F10 se
 **partió en dos** (70 requirements escondían dos features): los JSON de producto
 son ahora la **F13**, que te espera con cinco decisiones.
 
-**Ya no hay nada esperándote.** El 2026-08-11 cerraste los cinco puntos rojos de
-la F13, sus tres casillas de campos y el `intent` de la F12: no queda ningún
-`intent` en borrador del agente ni ninguna decisión pendiente de tu visto bueno.
-Las dos features que quedan (F13 y F12) están listas para arrancar.
+**Ya no hay nada esperándote.** No queda ningún `intent` en borrador del agente ni
+ninguna decisión pendiente de tu visto bueno. **La única feature abierta es la
+F13** (`myinvestor-products`), con su spec ya cerrado y lista para arrancar.
 
 ---
 
@@ -54,10 +53,10 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 |---|---|---|---|
 | E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2 |
 | E1 | **El remoto** — hablar con Google Drive y organizarlo | ✅ | F3, F4 |
-| E2 | **Traer los ficheros** — detectar pendientes y descargarlos | ⚠️ | F5 |
+| E2 | **Traer los ficheros** — detectar pendientes y descargarlos | ✅ (deuda saldada por la F12) | F5 |
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
 | E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 2 de ~7 bancos, **contrato ✅** | F6, F7, F11, F10, **F13 ⏸** |
-| E5 | **La importación** — del fichero parseado a la base de datos | ⬜ | **F12** |
+| E5 | **La importación** — del fichero parseado a la base de datos | ✅ | **F12** |
 | E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | ⬜ | *sin features* |
 | E7 | **Consultar** — filtros, saldos, totales, patrimonio | ⬜ | *sin features* |
 | E8 | **Ver** — el frontend | ⬜ | otro proyecto |
@@ -87,17 +86,17 @@ Prettier, config de entorno validada al arrancar y errores centralizados
   ella por variable de entorno. Dar de alta un banco nuevo:
   [`docs/dar-de-alta-un-banco.md`](./dar-de-alta-un-banco.md).
 
-### E2 — Traer los ficheros ⚠️
+### E2 — Traer los ficheros ✅
 
-**F5** — `GET /api/ingesta/pending` cuenta lo pendiente sin tocarlo;
-`POST /api/ingesta/process` descarga a `var/drive-read/` y mueve el original a
-`procesados/`.
+**F5** — `GET /api/ingestion/pending` cuenta lo pendiente sin tocarlo;
+`POST /api/ingestion/process` descarga a `var/drive-read/`.
 
-> 🔴 **Deuda conocida:** hoy «procesado» significa **descargado**, no
-> **guardado en la base de datos**
-> ([`src/modules/ingesta/ingesta.service.ts:67`](../src/modules/ingesta/ingesta.service.ts#L67)).
-> **La E5 tiene que retocar este flujo** para que un fallo de importación deje
-> el fichero pendiente en Drive y se pueda reintentar.
+> ✅ **Deuda saldada por la F12** (2026-08-12): este endpoint **ya no mueve** nada
+> ([`ingestion.service.ts`](../src/modules/ingestion/ingestion.service.ts)), y
+> mover a `procesados/` pasó a ser consecuencia de **guardar** los movimientos
+> (`POST /api/import`). Un fallo de importación deja el fichero pendiente en Drive
+> y se puede reintentar. La misma feature renombró el módulo y sus rutas a inglés
+> (`ingesta` → `ingestion`): **breaking change** de contrato, sin consumidor.
 
 ### E3 — Dónde viven los datos ✅
 
@@ -150,35 +149,33 @@ Decisiones en el **ADR-013** de [`docs/architecture.md`](./architecture.md).
 > **vacía**. Hasta que no entres en cada web y anotes si da CSV, no sabes cuántas
 > features son ni cuáles necesitan la extensión de navegador.
 
-### E5 — La importación ⬜ (**F12**) ← **el eslabón que falta**
+### E5 — La importación ✅ (**F12**, 2026-08-12)
 
-**Hoy no existe para nada:** ninguna línea escribe un `Movement` a partir de un
-fichero parseado. Alcance previsto (el design de la F8 §9 ya dejó escrita la tabla
-de mapeo):
+**El eslabón que faltaba, ya puesto.** `POST /api/import` baja cada fichero
+pendiente, lo parsea con el parser de su banco, **guarda sus movimientos** y solo
+entonces lo mueve a `procesados/`. Lo que trajo:
 
-1. Contrato del parser → `Movement`, con `origin='imported'` y
-   `status='pending_review'`.
-2. Auto-alta de cuenta desde `accountIban` + `bank`; si faltan, error
-   diferenciable para que el frontend pida el alta a mano (el servicio ya existe).
-3. Dedup de re-descargas con el índice único parcial que incluye `daySequence`.
-4. Mover a `procesados/` **cuando el dato está en la base de datos**, no al
-   descargar. **Cierra el cabo suelto #1.**
+1. Contrato del parser → `Movement` con la tabla de mapeo que el design de la F8
+   §9 ya dejó escrita: `origin='imported'`, `status='pending_review'`, importe
+   siempre positivo con el signo en `type`, y el saldo **leído, nunca inventado**.
+2. **Auto-alta de cuenta desde el IBAN del fichero**; sin IBAN usa la única cuenta
+   ya dada de alta de ese banco, y si hay cero o varias no importa nada y te pide
+   escribir el IBAN una vez. **Nunca se crea una cuenta sin IBAN.**
+3. **Dedup delegado en la base de datos** (índice único parcial con `daySequence`):
+   reimportar el mismo fichero no duplica y te dice cuántos descartó.
+4. **Mover a `procesados/` es consecuencia de guardar.** Cierra el cabo suelto #1.
+5. **El importador no sabe de bancos:** la lista de parsers se le inyecta desde
+   `app.ts`. Añadir un banco es una línea allí.
+6. **`ingesta` → `ingestion`**, en código y en rutas. Cierra el cabo suelto #4.
 
-**Orden acordado (2026-08-11):** F9 → F11 → F10 → F12. Las tres primeras ✅.
+Decisiones en el **ADR-015** de [`docs/architecture.md`](./architecture.md).
 
-**`intent` cerrado por el humano el 2026-08-11**, con tres decisiones que fijan
-el alcance:
+> ⚠️ **Límite que sigue vivo:** `daySequence` numera **solo las filas parseadas**
+> (ADR-013). Si algún día arreglas un parser y reimportas un fichero que tenía
+> líneas raras, ese día se renumera y puede aparecer algún movimiento **duplicado
+> visible** de ese día — nunca una pérdida silenciosa. Sin dueño todavía.
 
-1. **El fichero se mueve a `procesados/` cuando el dato está guardado**, no al
-   descargarlo. Retoca el flujo de la F5 y **cierra el cabo suelto #1**.
-2. **Una importación parcial guarda lo bueno y reporta el resto**, en vez de
-   todo-o-nada: una línea rara no bloquea el mes entero, y como los movimientos
-   no se crean a mano, bloquearlo dejaría el mes sin forma de entrar.
-3. **Los productos de inversión NO se guardan aquí:** su regla de duplicado es la
-   contraria (recargar **sobrescribe**), y mezclarlas es lo que obligó a partir
-   la F10 en dos. Serán una feature propia.
-
-Falta su spec (`sdd: true`): `acceptance` ya derivado, 12 criterios.
+**Orden acordado (2026-08-11):** F9 → F11 → F10 → F12. Las cuatro ✅.
 
 ### E6 — Enriquecer lo importado ⬜
 
@@ -291,13 +288,14 @@ tiene etapa, es que se va a perder.
 
 | # | Cabo suelto | Lo resuelve |
 |---|---|---|
-| 1 | «Procesado» significa «descargado», no «guardado» | **E5 / F12** |
+| ~~1~~ | ~~«Procesado» significa «descargado», no «guardado»~~ | ✅ **cerrado por la F12** (2026-08-12): mover a `procesados/` es consecuencia de guardar, y `POST /api/ingestion/process` ya no mueve |
 | ~~2~~ | ~~Importe 0: el parser de Bankinter lo trata como `income`~~ | ✅ **cerrado por la F11** (2026-08-11): sale `neutral` |
 | ~~7~~ | ~~`ParsedMovement` vive dentro de `bankinter/`; `deriveMovementTypeFromAmount` reimplementado~~ | ✅ **cerrado por la F11**: contrato en [`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts), helper único |
 | 8 | `computeTotals` **no excluye** `productId != null`. Hoy da igual (la columna es siempre `null`), pero en cuanto exista quien la escriba, las aportaciones mensuales contarán como gasto del mes | **E6** (con su escritor) |
 | 9 | `InvestmentProduct.openedAt` nace **sin escritor previsto**: el formato del fichero no lo lleva, así que se queda `NULL` | sin dueño |
 | 3 | Todo lo importado nace `pending_review` y **nada lo pasa a `confirmed`** | **E6** |
-| 4 | `src/modules/ingesta/` y `/api/ingesta/*` están en español, contra la norma de [`docs/conventions.md`](./conventions.md) §Idioma | sin dueño |
+| ~~4~~ | ~~`src/modules/ingesta/` y `/api/ingesta/*` están en español~~ | ✅ **cerrado por la F12** (2026-08-12): `src/modules/ingestion/` y `/api/ingestion/*`; las rutas viejas responden 404 |
+| 10 | `daySequence` numera solo las filas parseadas: reimportar un fichero tras arreglar su parser puede renumerar ese día y dejar duplicados **visibles** | sin dueño |
 | 5 | El histórico del Excel de años (idea #5 ❄️) sigue sin decidirse dentro/fuera | sin dueño |
 | 6 | La base de datos no tiene copia de seguridad; el crudo de Drive te salva los movimientos, **no** las categorías, alias ni `initialBalance` | sin dueño |
 
@@ -309,8 +307,12 @@ tiene etapa, es que se va a perder.
 
 ## Deberes tuyos pendientes (no son código)
 
-- **Cuenta corriente de MyInvestor: alta a mano.** Su extracto no trae IBAN, así
-  que el alta automática no puede funcionar.
+- **El IBAN, una vez, en el fichero.** En el CSV de MyInvestor, una línea
+  `iban;ES30…` **encima** de la fila de cabecera. Con ponerlo en uno de sus
+  ficheros basta: los siguientes ya no lo necesitan. Si lo editas con Excel,
+  guárdalo como **«CSV UTF-8»**.
+- ~~**Cuenta corriente de MyInvestor: alta a mano.**~~ ✅ **ya no hace falta**
+  (F12): con esa línea, la cuenta se crea sola al importar.
 - **`initialBalance` de esa cuenta: correcto a la primera.** Tampoco trae saldo
   por movimiento, así que es **el único ancla**; si lo pones mal, todo el saldo
   queda desplazado por igual.

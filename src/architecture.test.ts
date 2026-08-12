@@ -67,11 +67,20 @@ describe('architecture invariants', () => {
       'modules/movements/movements.test.ts',
       'modules/health/health.routes.ts',
       'modules/health/health.test.ts',
-      'modules/ingesta/ingesta.routes.ts',
-      'modules/ingesta/ingesta.service.ts',
-      'modules/ingesta/ingesta.types.ts',
-      'modules/ingesta/ingesta.service.test.ts',
-      'modules/ingesta/ingesta.routes.test.ts',
+      // Renamed to English in feature 12 (docs/conventions.md §Idioma): the
+      // module and its routes were the last Spanish names in src/.
+      'modules/ingestion/ingestion.routes.ts',
+      'modules/ingestion/ingestion.service.ts',
+      'modules/ingestion/ingestion.types.ts',
+      'modules/ingestion/ingestion.service.test.ts',
+      'modules/ingestion/ingestion.routes.test.ts',
+      // The importer (feature 12): the seam between Drive, the parsers and the
+      // database. It is not a bank module and it is not the ingestion.
+      'modules/import/import.types.ts',
+      'modules/import/import.service.ts',
+      'modules/import/import.routes.ts',
+      'modules/import/import.service.test.ts',
+      'modules/import/import.routes.test.ts',
       'modules/bankinter/bankinter.parser.ts',
       'modules/bankinter/bankinter.service.ts',
       'modules/bankinter/bankinter.routes.ts',
@@ -169,15 +178,47 @@ describe('architecture invariants', () => {
     expect(driveStructure).not.toContain('OAuth2')
   })
 
-  it('keeps the ingesta module free of data access (no "prisma" reference)', () => {
+  it('keeps the ingestion module free of data access (no "prisma" reference)', () => {
     const files = [
-      'modules/ingesta/ingesta.routes.ts',
-      'modules/ingesta/ingesta.service.ts',
-      'modules/ingesta/ingesta.types.ts',
+      'modules/ingestion/ingestion.routes.ts',
+      'modules/ingestion/ingestion.service.ts',
+      'modules/ingestion/ingestion.types.ts',
     ]
 
     for (const file of files) {
       expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
+  it('has no src/modules/ingesta/ directory (renamed to English in feature 12)', () => {
+    expect(existsSync(join(srcDir, 'modules/ingesta'))).toBe(false)
+  })
+
+  it('keeps the importer free of bank knowledge: the registry is injected (R14)', () => {
+    // The bank names live in `app.ts`, the composition root, and reach the
+    // importer as data. If this fails, a parser was imported inside the module.
+    const bankModules = readdirSync(join(srcDir, 'modules'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) =>
+        sourceFiles(join(srcDir, 'modules', name)).some((file) => file.endsWith('.parser.ts')),
+      )
+
+    expect(bankModules.length).toBeGreaterThan(0)
+    for (const file of sourceFiles(join(srcDir, 'modules/import'))) {
+      const source = readFileSync(file, 'utf8').toLowerCase()
+      for (const bank of bankModules) {
+        expect(source).not.toContain(bank)
+      }
+    }
+  })
+
+  it('never creates an account from the importer: only the accounts service does (R19)', () => {
+    for (const file of sourceFiles(join(srcDir, 'modules/import'))) {
+      const source = readFileSync(file, 'utf8')
+
+      expect(source).not.toContain('account.create')
+      expect(source).not.toContain('accounts.create')
     }
   })
 

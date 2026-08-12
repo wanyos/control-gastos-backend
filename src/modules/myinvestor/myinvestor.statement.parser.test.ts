@@ -250,6 +250,73 @@ describe('parseMyinvestorStatement — the balance and the IBAN this bank does n
   })
 })
 
+// Feature 12 (R18): the human writes the IBAN once, as a labelled preamble line
+// above the header. It is read ONLY from there; the R20 restriction above stays
+// untouched (nothing is ever inferred from an IBAN-shaped string).
+//
+// The IBAN below is the PUBLIC example IBAN of the Spanish documentation (valid
+// checksum, nobody's account). A real IBAN never enters the repository, not even
+// the owner's own and not even one he pasted himself in a conversation: a test
+// file is versioned, shared and read by tools, and a fixture only has to be
+// well-formed, never true.
+describe('parseMyinvestorStatement — the labelled iban preamble line (F12 R18)', () => {
+  it('reads the iban from the labelled preamble line', () => {
+    const content = buildStatementCsv({
+      preamble: ['iban;ES9121000418450200051332'],
+      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR']],
+    })
+
+    const result = parseMyinvestorStatement(content)
+
+    expect(result.accountIban).toBe('ES9121000418450200051332')
+    expect(result.movements).toHaveLength(1)
+  })
+
+  it('tolerates trailing semicolons, spaces and casing in the iban line', () => {
+    const content = buildStatementCsv({
+      preamble: [' IBAN ; ES9121000418450200051332 ;;;;'],
+      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR']],
+    })
+
+    expect(parseMyinvestorStatement(content).accountIban).toBe('ES9121000418450200051332')
+  })
+
+  it('returns null when the iban line is absent, empty or below the header', () => {
+    const absent = buildStatementCsv({ preamble: ['Extracto de cuenta'] })
+    const empty = buildStatementCsv({ preamble: ['iban;'] })
+    const empty2 = buildStatementCsv({ preamble: ['iban'] })
+    // A line that arrives AFTER the header is data, not preamble: it is never
+    // read as the account IBAN (it lands in unparsedRows like any bad row).
+    const below = buildStatementCsv({ rows: [['iban', 'ES9121000418450200051332']] })
+
+    for (const content of [absent, empty, empty2, below]) {
+      expect(parseMyinvestorStatement(content).accountIban).toBeNull()
+    }
+  })
+
+  it('does not let the iban line reach unparsedRows nor the movements', () => {
+    const content = buildStatementCsv({
+      preamble: ['iban;ES9121000418450200051332'],
+      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR']],
+    })
+
+    const result = parseMyinvestorStatement(content)
+
+    expect(result.unparsedRows).toEqual([])
+    expect(result.movements.map((m) => m.description)).toEqual(['COMPRA FONDO FICTICIO'])
+  })
+
+  it('reads the iban of a file written with the UTF-8 BOM Excel adds', () => {
+    const content = buildStatementCsv({
+      bom: true,
+      preamble: ['iban;ES9121000418450200051332'],
+      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR']],
+    })
+
+    expect(parseMyinvestorStatement(content).accountIban).toBe('ES9121000418450200051332')
+  })
+})
+
 describe('parseMyinvestorStatement — daySequence (R68, R69)', () => {
   it('numbers each day from the oldest, knowing the bank exports newest-first', () => {
     const content = buildStatementCsv({

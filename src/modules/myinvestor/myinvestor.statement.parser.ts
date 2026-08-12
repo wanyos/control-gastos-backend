@@ -44,9 +44,11 @@ interface HeaderRow {
  * (ADR-013), not a MyInvestor-specific model: only the code that READS the file
  * is this bank's own.
  *
- * Two data this bank simply does not report, which are therefore emitted as an
- * explicit `null` and never invented, calculated or accumulated: the running
- * balance of each line and the account IBAN.
+ * One datum this bank simply does not report, therefore emitted as an explicit
+ * `null` and never invented, calculated or accumulated: the running balance of
+ * each line. The IBAN is not reported by the bank either, but the human writes
+ * it once as a labelled `iban;<IBAN>` preamble line; it is read ONLY from that
+ * line and never inferred from the shape of a concept.
  *
  * The file is decoded explicitly as UTF-8 (with a leading BOM tolerated) and the
  * header row is located by column name, not by position. Blank lines are
@@ -86,7 +88,7 @@ export function parseMyinvestorStatement(content: Buffer): MyinvestorStatementRe
 
   return {
     bank: 'myinvestor',
-    accountIban: null,
+    accountIban: findIbanLine(lines, header.line),
     // Numbering goes last and only over the parsed rows: a row that ended up in
     // `unparsedRows` consumes no number (ADR-013).
     movements: assignDaySequence(drafts, statementOrder),
@@ -115,6 +117,28 @@ function findHeaderRow(lines: string[]): HeaderRow | null {
     if (columns.description !== undefined && columns.amount !== undefined) {
       return { line: index + 1, columns, cellCount: cells.length }
     }
+  }
+  return null
+}
+
+/**
+ * Reads the IBAN from the labelled preamble line the human writes once:
+ * `iban;ES30…` ABOVE the header row. It looks ONLY at the lines before the
+ * header and ONLY at a line whose first cell is exactly `iban` once normalized
+ * (trimmed, lowercased, spaces removed); the value is its second cell, trimmed.
+ * Trailing filler cells Excel may add are ignored.
+ *
+ * It is never inferred from the shape of a string: a concept holding something
+ * that looks like an IBAN is a movement description, not the account (F10 R20).
+ */
+function findIbanLine(lines: string[], headerLine: number): string | null {
+  for (let index = 0; index < headerLine - 1; index++) {
+    const cells = lines[index].split(delimiter)
+    if (cells[0].toLowerCase().replace(/\s+/g, '') !== 'iban') {
+      continue
+    }
+    const value = (cells[1] ?? '').trim()
+    return value.length > 0 ? value : null
   }
   return null
 }

@@ -3,11 +3,25 @@
 > Este archivo se vacía al cerrar cada sesión y se mueve a `history.md`.
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
-- **Tarea en curso:** revisión de las decisiones pendientes de la **F13
-  `myinvestor-products`**, para dejar su spec cerrada antes de implementarla.
-  No hay código en vuelo.
-- **Inicio:** 2026-08-11
-- **Agente:** leader + spec-author
+- **Tarea en curso:** **F12 `import`** — implementada y en revisión. El árbol de
+  trabajo lleva el código de los cuatro lotes **sin commitear**.
+- **Inicio:** 2026-08-11 (continúa el 2026-08-12)
+- **Agente:** leader + spec-author + implementer + reviewer
+
+## ⚠️ Breaking changes de esta sesión (para el harness del frontend)
+
+Anotados aquí porque [`docs/related-projects.md`](../docs/related-projects.md) lo
+exige: la feature del frontend que los consuma se planifica **después**.
+
+- **`/api/ingesta/*` → 404.** Sus rutas pasan a `/api/ingestion/*`
+  (`pending` y `process`). Es el renombrado a inglés que pidió el humano.
+- **`POST /api/ingestion/process` cambia de significado:** ya **no** mueve el
+  fichero a `procesados/`; se queda en «bájame la copia cruda para mirarla».
+  Quien importa de verdad es el endpoint nuevo **`POST /api/import`**.
+- Detalle y modelos en [`docs/api-contract.md`](../docs/api-contract.md).
+- Contexto: el contrato anterior **no lo consumía nadie** (el frontend no tiene
+  features de producto), así que el coste real es cero. El otro breaking change
+  vivo, `/api/expenses*` → 404, sigue igual desde la F8.
 
 ## Plan
 
@@ -95,3 +109,113 @@ consulta cuando se escriba.
 - ⏭ **Siguiente, cuando se quiera:** implementar la F13 (spec ya cerrado) y escribir
   el spec de la F12 (`sdd: true`, aún sin carpeta en `specs/`). Y las **pruebas de la
   aplicación real** que pidió el humano.
+
+## 2026-08-12
+
+- 🔧 **`./init.sh --state` volvía a estar roto en Windows y nadie lo sabía.**
+  [`init.sh:192`](../init.sh#L192) abría `feature_list.json` sin `encoding`, así que
+  Python usaba la codepage del sistema (`cp1252`) y el primer acento tumbaba la
+  validación entera con un `[FAIL]` genérico que no decía que era de codificación.
+  Arreglado con `encoding="utf-8"` y el porqué anotado al lado. Ahora sí corre la
+  comprobación que antes no llegaba: **13 features, specs presentes, estado coherente**.
+  ⚠️ El `init.sh` viene del harness-template: **el mismo bug está allí** y en cualquier
+  otro proyecto que lo use.
+- ▶️ **Orden de trabajo acordado con el humano:** F12 antes que la F13. La F13 está
+  lista para implementar, pero no aporta nada mientras nada sepa persistir; la F12 es
+  la que convierte esto en una app que guarda datos.
+- ✅ **Spec de la F12 `import` escrita** en [`specs/import/`](../specs/import/) y feature
+  a `spec_ready`. Cuatro puntos rojos a la puerta de aprobación.
+- ✅ **Los cuatro resueltos por el humano el 2026-08-12.** Tres cambian el spec:
+
+  1. 🔄 **El IBAN SÍ viene en el fichero.** El humano añadió a mano una línea de
+     preámbulo `iban;ES30…` al CSV de MyInvestor en Drive. **Hoy no la lee nadie:** el
+     parser emite `accountIban: null` **fijo**
+     ([`myinvestor.statement.parser.ts:89`](../src/modules/myinvestor/myinvestor.statement.parser.ts#L89)),
+     porque cuando se hizo la F10 el extracto no lo traía. No rompe nada (la cabecera se
+     busca por nombre, así que la línea se salta como preámbulo), pero se ignora.
+     **Su regla, mejor que las dos opciones que se le ofrecieron:** el IBAN se pone
+     **una sola vez** —no cambia nunca, «es como un DNI»— y se **refuerza** la norma de
+     no admitir jamás una cuenta sin IBAN; si falta, se avisa para que lo ponga en uno
+     de los ficheros. Con eso la búsqueda por banco deja de ser adivinar: la cuenta ya
+     existe porque su IBAN se leyó en su día.
+     ⚠️ El test **R20** de la F10 (no inferir el IBAN de un concepto con forma de IBAN)
+     **sigue vigente y no se relaja**: solo se lee la línea etiquetada.
+  2. ✅ **Punto 2 aprobado**, con un añadido: la respuesta debe decir **cuántas** líneas
+     fallaron, no solo cuáles.
+  3. ✅ **Punto 3 aprobado + renombrado a inglés de `ingesta/`** («es una norma y hay que
+     mantenerla»). Entra en esta feature, que ya retoca ese flujo. **Cierra el cabo
+     suelto nº4.** Es breaking change de contrato, pero hoy no lo consume nadie.
+  4. ✅ **Punto 4 aprobado** sin cambios.
+
+- 📌 **Deber nuevo del humano:** si edita el CSV con Excel, guardarlo como **CSV UTF-8**.
+  El parser descodifica UTF-8 explícitamente y Excel reescribe en cp1252, lo que le
+  rompería todos los acentos. (Su pantallazo ya mostraba `SUSCRIPCIÃ"`, pero eso era
+  Excel mostrándolo mal, no el archivo.)
+- ✅ **Tres resoluciones propagadas al spec.** Requirements **17 → 20** (R18 IBAN del
+  preámbulo, R19 nunca una cuenta sin IBAN, R20 `/api/ingesta/*` → 404); ninguno
+  retirado. `tasks.md` pasa de 3 a 4 lotes. `decisions.md` queda a **cero puntos rojos**.
+  ⚠️ **La F12 es la feature más gorda hasta ahora** (tope recomendado ~15): ya no es
+  solo el importador, lleva dentro el cambio al parser de MyInvestor y el renombrado.
+  Los tres tocan los mismos archivos, así que separarlos costaría tocarlos dos veces.
+- ✅ **Puerta de aprobación pasada** (2026-08-12). Feature a `in_progress`.
+- 🚧 **`implementer` lanzado.** Instruido para dejar el **lote del renombrado
+  autocontenido** (mecánico y ruidoso: mezclado con la lógica del importador haría la
+  revisión ilegible) y para **no commitear nada**. Pendiente después: `reviewer`.
+- ✅ **F12 implementada** (los cuatro lotes, **31/31 tasks `[x]`**). Informe en
+  [`progress/implementations/import.md`](implementations/import.md).
+  - **Lote A** — módulo nuevo [`src/modules/import/`](../src/modules/import/):
+    `POST /api/import`, registro de parsers inyectado, `toMovementRows` puro, dedup
+    por `createMany({ skipDuplicates })` contra el índice parcial, y el movimiento a
+    `procesados/` **solo tras guardar**.
+  - **Lote B** — el parser de MyInvestor lee la línea `iban;…` del preámbulo. El
+    test **R20 de la F10 no se ha tocado** y sigue en verde.
+  - **Lote C** (autocontenido) — `git mv src/modules/ingesta` → `ingestion`, sus
+    cinco archivos y símbolos renombrados, `POST /api/ingestion/process` deja de
+    mover, cableado en `app.ts` y guardianes de `architecture.test.ts`
+    **actualizados, no desactivados**.
+  - **Lote D** — `api-contract.md` (endpoint nuevo + nota de breaking change),
+    ADR-015, roadmap (E2 y E5 ✅, cabos sueltos nº 1 y nº 4 tachados, nº 10 nuevo
+    por el límite de `daySequence`), `conventions.md` y `dar-de-alta-un-banco.md`.
+  - `./init.sh` **verde**: 24 archivos, **316 tests** (antes 280), typecheck, `lint`
+    y `format:check` limpios. **Sin commits**, como se pidió.
+- 🟥 **`reviewer`: CHANGES_REQUESTED** → [`progress/reviews/import.md`](reviews/import.md).
+  **El importador en sí lo aprueba**: R1-R20 con test real contra base de datos y no
+  contra mocks; verificó a fondo y dio por buenos los tres puntos que el implementer
+  había marcado con lupa (el test de R9 **sí** prueba el orden guardar→mover,
+  `ON CONFLICT DO NOTHING` sin target **sí** cubre el índice parcial, y el aislamiento
+  por slug es real), más el R20 de la F10 intacto, la invariante del IBAN sin cuarta
+  vía, los guardianes actualizados y **E2/E5 ✅ del roadmap ciertos** (no se adelantó).
+  Los tres bloqueantes son **de fuera del módulo**:
+  1. 🔴 **El IBAN real del humano estaba versionado** en 8 sitios (test del parser,
+     `dar-de-alta-un-banco.md`, los tres archivos del spec y el propio informe de
+     revisión). **Fallo del leader**, no del implementer: le pasó al `spec-author` el
+     CSV real que el humano pegó, sin sustituir el número por uno de ejemplo, y de ahí
+     bajó a todo lo demás. ✅ **Cero commits afectados** (`git log --all -S` vacío):
+     se arregla con un reemplazo, sin reescribir historia. Sustituido por
+     `ES9121000418450200051332` (el IBAN español de ejemplo de la documentación
+     pública). **Regla que queda escrita: en un fixture nunca va un dato real del
+     humano, ni siquiera uno que él mismo haya pegado en la conversación.**
+  2. `README.md` seguía documentando `/api/ingesta/*`, decía que `process` mueve a
+     `procesados/` y no listaba `POST /api/import`.
+  3. `progress/current.md` describía la sesión del spec y no anotaba el breaking
+     change que exige `docs/related-projects.md`. ✅ **Corregido por el leader** (ver
+     la sección de arriba).
+- ✅ **Bloqueantes 1 y 2 corregidos** por el implementer. El IBAN real sale de 13
+  ocurrencias en 6 archivos; `README.md` al día (rutas `ingestion`, `POST /api/import`,
+  breaking change, árbol de módulos y `POST /api/parser/myinvestor`, que faltaba desde
+  la F10). Regla nueva en [`docs/conventions.md`](../docs/conventions.md) §Tests.
+- ✅ **`reviewer`: APROBADO** en segunda pasada.
+  - Confirmó **por su cuenta** el bloqueante 1: `ES30…` a **0 ocurrencias** en todo el
+    árbol, y ni `git log --all -S` ni `git grep` lo encuentran → **nunca llegó a un
+    commit**. Contó 16 ocurrencias del sustituto en 8 archivos (el parte del
+    implementer decía 13/6: la diferencia son tres `progress/*.md`).
+  - `./init.sh` verde verificado por él: 24 archivos, **316 tests**, `tsc`, `lint` y
+    `format:check`. Nada de lo aprobado en la primera pasada quedó tocado.
+  - Resumen de cierre en [`progress/summaries/import.md`](summaries/import.md).
+  - **Nit no bloqueante, ya corregido por el leader:** `requirements.md` R18 decía que
+    el humano había puesto *ese* IBAN concreto en su CSV, lo cual dejó de ser literal
+    al sustituirlo. Ahora usa la forma elidida `iban;ES…`, como ya hacían
+    `api-contract.md` y el roadmap.
+- ⏭ **Pendiente:** marcar `done` (lo hace el implementer) y **decidir los commits con el
+  humano** — la idea acordada es separarlos: el renombrado por un lado, el importador
+  por otro.

@@ -104,6 +104,52 @@ Tres reglas que no se negocian:
 Ejemplos vivos que se pueden copiar tal cual: `src/modules/bankinter/` (`.xlsx`,
 ADR-010) y `src/modules/myinvestor/` (`.csv`, ADR-014).
 
+**Cuarto paso, en `src/app.ts` (una línea):** para que la **importación** use ese
+parser hay que añadir el banco al registro que se le inyecta (ADR-015):
+
+```typescript
+const parsers: BankParserRegistry = [
+  { bank: 'bankinter', extensions: ['.xlsx'], parse: parseBankinterXlsx },
+  { bank: '<banco>', extensions: ['.csv'], parse: parse<Banco>Statement },
+]
+```
+
+`app.ts` es **el único archivo de `src/` que puede nombrar un banco**. Mientras
+esa línea no exista, sus ficheros se reportan como `skipped` en el informe de
+`POST /api/import` (ni se importan ni se mueven), que es justo lo que permite
+inspeccionarlos antes de tener el parser.
+
+## El IBAN va en el fichero, una sola vez
+
+> Añadido el 2026-08-12 con la feature 12 (`import`).
+
+**Ninguna cuenta se crea nunca sin IBAN.** El IBAN viaja **en el fichero**, no en
+la configuración ni en un alta manual, y basta escribirlo **una vez** para esa
+cuenta: no cambia nunca, así que los ficheros siguientes ya no lo necesitan.
+
+- Si el banco lo trae en su export (Bankinter), no hay que hacer nada.
+- Si no lo trae (MyInvestor), se escribe a mano como **primera línea del fichero**,
+  **encima** de la fila de cabecera, con esta forma exacta:
+
+  ```
+  iban;ES9121000418450200051332
+  Fecha de operación;Fecha de valor;Concepto;Importe;Divisa
+  ```
+
+  > El IBAN de este ejemplo es el **público de la documentación española**, no el
+  > tuyo: en el repositorio (docs, specs y tests) nunca se escribe un IBAN real.
+  > El tuyo va solo en tu fichero de Drive y en su copia local de
+  > `var/drive-read/`, que está gitignoreada.
+
+  La etiqueta se compara sin distinguir mayúsculas ni espacios sobrantes y los `;`
+  de relleno que añade Excel al final son inocuos. Si editas el fichero con Excel,
+  guárdalo como **«CSV UTF-8»**: el parser descodifica UTF-8 explícitamente y un
+  guardado en cp1252 rompería los acentos de los conceptos.
+
+Si falta y ese banco no tiene **exactamente una** cuenta ya dada de alta, ese
+fichero se reporta como `failed` con el código `MISSING_ACCOUNT_DATA`, no se
+importa y **no se mueve**: se corrige el fichero y se reintenta.
+
 ## Reglas del nombre de banco (las aplica `normalizeBankName`)
 
 El backend normaliza la entrada antes de usarla como nombre de carpeta:
