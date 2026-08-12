@@ -40,8 +40,7 @@
 
 - [ ] No hay archivos sin trackear sospechosos (temporales, builds, caches
       fuera del `.gitignore` del proyecto o del `.git/info/exclude`).
-- [ ] `progress/history.md` tiene **una línea** por la última feature cerrada,
-      con enlace a su `resumen_<name>.md`. No una copia del informe.
+- [ ] `progress/history.md` tiene una entrada por la última sesión.
 - [ ] La última feature trabajada está reflejada en su estado correcto en
       `feature_list.json`.
 
@@ -56,17 +55,16 @@
 ## C7 — Spec Driven Development (solo si la feature tiene `"sdd": true`)
 
 - [ ] Toda feature con `"sdd": true` en estado `spec_ready`, `in_progress`
-      o `done` tiene su carpeta `specs/<name>/` con los archivos técnicos:
-      `requirements.md`, `design.md`, `tasks.md`.
-- [ ] Si la feature está en `spec_ready` o `in_progress`, la carpeta tiene
-      además `decisions.md` — son **4 archivos**, no 3. (No se exige en
-      features ya `done`: la hoja es un artefacto de revisión y las cerradas
-      antes de que existiera la regla no se tocan.)
-- [ ] `decisions.md` cabe en una página, tiene los bloques del formato de
-      `docs/decisions-template.md` y **no más de 6 puntos en el bloque 🔴**,
-      cada uno con su alternativa concreta.
-- [ ] El spec no pasa de **~15 requirements**. Si se pasa, la razón está
-      **dicha explícitamente** en `decisions.md`, no en silencio.
+      o `done` tiene su carpeta `specs/<name>/` con `requirements.md`,
+      `design.md` y `tasks.md`.
+- [ ] Además, si está en `spec_ready` o `in_progress`, tiene `decisions.md`
+      (la hoja es de revisión: no se exige retroactivamente a features cerradas
+      antes de que existiera la regla).
+- [ ] `decisions.md` cabe en **una página**, tiene los cuatro bloques del
+      formato (🔴 confirma / ✅ ya cerradas / ⚙️ técnicas / 📌 consecuencias) y
+      no más de 6 puntos en el bloque 🔴 (`docs/specs.md` §Las cuatro reglas).
+- [ ] El spec no pasa de **~15 requirements**; si se pasa, la razón está dicha
+      explícitamente en `decisions.md` o la feature debió partirse.
 - [ ] `requirements.md` usa EARS estricto (ver `docs/specs.md`).
 - [ ] Toda feature `done` con `"sdd": true` tiene todas sus tasks marcadas
       `[x]` en `tasks.md`.
@@ -76,10 +74,9 @@
 ## C8 — El resumen de cierre existe (solo al aprobar una feature)
 
 - [ ] Toda feature que se cierra como `done` tiene su
-      `progress/resumen_<name>.md` escrito en lenguaje humano
-      (ver `docs/resumen-template.md`).
-- [ ] El resumen mapea **todo** el código de la feature (archivo + símbolo,
-      agrupado por tema), y da archivo y línea solo en los puntos de entrada.
+      `progress/summaries/<name>.md` escrito en lenguaje humano
+      (ver `docs/summary-template.md`).
+- [ ] El resumen indica archivo y línea concretos de cada pieza de código.
 - [ ] El resumen cierra el círculo con el `intent`: cada punto de
       `como_se_que_esta_bien` aparece marcado como cumplido y con su test.
 

@@ -1,25 +1,25 @@
 {
-  "$schema_comment": "Hooks que automatizan la verificación. El harness los ejecuta, no el agente, así que no se pueden saltar. init.sh detecta el stack automáticamente y corre los tests apropiados.",
+  "$schema_comment": "Hooks que automatizan la verificación. El harness los ejecuta, no el agente, así que no se pueden saltar. init.sh detecta el stack automáticamente y corre los tests apropiados. Regla de diseño: rápido donde el ciclo es apretado (tras editar), completo donde se toman decisiones (al cerrar el trabajo de un implementer).",
   "hooks": {
-    "PostToolUse": [
+    "PostToolBatch": [
       {
-        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "./init.sh > /tmp/harness_post_edit.log 2>&1 && tail -5 /tmp/harness_post_edit.log || (echo '[harness] verificación FALLÓ tras edición — revisa /tmp/harness_post_edit.log' && tail -20 /tmp/harness_post_edit.log)",
-            "description": "Tras editar o escribir archivos, ejecuta init.sh y muestra un resumen. Mantiene el feedback loop apretado."
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-changed.sh\"",
+            "description": "Tras cada lote de herramientas, verifica SOLO si se ha tocado código fuente, y en modo --fast (estado + tipos, sin suite). Los archivos del harness (.md, progress/, specs/, docs/, feature_list.json) no disparan nada."
           }
         ]
       }
     ],
-    "Stop": [
+    "SubagentStop": [
       {
+        "matcher": "implementer",
         "hooks": [
           {
             "type": "command",
-            "command": "./init.sh > /tmp/harness_init.log 2>&1 && echo '[harness] init.sh OK' || (echo '[harness] init.sh FALLÓ — revisa /tmp/harness_init.log antes de cerrar' && cat /tmp/harness_init.log | tail -20)",
-            "description": "Antes de cerrar la sesión, fuerza una verificación completa."
+            "command": "./init.sh > \"${TMPDIR:-/tmp}/harness_init.log\" 2>&1 && echo '[harness] init.sh OK (verificación completa)' || (echo '[harness] init.sh FALLÓ — el implementer no puede darse por terminado' && tail -20 \"${TMPDIR:-/tmp}/harness_init.log\")",
+            "description": "Verificación COMPLETA (tipos + suite entera) una sola vez, cuando el implementer termina. Sustituye al antiguo hook Stop, que disparaba al final de CADA turno de respuesta aunque no se hubiera tocado un archivo."
           }
         ]
       }
@@ -28,6 +28,8 @@
   "permissions": {
     "allow": [
       "Bash(./init.sh)",
+      "Bash(./init.sh --fast)",
+      "Bash(./init.sh --state)",
       "Bash(npm test*)",
       "Bash(pnpm test*)",
       "Bash(yarn test*)",

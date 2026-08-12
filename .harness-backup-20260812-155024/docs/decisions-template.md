@@ -61,13 +61,6 @@
 ## ⚠️ Incoherencias conocidas que se heredan
 
 - <Algo que queda mal a propósito y dónde se resolverá. Omitir el bloque si no hay.>
-
-## 🔄 Cambios desde tu última lectura (YYYY-MM-DD)
-
-> Solo aparece si pediste cambios. Máximo cinco líneas. Es lo primero que miras
-> al volver: te dice qué se movió sin que tengas que releer la hoja entera.
-
-- <qué cambió> — <archivo>:<sección/id> — <por qué>
 ```
 
 ---
