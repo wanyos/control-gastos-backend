@@ -4,7 +4,7 @@
 > **qué viene después** y **por qué en ese orden**. Es el mapa del recorrido
 > completo, no el detalle de ninguna parada.
 >
-> **Última revisión:** 2026-08-11.
+> **Última revisión:** 2026-08-13.
 
 ## Este documento frente a los otros cuatro
 
@@ -34,14 +34,23 @@ datos → `procesados/`. Es la primera vez que la app **guarda datos de verdad**
 **Ya tienes el sitio donde guardarlo todo (E3 ✅, F9) y la forma común en que los
 parsers hablan (F11 ✅).** Ambas cerradas el 2026-08-11.
 
-Y **ya hay dos bancos que sabes leer**: la F10 cerró el extracto de MyInvestor,
-el primer parser nacido directamente contra el contrato. La antigua F10 se
-**partió en dos** (70 requirements escondían dos features): los JSON de producto
-son ahora la **F13**, que te espera con cinco decisiones.
+Y **ya hay dos bancos que sabes leer**, con las dos entradas de MyInvestor
+cerradas: el extracto (F10) y los JSON de producto (F13, 2026-08-12). La antigua
+F10 se **partió en dos** porque 70 requirements escondían dos features.
 
-**Ya no hay nada esperándote.** No queda ningún `intent` en borrador del agente ni
-ninguna decisión pendiente de tu visto bueno. **La única feature abierta es la
-F13** (`myinvestor-products`), con su spec ya cerrado y lista para arrancar.
+**El repositorio ya no guarda datos tuyos** y no depende de que nadie se acuerde:
+la F14 dejó un guardián en la suite que falla señalando archivo y línea si
+reaparece uno.
+
+⚠️ **Por primera vez no hay siguiente paso decidido.** Las **14 features están
+`done`** y no queda ninguna abierta, ningún `intent` en borrador ni ninguna
+decisión esperando tu visto bueno. Antes de que un agente pueda arrancar algo,
+**la elección es tuya** y son dos caminos distintos:
+
+- **Seguir con bancos (E4).** Bloqueado por ti: sin el inventario por banco no se
+  sabe ni cuántas features son (ver §E4).
+- **Empezar a enriquecer (E6).** No está bloqueado por nada, pero **no tiene
+  ninguna feature escrita**: hay que redactar el `intent` de la primera.
 
 ---
 
@@ -51,13 +60,13 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 
 | # | Etapa | Estado | Features |
 |---|---|---|---|
-| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2 |
+| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2, F14 |
 | E1 | **El remoto** — hablar con Google Drive y organizarlo | ✅ | F3, F4 |
 | E2 | **Traer los ficheros** — detectar pendientes y descargarlos | ✅ (deuda saldada por la F12) | F5 |
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
-| E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 2 de ~7 bancos, **contrato ✅** | F6, F7, F11, F10, **F13 ⏸** |
+| E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 2 de ~7 bancos, **contrato ✅** · bloqueada por el inventario | F6, F7, F11, F10, F13 |
 | E5 | **La importación** — del fichero parseado a la base de datos | ✅ | **F12** |
-| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | ⬜ | *sin features* |
+| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | ⬜ **candidata a siguiente** | *sin features* |
 | E7 | **Consultar** — filtros, saldos, totales, patrimonio | ⬜ | *sin features* |
 | E8 | **Ver** — el frontend | ⬜ | otro proyecto |
 | E9 | **Que esto viva en algún sitio** — despliegue y acceso | ⬜ | *sin etapa hasta hoy* |
@@ -74,6 +83,18 @@ Fastify + Prisma + Postgres en docker, TypeScript estricto ESM, Vitest, oxlint +
 Prettier, config de entorno validada al arrancar y errores centralizados
 ([`src/errors/app-error.ts`](../src/errors/app-error.ts),
 [`src/plugins/error-handler.ts`](../src/plugins/error-handler.ts)).
+
+- **F14 `no-real-data`** ✅ (2026-08-12) — el repositorio deja de guardar datos
+  financieros tuyos, y deja de depender de que alguien se acuerde:
+  [`src/no-real-data.test.ts`](../src/no-real-data.test.ts) **falla en la suite**
+  con archivo, línea y motivo si reaparece uno. El mismo escape había ocurrido
+  **tres veces** (F6, F12, F13) y las tres las cazó el reviewer leyendo, nunca la
+  suite, pese a estar la regla escrita en dos sitios. ADR-017.
+- **Tooling al día (2026-08-13, tarea directa):** TypeScript **7**, pnpm
+  **11.21.0** y el linter cambiado de ESLint a **oxlint**, porque
+  `typescript-eslint` tenía TypeScript congelado en 6.0.3. La regla que salió de
+  ahí está en [`docs/stack.md`](./stack.md) §Restricciones: **ninguna herramienta
+  de desarrollo bloquea una dependencia del runtime.**
 
 ### E1 — El remoto ✅
 
@@ -120,7 +141,7 @@ la salida**, no el código que lee el formato.
 |---|---|---|
 | Bankinter | `.xlsx` de la cuenta | ✅ F6 + F7 (renombrado a inglés) |
 | MyInvestor · extracto | CSV de la cuenta corriente | ✅ **F10 `myinvestor-statement`** (2026-08-11) — primer parser nacido ya contra el contrato |
-| MyInvestor · productos | un JSON por producto de inversión | 🟡 **F13 `myinvestor-products`** — implementada el 2026-08-12 (ADR-016), **pendiente del reviewer**. Su spec no tiene ningún punto rojo abierto desde el 2026-08-11 |
+| MyInvestor · productos | un JSON por producto de inversión | ✅ **F13 `myinvestor-products`** (2026-08-12, ADR-016) — misma ruta `POST /api/parser/myinvestor`, encaminado por extensión; **no toca base de datos** |
 | Los ~5 restantes | sin inventariar | ⬜ **no existen ni como feature** |
 
 **F11 `parsed-movement-contract`** ✅ (2026-08-11) — la pieza que faltaba, ya
@@ -316,10 +337,31 @@ tiene etapa, es que se va a perder.
 - **`initialBalance` de esa cuenta: correcto a la primera.** Tampoco trae saldo
   por movimiento, así que es **el único ancla**; si lo pones mal, todo el saldo
   queda desplazado por igual.
-- **Inventario por banco:** entrar en cada web y anotar si da CSV/PDF.
+- **Inventario por banco:** entrar en cada web y anotar si da CSV/PDF. **Es lo
+  que bloquea la E4 entera:** sin él no se sabe ni cuántas features son.
 - Los dos anteriores salen de
   [`specs/myinvestor-statement/decisions.md`](../specs/myinvestor-statement/decisions.md)
   (§Consecuencias que te tocan a ti).
+- **La plantilla mensual, en una carpeta HERMANA de `notas-banco/`**, nunca
+  dentro: todo lo que cuelga de ahí se toma por un banco y saldría cada mes como
+  archivo roto. De
+  [`specs/myinvestor-products/decisions.md`](../specs/myinvestor-products/decisions.md).
+- **Reimportar un fichero ya procesado** exige devolverlo a mano en Drive de
+  `procesados/` a la carpeta del año. Reimportarlo no duplica nada.
+
+### Dos decisiones que la F14 te devolvió (2026-08-12, ninguna urgente)
+
+- **El histórico de git.** Decidiste no reescribirlo cuando lo que se creía
+  expuesto eran cifras de inversión en dos commits recientes. Ahora se sabe que
+  desde la **F6** contiene además tu **IBAN de Bankinter**, el **nombre de tu
+  empresa** y el **nombre completo de otra persona** — dato de un tercero. El
+  repositorio es privado, así que no hay urgencia, pero la decisión se tomó con
+  menos información.
+- **Una línea real sigue en una migración ya aplicada**
+  (`prisma/migrations/**/migration.sql`). Editarla obligaría a `migrate reset` y
+  perderías la base de datos. Salidas: sanearla el día que resetees por otro
+  motivo, o editarla y corregir a mano el checksum de Prisma. Riesgo residual
+  aceptado mientras tanto.
 
 ---
 
