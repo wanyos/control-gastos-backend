@@ -80,6 +80,7 @@ describe('parseMyinvestorProduct — the four product types (R21, R22, R33, R34,
       name: 'Fondo Sintetico Global',
       date: '2026-08-31',
       currency: 'EUR',
+      openedAt: '2025-01-15',
       closedAt: null,
       valuation: {
         invested: 800,
@@ -134,6 +135,71 @@ describe('parseMyinvestorProduct — identity, dates and currency (R23, R24, R28
 
     expect(fund.valuation?.gainPercent).toBe(2.75)
     expect(deposit.depositTerms?.interestRate).toBe(2.75)
+  })
+})
+
+describe('parseMyinvestorProduct — opening a product (feature 15)', () => {
+  it('reads openedAt on the four types, next to closedAt (F15-C1, F15-C3)', () => {
+    for (const build of [
+      () => buildProductFund({ type: 'fund' }),
+      () => buildProductFund({ type: 'etf' }),
+      () => buildProductPortfolio(),
+      () => buildProductDeposit(),
+    ]) {
+      const product = parsedOk(parse(build()))
+
+      expect(product.openedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      // Opened and closed live side by side, and the second one stays optional.
+      expect(product.closedAt).toBeNull()
+    }
+  })
+
+  it('keeps the exact opening date written, in both shapes of product (F15-C1)', () => {
+    expect(parsedOk(parse(buildProductFund({ openedAt: '2024-02-29' }))).openedAt).toBe('2024-02-29')
+    expect(parsedOk(parse(buildProductDeposit({ openedAt: '2026-01-02' }))).openedAt).toBe(
+      '2026-01-02',
+    )
+  })
+
+  it('fails the file naming openedAt when it is missing, on the four types (F15-C2)', () => {
+    for (const build of [
+      () => buildProductFund({ type: 'fund', openedAt: undefined }),
+      () => buildProductFund({ type: 'etf', openedAt: undefined }),
+      () => buildProductPortfolio({ openedAt: undefined }),
+      () => buildProductDeposit({ openedAt: undefined }),
+    ]) {
+      const reason = failureReason(parse(build()))
+
+      expect(reason).toContain('faltan campos obligatorios')
+      expect(reason).toContain('openedAt')
+    }
+  })
+
+  it('treats an explicit null openedAt as missing, never as "opened unknown" (F15-C2)', () => {
+    const reason = failureReason(parse(buildProductFund({ openedAt: null })))
+
+    expect(reason).toContain('faltan campos obligatorios: openedAt')
+  })
+
+  it('rejects an empty or badly shaped openedAt naming the expected format (F15-C2)', () => {
+    for (const written of ['', '15/01/2025', '2025-1-5', '2025-02-30']) {
+      const reason = failureReason(parse(buildProductFund({ openedAt: written })))
+
+      expect(reason).toContain('openedAt')
+      expect(reason).toContain('AAAA-MM-DD')
+    }
+  })
+
+  it('accumulates a missing openedAt with the rest of the problems of the file (F15-C2)', () => {
+    const reason = failureReason(
+      parse(buildProductFund({ openedAt: undefined, invested: undefined, sobra: 'clave' })),
+    )
+
+    expect(reason.split(';')).toHaveLength(2)
+    expect(reason).toContain('faltan campos obligatorios')
+    expect(reason).toContain('openedAt')
+    expect(reason).toContain('invested')
+    expect(reason).toContain('sobra')
   })
 })
 

@@ -742,6 +742,7 @@ Modelo de un producto parseado, tal como aparece en el volcado:
   "name": "Fondo Indexado Global",
   "date": "2026-08-31",
   "currency": "EUR",
+  "openedAt": "2025-01-15",
   "closedAt": null,
   "valuation": {
     "invested": 800,
@@ -762,6 +763,7 @@ Modelo de un producto parseado, tal como aparece en el volcado:
 | `name` | `string` | identidad del producto, escrita dentro del archivo |
 | `date` | `string` | ISO `YYYY-MM-DD`: la fecha de la foto (del apunte, en un depósito) |
 | `currency` | `string` | `"EUR"` si el archivo no la trae |
+| `openedAt` | `string` | ISO; **obligatorio en los cuatro tipos** (feature 15). Nunca `null`: un archivo sin él es un archivo **fallido**, no un producto con hueco |
 | `closedAt` | `string \| null` | ISO; `null` = vivo. **Dejar de escribir un producto NO lo cierra** |
 | `valuation` | objeto \| `null` | `null` en `deposit` |
 | `depositTerms` | objeto \| `null` | `null` en los otros tres tipos |

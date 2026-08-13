@@ -42,10 +42,10 @@ F10 se **partió en dos** porque 70 requirements escondían dos features.
 la F14 dejó un guardián en la suite que falla señalando archivo y línea si
 reaparece uno.
 
-⚠️ **Por primera vez no hay siguiente paso decidido.** Las **14 features están
-`done`** y no queda ninguna abierta, ningún `intent` en borrador ni ninguna
-decisión esperando tu visto bueno. Antes de que un agente pueda arrancar algo,
-**la elección es tuya** y son dos caminos distintos:
+⚠️ **No hay siguiente paso decidido.** Las **15 features están `done`** y no
+queda ninguna abierta, ningún `intent` en borrador ni ninguna decisión esperando
+tu visto bueno. Antes de que un agente pueda arrancar algo, **la elección es
+tuya** y son dos caminos distintos:
 
 - **Seguir con bancos (E4).** Bloqueado por ti: sin el inventario por banco no se
   sabe ni cuántas features son (ver §E4).
@@ -141,7 +141,7 @@ la salida**, no el código que lee el formato.
 |---|---|---|
 | Bankinter | `.xlsx` de la cuenta | ✅ F6 + F7 (renombrado a inglés) |
 | MyInvestor · extracto | CSV de la cuenta corriente | ✅ **F10 `myinvestor-statement`** (2026-08-11) — primer parser nacido ya contra el contrato |
-| MyInvestor · productos | un JSON por producto de inversión | ✅ **F13 `myinvestor-products`** (2026-08-12, ADR-016) — misma ruta `POST /api/parser/myinvestor`, encaminado por extensión; **no toca base de datos** |
+| MyInvestor · productos | un JSON por producto de inversión | ✅ **F13 `myinvestor-products`** (2026-08-12, ADR-016) — misma ruta `POST /api/parser/myinvestor`, encaminado por extensión; **no toca base de datos**. **F15** (2026-08-13) le añadió `openedAt` **obligatorio en los cuatro tipos** |
 | Los ~5 restantes | sin inventariar | ⬜ **no existen ni como feature** |
 
 **F11 `parsed-movement-contract`** ✅ (2026-08-11) — la pieza que faltaba, ya
@@ -313,11 +313,11 @@ tiene etapa, es que se va a perder.
 | ~~2~~ | ~~Importe 0: el parser de Bankinter lo trata como `income`~~ | ✅ **cerrado por la F11** (2026-08-11): sale `neutral` |
 | ~~7~~ | ~~`ParsedMovement` vive dentro de `bankinter/`; `deriveMovementTypeFromAmount` reimplementado~~ | ✅ **cerrado por la F11**: contrato en [`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts), helper único |
 | 8 | `computeTotals` **no excluye** `productId != null`. Hoy da igual (la columna es siempre `null`), pero en cuanto exista quien la escriba, las aportaciones mensuales contarán como gasto del mes | **E6** (con su escritor) |
-| 9 | `InvestmentProduct.openedAt` nace **sin escritor previsto**: el formato del fichero no lo lleva, así que se queda `NULL` | sin dueño |
+| ~~9~~ | ~~`InvestmentProduct.openedAt` nace **sin escritor previsto**~~ | ✅ **cerrado por la F15** (2026-08-13): la fecha va en el propio JSON de producto, **obligatoria en los cuatro tipos**. El archivo ya la trae; falta solo quien la guarde en la columna (la feature que persista inversiones) |
 | 3 | Todo lo importado nace `pending_review` y **nada lo pasa a `confirmed`** | **E6** |
 | ~~4~~ | ~~`src/modules/ingesta/` y `/api/ingesta/*` están en español~~ | ✅ **cerrado por la F12** (2026-08-12): `src/modules/ingestion/` y `/api/ingestion/*`; las rutas viejas responden 404 |
 | 10 | `daySequence` numera solo las filas parseadas: reimportar un fichero tras arreglar su parser puede renumerar ese día y dejar duplicados **visibles** | sin dueño |
-| 5 | El histórico del Excel de años (idea #5 ❄️) sigue sin decidirse dentro/fuera | sin dueño |
+| 5 | El histórico del Excel de años (idea #5 ❄️): **aplazado, no descartado** (2026-08-13). Inclinación del humano a importarlo «para no empezar de vacío»; se decide más adelante | sin dueño, aplazado |
 | 6 | La base de datos no tiene copia de seguridad; el crudo de Drive te salva los movimientos, **no** las categorías, alias ni `initialBalance` | sin dueño |
 
 > **Sobre el 6:** volver a parsear desde Drive te reconstruye lo importado, pero
@@ -342,10 +342,14 @@ tiene etapa, es que se va a perder.
 - Los dos anteriores salen de
   [`specs/myinvestor-statement/decisions.md`](../specs/myinvestor-statement/decisions.md)
   (§Consecuencias que te tocan a ti).
-- **La plantilla mensual, en una carpeta HERMANA de `notas-banco/`**, nunca
-  dentro: todo lo que cuelga de ahí se toma por un banco y saldría cada mes como
-  archivo roto. De
+- ~~**La plantilla mensual, en una carpeta HERMANA de `notas-banco/`**~~ ✅ **hecho**
+  (2026-08-13): la carpeta ya está creada en Drive, fuera de `notas-banco/`. De
   [`specs/myinvestor-products/decisions.md`](../specs/myinvestor-products/decisions.md).
+- 🔴 **Actualizar esa plantilla con `openedAt`** (F15, 2026-08-13). Nadie comprueba
+  que la plantilla de Drive coincida con la documentación, así que **todo archivo
+  escrito con la plantilla vieja fallará** por falta de la fecha de apertura. Es una
+  línea; cópiala de
+  [`docs/myinvestor-product-files.md`](./myinvestor-product-files.md).
 - **Reimportar un fichero ya procesado** exige devolverlo a mano en Drive de
   `procesados/` a la carpeta del año. Reimportarlo no duplica nada.
 

@@ -211,13 +211,20 @@ model Movement {
 | `daySequence` | 🔄 **lo emite el parser de cada banco**, ya normalizado (F11); el importer solo lo copia |
 | `Movement.productId` | la feature de **enlace de aportaciones**, sobre el parser del fichero de inversiones (regla 5; el `model Movement` real lo lleva desde la F9, ver [Parte 2](#parte-2--inversiones)) |
 | `InvestmentProduct.closedAt` | el **importador del fichero de inversiones**: el humano escribe `closedAt` una sola vez, en la última aparición del producto |
-| `InvestmentProduct.openedAt` | 🟡 **nadie, de momento: se queda `NULL`.** El formato del fichero no lleva ese campo; si algún día se quiere, es un campo opcional más y **cero migración**, porque la columna ya existe |
+| `InvestmentProduct.openedAt` | 🔄 el **importador del fichero de inversiones**: sale del campo `openedAt` del JSON de producto, **obligatorio en los cuatro tipos desde la F15** (un archivo sin él es un archivo fallido, nunca un producto con la fecha en blanco). **Cero migración**: la columna ya existía desde la F9 |
 
 > Las **tres últimas filas** las añadió la feature 9 y se explican en la
 > [Parte 2](#parte-2--inversiones): `Movement.productId` es una columna del flujo,
 > pero quien la escribirá y su regla (la 5) viven allí; las dos de
 > `InvestmentProduct` son de esa parte entera. Viven aquí porque esta tabla es el
 > registro único de columnas sin escritor del proyecto.
+
+> 🔄 **Cambio del 2026-08-13 (F15).** `InvestmentProduct.openedAt` **ya tiene quien la
+> escriba**. Nació en la F9 sin escritor porque el formato del fichero de producto no
+> llevaba el campo, y esta tabla la daba por condenada a `NULL`. La F15 lo añadió al
+> fichero y lo hizo **obligatorio en los cuatro tipos** (`fund`, `etf`,
+> `managed_portfolio`, `deposit`), decidido así por el humano frente a admitirlo vacío.
+> El formato está en [`myinvestor-product-files.md`](myinvestor-product-files.md).
 
 > 🔄 **Cambio del 2026-08-11.** El design de la f8 dejó el cálculo de
 > `daySequence` en el importer, pero avisó: «cuando haya un segundo banco,

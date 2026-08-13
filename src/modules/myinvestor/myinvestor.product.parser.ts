@@ -34,8 +34,14 @@ import type {
 
 const productTypes: InvestmentProductType[] = ['fund', 'etf', 'managed_portfolio', 'deposit']
 
-/** Keys every product carries, whatever its type. */
-const commonKeys = ['type', 'name', 'date', 'currency', 'closedAt']
+/**
+ * Keys every product carries, whatever its type.
+ *
+ * `openedAt` is here and not among the type keys because it is MANDATORY on the
+ * four types (feature 15): every product was opened one day, whereas only some
+ * are closed. That is why it sits next to `closedAt` but is read as required.
+ */
+const commonKeys = ['type', 'name', 'date', 'currency', 'openedAt', 'closedAt']
 
 /** Keys of a product that fluctuates (fund, ETF, managed portfolio). */
 const valuationKeys = ['invested', 'marketValue', 'gain', 'gainPercent', 'uninvestedCash']
@@ -69,6 +75,9 @@ export function parseMyinvestorProduct(
   const name = readName(source, problems, missing)
   const date = readIso('date', true)
   const currency = readCurrency(source, problems)
+  // Required on the four types (R-F15): its absence lands in `missing` and is
+  // reported by name inside the SINGLE reason of the file, like any other one.
+  const openedAt = readIso('openedAt', true)
   const closedAt = readIso('closedAt', false)
 
   let valuation: ParsedValuation | null = null
@@ -104,7 +113,14 @@ export function parseMyinvestorProduct(
   }
 
   const shape = type === 'deposit' ? depositTerms : valuation
-  if (problems.length > 0 || type === null || name === null || date === null || shape === null) {
+  if (
+    problems.length > 0 ||
+    type === null ||
+    name === null ||
+    date === null ||
+    openedAt === null ||
+    shape === null
+  ) {
     return { reason: problems.join('; ') || 'archivo de producto no interpretable' }
   }
 
@@ -115,6 +131,7 @@ export function parseMyinvestorProduct(
     name,
     date,
     currency,
+    openedAt,
     closedAt,
     valuation,
     depositTerms,

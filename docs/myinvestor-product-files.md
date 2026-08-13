@@ -41,8 +41,8 @@
 ```
 
 Un año de dos cifras tiene tres lecturas posibles y el parser **no adivina**: una fecha
-en otro formato se rechaza diciendo el formato esperado. Aplica a `date`, `maturityDate`
-y `closedAt`.
+en otro formato se rechaza diciendo el formato esperado. Aplica a `date`, `openedAt`,
+`maturityDate` y `closedAt`.
 
 ### Y una tercera que no es de formato: las claves
 
@@ -65,6 +65,7 @@ Los tres tipos llevan **exactamente los mismos campos**.
   "type": "fund",
   "name": "Fondo Indexado Global",
   "date": "2026-08-31",
+  "openedAt": "2025-01-15",
   "invested": 800,
   "marketValue": 947.25,
   "gain": 147.25,
@@ -81,6 +82,7 @@ La cartera automatizada es la que suele traer efectivo sin invertir:
   "type": "managed_portfolio",
   "name": "Cartera Automatizada",
   "date": "2026-08-31",
+  "openedAt": "2025-03-01",
   "invested": 3000,
   "marketValue": 3210.4,
   "gain": 210.4,
@@ -91,7 +93,8 @@ La cartera automatizada es la que suele traer efectivo sin invertir:
 ```
 
 **Cadencia:** un archivo **por producto y por mes**. Lo que tecleas cada vez son
-**5 cosas** (la fecha y 4 números), o **6** en la cartera. El resto se copia.
+**5 cosas** (la fecha y 4 números), o **6** en la cartera. El resto se copia, y eso
+incluye `openedAt`: es **siempre el mismo valor** en todos los archivos de ese producto.
 
 ## Plantilla B — `deposit`
 
@@ -100,6 +103,7 @@ La cartera automatizada es la que suele traer efectivo sin invertir:
   "type": "deposit",
   "name": "Depósito a 3 meses",
   "date": "2026-08-31",
+  "openedAt": "2026-01-15",
   "principal": 1200,
   "interestRate": 1.5,
   "expectedGain": 4.5,
@@ -126,6 +130,7 @@ de ninguno de los dos y lo cerró el humano ese día.
 | `type` | obligatorio | obligatorio | **MODELO** — `fund` \| `etf` \| `managed_portfolio` \| `deposit` |
 | `name` | obligatorio | obligatorio | **MODELO** + **MUESTRA** (parcial) — es la **identidad** del producto: cambiarlo crea otro |
 | `date` | obligatorio | obligatorio | **MODELO** (A: la fecha de la foto) / **HUMANO (2026-08-11)** (B: el día de la nota) |
+| `openedAt` | **obligatorio** | **obligatorio** | **MODELO** (la columna, desde la f9) + **HUMANO (2026-08-13)** como campo obligatorio del archivo |
 | `currency` | opcional (def. `EUR`) | opcional (def. `EUR`) | **MODELO** — decidido: no se escribe nunca |
 | `invested` | obligatorio | ✗ no admitido | **MODELO** + **MUESTRA** |
 | `marketValue` | obligatorio | ✗ | **MODELO** + **MUESTRA** |
@@ -139,9 +144,15 @@ de ninguno de los dos y lo cerró el humano ese día.
 | `closedAt` | opcional | opcional | **MODELO** (la columna) + **HUMANO (2026-08-11)** como campo del archivo |
 | `_lo_que_sea` | opcional | opcional | **HUMANO (2026-08-11)** — tus notas, se ignoran |
 
-**Campos deliberadamente fuera:** el banco (sale de la carpeta), `openedAt` (se queda
-vacía; la fecha real de contratación está en el extracto), la **segunda TAE** del
+**Campos deliberadamente fuera:** el banco (sale de la carpeta), la **segunda TAE** del
 depósito y `units` / `unitPrice` / `isin` (descartados en la feature 9).
+
+> **Cambio del 2026-08-13 (feature 15).** `openedAt` estaba en esta lista de campos
+> fuera («se queda vacía; la fecha real de contratación está en el extracto») y **ya no
+> lo está**: es un campo **obligatorio** del archivo, en los cuatro tipos. La columna
+> existía en la base de datos desde la feature 9 sin nadie que la escribiera, y se habría
+> quedado `NULL` para siempre. El humano descartó explícitamente la alternativa de
+> admitirlo vacío.
 
 ### Los porcentajes van en porcentaje, nunca en fracción
 
@@ -160,6 +171,18 @@ escribes con cualquier nombre, cae en clave desconocida y te enteras.
 `uninvestedCash` **nunca** se suma a `marketValue` ni a ningún total: es el remanente de
 la aportación mensual que todavía no se ha invertido. El patrimonio de un producto es
 `marketValue + uninvestedCash`, y esa suma la hace quien consulta, no el parser.
+
+### `openedAt`: la fecha de apertura, obligatoria en los cuatro tipos
+
+- Es el día en que **abriste o contrataste** el producto, no el de la foto. `date` cambia
+  cada mes; `openedAt` **nunca**: se copia igual en todos los archivos de ese producto.
+- 🔴 **Si falta, el archivo entero falla** y el motivo lo dice por su nombre
+  (`faltan campos obligatorios: openedAt`), junto con el resto de sus problemas. Los demás
+  archivos del lote se parsean igual.
+- **Escribirlo vacío (`""`) o en otro formato tampoco vale**: se rechaza como cualquier
+  otra fecha, diciendo `AAAA-MM-DD`. Y `null` cuenta como ausente.
+- No es simétrico con `closedAt` y es a propósito: **todo producto se abrió un día**, solo
+  algunos están cerrados.
 
 ### `closedAt`: cómo se dice que un producto ya no está
 

@@ -105,6 +105,8 @@ export function buildProductFund(overrides: ProductFile = {}): ProductFile {
     type: 'fund',
     name: 'Fondo Sintetico Global',
     date: '2026-08-31',
+    // Mandatory since feature 15, on the four types.
+    openedAt: '2025-01-15',
     invested: 800,
     marketValue: 947.25,
     gain: 147.25,
@@ -129,6 +131,8 @@ export function buildProductDeposit(overrides: ProductFile = {}): ProductFile {
     type: 'deposit',
     name: 'Deposito Sintetico 3 meses',
     date: '2026-08-31',
+    // Mandatory since feature 15, on the four types.
+    openedAt: '2026-01-15',
     principal: 1200,
     interestRate: 1.5,
     expectedGain: 4.5,

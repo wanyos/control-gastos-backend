@@ -3,106 +3,74 @@
 > Este archivo se vacía al cerrar cada sesión y se mueve a `history.md`.
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
-- **Tarea en curso:** **F14 `no-real-data`** — sacar los datos reales del repositorio y
-  dejar un guardián en la suite que impida la recaída. Sin spec (`sdd: false`): la
-  fuente son el `intent` y los 10 criterios de `acceptance`.
-- **Inicio:** 2026-08-12
+- **Tarea en curso:** ninguna. La **F15 `product-opened-at`** se cerró en esta misma
+  sesión (2026-08-13). Las 15 features están `done`.
+- **Inicio:** 2026-08-13
 - **Agente:** leader + implementer + reviewer
 
-## F14 en curso — plan y estado
+## F15 `product-opened-at` — cerrada
 
-1. ✅ Barrido del árbol comparando contra las capturas gitignoreadas de `var/`. Salió
-   **mucho más** de lo que listó el reviewer de la F13: el **IBAN real** seguía en
-   `bankinter.parser.test.ts` (fuga de la F12 nunca cerrada), las líneas de su extracto
-   (importes, saldos, el nombre de su empresa, el de una persona, su gimnasio) estaban
-   en `src/`, `docs/`, `specs/` y `progress/` desde la F6, y el review de la F12 citaba
-   el IBAN viejo entero.
-2. ✅ Saneado: **~45 archivos**, valores inventados que conservan la aritmética.
-3. ✅ Guardián [`src/no-real-data.test.ts`](../src/no-real-data.test.ts): dos capas
-   (forma + comparación contra `var/`, que **se salta** si no está). ADR-017.
-4. ✅ `docs/conventions.md` §Tests apunta ya al guardián.
-5. ✅ **Segunda vuelta** tras `CHANGES_REQUESTED`: los 5 cambios aplicados (§8 del
-   informe). Lo gordo: el guardián **ya no se exceptúa a sí mismo** —llevaba dentro un
-   concepto real— y **ya no pasa en verde con `var/` a medias** (el `.xlsx` solo se ve
-   por su volcado; si falta una rama, se salta nombrándola). Más la pasada manual por
-   debajo del umbral, que era lo que faltaba.
-6. ✅ **`reviewer`: APROBADO** en segunda pasada → [`reviews/no-real-data.md`](reviews/no-real-data.md),
-   resumen en [`summaries/no-real-data.md`](summaries/no-real-data.md). Verificó por su
-   cuenta: la inyección de IBAN + saldo + concepto reales hace fallar **las tres capas**
-   con `archivo:línea`; **las cinco variantes de `var/`** acaban siempre en *skipped*
-   nombrando la rama que falta, **nunca en verde silencioso**; la salida del guardián de
-   su propia lista de excepciones es real (no hay exención equivalente con otro nombre);
-   y su pasada bajo el umbral, rehecha sin umbral, da **0 residuos**. Encontró además una
-   fuga suya: su review de la primera pasada citaba un importe real.
-7. ✅ **F14 `done`.** `./init.sh` verde: 26 archivos, **372 tests**.
+Nació de una revisión de estado: el humano pidió que el JSON de producto de inversión
+llevase la fecha de apertura. Sin spec (`sdd: false`).
 
-## 📌 Dos decisiones que quedan en manos del humano (ninguna urgente)
+1. ✅ **Decisión del humano:** `openedAt` **obligatorio en los cuatro tipos**, frente a
+   la alternativa de admitirlo vacío. `closedAt` no se toca (opcional; normalmente solo
+   los depósitos lo llevan).
+2. ✅ Implementado en `src/modules/myinvestor/`. La clave se lee **antes** de bifurcar
+   depósito/resto ([`myinvestor.product.parser.ts:80`](../src/modules/myinvestor/myinvestor.product.parser.ts#L80)),
+   que es lo que la hace obligatoria de verdad en los cuatro y no solo donde se probó.
+   `ParsedProduct.openedAt` es `string`, **nunca `null`**: sin fecha no hay producto,
+   hay archivo fallido.
+3. ✅ **`reviewer`: CHANGES_REQUESTED** en primera pasada, por **un solo punto de
+   documentación** — la tabla de columnas reservadas de `docs/data-model.md:214` seguía
+   diciendo que el fichero no llevaba el campo y que sería opcional. Es el registro que
+   leerá quien haga la persistencia de inversiones, así que dejarlo mintiendo era caro.
+4. ✅ **`reviewer`: APROBADO** en segunda pasada →
+   [`reviews/product-opened-at.md`](reviews/product-opened-at.md), resumen en
+   [`summaries/product-opened-at.md`](summaries/product-opened-at.md).
+   `./init.sh` verde: **379 tests, 0 saltados** (los 0 saltados importan: el guardián de
+   la F14 corrió con su capa de comparación activa, no solo la de forma).
 
-1. **Una línea de su extracto vive en una migración ya aplicada**
-   (`prisma/migrations/**/migration.sql`). Editarla obligaría a `migrate reset` y
-   perdería su base de datos, así que **no se ha tocado**. Salidas: sanear ese comentario
-   el día que resetee la base por otro motivo, o editarlo y corregir a mano el checksum
-   que Prisma guarda. Riesgo residual aceptado mientras tanto.
-2. **El histórico de git.** El 2026-08-12 decidió no reescribirlo, cuando lo que se creía
-   expuesto eran cifras de inversión en dos commits recientes. Ahora se sabe que desde la
-   **F6** contiene además su **IBAN de Bankinter**, el **nombre de su empresa** y el
-   **nombre completo de otra persona** — un dato de un tercero. El repositorio es
-   privado, así que no hay urgencia; pero la decisión se tomó con menos información y
-   **se le ha devuelto**.
+## 📌 Lo que le toca al humano
+
+1. 🔴 **Actualizar la plantilla de producto que guarda en Drive** con la línea de
+   `openedAt`. Nadie comprueba que coincida con la documentación: todo archivo escrito
+   con la plantilla vieja fallará. Plantillas en
+   [`docs/myinvestor-product-files.md`](../docs/myinvestor-product-files.md).
+2. **Prueba pendiente, anunciada por él:** va a poner la línea `iban;ES…` en el CSV de
+   MyInvestor y a subir sus JSON de inversión para probar el camino entero.
+3. **Inventario por banco** ([`docs/ideas.md`](../../docs/ideas.md)): sigue vacío y
+   sigue bloqueando la E4 entera.
+
+## ⚠️ El histórico de git NO está saneado (verificado el 2026-08-13)
+
+El humano lo dio por arreglado; se comprobó y **no lo está**. Los 36 commits conservan
+sus hashes y fechas originales, así que **no hubo reescritura**. Quedan dos IBAN
+**válidos por checksum** (no son de manual) alcanzables en commits antiguos, ninguno en
+HEAD:
+
+- `ES15 0128…` (0128 = Bankinter) en **14 commits**, desde `4caeb38` (F6, 2026-08-04),
+  en `bankinter.parser.test.ts`.
+- `ES30 1544…` en **4 commits**, de la F12 (2026-08-12).
+
+HEAD está limpio (solo los dos IBAN de manual y uno inválido a propósito). **Pendiente
+de que el humano diga qué hizo** — si puso el repo en privado o borró el remoto, reduce
+el riesgo pero no cierra el tema.
+
+## Cerrado también en esta sesión (no es código)
+
+- ✅ **Carpeta de plantillas en Drive**, hermana de `notas-banco/`: creada.
+- ✅ **Cabo suelto nº 9** (`openedAt` sin escritor): cerrado por la F15.
+- 🕗 **Histórico del Excel** (idea #5): **aplazado, no descartado** — inclinación a
+  importarlo «para no empezar de vacío».
+- ⏳ **Cabo suelto nº 10** (`daySequence` numera solo las filas parseadas): explicado y
+  **sigue abierto**. Se cierra el día que el humano diga que acepta borrar a mano los
+  duplicados visibles si algún día arregla un parser y reimporta.
 
 ## Lo que aprendió el proyecto con esto
 
-El mismo escape ocurrió **tres veces** (F12, F13 y lo que arrastraba desde la F6) y las
-tres las cazó el **`reviewer` leyendo**, nunca la suite — pese a que la regla estaba
-escrita en `docs/conventions.md` **y** en el `acceptance` de la F13. Una regla que tres
-agentes distintos deben recordar no es una regla. Por eso el valor de la F14 no es la
-limpieza sino [`src/no-real-data.test.ts`](../src/no-real-data.test.ts).
-
-Y su propio diseño lo demostró: **al quitarle la auto-excepción, la primera ejecución
-falló señalando un importe real que el implementer había dejado en un comentario.** Se
-cazó a sí mismo en cuanto se le permitió mirarse.
-
-## Punto de partida
-
-La sesión anterior cerró la **F12 `import`** y está commiteada y subida junto con la
-reforma del harness del humano. El árbol quedó limpio. Etapas **E2 y E5 ✅**, cabos
-sueltos **nº 1 y nº 4** cerrados.
-
-**La F13 es la última feature abierta del proyecto.** Es solo parser y volcado: **no
-toca base de datos** — guardar los productos tiene la regla de duplicado contraria
-(recargar sobrescribe) y por eso quedó fuera de la F12.
-
-## Decisiones que ya venían cerradas (2026-08-11)
-
-- 🔄 **Los números van como número JSON puro** (`1234.56`), no como texto en formato
-  español. **Efecto de arrastre:** la F13 **NO** consume `parseAmountText`, que su spec
-  original daba por consumida; a cambio aparece un error nuevo (que el valor llegue como
-  texto). Las fechas siguen en `AAAA-MM-DD`.
-- `date` obligatorio **también** en el depósito · choque producto+fecha se queda con el
-  **primero alfabético** y reporta el otro · **clave desconocida = error**, salvo las que
-  empiezan por `_` · volcado a **un `products.json` por año**.
-- **`closedAt` es campo del archivo** en los dos tipos, escrito una sola vez.
-  **`currency` opcional**, se asume `EUR`.
-- **La plantilla vive en una carpeta hermana de `notas-banco/`**, invisible para el
-  backend. Es deber del humano.
-
-## Nota sobre la feature 9 (T17 de `tasks.md`)
-
-- ✅ **El esquema de inversiones de la F9 NO cambia** a raíz de los formatos de la F13:
-  ni una columna, ni un tipo, ni un índice, ni una precisión decimal. Los formatos
-  **confirman** sus dos suposiciones abiertas: el efectivo va **aparte** del valor de
-  mercado (patrimonio = `marketValue + uninvestedCash`) y el depósito guarda **una sola**
-  TAE, la que se aplica. Además, su columna `closedAt` —reservada y sin escritor— **ya
-  tiene quien la escriba**: el campo `closedAt` del archivo de producto.
-- ⚠️ **Cabo suelto de documentación (no de código):** donde el spec de la F9
-  (`specs/investments-data-model/`) enlaza a la antigua `specs/myinvestor-parser/`, hoy
-  hay **dos** carpetas: `specs/myinvestor-statement/` y `specs/myinvestor-products/`. Es
-  una corrección de enlaces; **no se ha tocado** `specs/investments-data-model/` desde
-  esta feature (regla dura de `tasks.md`).
-
-## Bitácora
-
-- ▶️ **F13 a `in_progress` y `implementer` lanzado.**
-- ✅ **F13 implementada** (parser de producto, encaminamiento por extensión, volcado
-  `products.json` por año, docs y ADR-016). Informe en
-  `progress/implementations/myinvestor-products.md`. Pendiente de `reviewer`.
+Una feature de una sola línea de comportamiento se fue a **CHANGES_REQUESTED por
+documentación**, y con razón: `docs/data-model.md` se declara a sí mismo el registro
+único de columnas sin escritor, y una feature que le da escritor a una columna sin
+actualizar ese registro deja una trampa para la feature siguiente. El código estaba
+bien a la primera; lo que faltaba era el rastro.

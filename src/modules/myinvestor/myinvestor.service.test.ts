@@ -239,6 +239,8 @@ describe('parseLocalMyinvestorCopies — the product files of the same bank', ()
       },
     ])
     expect(dumped.ignored.map((entry) => entry.file)).toEqual(['notas.txt'])
+    // The opening date of the file reaches the dump of the year (feature 15).
+    expect(dumped.products[0].openedAt).toBe('2025-01-15')
     // The year dump is the only product artifact: no `fondo.json.json`.
     await expect(readdir(join(dumpDir, 'myinvestor', '2026'))).resolves.toEqual(['products.json'])
   })
@@ -265,6 +267,32 @@ describe('parseLocalMyinvestorCopies — the product files of the same bank', ()
     expect(result.failed).toHaveLength(1)
     expect(result.failed[0]).toMatchObject({ file: 'b-roto.json' })
     expect(result.failed[0].reason).toContain('se espera un número sin comillas')
+  })
+
+  it('fails only the file that forgot openedAt and parses the rest of the batch (F15-C2)', async () => {
+    await writeLocalCopy(sourceDir, '2026', 'a-bueno.json', buildProductJson(buildProductFund()))
+    await writeLocalCopy(
+      sourceDir,
+      '2026',
+      'b-sin-apertura.json',
+      buildProductJson(buildProductFund({ name: 'Fondo Sin Apertura', openedAt: undefined })),
+    )
+    await writeLocalCopy(
+      sourceDir,
+      '2026',
+      'c-deposito.json',
+      buildProductJson(buildProductDeposit()),
+    )
+
+    const result = await parseLocalMyinvestorCopies(sourceDir, dumpDir)
+
+    expect(result.products.map((product) => product.file)).toEqual([
+      'a-bueno.json',
+      'c-deposito.json',
+    ])
+    expect(result.failed).toHaveLength(1)
+    expect(result.failed[0]).toMatchObject({ file: 'b-sin-apertura.json' })
+    expect(result.failed[0].reason).toContain('openedAt')
   })
 
   it('keeps the first file alphabetically when two declare the same product and date (R46)', async () => {

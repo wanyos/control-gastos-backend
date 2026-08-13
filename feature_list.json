@@ -634,6 +634,44 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 15,
+      "name": "product-opened-at",
+      "title": "Fecha de apertura en el JSON de producto de inversión",
+      "intent": {
+        "que_quiero": "Que el JSON que escribo a mano por cada producto de inversión lleve un campo con la fecha de apertura, y que sea obligatorio en los cuatro tipos (fondo, ETF, cartera automatizada y depósito). La fecha de cierre ya existe y se queda como está: normalmente solo los depósitos la tienen fija, y en los demás va vacía; pero la fecha de inicio la tienen todos.",
+        "por_que": "La columna openedAt ya existe en la base de datos desde la feature 9 pero nació sin nadie que la escriba, porque el formato del archivo no la lleva: se quedaría NULL para siempre. El sitio natural de ese dato es el propio archivo del producto, igual que closedAt. Y lo necesito ahora: voy a subir mis JSON de inversión y quiero que ya lleven la fecha de apertura, en vez de escribirlos dos veces.",
+        "como_se_que_esta_bien": [
+          "Escribo un fondo, un ETF, una cartera y un depósito con su fecha de apertura y los cuatro se parsean bien, con esa fecha en el resultado.",
+          "Si a un archivo le falta la fecha de apertura, ese archivo se reporta como fallido diciéndomelo, igual que cuando falta cualquier otro campo obligatorio; los demás archivos del lote se parsean igual.",
+          "La fecha de cierre sigue funcionando como hasta ahora: opcional, vacía en los que siguen vivos.",
+          "El volcado products.json del año trae la fecha de apertura de cada producto.",
+          "Lo que ya funcionaba del parser de productos sigue exactamente igual: mismos campos, mismos errores, misma ruta."
+        ],
+        "que_no_quiero": [
+          "No tocar la base de datos ni el esquema Prisma: la columna openedAt ya existe y esta feature solo hace que el archivo la traiga.",
+          "No persistir productos: sigue siendo solo parser y volcado, como la feature 13.",
+          "No cambiar el formato de nada más del archivo, ni el del extracto CSV, ni el de Bankinter.",
+          "No cambiar el trato de closedAt."
+        ],
+        "delego_en_agente": [
+          "El nombre exacto del campo en el archivo (openedAt, alineado con la columna de Prisma y con closedAt) y su formato (ISO AAAA-MM-DD, como el resto de fechas).",
+          "Dónde encaja en el parser para que sea obligatorio en los cuatro tipos y su falta se acumule con el resto de problemas del mismo archivo, en un solo motivo."
+        ]
+      },
+      "acceptance": [
+        "El archivo JSON de producto admite un campo openedAt en formato ISO AAAA-MM-DD, y el resultado parseado lo expone junto a closedAt (deriva de: 'que el JSON lleve un campo con la fecha de apertura')",
+        "openedAt es OBLIGATORIO en los cuatro tipos (fund, etf, managed_portfolio, deposit): si falta o viene vacío, el archivo se reporta como fallido nombrando el campo, acumulado en el mismo motivo único que el resto de sus problemas, y los demás archivos del lote se parsean igual (deriva de: 'obligatorio en los cuatro tipos' + decisión del humano del 2026-08-13, y de la regla de un solo motivo por archivo de la F13)",
+        "closedAt NO cambia: sigue siendo opcional y vacío significa que el producto sigue vivo (deriva de: 'la fecha de cierre se queda como está')",
+        "El volcado local products.json del año incluye openedAt en cada producto (deriva de: 'el volcado trae la fecha de apertura')",
+        "El resto del comportamiento del parser de productos no cambia: mismos campos admitidos, mismos errores, misma ruta POST /api/parser/myinvestor y mismo encaminamiento por extensión (deriva de: 'lo que ya funcionaba sigue igual')",
+        "La feature NO toca el esquema Prisma ni la base de datos, NO persiste productos, y NO cambia el formato del extracto CSV ni el de Bankinter (deriva de los 'que_no_quiero')",
+        "docs/api-contract.md queda actualizado con el campo nuevo en el modelo del producto, y docs/dar-de-alta-un-banco.md (o donde viva el formato del archivo de producto) refleja que openedAt es obligatorio, para que el humano sepa qué escribir (deriva de: 'quiero saber qué escribir antes de subir mis archivos')",
+        "Cada criterio tiene al menos un test concreto con fixtures sintéticos, sin datos reales ni red, mapeado en progress/implementations/product-opened-at.md; ./init.sh termina en verde incluida la suite completa, con el guardián de la F14 entre los tests (deriva del cierre estándar del proyecto)"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

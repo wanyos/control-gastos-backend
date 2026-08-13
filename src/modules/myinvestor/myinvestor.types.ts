@@ -89,6 +89,14 @@ export interface ParsedProduct {
   /** ISO `YYYY-MM-DD`: the day of the photo (of the note, on a deposit). */
   date: string
   currency: string
+  /**
+   * ISO `YYYY-MM-DD`: the day the product was opened. MANDATORY on the four types
+   * (feature 15, decision of the human of 2026-08-13), so it is a `string` and
+   * never `null`: a product with no opening date is a FAILED file, not a product
+   * with a hole. Asymmetric with `closedAt` on purpose — every product was opened,
+   * only some are closed.
+   */
+  openedAt: string
   /** ISO `YYYY-MM-DD`; `null` means alive. Missing the file does NOT close it. */
   closedAt: string | null
   /** `null` on a deposit. */
