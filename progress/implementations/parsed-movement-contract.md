@@ -53,7 +53,7 @@ línea dentro de su día.
 3. 📌 **`daySequence` lo emite el parser**, calculado por el helper compartido
    `assignDaySequence(drafts, fileOrder)`. Lo único bank-specific es el argumento
    (`'newest-first'` en Bankinter, verificado con los saldos de la muestra real:
-   `24816,16 − 188,67 = 24627,49`). Numerar no es leer el formato: la norma «un
+   `10000,00 − 45,37 = 9954,63`). Numerar no es leer el formato: la norma «un
    parser por banco» se mantiene intacta.
 4. 📌 **El contrato NO incluye nada más para el importador.** Repasada la tabla de
    mapeo de `specs/data-model/design.md` §9: ya tiene `bookingDate`, `valueDate`,

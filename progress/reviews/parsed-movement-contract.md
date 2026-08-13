@@ -61,8 +61,8 @@ No aplica.
   y lo aplica en [:89](../../src/modules/bankinter/bankinter.parser.ts#L89).
   **Aritmética verificada contra el fixture, no aceptada de palabra:** en
   [bankinter.parser.test.ts:128](../../src/modules/bankinter/bankinter.parser.test.ts#L128)
-  la 1ª fila es `RECIBO VISA -188,67 / saldo 24 627,49` y la 2ª
-  `TRANSF NOMINA +2 197,72 / saldo 24 816,16`; como 24 816,16 − 188,67 = 24 627,49,
+  la 1ª fila es `RECIBO CUOTA -45,37 / saldo 9 954,63` y la 2ª
+  `TRANSF NOMINA +1 500,00 / saldo 10 000,00`; como 10 000,00 − 45,37 = 9 954,63,
   la 1ª fila es la **posterior** en el tiempo, luego `daySequence: 2` es correcto y
   la 2ª lleva `1`. El helper lo resuelve con `total − posición + 1` y está cubierto
   en los dos sentidos en

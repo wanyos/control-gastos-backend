@@ -319,12 +319,15 @@ de un producto a una fecha se calcula como `marketValue + uninvestedCash`.
 > ✅ **Era el punto abierto nº 1 y está CERRADO: la suposición era CORRECTA.** Lo
 > confirmó el humano con la web del banco delante —*"el efectivo queda fuera de
 > cualquier total, eso siempre se queda como remanente; normalmente hago un ingreso de
-> 300 € mensuales y una vez invertido ese dinero o una cantidad similar se queda como
+> ‹cantidad redactada› mensuales y una vez invertido ese dinero o una cantidad similar
+> se queda como
 > dinero metálico fuera del resto de cantidades"*— y lo **prueba la aritmética de la
 > muestra real** (`var/drive-read/myinvestor/2026/indi.txt`): en la cartera,
-> `invertido 10.301,63 + ganancia 1.559,58 = 11.861,21`, que es **exactamente** el
-> valor de mercado; el efectivo de `58,37 €` queda fuera. El fondo cuadra igual
-> (`1.250,00 + 62,72 = 1.312,72`). Por tanto **no hay doble conteo** y el patrimonio
+> `invertido 8.250,45 + ganancia 1.250,15 = 9.500,60`, que es **exactamente** el
+> valor de mercado; el efectivo de `75,25 €` queda fuera. El fondo cuadra igual
+> (`2.000,00 + 150,00 = 2.150,00`). Las cifras son **inventadas** desde la F14
+> (2026-08-12); la relación que demuestran es la observada. Por tanto **no hay doble
+> conteo** y el patrimonio
 > de un producto es `marketValue + uninvestedCash`. Este requirement deja de describir
 > una suposición y pasa a describir un **hecho verificado**.
 
@@ -553,21 +556,22 @@ mapa de trazabilidad (Nivel 4 de `docs/verification.md`).
   CONTESTADO, Y MI SUPOSICIÓN ERA CORRECTA.** Era el único punto de este spec capaz de
   producir un **patrimonio neto equivocado**. **Van aparte.** El humano lo confirmó con
   la web del banco delante: *"el efectivo queda fuera de cualquier total, eso siempre
-  se queda como remanente; normalmente hago un ingreso de 300 € mensuales y una vez
+  se queda como remanente; normalmente hago un ingreso de ‹cantidad redactada› mensuales y una vez
   invertido ese dinero o una cantidad similar se queda como dinero metálico fuera del
   resto de cantidades"*. Y la **muestra real lo demuestra aritméticamente**: en la
-  cartera (`indi.txt`), `10.301,63 + 1.559,58 = 11.861,21`, **exactamente** el valor de
-  mercado, con los `58,37 €` de efectivo fuera; el fondo (`fondo.txt`) cuadra igual
-  (`1.250,00 + 62,72 = 1.312,72`). **Patrimonio de un producto =
+  cartera (`indi.txt`), `8.250,45 + 1.250,15 = 9.500,60`, **exactamente** el valor de
+  mercado, con los `75,25 €` de efectivo fuera; el fondo (`fondo.txt`) cuadra igual
+  (`2.000,00 + 150,00 = 2.150,00`). **Patrimonio de un producto =
   `marketValue + uninvestedCash`**, sin doble conteo. Recogido en R21 y en el ADR-012.
 - **R5 (era el punto abierto nº 2 — `interestRate` = TAE en PORCENTAJE) — ✅
   CONTESTADO.** El `intent` decía "tanto por ciento ofrecido" sin fijar la unidad; yo
-  decidí **porcentaje** (`3.0000` = 3 %), no fracción (`0.03`). La feature 10 lo fija
-  igual (`"interestRate": "3"` es una TAE del 3 %) y la muestra real del depósito
+  decidí **porcentaje** (`1.5000` = 1,5 %), no fracción (`0.015`). La feature 10 lo fija
+  igual (`"interestRate": 1.5` es una TAE del 1,5 %) y la muestra real del depósito
   (`deposito.txt`) lo confirma con un matiz que **no cambia el esquema**: la ficha trae
-  **dos** TAE —`2 % TAE sin Premium` y `3 % TAE con Premium`, con sus dos intereses
-  brutos (`25,02 €` / `37,39 €`)— y el humano decidió guardar **solo la que se le
-  aplica** (3 %, `expectedGain` 37,39 €), porque la otra describe un producto que él no
+  **dos** TAE —`1 % TAE sin Premium` y `2 % TAE con Premium`, con sus dos intereses
+  brutos (`25,00 €` / `50,00 €`; forma real, **cifras inventadas**)— y el humano decidió
+  guardar **solo la que se le
+  aplica** (2 %, `expectedGain` 50,00 €), porque la otra describe un producto que él no
   tiene: es información comercial, no una condición de su depósito. El modelo ya tiene
   **exactamente un** `interestRate` y **un** `expectedGain`, así que encaja tal cual;
   la TAE no aplicable **no se guarda en ninguna parte**.

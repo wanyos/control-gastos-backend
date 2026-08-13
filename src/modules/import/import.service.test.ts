@@ -116,8 +116,8 @@ describe('toMovementRows (mapping of specs/data-model/design.md §9)', () => {
         movement({
           bookingDate: '2026-07-24',
           valueDate: '2026-07-25',
-          description: 'RECIBO /Recibo VivaGym',
-          amount: -29.9,
+          description: 'RECIBO /Recibo GIMNASIO',
+          amount: -34.15,
           balance: 22800.11,
           currency: 'USD',
           daySequence: 4,
@@ -133,8 +133,8 @@ describe('toMovementRows (mapping of specs/data-model/design.md §9)', () => {
       valueDate: new Date('2026-07-25T00:00:00.000Z'),
       // Always positive: the sign lives in `type`. And a string, so no floating
       // point can reach a Decimal(10,2).
-      amount: '29.90',
-      description: 'RECIBO /Recibo VivaGym',
+      amount: '34.15',
+      description: 'RECIBO /Recibo GIMNASIO',
       balanceAfter: '22800.11',
       currency: 'USD',
       daySequence: 4,
@@ -290,8 +290,8 @@ describe('importPending', () => {
               bookingDate: '2026-07-31',
               valueDate: '2026-08-01',
               description: 'ABONO NOMINA',
-              amount: 2197.72,
-              balance: 24816.16,
+              amount: 1500,
+              balance: 10000,
               currency: '',
               daySequence: 1,
             }),
@@ -317,10 +317,10 @@ describe('importPending', () => {
 
     expect(stored).toHaveLength(2)
     expect(stored[0].type).toBe('income')
-    expect(stored[0].amount.toFixed(2)).toBe('2197.72')
+    expect(stored[0].amount.toFixed(2)).toBe('1500.00')
     expect(stored[0].bookingDate.toISOString().slice(0, 10)).toBe('2026-07-31')
     expect(stored[0].valueDate.toISOString().slice(0, 10)).toBe('2026-08-01')
-    expect(stored[0].balanceAfter?.toFixed(2)).toBe('24816.16')
+    expect(stored[0].balanceAfter?.toFixed(2)).toBe('10000.00')
     expect(stored[0].currency).toBe('EUR')
     // The balance the file does not carry is never invented (R12).
     expect(stored[1].balanceAfter).toBeNull()

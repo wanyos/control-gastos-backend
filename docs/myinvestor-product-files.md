@@ -20,12 +20,12 @@
 
 ```json
 "marketValue": 947.25         ✅   "gainPercent": -3.47          ✅
-"principal": 25000            ✅   "uninvestedCash": 12.05       ✅
+"principal": 31000            ✅   "uninvestedCash": 12.05       ✅
 "marketValue": "947.25"       ❌   "marketValue": "3.210,40"     ❌
-"marketValue": "3.210,40 €"   ❌   "marketValue": 25.000         ❌ (JSON roto)
+"marketValue": "3.210,40 €"   ❌   "marketValue": 31.000         ❌ (JSON roto)
 ```
 
-- **Punto decimal**, nunca coma. **Sin separador de miles**: `25000`.
+- **Punto decimal**, nunca coma. **Sin separador de miles**: `31000`.
 - **Sin símbolos**: ni `€` ni `%`. La unidad la da el campo.
 - **El signo va dentro del número**: `-3.47`.
 - **Un número escrito como texto es un fallo del archivo**, con su motivo, y **no se

@@ -198,7 +198,7 @@ puede añadir `;` de relleno al final):
 ```
 iban;ES9121000418450200051332
 Fecha de operación;Fecha de valor;Concepto;Importe;Divisa
-06/08/2026;10/08/2026;ISHARE DEVLP REAL ESTATE INDX;-50;EUR
+06/08/2026;10/08/2026;ETF EJEMPLO INDICE GLOBAL;-60;EUR
 ```
 
 Cambio en `myinvestor.statement.parser.ts`:

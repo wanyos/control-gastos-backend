@@ -643,7 +643,7 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - **Guardar el número de línea del fichero** en vez de la posición dentro del
     día: descartada — no es estable entre descargas.
   - **Clave de dedup sin `daySequence`:** descartada — un extracto real trae
-    líneas idénticas legítimas (tres `TRANS INM/ Openbank −1000,00` el mismo día
+    líneas idénticas legítimas (tres `TRANS INM/ OTRO BANCO −850,00` el mismo día
     en la muestra), y se habrían perdido dos en silencio (−2.000 €).
   - **Columna `importHash`** (la del borrador de `data-model.md`): descartada —
     abre la sub-decisión de la receta del hash y la normalización del concepto; el
@@ -771,8 +771,9 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
       `P2011`), y es un seguro sin coste ante un cambio futuro del formato.
   11. ✅ **`marketValue` NO incluye `uninvestedCash`** (la suposición que el
       `intent` pidió dejar visible; confirmada por el humano y por la aritmética de
-      las muestras reales: en la cartera, `10.301,63 + 1.559,58 = 11.861,21`,
-      exactamente el valor de mercado, con los `58,37 €` de efectivo fuera). El
+      las muestras reales: en la cartera, `8.250,45 + 1.250,15 = 9.500,60`,
+      exactamente el valor de mercado, con los `75,25 €` de efectivo fuera —
+      **cifras inventadas** desde la F14, la relación es la observada). El
       patrimonio de un producto es **`marketValue + uninvestedCash`**, sin doble
       conteo. Era el único punto capaz de dar un patrimonio equivocado.
   12. **Sin endpoints, sin parser, sin importador y sin servicio:** el módulo
@@ -1214,6 +1215,75 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - **Contrato con la importación:** los productos **todavía no se guardan**. Quien lo
     haga tendrá que hacer los dos upserts de ADR-012 y enlazar movimientos con
     productos, y su regla de recarga es **sobrescribir**, no descartar duplicados.
+
+### ADR-017: Los datos reales del humano no se versionan — un guardián de dos capas (forma + comparación contra `var/`, que se salta si no está)
+
+- **Fecha:** 2026-08-12.
+- **Estado:** aceptada (feature 14 `no-real-data`).
+- **Contexto:** dos features seguidas versionaron datos financieros reales del dueño
+  del proyecto (el IBAN en la F12, los importes de su cartera en la F13). Las dos las
+  cazó el `reviewer` leyendo con lupa; **la suite nunca**. La regla ya estaba escrita
+  en `docs/conventions.md` §Tests y hasta en el `acceptance` de la F13, y se incumplió
+  igual: una regla que tres agentes distintos tienen que recordar es una esperanza, no
+  una regla. Al barrer se encontró **bastante más** de lo listado: su IBAN real seguía
+  en `bankinter.parser.test.ts`, y las líneas de su extracto (importes, saldos, el
+  nombre de su empresa, el de una persona, su gimnasio) estaban repartidas por `src/`,
+  `docs/`, `specs/` y `progress/` desde la F6.
+- **Decisión:** un test más de la suite,
+  [`src/no-real-data.test.ts`](../src/no-real-data.test.ts), con **dos capas**:
+  1. **Por forma (siempre activa, no necesita nada de la máquina):** cualquier IBAN
+     español bien formado —con **checksum mod-97 válido**— que no esté en una
+     lista blanca de dos IBAN sintéticos documentados es una fuga. Es la capa que
+     protege cuando el que escribe es un agente en otra máquina, donde no hay `var/`.
+  2. **Por comparación contra las capturas gitignoreadas de `var/`:** de ellas se
+     extraen los importes con **≥ 4 cifras significativas** (en cualquier notación:
+     `9.876,54`, `9876.54`, `9876,54` son el mismo número) y los **trigramas** de
+     palabras poco comunes, y
+     se buscan en todo archivo versionado. Si `var/` no está, la capa **se salta con
+     un mensaje** (`context.skip`) en vez de fallar: exigir los datos reales dentro
+     del repositorio sería el mismo problema con otro nombre.
+- **Alternativas consideradas:** **solo por forma** (no habría cazado ni uno de los
+  importes de la F13: un número no tiene checksum); **solo por comparación** (decorativa
+  fuera de la máquina del humano, que es justo donde trabaja el agente que mete el
+  dato); **una lista negra de valores en el repositorio** (versionar los datos para
+  protegerlos, prohibido de forma explícita en el `intent`, y a mantener a mano);
+  **un hook de git** (no se ejecuta en la máquina del agente ni en `./init.sh`, y se
+  salta con `--no-verify`).
+- **Consecuencias:**
+  - **Lo que el alcance define:** el archivo se recorre con
+    `git ls-files --cached --others --exclude-standard`, así que cubre también el
+    **archivo nuevo aún sin commitear** —que es donde el `reviewer` lee— y **nunca**
+    lo gitignoreado.
+  - **Límites conocidos y aceptados**, anotados aquí para que nadie confunda verde con
+    seguro: no caza un importe **redondo o corto** (`4.000`, `12,30`, un porcentaje de
+    tres cifras) porque es indistinguible de uno inventado —**lo que cae por debajo
+    del umbral hay que mirarlo a mano**, y la primera pasada de la F14 dejó dos
+    escapar—; no caza un valor
+    **derivado** (una suma de dos suyos que no aparece en el archivo); no caza fechas;
+    y de los conceptos solo caza secuencias de tres palabras con dos poco comunes.
+  - **Lo binario solo se ve a través de su volcado.** Las capturas se leen en texto,
+    así que el `.xlsx` de Bankinter **solo** es comparable a través de
+    `var/parsed/**.json`. Por eso el guardián exige **las dos ramas** de `var/`
+    (`drive-read/` y `parsed/`): si falta una, **se salta diciendo cuál** en vez de
+    comparar contra la mitad de los datos y pasar en verde. Ese verde silencioso era
+    justo lo que esta feature existe para evitar.
+  - **Excepciones**: lista blanca de IBAN, lista de rutas con su motivo y marcador
+    `no-real-data-ok` en la línea. El guardián **no se exceptúa a sí mismo**: si se
+    exceptuara no podría cazarse, y en la primera pasada llevaba dentro un concepto
+    real suyo. Todos sus ejemplos son inventados: solo tienen que tener la **forma**
+    correcta, nunca ser ciertos.
+  - **La única exclusión de ruta es `prisma/migrations/`**, porque una migración
+    aplicada es **inmutable** (Prisma guarda su checksum: editarla obliga a
+    `migrate reset` y a perder la base de datos del humano). Dicho sin rebajarlo:
+    lo que queda dentro **no** es «el nombre de un banco», es **una línea entera de
+    su extracto** en un comentario SQL —concepto, importe, fecha y número de
+    repeticiones—. Sigue siendo un **riesgo residual aceptado**, y se cierra el día
+    que la base se resetee por otro motivo (los movimientos se reimportan de Drive),
+    o corrigiendo a mano el checksum guardado tras editar el comentario. Las dos son
+    decisión del humano.
+  - **El histórico de git NO se reescribe** (decisión del humano del 2026-08-12): las
+    cifras siguen en los commits `9588389` y `0e95035` y el repositorio es privado.
+    Riesgo **conocido y aceptado**; si dejara de ser privado, sanear el árbol no basta.
 
 ## Qué NO hacer
 

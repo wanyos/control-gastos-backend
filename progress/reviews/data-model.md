@@ -58,10 +58,10 @@ cadenas `createMovement`, `deleteMovement` y `createTransfer` en el módulo.
 función; `transferId` solo aparece en `computeTotals`, línea 140).
 
 Test anti-casualidad, exactamente el pedido: `movements.test.ts:46-76` → tres
-movimientos con `balanceAfter` 24816.16 / 24627.49 / 22800.11 y un
+movimientos con `balanceAfter` 10000.00 / 9954.63 / 22800.11 y un
 **`initialBalance` de `999999.99`** que no cuadra con ninguna suma → el resultado
-es **`24627.49`**, el del más reciente. Refuerzo de integración:
-`accounts.test.ts:127-168` (`initialBalance: 100` → saldo `24627.49`).
+es **`9954.63`**, el del más reciente. Refuerzo de integración:
+`accounts.test.ts:127-168` (`initialBalance: 100` → saldo `9954.63`).
 Desempate intradía: `movements.test.ts:78-98` (gana `daySequence` 3 aunque esté
 el primero del array). Fallback: `movements.test.ts:120-128` y
 `accounts.test.ts:170-208` (`210.00` = 100 + 150.25 − 40.25, `neutral` = 0).
@@ -84,8 +84,8 @@ schema (`schema.prisma:113-116` solo tiene los dos `@@index` normales).
 
 Tests reales contra Postgres:
 
-- `movements.test.ts:408-424` — **tres** líneas idénticas (`TRANS INM/ Openbank`,
-  `1000.00`, `2026-07-24`) que solo difieren en `daySequence` 1/2/3 → **las tres
+- `movements.test.ts:408-424` — **tres** líneas idénticas (`TRANS INM/ OTRO BANCO`,
+  `850.00`, `2026-07-24`) que solo difieren en `daySequence` 1/2/3 → **las tres
   se guardan** (`toHaveLength(3)`). Es la protección contra perder los −2.000 €.
 - `movements.test.ts:392-406` — clave completa repetida (incluido `daySequence`)
   → el segundo insert falla con `P2002` y `count() === 1`.
@@ -311,7 +311,7 @@ código**, no solo marcadas:
   `app.inject()` contra el **Postgres real** de `docker-compose`; los índices se
   prueban provocando la violación de verdad, no simulándola. Cero mocks nuevos.
 - [x] **Output concreto, no "no lanza".** Todas las aserciones comprueban valores
-  exactos: `"24627.49"`, `"1500.50"`, `toHaveLength(3)`, `['expense','income']`,
+  exactos: `"9954.63"`, `"1500.50"`, `toHaveLength(3)`, `['expense','income']`,
   `message: 'Only one level of subcategory is allowed'`, `code: 'P2002'`.
 - [x] **Camino de error cubierto**, no solo el feliz: 400 (x4), 404 (x5), 409
   (x2), 422 (x2) y violación de índice único (x2).

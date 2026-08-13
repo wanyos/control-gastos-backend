@@ -200,7 +200,7 @@ Lista todas las cuentas, con su `balance` resuelto en la propia petición.
     "alias": "bankinter ···0236",
     "type": "checking",
     "initialBalance": "0.00",
-    "balance": "24627.49",
+    "balance": "9954.63",
     "createdAt": "2026-08-06T18:30:00.000Z",
     "updatedAt": "2026-08-06T18:30:00.000Z"
   }
@@ -329,9 +329,9 @@ daySequence DESC`), cada uno con su `account` y su `category` embebidos.
     "type": "expense",
     "bookingDate": "2026-07-31",
     "valueDate": "2026-07-31",
-    "amount": "188.67",
+    "amount": "45.37",
     "description": "RECIBO /Recibo luz",
-    "balanceAfter": "24627.49",
+    "balanceAfter": "9954.63",
     "currency": "EUR",
     "note": null,
     "accountId": 1,
@@ -716,7 +716,7 @@ Columnas reales del extracto (`;` como separador, UTF-8, BOM tolerado), mapeadas
 `Fecha de operación | Fecha de valor | Concepto | Importe | Divisa` →
 `bookingDate | valueDate | description | amount | currency`. Los importes se
 interpretan aunque mezclen separador de miles dentro del mismo archivo
-(`-50`, `-7,99`, `-5000`, `-25.000`, `25.149,95`). **No** se deduplica. Una línea no
+(`-60`, `-9,49`, `-4200`, `-31.000`, `12.345,67`). **No** se deduplica. Una línea no
 interpretable va a `unparsedRows` (`{ row, reason }`, con `row` 1-based contando la
 cabecera) sin detener el resto, y **no consume `daySequence`**.
 

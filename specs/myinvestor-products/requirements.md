@@ -95,10 +95,10 @@ archivo solo aparece como procedencia (`file`).
 ### R26
 
 El sistema DEBE exigir que todos los valores numéricos de los archivos de producto sean
-**número JSON nativo** (`8440.60`, `-3.47`, `25000`), con el punto como separador
+**número JSON nativo** (`8440.60`, `-3.47`, `31000`), con el punto como separador
 decimal y sin separador de miles, sin símbolo de moneda ni de porcentaje.
 
-*Verificación:* test parametrizado con `8440.60`, `-3.47`, `25000` y `440.60` → los
+*Verificación:* test parametrizado con `8440.60`, `-3.47`, `31000` y `440.60` → los
 cuatro se aceptan con ese valor exacto; y comprobación de que el parser de productos
 **no importa** `parseAmountText`.
 
@@ -107,8 +107,8 @@ cuatro se aceptan con ese valor exacto; y comprobación de que el parser de prod
 El sistema DEBE conservar el valor numérico leído tal cual, sin redondearlo, sin
 reformatearlo y sin fijarle un número de decimales.
 
-*Verificación:* test con `8440.6`, `8440.65` y `25000` → salen 8440.6, 8440.65 y 25000
-(no `8440.60` ni `25000.00`); y test con `8440.655` → sale 8440.655, no 8440.66.
+*Verificación:* test con `8440.6`, `8440.65` y `31000` → salen 8440.6, 8440.65 y 31000
+(no `8440.60` ni `31000.00`); y test con `8440.655` → sale 8440.655, no 8440.66.
 
 ### R28
 

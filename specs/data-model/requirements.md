@@ -164,7 +164,7 @@ duplique movimientos, y que los movimientos `manual` queden **fuera** del índic
 
 El `daySequence` en la clave es **obligatorio para no perder datos**: un extracto
 real trae líneas **idénticas** legítimas (verificado en la muestra:
-**tres** `TRANS INM/ Openbank −1000,00` el `2026-07-24`, y recibos `VivaGym −29,90`
+**tres** `TRANS INM/ OTRO BANCO −850,00` el `2026-07-24`, y recibos `GIMNASIO −34,15`
 repetidos el mismo día). Sin él, la clave las considera el mismo movimiento y la
 importación guardaría **una sola**, perdiendo 2.000 € en silencio.
 
@@ -323,8 +323,9 @@ incluyen (R19).
 
 > **Aquí sí hay alta manual, y no es una incoherencia con los movimientos.** Un
 > movimiento existe en el banco y llegará en su fichero; una categoría no existe en
-> ningún sitio hasta que el humano la define (el extracto dice `RECIBO /Recibo
-> VivaGym`; que eso sea "Deporte" es decisión suya). Confirmado en la puerta: **el
+> ningún sitio hasta que el humano la define (el extracto dice
+> `RECIBO /Recibo GIMNASIO`; que eso sea "Deporte" es decisión suya). Confirmado en la
+> puerta: **el
 > catálogo lo crea el humano**, y lo automático será **asignar** categorías a los
 > movimientos mediante **reglas sobre el `description`**, en una feature posterior
 > (`design.md` §2.2). Esta feature entrega solo el catálogo.
@@ -504,7 +505,7 @@ de `docs/verification.md`); el guardián de `src/architecture.test.ts` (rutas si
   en el orden de inserción ("veo frágil solo darle la vuelta al array"). Acertado, y
   al implementarlo apareció un fallo mayor: la clave de dedup **sin** esa columna
   trata como el mismo movimiento las **líneas idénticas legítimas** que trae un
-  extracto real (tres `TRANS INM/ Openbank −1000,00` el `2026-07-24` en la muestra),
+  extracto real (tres `TRANS INM/ OTRO BANCO −850,00` el `2026-07-24` en la muestra),
   y la importación habría guardado **una** perdiendo 2.000 € en silencio. Lo
   `(añadido)` mío: que la posición sea **dentro del día** (`1` = primero del día) y
   no el número de línea del fichero, porque ese número **cambia con el rango

@@ -139,8 +139,8 @@ El sistema DEBE interpretar correctamente los importes del extracto tanto cuando
 llevan separador de miles como cuando no lo llevan, dentro de un mismo archivo.
 
 *Verificación:* un único fixture con las cinco formas que conviven en la muestra real
-→ `-50` → `-50`; `-7,99` → `-7.99`; `-5000` → `-5000`; `-25.000` → `-25000`;
-`25.149,95` → `25149.95`.
+→ `-60` → `-60`; `-9,49` → `-9.49`; `-4200` → `-4200`; `-31.000` → `-31000`;
+`12.345,67` → `12345.67`.
 
 > 📌 **Esta misma función la reutiliza la F13** para los archivos de producto escritos a
 > mano (su R26). Vive en `myinvestor.format.ts` y **no sube a `src/lib/`**: es

@@ -237,8 +237,10 @@ ejecutado otra vez por mi cuenta: **24 archivos, 316 tests**, `tsc` sin errores,
 Barrido independiente del árbol entero (código, `docs/`, `specs/`, `progress/`,
 `README.md`, todo salvo `node_modules/` y `.git/`):
 
-- `ES3015447889706651431320` → **cero ocurrencias**. También cero buscando solo
-  el cuerpo numérico `3015447889706651431320`, por si quedaba partido.
+- El IBAN real que se había colado (aquí **redactado** el 2026-08-12 por la F14:
+  citarlo repetía la fuga que este mismo párrafo daba por cerrada) → **cero
+  ocurrencias**. También cero buscando solo su cuerpo numérico, por si quedaba
+  partido.
 - `git log --all -S"<iban viejo>"` → **cero commits**, y `git grep` sobre el
   índice tampoco lo encuentra: nunca llegó a la historia, así que no hay nada
   que reescribir. Confirmado de forma independiente, no por el parte.

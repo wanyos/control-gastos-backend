@@ -12,7 +12,7 @@
 > **MUESTRA** = está en las capturas reales que enviaste ·
 > **TÚ (2026-08-11)** = no salía de ninguno de los dos y lo cerraste tú ese día.
 >
-> Los números van **sin comillas y sin símbolos** (`8440.60`, `-3.47`, `25000`) y las
+> Los números van **sin comillas y sin símbolos** (`8440.60`, `-3.47`, `31000`) y las
 > fechas siempre `AAAA-MM-DD`.
 >
 > 🔒 **Todas las cifras, nombres de producto y fechas de este documento son INVENTADOS a

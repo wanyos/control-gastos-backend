@@ -22,7 +22,7 @@ Tres cosas que no se ven pero son el corazón de la feature:
    sumar desde el saldo inicial.
 2. **Tres líneas idénticas el mismo día se guardan las tres.** La clave que evita
    duplicados al reimportar incluye la posición del movimiento dentro del día
-   (`daySequence`), así que las tres transferencias de 1.000 € del mismo día no se
+   (`daySequence`), así que las tres transferencias de 850 € del mismo día no se
    toman por una sola.
 3. **Un traspaso no se crea: se reconoce.** Sus dos apuntes ya llegan de los
    extractos; el modelo solo reserva la columna `transferId` que los enlazará y la

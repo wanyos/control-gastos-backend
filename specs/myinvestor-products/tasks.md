@@ -74,7 +74,7 @@
       sumado a `marketValue`; `gain`/`gainPercent` negativos; `gain` incoherente con
       `marketValue − invested` → se devuelve el escrito; depósito con una segunda TAE →
       clave desconocida; `closedAt` presente/ausente; enteros y decimales conservados
-      tal cual (`25000`, `8440.6`, `8440.655`). Y los siete casos de error de archivo:
+      tal cual (`31000`, `8440.6`, `8440.655`). Y los siete casos de error de archivo:
       sintaxis rota, campo(s) ausente(s), valor que no es número (`true`, `[]`),
       **valor numérico como texto** (`"8440.60"`, `"8.440,60"`, `"8.440,60 €"`) → fallo
       con motivo y **sin interpretar**, `type` desconocido, fecha en otro formato, clave

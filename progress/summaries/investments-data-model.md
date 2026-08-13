@@ -116,8 +116,9 @@ Por cada punto del `como_se_que_esta_bien` del `intent`:
   recupero idénticos, incluidos los negativos."** → se cumple. Round-trip exacto
   al céntimo en
   [investments.model.test.ts:269](../../src/modules/investments/investments.model.test.ts#L269)
-  (con los números de tu muestra real: 10.301,63 / 11.861,21 / 1.559,58 / 15,1391 %
-  / 58,37) y los negativos en
+  (con números **inventados** —saneado en la F14, 2026-08-12: 8.250,45 / 9.500,60 /
+  1.250,15 / 15,1525 % / 75,25— que conservan la relación de tu muestra) y los
+  negativos en
   [investments.model.test.ts:293](../../src/modules/investments/investments.model.test.ts#L293)
   (−1.234,56 y −3,47 %).
 - ✅ **"Tres fotos del mismo fondo en tres meses, con el capital creciendo, se

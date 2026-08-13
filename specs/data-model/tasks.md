@@ -72,7 +72,7 @@
       `CREATE UNIQUE INDEX "Movement_imported_dedup_key" ON "Movement"
       ("accountId","bookingDate","type","amount","description","daySequence") WHERE
       "origin" = 'imported';` (🔴 **`daySequence` en la clave es obligatorio**: sin
-      él, las tres `TRANS INM/ Openbank −1000` del mismo día de la muestra real se
+      él, las tres `TRANS INM/ OTRO BANCO −850` del mismo día de la muestra real se
       tomarían por el mismo movimiento y se perderían dos, `design.md` §3);
       (c) reemplazar el índice único de `Category` por
       `... NULLS NOT DISTINCT` (mismo nombre y columnas). Aplicar con `pnpm run
@@ -151,7 +151,7 @@
       **Índice de dedup (R6, R3b)**, insertando con el cliente Prisma: dos
       `origin='imported'` con la clave completa idéntica **incluido `daySequence`**
       → el segundo falla; **tres** idénticos salvo `daySequence` 1/2/3 (el caso real
-      de las tres transferencias de 1.000 € del mismo día) → **los tres** se
+      de las tres transferencias de 850 € del mismo día) → **los tres** se
       guardan; dos `origin='manual'` idénticos → ambos se guardan (el índice es
       parcial). Limpia. Cubre: R3b, R6, R13, R18, R19.
 

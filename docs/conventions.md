@@ -109,6 +109,29 @@ export default async function accountRoutes(fastify: FastifyInstance) {
   o uno claramente sintético. Los datos reales viven en `var/drive-read/`, que está
   gitignoreada.
 
+- **La regla anterior ya no depende de que alguien se acuerde: la hace cumplir
+  [`src/no-real-data.test.ts`](../src/no-real-data.test.ts)** (F14, 2026-08-12; ver
+  ADR-017). Alcance: **todo archivo versionado**, no solo los fixtures — `docs/`,
+  `specs/` y `progress/` incluidos, y también el archivo nuevo aún sin commitear.
+  Dos capas: **por forma** (un IBAN español con checksum válido fuera de la lista
+  blanca, siempre activa) y **por comparación** contra las capturas de `var/`, que
+  **se salta con un mensaje** cuando no están (nunca exige tenerlas: versionar los
+  datos para protegerlos sería el mismo problema con otro nombre).
+  - **Si salta con razón:** inventa otro valor. Que el ejemplo siga cuadrando (la
+    aritmética que ilustraba) y que ninguna aserción se vuelva trivial.
+  - **Si salta sin razón** (un número inventado que colisiona): añade
+    `no-real-data-ok` **en esa línea**, con el motivo al lado. Para un caso más
+    ancho, la lista de rutas o la de IBAN del propio guardián, siempre **con su
+    porqué**. No se desarma entero.
+  - **Lo que NO caza** (está en el ADR-017, y conviene saberlo antes de fiarse del
+    verde): importes redondos o cortos, valores **derivados** de los suyos, fechas, y
+    conceptos de menos de tres palabras.
+  - **La bitácora también se sanea.** Las reviews, los resúmenes y `history.md` son
+    documentos versionados como cualquier otro: en la F14 se saneó todo el histórico
+    del árbol de trabajo, dejando dicho en cada sitio que las cifras son inventadas
+    para que nadie las «corrija» de vuelta. Lo que **no** se toca es el histórico de
+    **git** (decisión del humano del 2026-08-12: repositorio privado, sin rewrite).
+
 ## Manejo de errores
 
 > Implementado por la feature #2 "foundations" (2026-07-11): jerarquía en

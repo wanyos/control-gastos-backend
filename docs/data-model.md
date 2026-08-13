@@ -329,7 +329,7 @@ CREATE UNIQUE INDEX "Movement_imported_dedup_key"
   distintos.
 - 🔴 **`daySequence` entra en la clave para no perder dinero.** Un extracto real
   trae líneas **idénticas legítimas**: en la muestra del humano hay **tres**
-  `TRANS INM/ Openbank −1000,00` el `2026-07-24`. Sin `daySequence` la clave las
+  `TRANS INM/ OTRO BANCO −850,00` el `2026-07-24`. Sin `daySequence` la clave las
   trataría como el mismo movimiento y la importación guardaría **una**,
   descartando dos en silencio (−2.000 €).
 - Los movimientos `manual` quedan **fuera** del predicado: no se les impone
@@ -595,8 +595,13 @@ aritmética de las muestras reales**:
 
 | Muestra | Invertido | Ganancia | Suma | Valor de mercado | Efectivo |
 | --- | --- | --- | --- | --- | --- |
-| cartera automatizada | 10.301,63 | 1.559,58 | **11.861,21** | **11.861,21** ✅ | 58,37 **fuera** |
-| fondo | 1.250,00 | 62,72 | **1.312,72** | **1.312,72** ✅ | — |
+| cartera automatizada | 8.250,45 | 1.250,15 | **9.500,60** | **9.500,60** ✅ | 75,25 **fuera** |
+| fondo | 2.000,00 | 150,00 | **2.150,00** | **2.150,00** ✅ | — |
+
+> **Cifras inventadas** (saneado el 2026-08-12, F14). La relación que la tabla
+> demuestra es la que se observó en las muestras reales de
+> `var/drive-read/myinvestor/2026/` (gitignoreada); los importes del humano **no se
+> versionan** — ver `docs/conventions.md` §Tests y `src/no-real-data.test.ts`.
 
 El valor de mercado cuadra **al céntimo** con `invertido + ganancia`, sin el
 efectivo. Por tanto **no hay doble conteo** y el patrimonio de un producto a una

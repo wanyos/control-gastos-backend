@@ -168,8 +168,8 @@ migraciones se aplican en orden sin error y el resultado no diverge del schema.
   no hay enum de estado ni booleano de cierre.
 - **R8** `Valuation` completa con precisión exacta → [x]
   [:269](../../src/modules/investments/investments.model.test.ts#L269) (los cinco
-  importes con `.toFixed(2)`/`.toFixed(4)`, con los números de la muestra real:
-  `10301.63` / `11861.21` / `1559.58` / `15.1391` / `58.37`).
+  importes con `.toFixed(2)`/`.toFixed(4)`; las cifras son **inventadas** desde la F14
+  (2026-08-12): `8250.45` / `9500.60` / `1250.15` / `15.1525` / `75.25`).
 - **R9** `invested` en la foto y no en el producto → [x]
   [:201](../../src/modules/investments/investments.model.test.ts#L201)
   (`Object.keys(fund)` sin `invested` y con `principal`) + la serie de

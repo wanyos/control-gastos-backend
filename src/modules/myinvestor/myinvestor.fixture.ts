@@ -49,8 +49,8 @@ export function buildStatementCsv(fixture: StatementCsvFixture = {}): Buffer {
 /**
  * The canonical synthetic rows used across the tests, in the direction the bank
  * exports (most recent first). They cover every acceptance criterion:
- * - the five numeric shapes that coexist in one file (`-50`, `-7,99`, `-5000`,
- *   `-25.000`, `25.149,95`),
+ * - the five numeric shapes that coexist in one file (`-60`, `-9,49`, `-4200`,
+ *   `-31.000`, `12.345,67`),
  * - three movements of the SAME booking date, plus a fourth unreadable row of
  *   that same day (so it can be proved it consumes no `daySequence`),
  * - two identical rows (no deduplication),
@@ -63,14 +63,14 @@ export function buildStatementCsv(fixture: StatementCsvFixture = {}): Buffer {
  */
 export function myinvestorSampleRows(): CsvRow[] {
   return [
-    ['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR'],
+    ['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-60', 'EUR'],
     ['12/03/2026', '12/03/2026', 'IMPORTE ILEGIBLE', 'mil trescientos', 'EUR'],
-    ['12/03/2026', '13/03/2026', 'SUSCRIPCIÓN AÑO PREMIUM €', '-7,99', 'EUR'],
-    ['12/03/2026', '12/03/2026', 'TRASPASO  0000000000000  ORDEN', '-25.000', 'EUR'],
+    ['12/03/2026', '13/03/2026', 'SUSCRIPCIÓN AÑO PREMIUM €', '-9,49', 'EUR'],
+    ['12/03/2026', '12/03/2026', 'TRASPASO  0000000000000  ORDEN', '-31.000', 'EUR'],
     null,
-    ['10/03/2026', '10/03/2026', 'ABONO NOMINA FICTICIA', '25.149,95', 'EUR'],
-    ['09/03/2026', '09/03/2026', 'PAGO DUPLICADO PRUEBA', '-5000', 'EUR'],
-    ['09/03/2026', '09/03/2026', 'PAGO DUPLICADO PRUEBA', '-5000', 'EUR'],
+    ['10/03/2026', '10/03/2026', 'ABONO NOMINA FICTICIA', '12.345,67', 'EUR'],
+    ['09/03/2026', '09/03/2026', 'PAGO DUPLICADO PRUEBA', '-4200', 'EUR'],
+    ['09/03/2026', '09/03/2026', 'PAGO DUPLICADO PRUEBA', '-4200', 'EUR'],
     ['08/03/2026', '08/03/2026', 'AJUSTE A CERO', '0', 'EUR'],
     ['07/03/2026', '31/02/2026', 'FECHA IMPOSIBLE', '-1', 'EUR'],
     ['06/03/2026', '06/03/2026', 'TRANSFERENCIA A ES0012345678901234567890', '-12,34', 'EUR'],

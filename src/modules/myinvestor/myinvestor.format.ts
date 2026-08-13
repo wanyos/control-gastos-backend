@@ -9,8 +9,8 @@
 
 /**
  * Parses a MyInvestor amount into a signed number. The export mixes the
- * thousands separator inside the very same file (`-50`, `-7,99`, `-5000`,
- * `-25.000`, `25.149,95`), so one single rule covers all of them:
+ * thousands separator inside the very same file (`-60`, `-9,49`, `-4200`,
+ * `-31.000`, `12.345,67`), so one single rule covers all of them:
  *
  * 1. `€`, `%` and whitespace are dropped.
  * 2. With a comma → Spanish format: `.` groups thousands, `,` is the decimal.
@@ -19,7 +19,7 @@
  *
  * Rule 3 reads `"1.500"` as one thousand five hundred, because these numbers
  * come from a Spanish UI where the dot always groups thousands, and because
- * that mistake is visible at a glance while the opposite one (`25.000` → 25)
+ * that mistake is visible at a glance while the opposite one (`31.000` → 31)
  * would silently drop three zeros.
  *
  * Returns `null` when the value is not a number, so the caller can report the

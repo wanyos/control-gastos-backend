@@ -35,7 +35,7 @@ describe('parseMyinvestorStatement — order and count (R5)', () => {
       bookingDate: '2026-03-12',
       valueDate: '2026-03-12',
       description: 'COMPRA FONDO FICTICIO',
-      amount: -50,
+      amount: -60,
       balance: null,
       currency: 'EUR',
       type: 'expense',
@@ -69,7 +69,7 @@ describe('parseMyinvestorStatement — header location (R7)', () => {
     const content = buildStatementCsv({
       preamble: ['Extracto de cuenta', 'Generado el 15/03/2026'],
       headers: ['Divisa', 'Concepto', 'Importe', 'Fecha de valor', 'Fecha de operación'],
-      rows: [['EUR', 'COMPRA FONDO FICTICIO', '-50', '12/03/2026', '12/03/2026']],
+      rows: [['EUR', 'COMPRA FONDO FICTICIO', '-60', '12/03/2026', '12/03/2026']],
     })
 
     const result = parseMyinvestorStatement(content)
@@ -79,7 +79,7 @@ describe('parseMyinvestorStatement — header location (R7)', () => {
         bookingDate: '2026-03-12',
         valueDate: '2026-03-12',
         description: 'COMPRA FONDO FICTICIO',
-        amount: -50,
+        amount: -60,
         balance: null,
         currency: 'EUR',
         type: 'expense',
@@ -91,7 +91,7 @@ describe('parseMyinvestorStatement — header location (R7)', () => {
   it('still recognizes the accented column when its accent arrives mangled', () => {
     const content = buildStatementCsv({
       headers: ['Fecha de operaci?n', 'Fecha de valor', 'Concepto', 'Importe', 'Divisa'],
-      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR']],
+      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-60', 'EUR']],
     })
 
     const result = parseMyinvestorStatement(content)
@@ -106,7 +106,7 @@ describe('parseMyinvestorStatement — amounts and dates (R9, R10, R11)', () => 
     const result = sample()
 
     expect(result.movements.map((movement) => movement.amount)).toEqual([
-      -50, -7.99, -25000, 25149.95, -5000, -5000, 0, -12.34,
+      -60, -9.49, -31000, 12345.67, -4200, -4200, 0, -12.34,
     ])
   })
 
@@ -140,7 +140,7 @@ describe('parseMyinvestorStatement — fidelity to the file (R12, R13, R15)', ()
 
   it('does not deduplicate: two identical lines produce two movements', () => {
     const duplicates = sample().movements.filter(
-      (movement) => movement.description === 'PAGO DUPLICADO PRUEBA' && movement.amount === -5000,
+      (movement) => movement.description === 'PAGO DUPLICADO PRUEBA' && movement.amount === -4200,
     )
 
     expect(duplicates).toHaveLength(2)
@@ -149,7 +149,7 @@ describe('parseMyinvestorStatement — fidelity to the file (R12, R13, R15)', ()
   it('ignores blank lines instead of reporting them as unparsable', () => {
     const content = buildStatementCsv({
       rows: [
-        ['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR'],
+        ['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-60', 'EUR'],
         null,
         ['11/03/2026', '11/03/2026', 'OTRA COMPRA FICTICIA', '-10', 'EUR'],
       ],
@@ -177,7 +177,7 @@ describe('parseMyinvestorStatement — unparsable lines (R14, R16)', () => {
 
   it('reports a line with an unexpected number of columns instead of guessing', () => {
     const content = buildStatementCsv({
-      rows: [['12/03/2026', '12/03/2026', 'CONCEPTO CON ; DENTRO', '-50', 'EUR']],
+      rows: [['12/03/2026', '12/03/2026', 'CONCEPTO CON ; DENTRO', '-60', 'EUR']],
     })
 
     const result = parseMyinvestorStatement(content)
@@ -263,7 +263,7 @@ describe('parseMyinvestorStatement — the labelled iban preamble line (F12 R18)
   it('reads the iban from the labelled preamble line', () => {
     const content = buildStatementCsv({
       preamble: ['iban;ES9121000418450200051332'],
-      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR']],
+      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-60', 'EUR']],
     })
 
     const result = parseMyinvestorStatement(content)
@@ -275,7 +275,7 @@ describe('parseMyinvestorStatement — the labelled iban preamble line (F12 R18)
   it('tolerates trailing semicolons, spaces and casing in the iban line', () => {
     const content = buildStatementCsv({
       preamble: [' IBAN ; ES9121000418450200051332 ;;;;'],
-      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR']],
+      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-60', 'EUR']],
     })
 
     expect(parseMyinvestorStatement(content).accountIban).toBe('ES9121000418450200051332')
@@ -297,7 +297,7 @@ describe('parseMyinvestorStatement — the labelled iban preamble line (F12 R18)
   it('does not let the iban line reach unparsedRows nor the movements', () => {
     const content = buildStatementCsv({
       preamble: ['iban;ES9121000418450200051332'],
-      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR']],
+      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-60', 'EUR']],
     })
 
     const result = parseMyinvestorStatement(content)
@@ -310,7 +310,7 @@ describe('parseMyinvestorStatement — the labelled iban preamble line (F12 R18)
     const content = buildStatementCsv({
       bom: true,
       preamble: ['iban;ES9121000418450200051332'],
-      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-50', 'EUR']],
+      rows: [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-60', 'EUR']],
     })
 
     expect(parseMyinvestorStatement(content).accountIban).toBe('ES9121000418450200051332')

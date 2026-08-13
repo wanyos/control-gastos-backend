@@ -151,7 +151,7 @@ pedimos que teclee?
 
 ```json
 "marketValue": 8440.60        ✅   "gainPercent": -3.47          ✅
-"principal": 25000            ✅   "uninvestedCash": 900.00      ✅
+"principal": 31000            ✅   "uninvestedCash": 900.00      ✅
 "marketValue": "8440.60"      ❌ (texto: rechazado con motivo, R77)
 "marketValue": "8.440,60"     ❌ (texto: rechazado con motivo, R77)
 "marketValue": "8.440,60 €"   ❌ (texto: rechazado con motivo, R77)
@@ -159,8 +159,8 @@ pedimos que teclee?
 
 Reglas de escritura, que son las de JSON y ninguna más:
 
-- **Punto decimal**, nunca coma. **Sin separador de miles**: `25000`, no `25.000` ni
-  `"25.000"`.
+- **Punto decimal**, nunca coma. **Sin separador de miles**: `31000`, no `31.000` ni
+  `"31.000"`.
 - **Sin símbolos**: ni `€` ni `%`. La unidad la da el campo (`currency` para el dinero,
   §6.3 para los porcentajes).
 - **El signo va en el número**: `-3.47`.

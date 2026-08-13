@@ -47,15 +47,15 @@ describe('computeAccountBalance', () => {
     const movements = [
       balanceMovement({
         type: 'income',
-        amount: '2197.72',
-        balanceAfter: '24816.16',
+        amount: '1500.00',
+        balanceAfter: '10000.00',
         bookingDate: new Date('2026-07-31T00:00:00.000Z'),
         daySequence: 1,
       }),
       balanceMovement({
         type: 'expense',
-        amount: '188.67',
-        balanceAfter: '24627.49',
+        amount: '45.37',
+        balanceAfter: '9954.63',
         bookingDate: new Date('2026-07-31T00:00:00.000Z'),
         daySequence: 2,
       }),
@@ -72,7 +72,7 @@ describe('computeAccountBalance', () => {
     // neither must influence the result (R9).
     const balance = computeAccountBalance('999999.99', movements)
 
-    expect(balance.toFixed(2)).toBe('24627.49')
+    expect(balance.toFixed(2)).toBe('9954.63')
   })
 
   it('breaks a same-day tie with the highest daySequence, not the array order', () => {
@@ -244,8 +244,8 @@ describe('movement routes (read-only) and database indexes', () => {
       data: {
         accountId: movement.accountId,
         type: movement.type ?? 'expense',
-        amount: movement.amount ?? '1000.00',
-        description: movement.description ?? 'TRANS INM/ Openbank',
+        amount: movement.amount ?? '850.00',
+        description: movement.description ?? 'TRANS INM/ OTRO BANCO',
         bookingDate,
         valueDate: bookingDate,
         daySequence: movement.daySequence === undefined ? 1 : movement.daySequence,
@@ -263,8 +263,8 @@ describe('movement routes (read-only) and database indexes', () => {
 
     const older = await seedMovement({
       accountId: account.id,
-      description: 'RECIBO /Recibo VivaGym',
-      amount: '29.90',
+      description: 'RECIBO /Recibo GIMNASIO',
+      amount: '34.15',
       bookingDate: '2026-07-10',
       daySequence: 1,
       categoryId: category.id,
@@ -395,8 +395,8 @@ describe('movement routes (read-only) and database indexes', () => {
       accountId: account.id,
       bookingDate: '2026-07-24',
       daySequence: 1,
-      amount: '1000.00',
-      description: 'TRANS INM/ Openbank',
+      amount: '850.00',
+      description: 'TRANS INM/ OTRO BANCO',
     }
 
     await seedMovement(movement)
@@ -410,8 +410,8 @@ describe('movement routes (read-only) and database indexes', () => {
     const line = {
       accountId: account.id,
       bookingDate: '2026-07-24',
-      amount: '1000.00',
-      description: 'TRANS INM/ Openbank',
+      amount: '850.00',
+      description: 'TRANS INM/ OTRO BANCO',
     }
 
     await seedMovement({ ...line, daySequence: 1 })
@@ -432,8 +432,8 @@ describe('movement routes (read-only) and database indexes', () => {
         type: 'expense',
         bookingDate: new Date('2026-07-24T00:00:00.000Z'),
         valueDate: new Date('2026-07-25T00:00:00.000Z'),
-        amount: '29.90',
-        description: 'RECIBO /Recibo VivaGym',
+        amount: '34.15',
+        description: 'RECIBO /Recibo GIMNASIO',
         balanceAfter: '22800.11',
         currency: 'USD',
         note: 'checked against the receipt',
@@ -452,8 +452,8 @@ describe('movement routes (read-only) and database indexes', () => {
     expect(stored.type).toBe('expense')
     expect(stored.bookingDate.toISOString().slice(0, 10)).toBe('2026-07-24')
     expect(stored.valueDate.toISOString().slice(0, 10)).toBe('2026-07-25')
-    expect(stored.amount.toFixed(2)).toBe('29.90')
-    expect(stored.description).toBe('RECIBO /Recibo VivaGym')
+    expect(stored.amount.toFixed(2)).toBe('34.15')
+    expect(stored.description).toBe('RECIBO /Recibo GIMNASIO')
     expect(stored.balanceAfter?.toFixed(2)).toBe('22800.11')
     expect(stored.currency).toBe('USD')
     expect(stored.note).toBe('checked against the receipt')

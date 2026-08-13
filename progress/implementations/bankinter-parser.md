@@ -50,7 +50,7 @@ El `.xlsx` real (`var/drive-read/bankinter/2026/`) tiene cabecera de 6 columnas
 **`Fecha contable | Fecha valor | Descripción | Importe | Saldo | Divisa`** (no
 existen columnas `Concepto` ni `Tipo de movimiento`; esos textos solo aparecen en
 el preámbulo como etiquetas de filtro). El importe se guarda como **número
-nativo** (`-188.67`) y las fechas como texto `dd/mm/yyyy`. El modelo se ajustó a
+nativo** (`-45.37`) y las fechas como texto `dd/mm/yyyy`. El modelo se ajustó a
 estas columnas (confirmado por el humano el 2026-08-04): fuera `concepto`/
 `tipoMovimiento`, dentro `saldo` y `divisa`. El parser mapea **por nombre de
 cabecera** (robusto a la posición) y acepta `importe`/`saldo` como número nativo o

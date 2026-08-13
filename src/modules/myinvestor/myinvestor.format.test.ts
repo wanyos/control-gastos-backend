@@ -4,11 +4,11 @@ import { parseAmountText, parseIsoDate, parseStatementDate } from './myinvestor.
 
 describe('parseAmountText (R10)', () => {
   it('reads the five numeric shapes that coexist in a single statement', () => {
-    expect(parseAmountText('-50')).toBe(-50)
-    expect(parseAmountText('-7,99')).toBe(-7.99)
-    expect(parseAmountText('-5000')).toBe(-5000)
-    expect(parseAmountText('-25.000')).toBe(-25000)
-    expect(parseAmountText('25.149,95')).toBe(25149.95)
+    expect(parseAmountText('-60')).toBe(-60)
+    expect(parseAmountText('-9,49')).toBe(-9.49)
+    expect(parseAmountText('-4200')).toBe(-4200)
+    expect(parseAmountText('-31.000')).toBe(-31000)
+    expect(parseAmountText('12.345,67')).toBe(12345.67)
   })
 
   it('drops the currency symbol, the percent sign and the spaces', () => {
@@ -24,7 +24,7 @@ describe('parseAmountText (R10)', () => {
   })
 
   it('returns a native finite number unchanged', () => {
-    expect(parseAmountText(-7.99)).toBe(-7.99)
+    expect(parseAmountText(-9.49)).toBe(-9.49)
     expect(parseAmountText(0)).toBe(0)
   })
 

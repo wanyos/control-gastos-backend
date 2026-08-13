@@ -339,12 +339,15 @@ La muestra real (`var/drive-read/myinvestor/2026/deposito.txt`) añadió un mati
 intereses brutos —
 
 ```
-2 % TAE sin Premium  |  3 % TAE con Premium
-Interés bruto con Premium 37,39 €   /   sin Premium 25,02 €
+1 % TAE sin Premium  |  2 % TAE con Premium
+Interés bruto con Premium 50,00 €   /   sin Premium 25,00 €
 ```
 
+> Forma real, **cifras inventadas** (10.000 € a 3 meses): `docs/conventions.md` §Tests
+> prohíbe versionar las del humano y `src/no-real-data.test.ts` lo hace cumplir.
+
 — y **el humano decidió guardar solo la que se le aplica**: tiene Premium, así que su
-depósito está al **3 %** con `expectedGain` **37,39 €**. La otra pareja describe un
+depósito está al **2 %** con `expectedGain` **50,00 €**. La otra pareja describe un
 producto que él no tiene: es **información comercial**, no una condición de su
 depósito, y responder *"¿cuánto ganaría si no tuviera Premium?"* no es ninguna de las
 preguntas que el `intent` quiere poder contestar.
@@ -473,18 +476,22 @@ patrimonio(producto, D) = marketValue + uninvestedCash    # de su Valuation más
 
 1. **Su explicación, con la web del banco delante:** *"El efectivo queda fuera de
    cualquier total, eso siempre se queda como remanente; normalmente hago un ingreso
-   de 300 € mensuales y una vez invertido ese dinero o una cantidad similar se queda
+   de ‹cantidad redactada› mensuales y una vez invertido ese dinero o una cantidad similar se queda
    como dinero metálico fuera del resto de cantidades."*
 2. **La aritmética de las muestras reales** (`var/drive-read/myinvestor/2026/`), que
    es la prueba que no depende de cómo se lea una frase:
 
    | Muestra | Invertido | Ganancia | Suma | Valor de mercado | Efectivo |
    | --- | --- | --- | --- | --- | --- |
-   | `indi.txt` (cartera) | 10.301,63 | 1.559,58 | **11.861,21** | **11.861,21** ✅ | 58,37 **fuera** |
-   | `fondo.txt` (fondo) | 1.250,00 | 62,72 | **1.312,72** | **1.312,72** ✅ | — |
+   | `indi.txt` (cartera) | 8.250,45 | 1.250,15 | **9.500,60** | **9.500,60** ✅ | 75,25 **fuera** |
+   | `fondo.txt` (fondo) | 2.000,00 | 150,00 | **2.150,00** | **2.150,00** ✅ | — |
+
+   > Es la aritmética real, con **cifras inventadas** (2026-08-12, F14): los importes
+   > del humano no se versionan. Lo que el ejemplo enseña —que la suma cuadra al
+   > céntimo y que el efectivo queda fuera— es exactamente lo mismo.
 
    El valor de mercado cuadra **al céntimo** con `invertido + ganancia`, sin el
-   efectivo. Si el banco lo llevara dentro, la cartera tendría que marcar 11.919,58.
+   efectivo. Si el banco lo llevara dentro, la cartera tendría que marcar 9.575,85.
 
 **Conclusión: no hay doble conteo.** La suma es correcta y así queda escrita en
 `docs/data-model.md` y en el ADR-012 (R21). El esquema no cambia (nunca iba a cambiar
@@ -747,8 +754,8 @@ que se hizo con R32/R36 en la feature 8.
       del formato.
   11. ✅ **`marketValue` NO incluye `uninvestedCash`** (confirmado por el humano y por
       la aritmética de las muestras reales: en la cartera,
-      `10.301,63 + 1.559,58 = 11.861,21`, exactamente el valor de mercado, con los
-      `58,37 €` de efectivo fuera). El patrimonio de un producto es
+      `8.250,45 + 1.250,15 = 9.500,60`, exactamente el valor de mercado, con los
+      `75,25 €` de efectivo fuera). El patrimonio de un producto es
       **`marketValue + uninvestedCash`**, sin doble conteo. Era el punto abierto nº 1 y
       el único capaz de dar un patrimonio equivocado.
   12. **Sin endpoints, sin parser, sin importador y sin servicio:** el módulo

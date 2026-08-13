@@ -567,7 +567,7 @@
         "delego_en_agente": [
           "La propuesta concreta de campos de cada tipo de producto, sacada de mis muestras reales y alineada con el modelo de la feature 9, para que yo la revise y la cierre. Que marque claramente cuáles salen del modelo, cuáles salen de la muestra y cuáles se ha inventado.",
           "Cómo se nombran los archivos de producto y de dónde sale a qué producto y a qué fecha corresponde cada uno, sabiendo que habrá varios archivos del mismo producto a lo largo del tiempo.",
-          "El formato exacto de números y fechas en los JSON que escribo a mano, sabiendo que en la web del banco los veo como 1.312,72 € y las fechas unas veces con año de cuatro cifras y otras de dos.",
+          "El formato exacto de números y fechas en los JSON que escribo a mano, sabiendo que en la web del banco los veo como 1.234,56 € y las fechas unas veces con año de cuatro cifras y otras de dos.",
           "Cómo digo que un producto ya no está (vencido o reembolsado).",
           "Cómo se reportan los errores de escritura y con qué nivel de detalle, y qué pasa con el resto de archivos cuando uno está roto.",
           "Cómo se dispara el parseo y dónde se vuelca el JSON local, reutilizando el camino que ya existe en el proyecto en vez de inventar uno nuevo.",
@@ -590,6 +590,49 @@
         "Cada criterio tiene al menos un test concreto con archivos de ejemplo sintéticos (sin datos financieros reales ni red) mapeado en progress/implementations/myinvestor-products.md; ./init.sh termina en verde incluida la suite completa; y cualquier dependencia nueva queda documentada en docs/stack.md, con ADR si la decisión lo amerita (deriva del cierre estándar del proyecto)"
       ],
       "sdd": true,
+      "status": "done"
+    },
+    {
+      "id": 14,
+      "name": "no-real-data",
+      "title": "Sacar los datos reales del repositorio y poner un guardián que impida la recaída",
+      "_intent_cerrado_por_el_humano": "Redactado por el leader el 2026-08-12 a partir de lo que el reviewer encontró en la F13, y ACEPTADO SIN CAMBIOS por el humano ese mismo día ('hagamos la feature'). Recoge sus dos decisiones previas del 2026-08-12: el repositorio es privado y el histórico NO se reescribe.",
+      "intent": {
+        "que_quiero": "Que en el repositorio no quede ni un dato financiero real mío, y que deje de depender de que alguien se acuerde de la regla. Dos partes. La primera, limpiar lo que ya se coló y sigue en los archivos de hoy: las cifras de mis inversiones en docs/data-model.md, en el ADR-012, en investments.model.test.ts, en el resumen y la review de la feature 9, en progress/current.md, y un concepto que parece copiado de mi extracto en el fixture CSV de la feature 10. La segunda, y es la que de verdad importa: un guardián automático en la suite que falle si un dato real reaparece, de modo que quien lo intente se entere en el momento y no tres features después.",
+        "por_que": "Ha pasado dos veces seguidas. En la feature 12 se coló mi IBAN real en tests y documentación; en la feature 13, los importes de toda mi cartera, mi fondo y mi depósito. Las dos veces lo cazó el reviewer leyendo con lupa, no la suite; y la segunda vez la regla ya estaba escrita en docs/conventions.md y hasta en el propio 'acceptance' de la feature 13, que exigía fixtures sintéticos. Una regla que tres agentes distintos tienen que recordar no es una regla: es una esperanza. El repositorio es privado, así que esto no es una urgencia, pero es la clase de deuda que solo se paga barata mientras nadie mire.",
+        "como_se_que_esta_bien": [
+          "Cuando busco cualquiera de mis cifras o mi IBAN en los archivos del repositorio, no aparece ninguno.",
+          "Cuando alguien mete un dato real mío en un test o en la documentación, la suite falla y me dice dónde, sin que nadie tenga que revisarlo a mano.",
+          "El guardián no me obliga a tener mis datos reales dentro del repositorio para poder compararlos: eso sería el mismo problema con otro nombre.",
+          "Los ejemplos saneados siguen enseñando lo mismo: la aritmética cuadra y ningún test se vuelve trivial por haber cambiado un número.",
+          "Cuando el guardián salte por algo que no es un dato real, puedo entender por qué y desactivarlo para ese caso sin desarmarlo entero."
+        ],
+        "que_no_quiero": [
+          "No reescribir el histórico de git ni forzar un push: ya lo decidí el 2026-08-12. Las cifras se quedan en los commits 9588389 y 0e95035, con el riesgo anotado.",
+          "No tocar el comportamiento de ningún parser ni del importador: esto es limpieza y prevención, no funcionalidad.",
+          "No convertir el guardián en algo que haya que mantener a mano cada vez que cambien mis datos.",
+          "No meter mis datos reales en el repositorio, ni siquiera cifrados o troceados, para que el guardián los compare."
+        ],
+        "delego_en_agente": [
+          "Cómo detecta el guardián un dato real sin tener los datos reales dentro del repositorio: por forma (IBAN español válido, importes con la pinta de mis capturas) o comparando contra las capturas gitignoreadas de var/ cuando estén presentes, saltándose la comprobación cuando no lo estén. Que lo proponga con el trade-off y me lo marque, porque de esto depende que el guardián sirva o sea decorativo.",
+          "Si el guardián vive en src/architecture.test.ts junto a los demás o en su propio archivo.",
+          "Qué hacer con progress/history.md y con las reviews y resúmenes ya escritos, que son bitácora histórica: sanearlos también o dejarlos y por qué.",
+          "El orden de la limpieza y si algo de lo listado resulta no ser un dato real después de mirarlo."
+        ]
+      },
+      "acceptance": [
+        "Ningún dato financiero real del humano queda en un archivo versionado del repositorio: ni sus importes, porcentajes, TAEs, capitales o números de depósito, ni su IBAN, ni conceptos copiados de sus extractos. Cubre lo listado por el reviewer de la F13 —docs/data-model.md, ADR-012 de docs/architecture.md, investments.model.test.ts, progress/summaries/investments-data-model.md, la review de la F9 y progress/current.md— más el concepto sospechoso del fixture CSV de la F10, y cualquier otro que aparezca al barrer (deriva de: 'que no quede ni un dato financiero real mío')",
+        "Existe un guardián automático en la suite que FALLA cuando un dato real del humano aparece en un archivo versionado, señalando el archivo y el motivo; se ejecuta con ./init.sh como un test más, sin intervención manual (deriva de: 'la suite falla y me dice dónde, sin que nadie tenga que revisarlo a mano')",
+        "El guardián NO exige que los datos reales del humano estén dentro del repositorio para funcionar: si se apoya en las capturas gitignoreadas de var/, se salta la comprobación cuando no están presentes y lo dice, en vez de fallar o de obligar a versionarlas (deriva de: 'el guardián no me obliga a tener mis datos reales dentro del repositorio: sería el mismo problema con otro nombre')",
+        "La estrategia de detección elegida (por forma, por comparación contra var/, o ambas) queda anotada con su trade-off y marcada explícitamente al humano, porque de ella depende que el guardián sirva o sea decorativo (deriva de la delegación 'que lo proponga con el trade-off y me lo marque')",
+        "El guardián se puede silenciar para un caso concreto y justificado sin desarmarlo entero, y el mecanismo de excepción queda documentado (deriva de: 'puedo entender por qué y desactivarlo para ese caso sin desarmarlo entero')",
+        "El saneamiento conserva la enseñanza de cada ejemplo y de cada test: la aritmética que ilustraban sigue cuadrando y ninguna aserción se vuelve trivial por haber cambiado un número; los valores nuevos son obviamente sintéticos (deriva de: 'los ejemplos siguen enseñando lo mismo y ningún test se vuelve trivial')",
+        "La feature NO reescribe el histórico de git ni fuerza ningún push, y el riesgo de que las cifras sigan en los commits 9588389 y 0e95035 queda anotado como aceptado y conocido (deriva de: 'no reescribir el histórico ni forzar un push, ya lo decidí')",
+        "La feature NO cambia el comportamiento de ningún parser, del importador ni de ningún endpoint: es limpieza y prevención. El contrato de la API no cambia (deriva de: 'no tocar el comportamiento de ningún parser ni del importador')",
+        "Queda resuelto y anotado qué se hace con la bitácora histórica (progress/history.md, reviews y resúmenes ya escritos): sanearla también o dejarla, con el porqué (deriva de la delegación sobre la bitácora)",
+        "./init.sh termina en verde incluida la suite completa, con el guardián nuevo entre los tests, y lo hecho queda mapeado en progress/implementations/no-real-data.md; la regla de docs/conventions.md §Tests se actualiza para apuntar al guardián que ahora la hace cumplir (deriva del cierre estándar del proyecto)"
+      ],
+      "sdd": false,
       "status": "done"
     }
   ]

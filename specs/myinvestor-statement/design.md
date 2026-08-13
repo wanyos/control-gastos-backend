@@ -164,9 +164,13 @@ por recurso funcional. Consecuencias, todas favorables y ninguna de esquema:
 
 ```
 Fecha de operación;Fecha de valor;Concepto;Importe;Divisa
-06/08/2026;10/08/2026;ISHARE DEVLP REAL ESTATE INDX;-50;EUR
-03/08/2026;03/08/2026;SUSCRIPCIÓN PREMIUM;-7,99;EUR
+06/08/2026;10/08/2026;COMPRA ETF EJEMPLO;-60;EUR
+03/08/2026;03/08/2026;CUOTA SERVICIO EJEMPLO;-9,49;EUR
 ```
+
+> La **forma** es la del archivo real; los conceptos y los importes son
+> **inventados** (F14, 2026-08-12): `src/no-real-data.test.ts` falla si vuelven los
+> del humano.
 
 Hechos que el diseño da por buenos porque están comprobados byte a byte sobre el
 archivo real:
@@ -220,17 +224,17 @@ Mapeo (`headerToField`), tolerante al orden de columnas:
 
 ### 3.3 El separador de miles a medias: una sola regla para todo el banco
 
-En la muestra real conviven `-50`, `-7,99`, `-5000`, `-25.000` y `25.149,95`. La regla
+En la muestra real conviven `-60`, `-9,49`, `-4200`, `-31.000` y `12.345,67`. La regla
 se implementa en `myinvestor.format.ts` (`parseAmountText`) y es esta:
 
 1. Se quitan espacios, `€` y `%`.
 2. **Si hay coma** → formato español: los puntos son separador de miles y la coma es el
-   decimal. `25.149,95` → `25149.95`; `-7,99` → `-7.99`.
+   decimal. `12.345,67` → `12345.67`; `-9,49` → `-9.49`.
 3. **Si no hay coma y los puntos separan grupos de exactamente tres dígitos**
-   (`^-?\d{1,3}(\.\d{3})+$`) → los puntos son separador de miles. `-25.000` → `-25000`;
+   (`^-?\d{1,3}(\.\d{3})+$`) → los puntos son separador de miles. `-31.000` → `-31000`;
    `1.312.000` → `1312000`.
-4. **En cualquier otro caso**, el punto es el separador decimal. `1312.72` → `1312.72`;
-   `-5000` → `-5000`; `1.5` → `1.5`.
+4. **En cualquier otro caso**, el punto es el separador decimal. `1234.56` → `1234.56`;
+   `-4200` → `-4200`; `1.5` → `1.5`.
 5. Lo que no encaje en `^[+-]?\d+(\.\d+)?$` tras normalizar → **no interpretable**, y se
    reporta (R14).
 
@@ -244,7 +248,7 @@ se implementa en `myinvestor.format.ts` (`parseAmountText`) y es esta:
 > uno coma cinco. La regla 3 decide **mil quinientos**, porque estos números salen de una
 > interfaz española donde el punto **siempre** agrupa miles, y porque el error de esa
 > elección (`1.500` → 1500 cuando querías 1,5) es visible a simple vista en el volcado,
-> mientras que el contrario (`25.000` → 25 cuando eran veinticinco mil) borraría tres
+> mientras que el contrario (`31.000` → 25 cuando eran veinticinco mil) borraría tres
 > ceros de un depósito sin que nada chirríe. Ante dos errores posibles, se elige el que
 > se ve.
 
@@ -665,7 +669,7 @@ export function parseLocalMyinvestorCopies(
 > debajo de los diez billones sobrevive al viaje `double → JSON → toFixed(2)` con los
 > mismos dígitos, y la conversión final a `Decimal(10,2)` la hace el importador.
 > **Alternativa anotada** por si algún día hay tres decimales o importes enormes: emitir
-> cadenas normalizadas (`"1312.72"`), que Prisma acepta directamente para `Decimal`.
+> cadenas normalizadas (`"1234.56"`), que Prisma acepta directamente para `Decimal`.
 
 ## 14. Estrategia de test (Nivel 2 de `docs/verification.md`)
 

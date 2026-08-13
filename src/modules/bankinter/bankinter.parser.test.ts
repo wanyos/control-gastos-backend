@@ -125,29 +125,29 @@ describe('parseBankinterXlsx', () => {
     expect(result.movements.some((m) => m.description === 'IMPORTE ILEGIBLE')).toBe(false)
   })
 
-  it('parses the exact real Bankinter layout (native number amount and balance)', async () => {
+  it('parses the real Bankinter layout (native number amount and balance)', async () => {
     const buffer = await buildStatementXlsx({
-      ibanLine: 'MOVIMIENTOS DE LA CUENTA ES1501280074010100032314',
+      ibanLine: 'MOVIMIENTOS DE LA CUENTA ES9820385778983000760236',
       headers: ['Fecha contable', 'Fecha valor', 'Descripción', 'Importe', 'Saldo', 'Divisa'],
       rows: [
-        ['31/07/2026', '31/07/2026', 'RECIBO VISA CLASICA', -188.67, 24627.49, 'EUR'],
-        ['31/07/2026', '31/07/2026', 'TRANSF NOMINA', 2197.72, 24816.16, 'EUR'],
+        ['31/07/2026', '31/07/2026', 'RECIBO CUOTA GIMNASIO', -45.37, 9954.63, 'EUR'],
+        ['31/07/2026', '31/07/2026', 'TRANSF NOMINA', 1500, 10000, 'EUR'],
       ],
     })
 
     const result = await parseBankinterXlsx(buffer)
 
-    expect(result.accountIban).toBe('ES1501280074010100032314')
+    expect(result.accountIban).toBe('ES9820385778983000760236')
     expect(result.movements).toHaveLength(2)
     // Bankinter exports the most recent first: the balances prove it
-    // (24816,16 − 188,67 = 24627,49), so the FIRST row of the file is the
+    // (10000,00 − 45,37 = 9954,63), so the FIRST row of the file is the
     // LAST movement of the day and gets daySequence 2, not 1.
     expect(result.movements[0]).toEqual({
       bookingDate: '2026-07-31',
       valueDate: '2026-07-31',
-      description: 'RECIBO VISA CLASICA',
-      amount: -188.67,
-      balance: 24627.49,
+      description: 'RECIBO CUOTA GIMNASIO',
+      amount: -45.37,
+      balance: 9954.63,
       currency: 'EUR',
       type: 'expense',
       daySequence: 2,
@@ -266,7 +266,7 @@ describe('parseBankinterXlsx', () => {
 
 describe('parseSpanishAmount', () => {
   it('returns a native number unchanged (as the real export stores it)', () => {
-    expect(parseSpanishAmount(-188.67)).toBe(-188.67)
+    expect(parseSpanishAmount(-45.37)).toBe(-45.37)
     expect(parseSpanishAmount(2500)).toBe(2500)
   })
 

@@ -271,21 +271,21 @@ describe('investments model: InvestmentProduct and Valuation', () => {
 
       const created = await createValuation(product.id, {
         date: day('2026-04-30'),
-        invested: '10301.63',
-        marketValue: '11861.21',
-        gain: '1559.58',
-        gainPercent: '15.1391',
-        uninvestedCash: '58.37',
+        invested: '8250.45',
+        marketValue: '9500.60',
+        gain: '1250.15',
+        gainPercent: '15.1525',
+        uninvestedCash: '75.25',
       })
       const stored = await app.prisma.valuation.findUniqueOrThrow({ where: { id: created.id } })
 
       expect(stored.productId).toBe(product.id)
       expect(stored.date.toISOString().slice(0, 10)).toBe('2026-04-30')
-      expect(stored.invested.toFixed(2)).toBe('10301.63')
-      expect(stored.marketValue.toFixed(2)).toBe('11861.21')
-      expect(stored.gain?.toFixed(2)).toBe('1559.58')
-      expect(stored.gainPercent?.toFixed(4)).toBe('15.1391')
-      expect(stored.uninvestedCash?.toFixed(2)).toBe('58.37')
+      expect(stored.invested.toFixed(2)).toBe('8250.45')
+      expect(stored.marketValue.toFixed(2)).toBe('9500.60')
+      expect(stored.gain?.toFixed(2)).toBe('1250.15')
+      expect(stored.gainPercent?.toFixed(4)).toBe('15.1525')
+      expect(stored.uninvestedCash?.toFixed(2)).toBe('75.25')
       expect(stored.createdAt).toBeInstanceOf(Date)
       expect(stored.updatedAt).toBeInstanceOf(Date)
     })
@@ -445,7 +445,7 @@ describe('investments model: InvestmentProduct and Valuation', () => {
           type: 'expense',
           bookingDate: day('2026-04-01'),
           valueDate: day('2026-04-01'),
-          amount: '300.00',
+          amount: '250.00',
           description: 'APORTACION FONDO',
           accountId: account.id,
           productId: product.id,
@@ -471,8 +471,8 @@ describe('investments model: InvestmentProduct and Valuation', () => {
           type: 'expense',
           bookingDate: day('2026-04-02'),
           valueDate: day('2026-04-02'),
-          amount: '29.90',
-          description: 'RECIBO /Recibo VivaGym',
+          amount: '34.15',
+          description: 'RECIBO /Recibo GIMNASIO',
           accountId: account.id,
           daySequence: 1,
         },

@@ -26,7 +26,7 @@
   dd/mm/yyyy → ISO.** Modelo con las 6 columnas (`bankinter.types.ts:9`).
   `parseSpanishAmount` acepta número nativo y `1.234,56` (`:224`),
   `parseSpanishDate` `:195`. Tests `parser.test.ts:20` (nativo + español),
-  `:92` (layout real -188.67 / 24627.49), `:153-170` (amount), `:172-183` (date).
+  `:92` (layout real -45.37 / 9954.63), `:153-170` (amount), `:172-183` (date).
 - [x] **A3 — `tipo` por signo (neg→gasto, pos→ingreso).** `parser.ts:177`. Test
   `parser.test.ts:59` y `:106`.
 - [x] **A4 — NO deduplica.** Dos filas idénticas `PAGO TARJETA -10` → 2. Test

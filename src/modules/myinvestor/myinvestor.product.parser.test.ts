@@ -158,7 +158,7 @@ describe('parseMyinvestorProduct — the numbers are written as native JSON (R26
     for (const [written, expected] of [
       [947.25, 947.25],
       [-3.47, -3.47],
-      [25000, 25000],
+      [31000, 31000],
       [147.25, 147.25],
       [947.2, 947.2],
       [947.255, 947.255],
@@ -170,12 +170,12 @@ describe('parseMyinvestorProduct — the numbers are written as native JSON (R26
   })
 
   it('neither rounds nor fixes the number of decimals (R27)', () => {
-    const product = parsedOk(parse(buildProductFund({ marketValue: 947.255, invested: 25000 })))
+    const product = parsedOk(parse(buildProductFund({ marketValue: 947.255, invested: 31000 })))
 
-    // 947.255 is NOT rounded to 947.26, and 25000 is NOT reformatted to 25000.00.
+    // 947.255 is NOT rounded to 947.26, and 31000 is NOT reformatted to 31000.00.
     expect(product.valuation?.marketValue).toBe(947.255)
-    expect(product.valuation?.invested).toBe(25000)
-    expect(JSON.stringify(product.valuation)).toContain('25000')
+    expect(product.valuation?.invested).toBe(31000)
+    expect(JSON.stringify(product.valuation)).toContain('31000')
     expect(JSON.stringify(product.valuation)).not.toContain('947.26')
   })
 

@@ -56,8 +56,8 @@
       consumidora. Cubre: R9, R10.
 
 - [x] T3 — Crear `src/modules/myinvestor/myinvestor.format.test.ts` con los casos de
-      `design.md` §3.3: `-50`, `-7,99`, `-5000`, `-25.000`, `25.149,95`,
-      `"1.312,72 €"`, `"1312.72"`, `"-3,47 %"`, `"1.312.000"`, `"1.5"`; fechas
+      `design.md` §3.3: `-60`, `-9,49`, `-4200`, `-31.000`, `12.345,67`,
+      `"1.234,56 €"`, `"1234.56"`, `"-3,47 %"`, `"1.312.000"`, `"1.5"`; fechas
       `01/08/2026` → `2026-08-01` y `31/02/2026` → `null`. Cubre: R9, R10.
 
 ## Fase 2 — Entrada 1: el extracto de la cuenta corriente

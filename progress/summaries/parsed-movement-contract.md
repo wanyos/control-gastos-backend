@@ -117,7 +117,7 @@ Por cada punto del `como_se_que_esta_bien`:
   [parsed-statement.test.ts:25](../../src/lib/parsed-statement.test.ts#L25) y
   [:46](../../src/lib/parsed-statement.test.ts#L46), y sobre el layout real de
   Bankinter en [bankinter.parser.test.ts:128](../../src/modules/bankinter/bankinter.parser.test.ts#L128)
-  (los saldos demuestran el orden: 24 816,16 − 188,67 = 24 627,49).
+  (los saldos demuestran el orden: 10 000,00 − 45,37 = 9 954,63).
 - ✅ «Salvo el cambio del importe 0, para el mismo archivo salen exactamente los
   mismos movimientos y valores» → se cumple; el test de no regresión
   [bankinter.parser.test.ts:193](../../src/modules/bankinter/bankinter.parser.test.ts#L193)

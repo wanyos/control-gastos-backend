@@ -27,7 +27,7 @@ Renombrado puro español→inglés del modelo que expone el parser de Bankinter 
     misma detección de cabecera (`columns.bookingDate !== undefined && columns.amount !== undefined`,
     antes `fechaContable`/`importe`), mismas fechas/importes (`parseSpanishDate`/`parseSpanishAmount`
     intactos), misma derivación `amount < 0 ? 'expense' : 'income'`.
-  - Valores exactos preservados en tests: IBAN, importes (2500, 1234.56, -188.67…), fechas ISO,
+  - Valores exactos preservados en tests: IBAN, importes (2500, 1234.56, -45.37…), fechas ISO,
     recuentos 5 mov + 1 no reconocida. Mensajes de `reason` conservados en español
     (`stringContaining('importe')`/`('saldo')`).
 - **A4** `api-contract.md` en inglés + nota de breaking change + `progress/current.md` → **[x]**

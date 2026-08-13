@@ -103,7 +103,7 @@ describe('account routes and service', () => {
     const created = await createAccount({ iban, bank: 'bankinter' })
 
     await expect(
-      app.prisma.account.create({ data: { iban, bank: 'openbank', alias: 'clone' } }),
+      app.prisma.account.create({ data: { iban, bank: 'banco-ejemplo', alias: 'clone' } }),
     ).rejects.toMatchObject({ code: 'P2002' })
     expect(await app.prisma.account.count({ where: { iban } })).toBe(1)
     expect(created.iban).toBe(iban)
@@ -133,24 +133,24 @@ describe('account routes and service', () => {
 
     await seedMovement(created.id, {
       type: 'income',
-      amount: '2197.72',
-      description: 'TRANSF NOMI /EMPRESA MUNICIPAL',
+      amount: '1500.00',
+      description: 'TRANSF NOMI /ACME SL',
       bookingDate: '2026-07-31',
       daySequence: 1,
-      balanceAfter: '24816.16',
+      balanceAfter: '10000.00',
     })
     await seedMovement(created.id, {
       type: 'expense',
-      amount: '188.67',
+      amount: '45.37',
       description: 'RECIBO /Recibo luz',
       bookingDate: '2026-07-31',
       daySequence: 2,
-      balanceAfter: '24627.49',
+      balanceAfter: '9954.63',
     })
     await seedMovement(created.id, {
       type: 'expense',
-      amount: '1000.00',
-      description: 'TRANS INM/ Openbank',
+      amount: '850.00',
+      description: 'TRANS INM/ OTRO BANCO',
       bookingDate: '2026-07-24',
       daySequence: 1,
       balanceAfter: '22000.00',
@@ -163,7 +163,7 @@ describe('account routes and service', () => {
       .json<SerializedAccount[]>()
       .find((candidate) => candidate.id === created.id)
     // Highest daySequence of the most recent bookingDate: no sum involved.
-    expect(account?.balance).toBe('24627.49')
+    expect(account?.balance).toBe('9954.63')
     expect(account?.initialBalance).toBe('100.00')
   })
 
@@ -224,7 +224,7 @@ describe('account routes and service', () => {
     const iban = uniqueIban()
     await createAccount({ iban, bank: 'bankinter' })
 
-    const duplicated = await postAccount({ iban, bank: 'openbank' })
+    const duplicated = await postAccount({ iban, bank: 'banco-ejemplo' })
 
     expect(duplicated.statusCode).toBe(409)
     expect(duplicated.json()).toMatchObject({ statusCode: 409, code: 'CONFLICT' })

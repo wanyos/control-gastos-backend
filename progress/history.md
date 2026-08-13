@@ -529,7 +529,7 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
      es solo el plan B de una cuenta sin saldo corrido importado.
   4. **`Movement.daySequence`** (posición dentro del `bookingDate`) entra en la clave
      del índice único parcial de dedup. Sin ella, las **tres** líneas idénticas
-     legítimas `TRANS INM/ Openbank −1000,00` del mismo día de la muestra real se
+     legítimas `TRANS INM/ OTRO BANCO −850,00` del mismo día de la muestra real se
      habrían tomado por duplicados: −2.000 € perdidos en silencio.
 - **Cambios (alto nivel):** `prisma/schema.prisma` reemplazado (6 enums + 3 modelos);
   migración `20260806191700_data_model` con **DROP + CREATE** y los **dos índices en
@@ -616,7 +616,8 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   (`2.7500` = 2,75 %) y del depósito se guarda **una sola**, la aplicada; y ✅ el
   único punto capaz de dar un patrimonio equivocado, **`marketValue` NO incluye
   `uninvestedCash`**, confirmado por el humano y por la aritmética de las muestras
-  reales (`10.301,63 + 1.559,58 = 11.861,21`, con los `58,37 €` fuera): el
+  reales (cifras **inventadas** desde la F14: `8.250,45 + 1.250,15 = 9.500,60`, con
+  los `75,25 €` fuera): el
   patrimonio de un producto es **su suma**, sin doble conteo.
 - **Docs:** `data-model.md` retitulado a `# Modelo de datos`, con **cinco reglas**
   (nuevas: *la valoración se lee, no se calcula* y *una aportación no se crea, se
@@ -747,7 +748,7 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
      movimiento **más antiguo** de su `bookingDate`. Lo único bank-specific es
      decir en qué sentido exporta el banco
      ([`statementOrder = 'newest-first'`](../src/modules/bankinter/bankinter.parser.ts#L10),
-     verificado con los saldos de la muestra real: 24 816,16 − 188,67 = 24 627,49).
+     verificado con los saldos de la muestra real: 10 000,00 − 45,37 = 9 954,63).
 - **Decisiones delegadas (ADR-013 en [`docs/architecture.md`](../docs/architecture.md)):**
   el contrato vive en `lib/` («lo que usan todos y no es de nadie»; `modules/` es
   un directorio por recurso); **el dato que no viene en el fichero es `null`**,
@@ -900,3 +901,5 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 - 2026-08-12 — F12 `import`: la app **guarda datos de verdad** — `POST /api/import` baja de Drive, parsea, escribe los movimientos en su cuenta (creada sola con el IBAN del fichero) y solo entonces mueve el fichero a `procesados/`; reimportar no duplica. De paso, `ingesta` → `ingestion` (`/api/ingesta/*` → 404) → [resumen](summaries/import.md)
 
 - 2026-08-12 — F13 `myinvestor-products`: el módulo de MyInvestor lee ya **su segunda entrada** — los `.json` de producto de inversión que escribes a mano (fondo, ETF, cartera y depósito) — desde el mismo `POST /api/parser/myinvestor`, encaminados por extensión, con los errores de cada archivo acumulados en un solo motivo y un `products.json` por año para revisarlos. Sin base de datos → [resumen](summaries/myinvestor-products.md)
+
+- 2026-08-12 — F14 `no-real-data`: el repositorio deja de guardar datos financieros tuyos y deja de depender de que alguien se acuerde — `src/no-real-data.test.ts` **falla en la suite** señalando archivo, línea y motivo cuando reaparece uno, con dos capas (IBAN por checksum, siempre activa; comparación contra las capturas de `var/`, que **se salta diciéndolo** si no están o están a medias). De paso salió y se limpió lo que quedaba desde la F6, incluido tu IBAN real en un test → [resumen](summaries/no-real-data.md)

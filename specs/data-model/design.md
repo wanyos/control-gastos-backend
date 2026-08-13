@@ -205,8 +205,9 @@ dashboards son idea #4, posterior). Está anotado en `progress/current.md`.
 
 > **Por qué hace falta emparejar y no basta con leer el concepto:** el banco pone
 > "TRANSFERENCIA" tanto cuando te pagas a ti mismo como cuando pagas a un tercero,
-> y la segunda **sí** es un gasto real (en la muestra real conviven `TRANSF NOMI
-> /EMPRESA MUNICIPAL +2197,72` —nómina— y `TRANS INM/ EMILIA BENITEZ LOPE +350`).
+> y la segunda **sí** es un gasto real (en la muestra conviven
+> `TRANSF NOMI /ACME SL +1500,00` —nómina— y `TRANS INM/ NOMBRE APELLIDO +420`;
+> conceptos e importes **inventados**).
 > Lo que distingue el traspaso interno es que la contrapartida sea **otra cuenta
 > tuya**, y eso solo se ve mirando los dos extractos a la vez.
 
@@ -220,7 +221,7 @@ nadie las dé por rotas:
 | Columna | Quién la rellenará |
 | --- | --- |
 | `transferId` | la feature de **detección de traspasos**, posterior a la importación (§2.1) |
-| `categoryId` | la feature de **categorización por reglas** (decidido con el humano): la primera vez que aparece un concepto nuevo lo clasificas, se guarda la regla (`VivaGym → Deporte`) y a partir de ahí cada importación categoriza sola lo conocido. El **catálogo** de categorías sí es de esta feature (`POST/GET /api/categories`), porque el banco no manda categorías: solo puedes definirlas tú |
+| `categoryId` | la feature de **categorización por reglas** (decidido con el humano): la primera vez que aparece un concepto nuevo lo clasificas, se guarda la regla (`GIMNASIO → Deporte`) y a partir de ahí cada importación categoriza sola lo conocido. El **catálogo** de categorías sí es de esta feature (`POST/GET /api/categories`), porque el banco no manda categorías: solo puedes definirlas tú |
 | `paymentMethod` | la misma feature de reglas: el parser no lo emite, se derivará del `description` (`RECIBO` → `direct_debit`, `PAGO TARJETA` → `card`…) |
 | `note` | anotación manual sobre un movimiento importado, cuando exista pantalla para ello |
 | `status` | el **importer** lo pone a `pending_review`; lo pasará a `confirmed` la revisión, que es donde vive la categorización (idea #1) |
@@ -230,7 +231,7 @@ nadie las dé por rotas:
 movimientos se les quitó el alta manual pero a las categorías **no**, y la razón es
 la fuente del dato. Un movimiento **existe en el banco** y llegará en su fichero, así
 que crearlo a mano solo puede duplicar o descuadrar. Una categoría **no existe en
-ningún sitio** hasta que tú la inventas: el extracto dice `RECIBO /Recibo VivaGym`,
+ningún sitio** hasta que tú la inventas: el extracto dice `RECIBO /Recibo GIMNASIO`,
 y que eso sea "Deporte" es una decisión tuya. Por eso el catálogo se crea a mano y
 lo automático es **asignarlo**, no inventarlo.
 
@@ -248,9 +249,9 @@ en la siguiente reimportación.
 dinero.** Un extracto real trae **líneas idénticas legítimas**. Contado sobre la
 muestra del humano (39 movimientos, `var/parsed/bankinter/2026/`): **4 grupos** de
 líneas iguales en fecha + concepto + importe, entre ellos **tres**
-`TRANS INM/ Openbank −1000,00` el `2026-07-24` y el recibo `VivaGym −29,90`
+`TRANS INM/ OTRO BANCO −850,00` el `2026-07-24` y el recibo `GIMNASIO −34,15`
 repetido el mismo día en tres meses distintos. Con la clave anterior, las tres
-transferencias de 1.000 € eran "el mismo movimiento": se habría guardado **una** y
+transferencias de 850 € eran "el mismo movimiento": se habría guardado **una** y
 las otras dos se habrían descartado en silencio (−2.000 € en el saldo... salvo que
 el saldo lo lea del banco, §6, con lo cual el descuadre sería aún más difícil de
 ver). Con `daySequence` (1, 2, 3) son tres filas distintas y el dedup sigue
@@ -573,8 +574,8 @@ importación con el helper de 3 vías (§6) para cubrir el importe 0.
 🔴 **Cálculo de `daySequence` (contrato con el importer, verificado en la muestra
 real).** Bankinter exporta **de más reciente a más antiguo**: la primera fila del
 fichero es el último movimiento (comprobado con los saldos: dos filas del
-`2026-07-31`, `+2197,72 → 24816,16` y `−188,67 → 24627,49`, y en efecto
-`24816,16 − 188,67 = 24627,49`). Por tanto el importer, **por cada `bookingDate`**,
+`2026-07-31`, `+1500,00 → 10000,00` y `−45,37 → 9954,63`, y en efecto
+`10000,00 − 45,37 = 9954,63`). Por tanto el importer, **por cada `bookingDate`**,
 recorre las filas de ese día **de abajo arriba** (del final del fichero hacia el
 principio) y numera `daySequence = 1, 2, 3…`.
 

@@ -190,7 +190,7 @@ de su `decisions.md`.
 
 ## El diff en cinco líneas
 
-1. **Los números de los archivos de producto son número JSON nativo** (`1312.72`), no
+1. **Los números de los archivos de producto son número JSON nativo** (`1234.56`), no
    texto en formato español. **R26 se reescribe en su sitio** (exige número nativo, sin
    separador de miles ni símbolos) y **R27 también** (era la regla del punto sin coma,
    que solo tenía sentido con texto; ahora exige conservar el valor tal cual, sin
@@ -202,7 +202,7 @@ de su `decisions.md`.
    preámbulo y la T7 de `tasks.md`. **La F10 no se toca:** el `.csv` la sigue usando.
 3. **Nuevo R77 — un valor numérico que llega como texto es un fallo del archivo**, con
    motivo explícito ("se espera un número sin comillas") y **sin interpretarlo nunca**,
-   ni siquiera `"1312.72"`. Entra en la tabla de errores (`design.md` §9.1), en la
+   ni siquiera `"1234.56"`. Entra en la tabla de errores (`design.md` §9.1), en la
    cobertura del `intent` (punto 11), en la Procedencia como **(humano)**, y en T7, T8 y
    T4b. **R41 se reescribe en su sitio** para cubrir lo que no es texto (`true`, `[]`).
    Las plantillas de §7.1/§7.2, R29, R36, R38 y R39 pasan sus ejemplos a números nativos.
