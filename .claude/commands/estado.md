@@ -34,7 +34,7 @@ QUE TE TOCA A TI (no es código)
 CABOS SUELTOS SIN DUEÑO
   · <cabo>                       ← los que no tienen etapa que los resuelva
 
-ÚLTIMO CIERRE  <F<id> <name>> → progress/resumen_<name>.md
+ÚLTIMO CIERRE  <F<id> <name>> → progress/summaries/<name>.md
 ```
 
 ## Reglas

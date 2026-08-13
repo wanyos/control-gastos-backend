@@ -40,7 +40,7 @@ El servidor queda escuchando en `http://localhost:3000` (configurable con `PORT`
 | `pnpm start`               | Ejecuta la versión compilada (`dist/server.js`).              |
 | `pnpm test`                | Suite completa con Vitest (requiere PostgreSQL levantado).    |
 | `pnpm run typecheck`       | Comprueba tipos sin emitir archivos.                          |
-| `pnpm run lint`            | ESLint sobre el proyecto (`lint:fix` para autocorregir).      |
+| `pnpm run lint`            | oxlint sobre el proyecto (`lint:fix` para autocorregir).      |
 | `pnpm run format:check`    | Prettier en modo comprobación (`format` para escribir).       |
 | `pnpm run prisma:migrate`  | Crea y aplica migraciones (`prisma migrate dev`).             |
 | `pnpm run prisma:generate` | Regenera el cliente de Prisma.                                |

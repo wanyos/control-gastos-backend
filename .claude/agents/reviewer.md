@@ -75,7 +75,7 @@ Si todo pasa, son cuatro líneas:
 **Veredicto:** APPROVED
 Comprobado: acceptance/requirements ↔ tests, arquitectura, convenciones,
 verificación, CHECKPOINTS C1-C8. Sin hallazgos.
-Resumen de cierre: `progress/resumen_<feature>.md`.
+Resumen de cierre: `progress/summaries/<feature>.md`.
 ```
 
 Si algo falla:
@@ -100,7 +100,7 @@ no se distingue «lo revisé y está bien» de «no lo revisé».
 
 ## El resumen de cierre (solo si APPROVED)
 
-Escribes `progress/resumen_<feature>.md` siguiendo `docs/resumen-template.md`.
+Escribes `progress/summaries/<feature>.md` siguiendo `docs/summary-template.md`.
 Es la pieza de salida para el humano y **la razón por la que no pierde el hilo
 del proyecto**: le dice qué hace la app ahora que antes no, y **dónde vive cada
 pieza del código** que esta feature creó o tocó.
@@ -129,7 +129,7 @@ Si el veredicto es `CHANGES_REQUESTED`, no escribas resumen todavía.
   dicha. Esas reglas existen porque sin ellas revisar un spec cuesta días.
 - ❌ Nunca edites el código del implementador. Tu trabajo es decir qué falla, no
   arreglarlo.
-- ❌ Nunca devuelvas APPROVED sin haber escrito `progress/resumen_<feature>.md`.
+- ❌ Nunca devuelvas APPROVED sin haber escrito `progress/summaries/<feature>.md`.
 - ❌ Nunca recortes las **comprobaciones** para acortar el informe. Se recorta lo
   que se escribe, nunca lo que se mira.
 - ✅ Sé concreto: cita archivo y línea. Nada de feedback genérico.

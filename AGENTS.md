@@ -27,7 +27,7 @@
 | `docs/roadmap.md`             | El recorrido completo en etapas: dónde está el proyecto, qué falta y qué cabo suelto resuelve cada etapa   | Siempre, al empezar y al cerrar |
 | `progress/history.md`         | Índice de una línea por feature cerrada, con enlace a su resumen                                          | Si necesitas contexto histórico |
 | `progress/<feature>.md`       | Informe del implementer + veredicto del reviewer, en un solo archivo                                      | Al revisar o retomar una feature |
-| `progress/resumen_<feature>.md`| **DEL HUMANO.** Qué hace la app que antes no y dónde vive cada pieza del código                          | Al cerrar una feature, y para no perder el hilo después |
+| `progress/summaries/<feature>.md`| **DEL HUMANO.** Qué hace la app que antes no y dónde vive cada pieza del código                          | Al cerrar una feature, y para no perder el hilo después |
 | `specs/<feature>/decisions.md`| **DEL HUMANO.** Una página: las decisiones y nada más. Es lo único que se le pide leer en la puerta       | Al aprobar un spec (humano); nunca se le manda a leer otra cosa |
 | `specs/<feature>/`            | `requirements.md` + `design.md` + `tasks.md` (Kiro-style) — material del `implementer` y del `reviewer`   | Antes de implementar cualquier feature con `"sdd": true` |
 | `docs/stack.md`               | Lenguaje, framework, librerías, versiones                                                                 | Antes de tocar dependencias |
@@ -82,7 +82,7 @@ pending → [spec_author] → spec_ready → ⏸ HUMANO → in_progress → [imp
    `progress/<feature>.md`.
 6. El reviewer verifica trazabilidad `R<n>` ↔ test y tasks completas, y añade su
    veredicto **al mismo archivo**. Escribe solo lo que falla.
-7. Si aprueba, escribe `progress/resumen_<feature>.md`; el implementer marca
+7. Si aprueba, escribe `progress/summaries/<feature>.md`; el implementer marca
    `done` y añade **una línea** a `progress/history.md`.
 
 ### 4b. Flujo simple (features sin `"sdd": true`)
@@ -109,7 +109,7 @@ Antes de terminar:
    cambió una decisión de producto, corrige también el documento de producto
    (donde viva): un mapa que contradice al código es peor que no tener mapa.
 4. Añade **una línea** a `progress/history.md` apuntando al
-   `progress/resumen_<feature>.md`. No copies el informe: el detalle ya está en
+   `progress/summaries/<feature>.md`. No copies el informe: el detalle ya está en
    el resumen.
 5. Vacía `progress/current.md` dejando solo la plantilla.
 6. No dejes archivos temporales, ni logs de debug, ni TODOs sin contexto.

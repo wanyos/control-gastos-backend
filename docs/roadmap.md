@@ -70,7 +70,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 
 ### E0 — Cimientos ✅
 
-Fastify + Prisma + Postgres en docker, TypeScript estricto ESM, Vitest, ESLint +
+Fastify + Prisma + Postgres en docker, TypeScript estricto ESM, Vitest, oxlint +
 Prettier, config de entorno validada al arrancar y errores centralizados
 ([`src/errors/app-error.ts`](../src/errors/app-error.ts),
 [`src/plugins/error-handler.ts`](../src/plugins/error-handler.ts)).

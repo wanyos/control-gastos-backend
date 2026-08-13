@@ -62,7 +62,7 @@ y el `reviewer`; el humano necesita **las decisiones**, y sin esta hoja quedan
 repartidas por cientos de líneas.
 
 > Formato y reglas de estilo en **`docs/decisions-template.md`** (hermana de
-> `docs/intent-template.md`, la de entrada, y de `docs/resumen-template.md`, la
+> `docs/intent-template.md`, la de entrada, y de `docs/summary-template.md`, la
 > de salida: esta es la de **revisión**). Las tres cubren el ciclo de una
 > feature: el humano escribe la primera y lee las otras dos.
 

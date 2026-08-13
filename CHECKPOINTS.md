@@ -41,7 +41,7 @@
 - [ ] No hay archivos sin trackear sospechosos (temporales, builds, caches
       fuera del `.gitignore` del proyecto o del `.git/info/exclude`).
 - [ ] `progress/history.md` tiene **una línea** por la última feature cerrada,
-      con enlace a su `resumen_<name>.md`. No una copia del informe.
+      con enlace a su `summaries/<name>.md`. No una copia del informe.
 - [ ] La última feature trabajada está reflejada en su estado correcto en
       `feature_list.json`.
 
@@ -76,8 +76,8 @@
 ## C8 — El resumen de cierre existe (solo al aprobar una feature)
 
 - [ ] Toda feature que se cierra como `done` tiene su
-      `progress/resumen_<name>.md` escrito en lenguaje humano
-      (ver `docs/resumen-template.md`).
+      `progress/summaries/<name>.md` escrito en lenguaje humano
+      (ver `docs/summary-template.md`).
 - [ ] El resumen mapea **todo** el código de la feature (archivo + símbolo,
       agrupado por tema), y da archivo y línea solo en los puntos de entrada.
 - [ ] El resumen cierra el círculo con el `intent`: cada punto de

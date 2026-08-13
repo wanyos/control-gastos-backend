@@ -171,7 +171,7 @@ Pasos:
 
 4. Redacta `docs/architecture.md` y `docs/conventions.md` como PROPUESTA
    basada en las convenciones idiomáticas del stack y en cualquier config ya
-   presente (ej: si hay `.eslintrc` o `.prettierrc`, refleja sus reglas
+   presente (ej: si hay `.oxlintrc.json` o `.prettierrc`, refleja sus reglas
    reales). Marca CADA sección con `PROPUESTA — confirmar` al principio. No
    las presentes como definitivas: son las decisiones que el humano posee.
 
@@ -214,7 +214,7 @@ Convención de nombres:
 - `specs/<feature>/` — el resto del output del spec_author (material de agentes)
 - `progress/<feature>.md` — **un solo archivo por feature**: el implementer
   escribe su informe (o su lote), el reviewer añade el veredicto debajo
-- `progress/resumen_<feature>.md` — el resumen de cierre, para el humano
+- `progress/summaries/<feature>.md` — el resumen de cierre, para el humano
 - `progress/history.md` — índice de **una línea por feature** cerrada
 
 Ejemplo de instrucción correcta para un subagente:

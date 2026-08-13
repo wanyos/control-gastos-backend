@@ -69,7 +69,7 @@ implementar.
 
 Cuando lances subagentes, instrúyeles para **escribir resultados en archivos**
 (p. ej. `specs/<feature>/requirements.md`, `progress/explore_<tema>.md`,
-`progress/<feature>.md`, `progress/resumen_<feature>.md`) y devolverte
+`progress/<feature>.md`, `progress/summaries/<feature>.md`) y devolverte
 solo la referencia, no el contenido. Esto preserva contexto y deja
 trazabilidad en disco.
 

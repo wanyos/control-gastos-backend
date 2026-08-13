@@ -27,5 +27,8 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Ajustes del editor: preferencias de cada uno, no del proyecto.
+.vscode/
+
 # Artefacto de compilacion incremental de TypeScript: cambia en cada tsc.
 tsconfig.tsbuildinfo

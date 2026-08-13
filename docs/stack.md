@@ -6,7 +6,7 @@
 
 ## Lenguaje
 
-- **TypeScript** (`typescript@^6.0.3`), compilado a **ES2022**.
+- **TypeScript** (`typescript@^7.0.2`), compilado a **ES2022**.
 - **Modo estricto activado.** `tsconfig.json` con `"strict": true`,
   `"module": "NodeNext"`, `"moduleResolution": "NodeNext"`.
 - Proyecto **ESM** (`"type": "module"` en `package.json`): las importaciones
@@ -14,13 +14,13 @@
 
 ## Framework / Runtime
 
-- **Framework:** Fastify `^5.11.2`.
+- **Framework:** Fastify `^5.11.3`.
 - **Runtime:** Node.js — probado con `v24.11.0`; `engines.node` exige `>=20`.
 
 ## Librerías clave
 
 - **ORM / DB:** Prisma `^7.9.1` (CLI `prisma` + `@prisma/client`), conectado
-  con el **driver adapter** `@prisma/adapter-pg@^7.9.1` sobre `pg@^8.22.0`.
+  con el **driver adapter** `@prisma/adapter-pg@^7.9.1` sobre `pg@^8.23.0`.
   El cliente se genera en `src/generated/prisma/` (generador `prisma-client`, ESM).
 - **Validación de schemas:** JSON Schema **nativo de Fastify** (AJV integrado).
   No hay Zod/Typebox instalado; los schemas viven en el `*.schema.ts` de cada
@@ -45,20 +45,21 @@
 
 ## Build / Dev tooling
 
-- **Gestor de paquetes:** **pnpm** `11.10.0`, fijado en el campo
+- **Gestor de paquetes:** **pnpm** `11.21.0`, fijado en el campo
   `packageManager` de `package.json`. El lockfile versionado es
   `pnpm-lock.yaml`; `init.sh` detecta el gestor por el lockfile y corre
   `pnpm test`. **Usa siempre `pnpm`, nunca `npm`**: mezclarlos genera un
   `node_modules` distinto del que valida `init.sh`.
 - **Arranque dev (recarga en caliente):** `pnpm run dev` → `tsx watch src/server.ts`
-  (`tsx@^4.23.5`).
+  (`tsx@^4.23.12`).
 - **Build:** `pnpm run build` → `prisma generate && tsc` (salida a `dist/`).
 - **Arranque producción:** `pnpm start` → `node dist/server.js`.
 - **Type check:** `pnpm run typecheck` → `tsc --noEmit`.
-- **Lint:** `pnpm run lint` → `eslint .` (ESLint `10.7.0` flat config +
-  `typescript-eslint` 8 sobre `src/**/*.ts`, `eslint-config-prettier` al
-  final; ignora `src/generated/` y `dist/`). `lint:fix` para autofix.
-- **Format:** `pnpm run format:check` / `format` → Prettier `3.9.5`
+- **Lint:** `pnpm run lint` → `oxlint` (`oxlint@^1.78.0`, config en
+  `.oxlintrc.json`: categoría `correctness`, plugins `typescript`/`unicorn`/
+  `oxc`; ignora `src/generated/`, `dist/` y `node_modules/`). `lint:fix` para
+  autofix. No pelea con Prettier: `correctness` no trae reglas de formato.
+- **Format:** `pnpm run format:check` / `format` → Prettier `3.9.6`
   (`.prettierrc`: comillas simples, sin punto y coma, 2 espacios,
   100 columnas). `.prettierignore` excluye artefactos generados, el
   lockfile, los `.md` del harness y `feature_list.json`.
@@ -100,8 +101,15 @@
   adapter) y `.env` no se autocarga. No bajar a 6.x sin revisitar esa config.
 - Versiones declaradas con rango caret (`^`) en `package.json`; el pin exacto
   vive en `pnpm-lock.yaml`.
-- **TypeScript 7: aparcado** hasta que `typescript-eslint` lo soporte (≥ 7.1).
-  Subir antes deja el lint sin poder analizar `src/**/*.ts`.
+- **El linter no puede atar la versión de TypeScript.** ESLint +
+  `typescript-eslint` mantuvo TS aparcado en 6.0.3 durante toda la etapa
+  anterior: `typescript-eslint` parsea con la API del compilador, así que
+  declara un peer estricto (`>=4.8.4 <6.1.0` en su 8.67.0) y aborta al cargar
+  el config si la versión no encaja — no falla un archivo, no analiza ninguno.
+  Por eso el linter es `oxlint`, que trae parser propio y no depende del
+  paquete `typescript`. Regla para el futuro: **ninguna herramienta de
+  desarrollo bloquea una dependencia del runtime**; si vuelve a pasar, se
+  cambia la herramienta, no se congela TypeScript.
 - **Librerías explícitamente prohibidas:** ninguna registrada todavía
   (decisión del humano — añádelas aquí si las hay).
 

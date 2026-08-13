@@ -11,15 +11,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
   },
-  "packageManager": "pnpm@11.17.0",
+  "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=20"
   },
@@ -36,21 +36,18 @@
     "@prisma/client": "^7.9.1",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
-    "fastify": "^5.11.2",
+    "fastify": "^5.11.3",
     "fastify-plugin": "^6.0.0",
-    "pg": "^8.22.0"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^26.1.2",
-    "@types/pg": "^8.20.3",
-    "eslint": "^10.8.0",
-    "eslint-config-prettier": "^10.1.8",
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.21.0",
+    "oxlint": "^1.78.0",
     "prettier": "^3.9.6",
     "prisma": "^7.9.1",
-    "tsx": "^4.23.5",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.66.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }
 }

@@ -41,11 +41,13 @@
 ## Estilo del lenguaje
 
 - **TypeScript estricto, target ES2022, ESM.** *(observado en `tsconfig.json`)*
-- **Linter + formatter: ESLint + Prettier.** Instalados y configurados
-  (2026-07-11, tarea directa): ESLint 10 flat config + typescript-eslint 8
-  sobre `src/**/*.ts`, Prettier 3. Comandos: `pnpm run lint` / `lint:fix` /
-  `format` / `format:check`. Prettier no formatea los `.md` del harness ni
-  `feature_list.json` (ver `.prettierignore`). Reglas fijadas:
+- **Linter + formatter: oxlint + Prettier.** El linter fue ESLint +
+  typescript-eslint hasta 2026-08-13, cuando se cambió a `oxlint` para que la
+  versión de TypeScript deje de depender del linter (ver `docs/stack.md`
+  §Restricciones). Config en `.oxlintrc.json`, Prettier 3 sin cambios.
+  Comandos: `pnpm run lint` / `lint:fix` / `format` / `format:check`. Prettier
+  no formatea los `.md` del harness ni `feature_list.json` (ver
+  `.prettierignore`). Reglas fijadas:
   - Comillas **simples**.
   - **Sin** punto y coma.
   - Indentación de **2 espacios**.

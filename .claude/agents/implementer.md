@@ -71,12 +71,12 @@ Ejecutas **una** feature de `feature_list.json` de inicio a verificación — o
 7. **No marques `done` tú mismo.** El leader lanza al `reviewer` y esperas
    veredicto.
 
-8. Si el reviewer aprueba: comprueba que existe `progress/resumen_<feature>.md`.
+8. Si el reviewer aprueba: comprueba que existe `progress/summaries/<feature>.md`.
    Si no existe, no cierres — la aprobación está incompleta. Si existe, pasa la
    feature a `done` y añade a `progress/history.md` **una sola línea**:
 
    ```markdown
-   - YYYY-MM-DD — F<id> `<name>`: <qué hace ahora la app que antes no> → [resumen](resumen_<name>.md)
+   - YYYY-MM-DD — F<id> `<name>`: <qué hace ahora la app que antes no> → [resumen](summaries/<name>.md)
    ```
 
    `history.md` es un índice, no una copia de los informes. El detalle vive en
