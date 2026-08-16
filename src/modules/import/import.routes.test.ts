@@ -56,6 +56,8 @@ function statement(): ParsedStatement {
   return {
     bank,
     accountIban: iban,
+    // The importer persists no statement balance (feature 16 is parser only).
+    accountBalance: null,
     movements: [
       {
         bookingDate: '2026-07-24',

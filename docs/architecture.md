@@ -1336,6 +1336,63 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   §Parsers de banco y en `docs/dar-de-alta-un-banco.md`). El BOM inicial se sigue
   tolerando: es UTF-8 válido y la función no lo toca —quien lee el formato decide—.
 
+### ADR-019: El saldo de la cuenta es un campo del contrato común (`accountBalance`), no el `balance` de una línea, y se lee de una segunda línea de preámbulo etiquetada
+
+- **Fecha:** 2026-08-16.
+- **Estado:** aceptada (feature 16 `statement-balance`).
+- **Contexto:** el extracto de MyInvestor no trae el saldo de la cuenta por ningún
+  lado, y el humano lo quiere en el sistema: sin él solo hay movimientos sueltos sin
+  punto de referencia. Él mismo decidió el 2026-08-15
+  (`progress/prueba-drive-real-2026-08-15.md` §Decisión del humano sobre el saldo)
+  escribirlo **a mano como línea de preámbulo**, frente a leer la fila `Saldo` que su
+  export lleva al final del fichero.
+- **Decisión:**
+  1. **Vive en el contrato común** `src/lib/parsed-statement.ts` como
+     `accountBalance: number | null`, y **no** en el módulo de MyInvestor. Es el mismo
+     razonamiento del ADR-013 y de `docs/conventions.md` §Parsers de banco: lo que no
+     se comparte es el código que **lee** el formato; la **forma de la salida** sí, y
+     un banco que no aporte un dato lo deja en `null` explícito, como ya hace
+     `accountIban` (que MyInvestor tampoco exporta y Bankinter sí). Declararlo como
+     una extensión dentro del módulo del banco habría sido justo lo que la norma
+     prohíbe: un banco declarando su propia forma de resultado. Consecuencia:
+     Bankinter emite `accountBalance: null` —una línea— sin que cambie nada de cómo
+     lee su `.xlsx`.
+  2. **Nombre propio, nunca `balance`.** `ParsedMovement.balance` es el saldo **tras
+     una línea** (Bankinter lo trae; MyInvestor es `null` para siempre) y
+     `accountBalance` es el saldo **de la cuenta** en la fecha del extracto: uno por
+     archivo. Compartir nombre o campo invitaría a sumarlos el día de la persistencia.
+  3. **Una sola forma de escribirlo: la línea de preámbulo.** El parser NO aprende a
+     leer también la fila `Saldo` del final. Dos formas obligarían a distinguir «fila
+     de cierre legítima» de «fila corrupta», que es precisamente la distinción que
+     hace útil a `unparsedRows`; y de paso esa fila deja de ensuciarlo en todos los
+     extractos. La regla «solo por encima de la cabecera» ya lo garantiza sola.
+  4. **Un solo buscador para las dos etiquetas.** `findIbanLine` se generalizó a
+     `findPreambleLine(lines, headerLine, label)`: es el mismo mecanismo montado y
+     probado en la F12, y duplicarlo casi igual habría dejado dos sitios donde
+     arreglar el mismo bug. La etiqueta se normaliza **sin acentos y sin mayúsculas**
+     porque el fichero real del humano ya dice `Saldo;…`: exigir minúscula rompería un
+     fichero que él da por bueno. Si la etiqueta se repite, gana la **primera**, misma
+     regla que el IBAN.
+  5. **El número pasa por `parseAmountText`**, el normalizador que este banco ya tiene
+     para su columna `Importe`: en el CSV la coma decimal es correcta, y escribir un
+     segundo normalizador para el mismo fichero sería garantizar que un día divergen.
+  6. **Etiqueta presente + importe ilegible → `unparsedRows`**, con su nº de línea y
+     su motivo; ausente o vacía → `null` y no pasa nada. Es la doctrina del parser
+     aplicada tal cual: lo que **no está** no es un fallo (la ausencia del IBAN
+     tampoco lo es), y lo que **está y no se entiende** no se descarta en silencio
+     sino que se reporta con su fila. Rechazar el fichero entero se reserva para lo
+     que es propiedad del fichero entero —la codificación (ADR-018) o no tener
+     cabecera—, y sería desproporcionado por una línea que el resto del extracto no
+     necesita.
+- **Alternativas descartadas:** (a) leer la fila del final, descartada por el humano
+  (§3); (b) declarar el campo solo en `myinvestor.types.ts`, descartada por §1: lo
+  dejaría invisible para el importador, que consume el contrato común; (c) reutilizar
+  `balance` a nivel de resultado, descartada por §2.
+- **Consecuencia:** `accountBalance` viaja en el volcado JSON y en el resumen de
+  `POST /api/parser/myinvestor`, y **no se persiste**: esta feature es parser y
+  volcado. El día que la importación quiera usarlo, el dato ya está en el contrato y
+  con un nombre que no se confunde con el otro saldo.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

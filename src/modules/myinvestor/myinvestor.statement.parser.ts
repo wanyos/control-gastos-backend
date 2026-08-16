@@ -47,9 +47,14 @@ interface HeaderRow {
  *
  * One datum this bank simply does not report, therefore emitted as an explicit
  * `null` and never invented, calculated or accumulated: the running balance of
- * each line. The IBAN is not reported by the bank either, but the human writes
- * it once as a labelled `iban;<IBAN>` preamble line; it is read ONLY from that
- * line and never inferred from the shape of a concept.
+ * each line. Two data the bank does not report either, but that the human writes
+ * by hand as LABELLED PREAMBLE LINES above the header row, read only from there:
+ * `iban;<IBAN>` → `accountIban` (never inferred from the shape of a concept) and
+ * `saldo;<importe>` → `accountBalance`, the balance OF THE ACCOUNT at the date of
+ * the statement (feature 16). That last one is not the per-line `balance`: it is
+ * the whole file's datum and it keeps its own name so the two can never be added
+ * together. The closing `Saldo` row some exports carry AT THE END of the file is
+ * deliberately NOT read: there is one single way of writing it.
  *
  * The file is decoded STRICTLY as UTF-8 (with a leading BOM tolerated): bytes
  * that are not valid UTF-8 reject the WHOLE file instead of becoming `U+FFFD`
@@ -81,6 +86,22 @@ export function parseMyinvestorStatement(content: Buffer): MyinvestorStatementRe
   const drafts: ParsedMovementDraft[] = []
   const unparsedRows: UnparsedRow[] = []
 
+  // The preamble is read BEFORE the table so its problems keep their place in
+  // `unparsedRows`, which is ordered by line number like the rest of the file.
+  const accountBalanceLine = findPreambleLine(lines, header.line, 'saldo')
+  const accountBalance =
+    accountBalanceLine === null ? null : parseAmountText(accountBalanceLine.value)
+  // An ABSENT or EMPTY label is not a failure (the human simply did not write it
+  // that month), exactly as with the IBAN. A label that IS there with something
+  // unreadable next to it is another matter: it is reported, never dropped in
+  // silence, the same doctrine every unreadable line of this parser follows.
+  if (accountBalanceLine !== null && accountBalanceLine.value !== '' && accountBalance === null) {
+    unparsedRows.push({
+      row: accountBalanceLine.line,
+      reason: `saldo de la cuenta no interpretable ('${accountBalanceLine.value}')`,
+    })
+  }
+
   for (let index = header.line; index < lines.length; index++) {
     const line = lines[index]
     if (line.trim() === '') {
@@ -94,9 +115,15 @@ export function parseMyinvestorStatement(content: Buffer): MyinvestorStatementRe
     }
   }
 
+  const ibanLine = findPreambleLine(lines, header.line, 'iban')
+
   return {
     bank: 'myinvestor',
-    accountIban: findIbanLine(lines, header.line),
+    accountIban: ibanLine === null || ibanLine.value === '' ? null : ibanLine.value,
+    // The balance of the ACCOUNT, exactly as the human wrote it: it is never
+    // checked against the sum of the movements, and it is NOT the per-movement
+    // `balance` above, which stays null for this bank forever (ADR-013).
+    accountBalance,
     // Numbering goes last and only over the parsed rows: a row that ended up in
     // `unparsedRows` consumes no number (ADR-013).
     movements: assignDaySequence(drafts, statementOrder),
@@ -130,23 +157,37 @@ function findHeaderRow(lines: string[]): HeaderRow | null {
 }
 
 /**
- * Reads the IBAN from the labelled preamble line the human writes once:
- * `iban;ES30…` ABOVE the header row. It looks ONLY at the lines before the
- * header and ONLY at a line whose first cell is exactly `iban` once normalized
- * (trimmed, lowercased, spaces removed); the value is its second cell, trimmed.
- * Trailing filler cells Excel may add are ignored.
+ * Reads a LABELLED PREAMBLE LINE the human writes by hand ABOVE the header row:
+ * `iban;ES30…` (feature 12) and `saldo;1.234,56` (feature 16). One single finder
+ * for both, because they are the same mechanism: looking only at the lines before
+ * the header, only at a line whose FIRST cell is exactly the label once
+ * normalized, and taking its second cell, trimmed, as the value. Trailing filler
+ * cells Excel adds (`;;;`) are ignored.
  *
- * It is never inferred from the shape of a string: a concept holding something
- * that looks like an IBAN is a movement description, not the account (F10 R20).
+ * The label is matched accent- and case-insensitively (`Saldo`, `SALDO`, ` saldo `
+ * are the same label): the human writes these lines by hand in a Spanish editor,
+ * and demanding one exact spelling would reject a file he considers correct.
+ *
+ * A value is never inferred from the SHAPE of a string: a concept that looks like
+ * an IBAN, or a number in the table, is data of a movement and never the
+ * account's (F10 R20). Looking only above the header is also what keeps the
+ * closing `Saldo` row of the end of the file out (feature 16).
+ *
+ * Returns the 1-based line number too, so a value that cannot be interpreted can
+ * be reported with it. The FIRST labelled line wins if the label is repeated, the
+ * same rule the IBAN has had since feature 12: one hand-written label, one value.
  */
-function findIbanLine(lines: string[], headerLine: number): string | null {
+function findPreambleLine(
+  lines: string[],
+  headerLine: number,
+  label: string,
+): { line: number; value: string } | null {
   for (let index = 0; index < headerLine - 1; index++) {
     const cells = lines[index].split(delimiter)
-    if (cells[0].toLowerCase().replace(/\s+/g, '') !== 'iban') {
+    if (normalizeLabel(cells[0]) !== label) {
       continue
     }
-    const value = (cells[1] ?? '').trim()
-    return value.length > 0 ? value : null
+    return { line: index + 1, value: (cells[1] ?? '').trim() }
   }
   return null
 }
@@ -200,6 +241,15 @@ function parseDataLine(line: string, header: HeaderRow): ParsedMovementDraft | {
 
 function cellAt(cells: string[], position: number | undefined): string {
   return position === undefined ? '' : (cells[position] ?? '').trim()
+}
+
+/**
+ * Normalizes the label cell of a preamble line: accents stripped, lowercased and
+ * ALL whitespace removed (a header cell only collapses it, because a column name
+ * has words inside; a label does not).
+ */
+function normalizeLabel(value: string): string {
+  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, '')
 }
 
 /** Normalizes a header cell: accents stripped, lowercased, spaces collapsed. */

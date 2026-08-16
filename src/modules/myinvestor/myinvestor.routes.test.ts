@@ -60,6 +60,7 @@ describe('POST /api/parser/myinvestor', () => {
           year: '2026',
           file: 'extracto.csv',
           accountIban: null,
+          accountBalance: null,
           movements: 8,
           unparsedRows: 2,
           dumpPath: 'myinvestor/2026/extracto.csv.json',

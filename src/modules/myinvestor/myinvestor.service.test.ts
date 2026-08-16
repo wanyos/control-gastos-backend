@@ -11,6 +11,8 @@ import {
   buildProductJson,
   buildProductPortfolio,
   buildStatementCsv,
+  documentationIban,
+  myinvestorPreamble,
   writeLocalCopy,
 } from './myinvestor.fixture.js'
 import { parseLocalMyinvestorCopies } from './myinvestor.service.js'
@@ -49,6 +51,7 @@ describe('parseLocalMyinvestorCopies', () => {
       year: '2026',
       file: 'movimientos.csv',
       accountIban: null,
+      accountBalance: null,
       movements: 8,
       unparsedRows: 2,
       dumpPath: 'myinvestor/2026/movimientos.csv.json',
@@ -63,6 +66,31 @@ describe('parseLocalMyinvestorCopies', () => {
     expect(dumped.bank).toBe('myinvestor')
     expect(dumped.accountIban).toBeNull()
     expect(dumped.movements).toHaveLength(8)
+    expect(dumped.movements.every((movement) => movement.balance === null)).toBe(true)
+  })
+
+  // Feature 16: the balance the human writes in the preamble travels all the way
+  // to the run summary and to the JSON dump, next to the IBAN.
+  it('carries the balance of the account to the summary and to the dump (C1)', async () => {
+    await writeLocalCopy(
+      sourceDir,
+      '2026',
+      'movimientos.csv',
+      buildStatementCsv({ bom: true, preamble: myinvestorPreamble() }),
+    )
+
+    const result = await parseLocalMyinvestorCopies(sourceDir, dumpDir)
+
+    expect(result.statements[0]).toMatchObject({
+      accountIban: documentationIban,
+      accountBalance: 1500,
+    })
+
+    const dumped = JSON.parse(
+      await readFile(join(dumpDir, 'myinvestor', '2026', 'movimientos.csv.json'), 'utf8'),
+    ) as MyinvestorStatementResult
+    expect(dumped.accountBalance).toBe(1500)
+    // And it is not the per-movement balance, which stays null for this bank.
     expect(dumped.movements.every((movement) => movement.balance === null)).toBe(true)
   })
 

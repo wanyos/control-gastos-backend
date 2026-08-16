@@ -74,6 +74,18 @@ export interface ParsedStatement<Bank extends string = string> {
    * an empty string.
    */
   accountIban: string | null
+  /**
+   * Balance OF THE ACCOUNT at the date of the statement, or `null` when the file
+   * does not carry it. It is the whole statement's datum, written once, and it is
+   * NOT `ParsedMovement.balance`, which is the running balance of a single line:
+   * two different data that must never share a field nor a name, or someone will
+   * end up adding one into the other when this gets persisted (feature 16).
+   *
+   * Emitted exactly as the file writes it: never calculated, never accumulated
+   * from the amounts and never checked against them. `null` means "not in the
+   * file", never a `0`, which is a real balance.
+   */
+  accountBalance: number | null
   movements: ParsedMovement[]
   unparsedRows: UnparsedRow[]
 }

@@ -3,11 +3,61 @@
 > Este archivo se vacía al cerrar cada sesión y se mueve a `history.md`.
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
-- **Tarea en curso:** ninguna. La **F17 `statement-encoding-guard`** se cerró en esta
-  sesión (2026-08-15): `reviewer` **APROBADO sin cambios requeridos**. Queda `pending`
-  la **F16 `statement-balance`**.
+- **Tarea en curso:** ninguna. La **F16 `statement-balance`** se cerró el 2026-08-16
+  (`reviewer`: **APROBADO sin cambios requeridos**) y con ella **no queda ninguna
+  feature `pending`** en `feature_list.json`.
 - **Inicio:** 2026-08-15
 - **Agente:** leader + implementer + reviewer
+
+## F16 `statement-balance` — cerrada
+
+Sale de la decisión del humano del 2026-08-15 en la
+[prueba real](prueba-drive-real-2026-08-15.md) §Decisión del humano sobre el saldo. Sin
+spec (`sdd: false`): del `intent` + los 12 criterios de `acceptance`. Informe:
+[`implementations/statement-balance.md`](implementations/statement-balance.md) ·
+veredicto: [`reviews/statement-balance.md`](reviews/statement-balance.md) · resumen:
+[`summaries/statement-balance.md`](summaries/statement-balance.md).
+
+1. ✅ El extracto admite una **segunda línea de preámbulo etiquetada**,
+   `saldo;<importe>`, junto a la del `iban;`, y el resultado la expone como
+   `accountBalance`.
+2. ✅ **`accountBalance` vive en el contrato común**
+   ([`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts)), con Bankinter
+   emitiendo `null`. **El reviewer lo respalda expresamente y dice que la alternativa
+   habría sido la equivocada**, con un argumento que no estaba en el informe: con el
+   campo declarado solo en el resultado de MyInvestor, el dato quedaría **invisible
+   para el importador**, que consume el contrato común y no puede volverse
+   bank-specific (hay guardián en `architecture.test.ts`). Coste de lo hecho: **una
+   línea constante** en Bankinter. Coste de la alternativa: romper el ADR-013 y
+   bloquear el consumo futuro.
+3. ✅ **No se confunde con el `balance` por movimiento**, que en este banco sigue
+   siendo `null` para siempre (ADR-013). Dos datos, dos nombres, escrito en el
+   contrato, en `api-contract.md` §Los dos «saldos» del contrato y en el **ADR-019**.
+4. ✅ Un solo buscador (`findIbanLine` → `findPreambleLine(lines, headerLine, label)`),
+   etiqueta sin acentos ni mayúsculas (su archivo real lleva `Saldo;`) e importe por
+   `parseAmountText`, el normalizador que ya existía.
+5. ✅ Delegadas: **ausente o vacía** → saldo vacío, sin fallo; **presente e ilegible**
+   → `unparsedRows` con su nº de línea y motivo; **repetida** → gana la primera. La
+   fila `Saldo` **del final no se lee**: una sola forma de escribirlo.
+6. ✅ **`./init.sh` en verde: 412 tests, 412 pasan, 0 saltados** (baseline 396), con la
+   capa de comparación del guardián de la F14 **activa**. Docs: `api-contract.md`,
+   `dar-de-alta-un-banco.md`, `conventions.md`, `roadmap.md` y ADR-019.
+
+### Sugerencias fuera de scope anotadas (no aplicadas)
+
+`myinvestor.product.parser.test.ts` no pasa `prettier --check` (**ya no pasaba antes**
+de esta feature); el saldo **no se persiste** todavía —candidato natural a anclar el
+saldo de esa cuenta sin sumar movimientos, hoy atado a `initialBalance` (ADR-011)—; y
+un motivo más útil para la fila `Saldo` del final, que no se hizo porque enseñarle al
+parser algo sobre esa fila es justo lo que el criterio 7 prohíbe.
+
+### 📌 Lo que le toca al humano tras la F16
+
+🔴 **Al editar el CSV del mes:** escribir `Saldo;<importe>;;;` debajo de la línea del
+`iban;` y **borrar la fila `Saldo` del final** del archivo. Cómo se escribe, en
+[`docs/dar-de-alta-un-banco.md`](../docs/dar-de-alta-un-banco.md) §El saldo de la
+cuenta va en la misma cabecera. Si algún mes se olvida, no falla nada: el saldo sale
+vacío.
 
 ## F17 `statement-encoding-guard` — cerrada
 

@@ -76,6 +76,7 @@ describe('the parsed statement contract', () => {
     const statement: ParsedStatement<'somebank'> = {
       bank: 'somebank',
       accountIban: null,
+      accountBalance: null,
       movements: [movement],
       unparsedRows: [],
     }
@@ -84,8 +85,37 @@ describe('the parsed statement contract', () => {
     expect(statement.movements[0].balance).not.toBe(0)
     expect(statement.accountIban).toBeNull()
     expect(statement.accountIban).not.toBe('')
+    expect(statement.accountBalance).toBeNull()
     // A bank that DOES report them fills the very same fields with a value.
     expect({ ...movement, balance: 6149.06 }.balance).toBe(6149.06)
+  })
+
+  // Feature 16. The two are separate fields on purpose: `accountBalance` is the
+  // balance of the ACCOUNT at the date of the statement (written once, at the
+  // top of the file) and `balance` is the running balance of ONE line. A bank
+  // may report either, both or neither, and they are never each other's fallback.
+  it('keeps the account balance and the per-movement balance apart', () => {
+    const statement: ParsedStatement<'somebank'> = {
+      bank: 'somebank',
+      accountIban: null,
+      // The account has money in it, and this bank still reports no per-line
+      // balance: the two live side by side without contradicting each other.
+      accountBalance: 1500,
+      movements: [{ ...draft('2026-01-08', 10, 'NO LINE BALANCE'), daySequence: 1 }],
+      unparsedRows: [],
+    }
+
+    expect(statement.accountBalance).toBe(1500)
+    expect(statement.movements[0].balance).toBeNull()
+    // Nothing named `balance` at the top level, so neither can be mistaken for
+    // the other by a consumer reading the JSON dump.
+    expect(Object.keys(statement).sort()).toEqual([
+      'accountBalance',
+      'accountIban',
+      'bank',
+      'movements',
+      'unparsedRows',
+    ])
   })
 
   it('accepts the three values of the domain helper as its movement type', () => {

@@ -56,7 +56,13 @@ describe('parseBankinterXlsx', () => {
       'type',
       'valueDate',
     ])
-    expect(Object.keys(result).sort()).toEqual(['accountIban', 'bank', 'movements', 'unparsedRows'])
+    expect(Object.keys(result).sort()).toEqual([
+      'accountBalance',
+      'accountIban',
+      'bank',
+      'movements',
+      'unparsedRows',
+    ])
   })
 
   it('derives type from the sign of the amount', async () => {
@@ -198,6 +204,9 @@ describe('parseBankinterXlsx', () => {
     expect(result).toEqual({
       bank: 'bankinter',
       accountIban: 'ES9820385778983000760236',
+      // Feature 16 added this field to the shared contract. This export carries
+      // no balance-of-the-account line, so it is null; nothing else changed.
+      accountBalance: null,
       movements: [
         {
           bookingDate: '2026-01-05',

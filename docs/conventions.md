@@ -200,6 +200,13 @@ class NotFoundError extends AppError {
   `iban;<IBAN>` **encima** de la cabecera; el parser la lee **solo si está
   etiquetada así** y **nunca** infiere un IBAN por su forma dentro de un concepto.
   Sin IBAN no se crea jamás una cuenta.
+- **Lo que el humano escribe a mano en un fichero de banco va en una LÍNEA DE
+  PREÁMBULO ETIQUETADA, encima de la cabecera** (ampliado el 2026-08-16, F16, con el
+  saldo de la cuenta: `saldo;<importe>`). Un dato escrito a mano se reconoce **por su
+  etiqueta y por estar encima de la cabecera**, nunca por su forma ni por su posición
+  en la tabla, y la etiqueta se compara sin acentos ni mayúsculas porque quien la
+  escribe es una persona. Un banco que necesite un tercer dato así **reutiliza
+  `findPreambleLine`** (ADR-019) en vez de escribir otro buscador casi igual.
 
 ### Lo que NO es propio de cada banco: la forma de la salida
 

@@ -148,6 +148,39 @@ Si falta y ese banco no tiene **exactamente una** cuenta ya dada de alta, ese
 fichero se reporta como `failed` con el código `MISSING_ACCOUNT_DATA`, no se
 importa y **no se mueve**: se corrige el fichero y se reintenta.
 
+## El saldo de la cuenta va en la misma cabecera, una línea más
+
+> Añadido el 2026-08-16 con la feature 16 (`statement-balance`).
+
+El saldo que tiene la cuenta **en la fecha del extracto** se escribe a mano, igual
+que el IBAN y **justo debajo**, como segunda línea de preámbulo etiquetada:
+
+```
+iban;ES9121000418450200051332;;;
+Saldo;1500,00;;;
+Fecha de operación;Fecha de valor;Concepto;Importe;Divisa
+```
+
+- **La etiqueta se reconoce sin distinguir mayúsculas ni acentos** (`Saldo`,
+  `saldo`, `SALDO` valen), y los `;` de relleno que añade Excel al final son
+  inocuos, como en la línea del IBAN.
+- **El importe se escribe como lo escribe el banco:** coma decimal y punto de
+  miles (`1.234,56`). Es un CSV español; ahí la coma decimal es correcta. (Ojo: en
+  los `.json` de producto **no** lo es — ver `docs/myinvestor-product-files.md`.)
+- **Si algún mes se te olvida, no pasa nada:** el extracto se parsea igual y el
+  saldo sale vacío, exactamente como el IBAN.
+- **Si la línea está pero el número no se entiende** (`saldo;mil quinientos`), no
+  se descarta en silencio: aparece en `unparsedRows` con su nº de línea y el
+  motivo, y el resto del fichero se parsea igual.
+- 🔴 **La fila `Saldo` del FINAL del fichero ya no sirve y hay que borrarla.** El
+  backend **no** la lee: hay una sola forma de escribir este dato, la de arriba.
+  Si se queda, cae en `unparsedRows` como cualquier fila que no es un movimiento.
+
+Este saldo es **el de la cuenta**, no el saldo tras cada movimiento (`balance`),
+que MyInvestor no reporta y sigue vacío en todas las líneas. Son dos datos
+distintos y se guardan aparte a propósito. Por ahora **solo se parsea y se
+vuelca**: todavía no se persiste en la base de datos.
+
 ## El fichero se guarda en UTF-8, siempre
 
 > Añadido el 2026-08-15 con la feature 17 (`statement-encoding-guard`), después de

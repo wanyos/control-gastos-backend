@@ -105,6 +105,22 @@ export function myinvestorSampleRows(): CsvRow[] {
   ]
 }
 
+/**
+ * The two labelled preamble lines the human writes by hand above the header, as
+ * his editor leaves them: the label capitalized and padded with the filler `;`
+ * that complete the five columns (measured on his real file, feature 16).
+ *
+ * The IBAN is the PUBLIC example of the Spanish documentation and the balance is
+ * a round invented figure: a fixture only has to have the right shape, never to
+ * be true.
+ */
+export function myinvestorPreamble(balance = '1500,00'): string[] {
+  return [`iban;${documentationIban};;;`, `Saldo;${balance};;;`]
+}
+
+/** The public example IBAN of the Spanish documentation; nobody's account. */
+export const documentationIban = 'ES9121000418450200051332'
+
 /** The canonical fixture: header on line 1, the sample rows below it. */
 export function myinvestorSampleFixture(): StatementCsvFixture {
   return { rows: myinvestorSampleRows() }

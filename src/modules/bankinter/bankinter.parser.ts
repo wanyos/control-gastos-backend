@@ -86,6 +86,12 @@ export async function parseBankinterXlsx(content: Buffer): Promise<BankinterPars
   return {
     bank: 'bankinter',
     accountIban,
+    // The balance OF THE ACCOUNT at the date of the statement (feature 16): this
+    // export carries no such line, so it is an explicit `null`, never a 0 and
+    // never the `Saldo` COLUMN of a row, which is the running balance of that
+    // single line and already travels in `balance`. Nothing about how this file
+    // is read changes: only the contract gained a field.
+    accountBalance: null,
     movements: assignDaySequence(drafts, statementOrder),
     unparsedRows,
   }

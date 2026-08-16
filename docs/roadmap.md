@@ -140,7 +140,7 @@ la salida**, no el código que lee el formato.
 | Banco | Entradas | Estado |
 |---|---|---|
 | Bankinter | `.xlsx` de la cuenta | ✅ F6 + F7 (renombrado a inglés) |
-| MyInvestor · extracto | CSV de la cuenta corriente | ✅ **F10 `myinvestor-statement`** (2026-08-11) — primer parser nacido ya contra el contrato |
+| MyInvestor · extracto | CSV de la cuenta corriente | ✅ **F10 `myinvestor-statement`** (2026-08-11) — primer parser nacido ya contra el contrato. **F17** (2026-08-15) rechaza el fichero que no venga en UTF-8 y **F16** (2026-08-16) lee el **saldo de la cuenta** de una segunda línea de preámbulo `saldo;…` |
 | MyInvestor · productos | un JSON por producto de inversión | ✅ **F13 `myinvestor-products`** (2026-08-12, ADR-016) — misma ruta `POST /api/parser/myinvestor`, encaminado por extensión; **no toca base de datos**. **F15** (2026-08-13) le añadió `openedAt` **obligatorio en los cuatro tipos** |
 | Los ~5 restantes | sin inventariar | ⬜ **no existen ni como feature** |
 
@@ -332,6 +332,10 @@ tiene etapa, es que se va a perder.
   `iban;ES30…` **encima** de la fila de cabecera. Con ponerlo en uno de sus
   ficheros basta: los siguientes ya no lo necesitan. Si lo editas con Excel,
   guárdalo como **«CSV UTF-8»**.
+- **El saldo, cada mes, debajo del IBAN** (F16, 2026-08-16): línea `saldo;1500,00`
+  encima de la cabecera, y **borrar la fila `Saldo` del final** del fichero, que el
+  backend no lee. Si algún mes se te olvida, no falla nada: el saldo sale vacío.
+  Cómo se escribe: [`docs/dar-de-alta-un-banco.md`](dar-de-alta-un-banco.md).
 - ~~**Cuenta corriente de MyInvestor: alta a mano.**~~ ✅ **ya no hace falta**
   (F12): con esa línea, la cuenta se crea sola al importar.
 - **`initialBalance` de esa cuenta: correcto a la primera.** Tampoco trae saldo

@@ -196,6 +196,7 @@ async function parseAndDump(
     year,
     file,
     accountIban: result.accountIban,
+    accountBalance: result.accountBalance,
     movements: result.movements.length,
     unparsedRows: result.unparsedRows.length,
     // Logical relative path for the client: always '/', never the OS separator,

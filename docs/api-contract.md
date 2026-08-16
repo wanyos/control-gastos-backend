@@ -640,8 +640,8 @@ Divisa`; un banco que no reporte saldo (o IBAN) deja esos campos en `null`.
 | `daySequence` | number                                   | Posición dentro de su `bookingDate`; `1` = el **más antiguo** de ese día, creciendo hacia el más reciente (no es el orden de aparición en el archivo). Solo se numeran los movimientos parseados: una fila de `unparsedRows` no consume número. |
 
 > El resultado completo de un archivo tiene la forma `{ bank: "bankinter",
-> accountIban, movements: ParsedMovement[], unparsedRows: { row, reason }[] }`,
-> con `accountIban` a `null` cuando el archivo no lo trae (nunca `""`),
+> accountIban, accountBalance, movements: ParsedMovement[], unparsedRows: { row,
+> reason }[] }`, con `accountIban` a `null` cuando el archivo no lo trae (nunca `""`),
 > y es lo que se escribe en el JSON local. De dónde sale ese `accountIban` es
 > conocimiento de cada banco: Bankinter lo trae en el preámbulo de su `.xlsx`; en
 > MyInvestor lo escribe el humano **una vez**, como línea `iban;<IBAN>` encima de la
@@ -651,6 +651,22 @@ Divisa`; un banco que no reporte saldo (o IBAN) deja esos campos en `null`.
 > de miles, `1.234,56` → `1234.56`). **No** se deduplica: dos filas idénticas
 > aparecen las dos. Una fila no interpretable (fecha, importe o saldo ilegibles) va
 > a `unparsedRows` (con su nº de fila en `row` y el motivo en `reason`), sin perderse.
+
+#### Los dos «saldos» del contrato, que NO son el mismo dato
+
+> Añadido por la feature 16 (`statement-balance`, 2026-08-16). Campo nuevo en el
+> contrato común: `accountBalance`. Aún **NO** consumido por el frontend.
+
+| Campo del resultado | Qué es | Quién lo trae hoy |
+| --- | --- | --- |
+| `accountBalance` (nivel **extracto**) | Saldo **de la cuenta** en la fecha del extracto. Un solo valor por archivo | MyInvestor, de la línea de preámbulo `saldo;<importe>` que escribe el humano. Bankinter: `null` |
+| `balance` (dentro de cada **movimiento**) | Saldo **tras esa línea**. Uno por movimiento | Bankinter, de su columna `Saldo`. MyInvestor: `null` siempre (ADR-013) |
+
+Son **dos datos distintos y no comparten campo ni nombre**: sumarlos o usar uno
+como sustituto del otro es un error. `accountBalance` es `number | null`, con
+`null` = «el archivo no trae esa línea» (nunca `0`, que es un saldo real), se
+emite **tal cual está escrito** —no se calcula, no se acumula desde los importes y
+no se cuadra contra ellos— y **no se persiste**: esta feature es parser y volcado.
 
 ### `POST /api/parser/bankinter`
 
@@ -723,6 +739,31 @@ Sin cuerpo de petición.
 >   de la carpeta ni de un concepto con forma de IBAN. Si la línea falta, está vacía
 >   o va por debajo de la cabecera, `accountIban` es `null`. Con ella, la cuenta se
 >   crea sola al importar y ya no hace falta darla de alta a mano.
+
+> 💶 **El saldo de la cuenta: segunda línea de preámbulo etiquetada** (feature 16,
+> 2026-08-16). Igual que el IBAN, el banco no lo exporta y **lo escribe el humano a
+> mano**, como línea `saldo;<importe>` **encima** de la fila de cabecera, junto a la
+> del `iban;`. El parser lee **esa línea etiquetada y solo esa** (primera celda
+> `saldo`, **sin distinguir mayúsculas ni acentos**; el valor es la segunda celda) y
+> emite `accountBalance`. Reglas:
+>
+> - El importe se interpreta con **el mismo normalizador que la columna `Importe`**
+>   de este banco: coma decimal española, punto de miles y signo (`1.234,56` →
+>   `1234.56`).
+> - **Si la línea falta o viene vacía, `accountBalance` es `null` y no pasa nada**:
+>   el extracto se parsea igual, como con el IBAN. Su ausencia no es un fallo.
+> - Si la línea **está** pero el importe no es interpretable (`saldo;abc`), no se
+>   descarta en silencio: va a `unparsedRows` con su nº de línea y el motivo
+>   «saldo de la cuenta no interpretable», y el resto del archivo se parsea igual.
+>   Un archivo solo se rechaza entero por su **codificación** (F17) o por no tener
+>   cabecera reconocible.
+> - Si la etiqueta aparece **dos veces**, gana la **primera** (misma regla que el
+>   IBAN desde la F12).
+> - La fila `Saldo` que algunos exports llevan **al final** del archivo **NO** se
+>   lee: hay **una sola forma** de escribir este dato, la del preámbulo. Debajo de
+>   la cabecera esa fila es data y se trata como cualquier fila ilegible.
+> - `accountBalance` **no es** el `balance` de cada movimiento (ver §Los dos
+>   «saldos» del contrato).
 
 > 🔴 **El extracto DEBE estar guardado en UTF-8** (feature
 > "statement-encoding-guard", 2026-08-15). El fichero se descodifica en UTF-8
@@ -830,6 +871,7 @@ Sin cuerpo de petición.
       "year": "2026",
       "file": "extracto.csv",
       "accountIban": null,
+      "accountBalance": 1500,
       "movements": 12,
       "unparsedRows": 0,
       "dumpPath": "myinvestor/2026/extracto.csv.json"
@@ -860,6 +902,9 @@ Sin cuerpo de petición.
 
 - `accountIban`: `null` salvo que el archivo traiga la línea de preámbulo
   `iban;<IBAN>` que escribe el humano (ver la nota de arriba).
+- `accountBalance`: saldo **de la cuenta** en la fecha del extracto, de la línea de
+  preámbulo `saldo;<importe>`; `null` si esa línea no está (feature 16). **No** es el
+  `balance` de cada movimiento, que en este banco es `null` siempre.
 - `parsedCount` cuenta **extractos**; `productCount`, **productos**.
 - `products[]`: un **resumen** por producto parseado (`bank`, `year`, `file`, `type`,
   `name`, `date`, `dumpPath`). El producto completo, con su `valuation` o sus

@@ -7,7 +7,9 @@ import type { ParsedStatement } from '../../lib/parsed-statement.js'
 import {
   buildCp1252StatementCsv,
   buildStatementCsv,
+  documentationIban,
   myinvestorHeaders,
+  myinvestorPreamble,
   myinvestorSampleRows,
 } from './myinvestor.fixture.js'
 import { parseMyinvestorStatement } from './myinvestor.statement.parser.js'
@@ -51,7 +53,13 @@ describe('parseMyinvestorStatement — order and count (R5)', () => {
   it('satisfies the shared contract type (R70)', () => {
     const result: ParsedStatement = sample() satisfies MyinvestorStatementResult
 
-    expect(Object.keys(result).sort()).toEqual(['accountIban', 'bank', 'movements', 'unparsedRows'])
+    expect(Object.keys(result).sort()).toEqual([
+      'accountBalance',
+      'accountIban',
+      'bank',
+      'movements',
+      'unparsedRows',
+    ])
   })
 })
 
@@ -268,7 +276,13 @@ describe('parseMyinvestorStatement — the balance and the IBAN this bank does n
   it('emits exactly the four keys of the contract, with no providesBalance (R18)', () => {
     const result = sample()
 
-    expect(Object.keys(result).sort()).toEqual(['accountIban', 'bank', 'movements', 'unparsedRows'])
+    expect(Object.keys(result).sort()).toEqual([
+      'accountBalance',
+      'accountIban',
+      'bank',
+      'movements',
+      'unparsedRows',
+    ])
     expect(Object.keys(result.movements[0]).sort()).toEqual([
       'amount',
       'balance',
@@ -373,6 +387,212 @@ describe('parseMyinvestorStatement — the labelled iban preamble line (F12 R18)
     })
 
     expect(parseMyinvestorStatement(content).accountIban).toBe('ES9121000418450200051332')
+  })
+})
+
+// Feature 16: the SECOND labelled preamble line the human writes by hand, next
+// to the `iban;` one — `saldo;<importe>` — carrying the balance OF THE ACCOUNT
+// at the date of the statement. Every figure below is invented and round: a
+// fixture only has to have the right shape, never to be true.
+describe('parseMyinvestorStatement — the labelled saldo preamble line (feature 16)', () => {
+  const oneRow = [['12/03/2026', '12/03/2026', 'COMPRA FONDO FICTICIO', '-60', 'EUR']]
+
+  it('reads the balance of the account from the labelled line, next to the iban (C1)', () => {
+    const content = buildStatementCsv({ preamble: myinvestorPreamble(), rows: oneRow })
+
+    const result = parseMyinvestorStatement(content)
+
+    expect(result.accountBalance).toBe(1500)
+    expect(result.accountIban).toBe(documentationIban)
+    expect(result.movements).toHaveLength(1)
+  })
+
+  it('recognizes the label whatever its casing, accents or padding (C2)', () => {
+    // His real file already says `Saldo;…` with a capital S: demanding lowercase
+    // would reject a file he considers correct.
+    const spellings = [
+      'Saldo;1500,00;;;',
+      'SALDO;1500,00',
+      ' sáldo ; 1500,00 ;;;;',
+      'saldo;1500,00',
+    ]
+
+    for (const line of spellings) {
+      const content = buildStatementCsv({ preamble: [line], rows: oneRow })
+
+      expect(parseMyinvestorStatement(content).accountBalance).toBe(1500)
+    }
+  })
+
+  it('interprets the number with the same normalizer as the amounts (C3)', () => {
+    const cases: Array<[string, number]> = [
+      // Spanish comma decimal, thousands separator, sign and the euro sign, all
+      // of which `parseAmountText` already handles for the Importe column.
+      ['1500,00', 1500],
+      ['12.345,67', 12345.67],
+      ['-2.000', -2000],
+      ['-60,50', -60.5],
+      ['1500,00 €', 1500],
+    ]
+
+    for (const [written, expected] of cases) {
+      const content = buildStatementCsv({ preamble: [`saldo;${written}`], rows: oneRow })
+
+      expect(parseMyinvestorStatement(content).accountBalance).toBe(expected)
+    }
+  })
+
+  it('parses the file all the same when the line is absent or empty (C4)', () => {
+    const absent = buildStatementCsv({ preamble: ['iban;ES9121000418450200051332'], rows: oneRow })
+    const emptyValue = buildStatementCsv({ preamble: ['saldo;'], rows: oneRow })
+    const noValueCell = buildStatementCsv({ preamble: ['saldo'], rows: oneRow })
+
+    for (const content of [absent, emptyValue, noValueCell]) {
+      const result = parseMyinvestorStatement(content)
+
+      // Its absence is NOT a failure: same movements, nothing reported.
+      expect(result.accountBalance).toBeNull()
+      expect(result.movements).toHaveLength(1)
+      expect(result.unparsedRows).toEqual([])
+    }
+  })
+
+  it('changes nothing about the movements, their numbering or unparsedRows (C5)', () => {
+    const withBalance = parseMyinvestorStatement(
+      buildStatementCsv({ preamble: myinvestorPreamble() }),
+    )
+    const asBefore = sample()
+
+    // The preamble grew by two lines, so the row numbers of the table shift with
+    // the file, as they always have; everything else is identical.
+    expect(withBalance.movements).toEqual(asBefore.movements)
+    expect(withBalance.unparsedRows.map((row) => row.reason)).toEqual(
+      asBefore.unparsedRows.map((row) => row.reason),
+    )
+    expect(withBalance.unparsedRows.map((row) => row.row)).toEqual([5, 13])
+  })
+
+  it('does not let the saldo line reach unparsedRows nor the movements (C5)', () => {
+    const content = buildStatementCsv({ preamble: myinvestorPreamble(), rows: oneRow })
+
+    const result = parseMyinvestorStatement(content)
+
+    expect(result.unparsedRows).toEqual([])
+    expect(result.movements.map((m) => m.description)).toEqual(['COMPRA FONDO FICTICIO'])
+  })
+
+  it('is NOT the per-movement balance: that one stays null on every line (C6)', () => {
+    const content = buildStatementCsv({ preamble: myinvestorPreamble() })
+
+    const result = parseMyinvestorStatement(content)
+
+    expect(result.accountBalance).toBe(1500)
+    for (const movement of result.movements) {
+      expect(movement.balance).toBeNull()
+    }
+    // Two different data, two different names: the account's balance is a field
+    // of the STATEMENT and no movement carries a field with that name.
+    expect(Object.keys(result)).toContain('accountBalance')
+    expect(Object.keys(result.movements[0])).not.toContain('accountBalance')
+    expect(Object.keys(result)).not.toContain('balance')
+  })
+
+  it('does not learn to read the closing Saldo row at the END of the file (C7)', () => {
+    // The row he used to have at the bottom. It is preamble or nothing: below the
+    // header it is data, and data it stays — reported like any unreadable row.
+    const content = buildStatementCsv({
+      preamble: ['iban;ES9121000418450200051332'],
+      rows: [...oneRow, null, ['Saldo', '1500,00', '', '', '']],
+    })
+
+    const result = parseMyinvestorStatement(content)
+
+    expect(result.accountBalance).toBeNull()
+    expect(result.unparsedRows).toEqual([
+      { row: 5, reason: expect.stringContaining('fecha de operación inválida') },
+    ])
+  })
+
+  it('emits the balance exactly as written, without cuadrar it against anything (C8)', () => {
+    const content = buildStatementCsv({ preamble: ['saldo;1500,00'] })
+
+    const result = parseMyinvestorStatement(content)
+    const sumOfAmounts = result.movements.reduce((total, movement) => total + movement.amount, 0)
+
+    expect(result.accountBalance).toBe(1500)
+    expect(result.accountBalance).not.toBe(sumOfAmounts)
+    // A zero balance is a real balance and is emitted as 0, never as null.
+    expect(
+      parseMyinvestorStatement(buildStatementCsv({ preamble: ['saldo;0'] })).accountBalance,
+    ).toBe(0)
+    // Nothing is rounded nor re-formatted on the way out.
+    expect(
+      parseMyinvestorStatement(buildStatementCsv({ preamble: ['saldo;-0,01'] })).accountBalance,
+    ).toBe(-0.01)
+  })
+
+  it('reports the line, instead of dropping it, when the figure is unreadable (delegated)', () => {
+    const content = buildStatementCsv({
+      preamble: ['iban;ES9121000418450200051332', 'saldo;mil quinientos'],
+      rows: oneRow,
+    })
+
+    const result = parseMyinvestorStatement(content)
+
+    expect(result.accountBalance).toBeNull()
+    expect(result.unparsedRows).toEqual([
+      { row: 2, reason: "saldo de la cuenta no interpretable ('mil quinientos')" },
+    ])
+    // And the file is parsed all the same: one bad preamble line is not a file
+    // that has to be rejected whole (that is only the encoding, feature 17).
+    expect(result.movements).toHaveLength(1)
+  })
+
+  it('keeps the first labelled line when it is written twice (delegated)', () => {
+    const content = buildStatementCsv({
+      preamble: ['saldo;1500,00', 'saldo;-2.000'],
+      rows: oneRow,
+    })
+
+    const result = parseMyinvestorStatement(content)
+
+    // Same rule the iban has had since feature 12: one hand-written label, one
+    // value, and the first one wins. The second line is not data either, so it
+    // does not reach unparsedRows.
+    expect(result.accountBalance).toBe(1500)
+    expect(result.unparsedRows).toEqual([])
+  })
+
+  it('reads the balance of a file written with the UTF-8 BOM his editor adds (C9)', () => {
+    const content = buildStatementCsv({ bom: true, preamble: myinvestorPreamble(), rows: oneRow })
+
+    const result = parseMyinvestorStatement(content)
+
+    expect(result.accountBalance).toBe(1500)
+    expect(result.accountIban).toBe(documentationIban)
+  })
+
+  it('never reaches the balance of a file that is not UTF-8: the guard acts first (C9)', () => {
+    const content = buildCp1252StatementCsv({ preamble: myinvestorPreamble() })
+
+    // Feature 17 still rejects the whole file BEFORE any preamble line is read.
+    expect(() => parseMyinvestorStatement(content)).toThrow(NotUtf8Error)
+  })
+
+  it('reads both labelled lines with a single finder, not two near-copies (C1)', () => {
+    const source = readFileSync(
+      new URL('./myinvestor.statement.parser.ts', import.meta.url),
+      'utf8',
+    )
+
+    // The mechanism of feature 12 was extended, not duplicated: one finder, and
+    // the label is what tells the two lines apart.
+    expect(source).toContain("findPreambleLine(lines, header.line, 'saldo')")
+    expect(source).toContain("findPreambleLine(lines, header.line, 'iban')")
+    expect(source).not.toContain('findIbanLine')
+    expect(source.match(/function findPreambleLine/g)).toHaveLength(1)
+    // And the figure goes through the normalizer this bank already had.
+    expect(source).toContain('parseAmountText(accountBalanceLine.value)')
   })
 })
 

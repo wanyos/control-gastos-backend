@@ -699,8 +699,22 @@
           "Cómo se interpreta el número, sabiendo que ahí sí escribo coma decimal porque es un CSV español, igual que en los importes."
         ]
       },
+      "acceptance": [
+        "El extracto admite una línea de preámbulo etiquetada con 'saldo' ANTES de la fila de cabecera, junto a la del 'iban', y el resultado parseado expone ese saldo como un campo propio del extracto (deriva de: 'lo escribo como una línea saldo; en la cabecera, al lado de la del iban')",
+        "La etiqueta se reconoce SIN distinguir mayúsculas ni acentos: el archivo real del humano ya la lleva escrita como 'Saldo' con mayúscula, así que exigir minúscula rompería un archivo que él da por correcto (deriva del delego 'la etiqueta exacta y cómo se reconoce, alineada con lo que ya se hace con la del iban')",
+        "El importe se interpreta con la MISMA normalización que los importes del extracto (coma decimal española, separador de miles, signo), reutilizando el normalizador que ya existe para este banco y sin escribir uno nuevo (deriva de: 'ahí sí escribo coma decimal porque es un CSV español')",
+        "Si la línea del saldo NO está, el extracto se parsea igual y el saldo viene vacío, exactamente como se comporta hoy el iban cuando falta: su ausencia no es un fallo (deriva de: 'si algún mes se me olvida, el extracto se parsea igual y el saldo viene vacío')",
+        "Los movimientos, sus importes, su numeración y sus unparsedRows NO cambian en nada respecto a hoy: la línea nueva es preámbulo y no entra en la tabla (deriva de: 'los movimientos se siguen leyendo igual que ahora')",
+        "El saldo del extracto NO se confunde con el balance por movimiento: `balance` dentro de cada movimiento sigue siendo null siempre, porque el banco no lo reporta (ADR-013), y los dos datos no comparten campo ni nombre (deriva del que_no_quiero 'no confundir este saldo con el balance de cada movimiento')",
+        "El parser NO aprende a leer la fila 'Saldo' del final del archivo: solo hay una forma de escribirlo, la del preámbulo. Una fila de cierre al final sigue tratándose como hasta ahora (deriva de: 'no enseñar al parser a leer también la fila Saldo del final; quiero una sola forma de escribirlo')",
+        "El saldo se emite tal cual se escribió: no se calcula, no se cuadra contra la suma de los movimientos y no se redondea ni reformatea (deriva de: 'no calcular ni cuadrar nada con ese saldo')",
+        "El BOM inicial de UTF-8 se sigue tolerando y el guardián de UTF-8 de la F17 sigue actuando antes que nada: el archivo real del humano lleva BOM (deriva de 'los movimientos se siguen leyendo igual' + F17 ya cerrada)",
+        "La feature NO toca el esquema Prisma ni la base de datos, NO persiste nada, NO cambia el formato del JSON de producto ni el parser de Bankinter (deriva de los 'que_no_quiero')",
+        "docs/api-contract.md queda actualizado con el campo nuevo del extracto, y el documento donde vive el formato del fichero del banco explica cómo se escribe la línea del saldo y que la fila del final ya no se usa, para que el humano sepa qué escribir (deriva de 'lo escribo yo a mano'; la F15 se fue a CHANGES_REQUESTED justo por dejar un registro mintiendo)",
+        "Cada criterio tiene al menos un test concreto con fixtures sintéticos, sin datos reales ni red, mapeado en progress/implementations/statement-balance.md; ./init.sh termina en verde incluida la suite completa, con el guardián de la F14 entre los tests y 0 saltados (deriva del cierre estándar del proyecto)"
+      ],
       "sdd": false,
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": 17,

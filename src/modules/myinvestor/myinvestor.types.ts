@@ -10,11 +10,15 @@ import type { ParsedStatement } from '../../lib/parsed-statement.js'
  * `Fecha de operación | Fecha de valor | Concepto | Importe | Divisa`, which
  * fill `bookingDate | valueDate | description | amount | currency`.
  *
- * Two data this bank does NOT report, and that are therefore always `null`:
- * `balance` on every movement (the file has no balance column) and
- * `accountIban` on the result (the file has no preamble). `null` means "not in
- * the file": never a `0`, never an empty string, and never an extra per-bank
+ * One datum this bank does NOT report, and that is therefore always `null`:
+ * `balance` on every movement (the file has no balance column). `null` means "not
+ * in the file": never a `0`, never an empty string, and never an extra per-bank
  * flag announcing it (ADR-013 discarded `providesBalance`).
+ *
+ * The two the bank does not report either but the HUMAN writes by hand, as
+ * labelled preamble lines above the header: `accountIban` (feature 12) and
+ * `accountBalance` (feature 16, the balance of the account at the date of the
+ * statement). Both are `null` when their line is absent, which is not a failure.
  */
 export type MyinvestorStatementResult = ParsedStatement<'myinvestor'>
 
@@ -40,8 +44,14 @@ export interface ParsedStatementSummary {
   bank: string
   year: string
   file: string
-  /** Always `null` for this bank: the statement carries no IBAN. */
+  /** `null` unless the file carries the hand-written `iban;` preamble line. */
   accountIban: string | null
+  /**
+   * Balance of the ACCOUNT at the date of the statement, from the hand-written
+   * `saldo;` preamble line; `null` when it is absent. Not the per-movement
+   * balance, which this bank never reports (feature 16).
+   */
+  accountBalance: number | null
   /** Number of parsed movements. */
   movements: number
   /** Number of rows that could not be interpreted. */

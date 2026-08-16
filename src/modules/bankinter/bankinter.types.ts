@@ -10,6 +10,10 @@ import type { ParsedStatement } from '../../lib/parsed-statement.js'
  * `Fecha contable | Fecha valor | Descripción | Importe | Saldo | Divisa`, which
  * fill `bookingDate | valueDate | description | amount | balance | currency`.
  * `accountIban` comes from the preamble line and is `null` when it is absent.
+ * `accountBalance` (the balance of the ACCOUNT at the date of the statement,
+ * feature 16) is always `null` here: this export has no such line. The `Saldo`
+ * COLUMN it does have is a different datum — the running balance of each row —
+ * and travels, as always, in `balance` of each movement.
  */
 export type BankinterParseResult = ParsedStatement<'bankinter'>
 

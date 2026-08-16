@@ -34,6 +34,10 @@ function statement(bank: string, overrides: Partial<ParsedStatement> = {}): Pars
   return {
     bank,
     accountIban: null,
+    // The statement balance of feature 16 is parser-only: the importer neither
+    // reads it nor persists it, so every double here leaves it as the contract
+    // says a file without that line looks.
+    accountBalance: null,
     movements: [movement()],
     unparsedRows: [],
     ...overrides,
