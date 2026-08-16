@@ -122,7 +122,7 @@ para reportar errores y para el campo `file` de procedencia.
      miraste la web), no la fecha en que subiste el archivo, así que no se puede derivar
      de nada automático.
 - **Convención de nombre RECOMENDADA (no obligatoria, no validada):**
-  `<producto>-<AAAA-MM-DD>.json`, p. ej. `fondo-indexado-global-2026-08-31.json`.
+  `<producto>-<AAAA-MM-DD>.json`, p. ej. `mi-fondo-2026-08-31.json`.
   Ordena cronológicamente solo, y sobre todo **evita un límite real ya documentado**: la
   ingesta (ADR-009, "límite conocido: colisión de nombre") **sobrescribe la copia local**
   si dos archivos del mismo `<banco>/<año>/` se llaman igual. Subiendo `fondo.json` todos
@@ -254,7 +254,7 @@ de la feature 9; lo que no salía de ninguno de los dos lo decidió él ese día
 ```json
 {
   "type": "fund",
-  "name": "Fondo Indexado Global",
+  "name": "Mi Fondo de Ejemplo",
   "date": "2026-08-31",
   "currency": "EUR",
   "invested": 8000,

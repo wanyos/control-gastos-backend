@@ -355,17 +355,32 @@ tiene etapa, es que se va a perder.
 
 ### Dos decisiones que la F14 te devolvió (2026-08-12, ninguna urgente)
 
-- **El histórico de git.** Decidiste no reescribirlo cuando lo que se creía
-  expuesto eran cifras de inversión en dos commits recientes. Ahora se sabe que
-  desde la **F6** contiene además tu **IBAN de Bankinter**, el **nombre de tu
-  empresa** y el **nombre completo de otra persona** — dato de un tercero. El
-  repositorio es privado, así que no hay urgencia, pero la decisión se tomó con
-  menos información.
-- **Una línea real sigue en una migración ya aplicada**
-  (`prisma/migrations/**/migration.sql`). Editarla obligaría a `migrate reset` y
-  perderías la base de datos. Salidas: sanearla el día que resetees por otro
-  motivo, o editarla y corregir a mano el checksum de Prisma. Riesgo residual
-  aceptado mientras tanto.
+- ~~**El histórico de git.**~~ ✅ **decidido y cerrado (2026-08-13): se queda como
+  está, riesgo aceptado.** No volver a sacar el tema. Se verificó primero que
+  **no había habido reescritura** (los 36 commits conservan hash y fecha) y que
+  el alcance real es mayor de lo que se creía: además de las cifras de inversión,
+  desde la **F6** hay dos IBAN válidos por checksum (Bankinter en 14 commits
+  desde `4caeb38`, otro en 4 commits de la F12) y lo saneado por la F14 en ~40
+  archivos — importes, conceptos del extracto, el nombre de la empresa y el
+  nombre completo de un tercero. Con eso delante, la decisión se mantiene: el
+  repositorio es **privado**, **HEAD está limpio** y
+  [`src/no-real-data.test.ts`](../src/no-real-data.test.ts) impide la recaída.
+  Si algún día el repositorio deja de ser privado, esto **vuelve a la mesa** y la
+  salida limpia es: rewrite del histórico **más** borrar y recrear el repo en
+  GitHub (un force-push a secas deja los commits viejos alcanzables por SHA).
+- ~~**Una línea real sigue en una migración ya aplicada.**~~ ✅ **cerrado
+  (2026-08-15), y sin resetear nada.** Era
+  `prisma/migrations/20260806191700_data_model/migration.sql`, cuyo comentario
+  citaba un movimiento auténtico de tu extracto de Bankinter —concepto, importe y
+  fecha— como ejemplo de por qué `daySequence` entra en el índice. Lo destapó el
+  guardián de la F14 al haber capturas nuevas en `var/`; hasta entonces nadie lo
+  veía. Se tomó la segunda salida de las dos que quedaban apuntadas aquí: **editar
+  el comentario y realinear el checksum a mano**. Solo cambió el comentario, el DDL
+  no se tocó, así que el esquema es idéntico. El checksum guardado en
+  `_prisma_migrations` **sí** había quedado desalineado (`prisma migrate status`
+  no lo detecta, hay que compararlo a mano); se corrigió y los tres vuelven a
+  coincidir. **No hizo falta `migrate reset` ni se perdió la base de datos**, así
+  que el temor que dejó anotado la F14 resultó ser mayor que el problema real.
 
 ---
 

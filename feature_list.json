@@ -672,6 +672,73 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 16,
+      "name": "statement-balance",
+      "title": "Saldo de la cuenta en el preámbulo del extracto",
+      "intent": {
+        "que_quiero": "Que el saldo que tiene la cuenta corriente entre en el sistema. Lo escribo yo a mano en el CSV, como una línea 'saldo;' en la cabecera, justo al lado de la línea del 'iban;' que ya funciona. La fila 'Saldo' que ahora hay al final del archivo la borro yo al editarlo: solo habrá una manera de escribirlo, la de arriba.",
+        "por_que": "Es el dinero que hay de verdad en la cuenta en la fecha del extracto, y sin él solo tengo movimientos sueltos sin punto de referencia. Elegí la línea de arriba en vez de la fila del final porque el parser ya tiene ese mecanismo montado y probado para el iban, así que es lo más sencillo de hacer, y porque de paso la fila del final deja de ensuciar unparsedRows en todos los extractos.",
+        "como_se_que_esta_bien": [
+          "Escribo la línea del saldo (etiqueta 'saldo;' y el importe, con coma decimal como el resto del CSV) bajo la línea del iban, y el extracto parseado me devuelve ese saldo junto al IBAN.",
+          "Los 11 movimientos del extracto se siguen leyendo igual que ahora, con sus importes y su numeración.",
+          "Al quitar la fila 'Saldo' del final del archivo, unparsedRows se queda vacío: ya no me avisa de nada que no sea un problema de verdad.",
+          "Si algún mes se me olvida poner la línea del saldo, el extracto se parsea igual y el saldo viene vacío, como pasa con el iban."
+        ],
+        "que_no_quiero": [
+          "No tocar la base de datos ni el esquema Prisma: esto es solo parser y volcado.",
+          "No confundir este saldo con el balance de cada movimiento: ese sigue siendo null para siempre porque el banco no lo da (ADR-013), y son dos datos distintos que no deben acabar en la misma columna.",
+          "No enseñar al parser a leer también la fila 'Saldo' del final: quiero una sola forma de escribirlo.",
+          "No calcular ni cuadrar nada con ese saldo: se guarda tal cual lo escribo, no se comprueba contra la suma de los movimientos.",
+          "No tocar el formato del JSON de producto, ni el de Bankinter."
+        ],
+        "delego_en_agente": [
+          "La etiqueta exacta de la línea y cómo se reconoce (acentos, mayúsculas), alineada con lo que ya se hace con la del iban.",
+          "Cómo se llama el campo en el resultado parseado y en el contrato de la API, sin que se confunda con el balance por movimiento.",
+          "Cómo se interpreta el número, sabiendo que ahí sí escribo coma decimal porque es un CSV español, igual que en los importes."
+        ]
+      },
+      "sdd": false,
+      "status": "pending"
+    },
+    {
+      "id": 17,
+      "name": "statement-encoding-guard",
+      "title": "Rechazar el extracto que no venga en UTF-8",
+      "intent": {
+        "que_quiero": "Que si subo un CSV que no está guardado en UTF-8, el backend me lo diga y rechace ese archivo, en vez de leerlo igualmente y dejarme los conceptos con las tildes rotas. Yo voy a guardar siempre los CSV en UTF-8; lo que quiero es enterarme el día que se me escape.",
+        "por_que": "Ya me ha pasado: al editar el extracto para meterle la línea del iban, se guardó en ANSI, y 'SUSCRIPCIÓN PREMIUM' se convirtió en 'SUSCRIPCI?N PREMIUM' de forma irreversible. Lo peor es que no falló nada: 11 movimientos, cero filas sin parsear, todo con pinta de correcto. Un dato corrupto que entra callado es peor que un archivo rechazado, porque el rechazado lo arreglo en un minuto.",
+        "como_se_que_esta_bien": [
+          "Si subo un CSV guardado en ANSI, ese archivo se reporta como fallido y el motivo me dice que no está en UTF-8 y que lo vuelva a guardar.",
+          "El extracto correcto en UTF-8, con sus tildes y sus eñes, se sigue parseando exactamente igual que ahora.",
+          "Si en el mismo lote hay otros archivos buenos, se parsean igual: el fallo de uno no tumba a los demás.",
+          "Ningún concepto llega al volcado con un carácter de sustitución dentro."
+        ],
+        "que_no_quiero": [
+          "No quiero que el parser aprenda a leer cp1252 ni ninguna otra codificación: no se trata de aceptar el archivo malo, sino de rechazarlo con un motivo claro. Esos archivos los escribo yo y prefiero volver a guardarlos.",
+          "No tocar el formato del JSON de producto: eso ya lo escribo yo en UTF-8 y no ha dado problemas.",
+          "No tocar la base de datos ni persistir nada.",
+          "No cambiar el parser de Bankinter, que lee .xlsx y no tiene este problema."
+        ],
+        "delego_en_agente": [
+          "Cómo se detecta que el contenido no es UTF-8 válido, y si conviene mirar los bytes o el resultado de decodificar.",
+          "Si el rechazo es del archivo entero o solo de las filas afectadas; me inclino por el archivo entero, porque si la codificación está mal lo está todo el archivo, pero que lo decida quien lo implemente y lo justifique.",
+          "Dónde encaja el aviso para que salga por el mismo camino que el resto de fallos por archivo y no como un error de la petición."
+        ]
+      },
+      "acceptance": [
+        "Un extracto .csv cuyo contenido NO es UTF-8 válido se reporta como fallido, y el motivo dice que el archivo no está en UTF-8 y que hay que volver a guardarlo en esa codificación (deriva de: 'que me lo diga y rechace ese archivo, en vez de leerlo igualmente')",
+        "El parser NO aprende cp1252 ni ninguna otra codificación: el archivo malo se rechaza, nunca se decodifica ni se repara (deriva de: 'no se trata de aceptar el archivo malo, sino de rechazarlo con un motivo claro')",
+        "Un extracto correcto en UTF-8, con tildes y eñes en los conceptos, se parsea exactamente igual que antes: mismos movimientos, mismos importes, misma numeración, mismas unparsedRows (deriva de: 'el extracto correcto se sigue parseando igual')",
+        "Ningún concepto llega al volcado con un carácter de sustitución (U+FFFD) dentro: hoy 'SUSCRIPCIÓN PREMIUM' se guarda como 'SUSCRIPCI\\uFFFDN PREMIUM' sin que nada falle, y eso deja de poder ocurrir (deriva de: 'ningún concepto llega al volcado con un carácter de sustitución')",
+        "El fallo sale por el camino de fallo POR ARCHIVO (failed[] de la respuesta 200), no como error de la petición: si en el mismo lote hay archivos buenos, se parsean igual (deriva de: 'el fallo de uno no tumba a los demás', y del aislamiento por archivo ya existente en la F13)",
+        "La feature NO toca el esquema Prisma ni la base de datos, NO persiste nada, NO cambia el parser de productos .json ni el de Bankinter .xlsx (deriva de los 'que_no_quiero')",
+        "El BOM inicial de UTF-8 se sigue tolerando como hasta ahora: es UTF-8 válido y no debe confundirse con una codificación mala (deriva de 'el extracto correcto se sigue parseando igual'; hoy lo tolera myinvestor.statement.parser.ts)",
+        "Cada criterio tiene al menos un test concreto con fixtures sintéticos, sin datos reales ni red, mapeado en progress/implementations/statement-encoding-guard.md; ./init.sh termina en verde incluida la suite completa, con el guardián de la F14 entre los tests (deriva del cierre estándar del proyecto)"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

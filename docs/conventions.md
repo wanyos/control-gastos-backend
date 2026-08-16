@@ -187,6 +187,14 @@ class NotFoundError extends AppError {
 - **El importador no conoce ningún banco.** `src/app.ts` es el **único** archivo de
   `src/` que puede nombrar uno; un guardián de `architecture.test.ts` lo comprueba
   también sobre `src/modules/import/`.
+- **Un fichero de texto se descodifica con `decodeUtf8Strict`, nunca con
+  `toString('utf8')`** (decidido 2026-08-15, F17; ver ADR-018). `toString('utf8')`
+  no lanza jamás: un byte que no es UTF-8 se convierte en `�` en silencio y el dato
+  queda corrupto **de forma irreversible** con el parseo aparentando ir perfecto. El
+  guardián compartido es [`src/lib/utf8.ts`](../src/lib/utf8.ts) —encoding, no
+  formato, por eso se comparte— y **rechaza el fichero entero** (`NotUtf8Error`,
+  código `NOT_UTF8`) con el byte, la línea y la instrucción de volver a guardarlo en
+  UTF-8. No se adivina la codificación ni se aprende cp1252.
 - **El IBAN de la cuenta va en el fichero, una sola vez** (decidido 2026-08-12).
   Si el banco no lo exporta, lo escribe el humano como línea de preámbulo
   `iban;<IBAN>` **encima** de la cabecera; el parser la lee **solo si está

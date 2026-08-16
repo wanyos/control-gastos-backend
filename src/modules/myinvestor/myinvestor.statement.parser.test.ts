@@ -2,9 +2,14 @@ import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
-import { ValidationError } from '../../errors/app-error.js'
+import { NotUtf8Error, ValidationError } from '../../errors/app-error.js'
 import type { ParsedStatement } from '../../lib/parsed-statement.js'
-import { buildStatementCsv, myinvestorHeaders, myinvestorSampleRows } from './myinvestor.fixture.js'
+import {
+  buildCp1252StatementCsv,
+  buildStatementCsv,
+  myinvestorHeaders,
+  myinvestorSampleRows,
+} from './myinvestor.fixture.js'
 import { parseMyinvestorStatement } from './myinvestor.statement.parser.js'
 import type { MyinvestorStatementResult } from './myinvestor.types.js'
 
@@ -61,6 +66,60 @@ describe('parseMyinvestorStatement — decoding (R6)', () => {
     const result = parseMyinvestorStatement(buildStatementCsv({ bom: true }))
 
     expect(result.movements[1].description).toBe('SUSCRIPCIÓN AÑO PREMIUM €')
+  })
+})
+
+describe('parseMyinvestorStatement — a file that is not UTF-8 (feature 17)', () => {
+  const preamble = ['iban;ES9121000418450200051332']
+
+  it('rejects the whole file and tells the human to save it again as UTF-8', () => {
+    const content = buildCp1252StatementCsv({ preamble })
+
+    expect(() => parseMyinvestorStatement(content)).toThrow(NotUtf8Error)
+    try {
+      parseMyinvestorStatement(content)
+    } catch (error) {
+      expect((error as NotUtf8Error).code).toBe('NOT_UTF8')
+      expect((error as NotUtf8Error).message).toContain('no está guardado en UTF-8')
+      // The first offending byte of this file: the `ó` of the header
+      // «Fecha de operación», which cp1252 writes as the single byte 0xF3.
+      expect((error as NotUtf8Error).message).toContain('0xF3')
+      expect((error as NotUtf8Error).message).toContain('vuelve a guardarlo')
+    }
+  })
+
+  it('rejects it whole: no movement, no unparsedRows, nothing partial comes back', () => {
+    const parse = () => parseMyinvestorStatement(buildCp1252StatementCsv({ preamble }))
+
+    // A rejection, never a partial result: the encoding is a property of the
+    // file, so half of it cannot be trusted either.
+    expect(parse).toThrow(NotUtf8Error)
+  })
+
+  it('never decodes it as cp1252: the accent is not recovered, the file is refused', () => {
+    const content = buildCp1252StatementCsv({ preamble })
+
+    expect(() => parseMyinvestorStatement(content)).toThrow(NotUtf8Error)
+    // And this is what used to happen instead, silently (the reason the guard
+    // exists): the header still matched by its ASCII prefix and the concept
+    // came back mangled, with no error at all.
+    expect(content.toString('utf8')).toContain('SUSCRIPCI�N')
+  })
+
+  it('parses the very same statement, saved properly, exactly as before', () => {
+    // Same bytes as the rejected one, only saved in UTF-8: nothing about the
+    // healthy path changes (same movements, same row numbers, same reasons).
+    expect(parseMyinvestorStatement(buildStatementCsv())).toEqual(sample())
+
+    const withIban = parseMyinvestorStatement(buildStatementCsv({ preamble }))
+    expect(withIban.accountIban).toBe('ES9121000418450200051332')
+    expect(withIban.movements[1].description).toBe('SUSCRIPCIÓN AÑO PREMIUM €')
+  })
+
+  it('lets no replacement character reach any parsed field', () => {
+    const result = parseMyinvestorStatement(buildStatementCsv({ preamble }))
+
+    expect(JSON.stringify(result)).not.toContain('�')
   })
 })
 

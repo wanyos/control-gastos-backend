@@ -142,13 +142,43 @@ cuenta: no cambia nunca, así que los ficheros siguientes ya no lo necesitan.
   > `var/drive-read/`, que está gitignoreada.
 
   La etiqueta se compara sin distinguir mayúsculas ni espacios sobrantes y los `;`
-  de relleno que añade Excel al final son inocuos. Si editas el fichero con Excel,
-  guárdalo como **«CSV UTF-8»**: el parser descodifica UTF-8 explícitamente y un
-  guardado en cp1252 rompería los acentos de los conceptos.
+  de relleno que añade Excel al final son inocuos.
 
 Si falta y ese banco no tiene **exactamente una** cuenta ya dada de alta, ese
 fichero se reporta como `failed` con el código `MISSING_ACCOUNT_DATA`, no se
 importa y **no se mueve**: se corrige el fichero y se reintenta.
+
+## El fichero se guarda en UTF-8, siempre
+
+> Añadido el 2026-08-15 con la feature 17 (`statement-encoding-guard`), después de
+> que pasara de verdad.
+
+**Al editar el fichero para meterle la línea `iban;`, guárdalo en UTF-8.** El Bloc
+de notas en modo ANSI y Excel guardan en **cp1252** sin avisar, y ahí la `Ó` deja
+de ser `c3 93` para ser un solo byte `d3` que no es UTF-8 válido.
+
+- En el Bloc de notas: *Guardar como → Codificación: **UTF-8***.
+- En Excel: *Guardar como → **CSV UTF-8** (delimitado por comas)* (ojo también al
+  separador: el parser espera `;`).
+
+**Qué hace el backend si se te escapa:** rechaza **el fichero entero** con el
+código `NOT_UTF8` y un motivo que dice el byte, la línea y qué hacer. No se importa
+nada de él, **no se mueve a `procesados/`** y sigue pendiente: lo vuelves a guardar
+en UTF-8, lo resubes y entra a la primera.
+
+**Lo que el backend NO hace, a propósito:** no aprende cp1252, no adivina la
+codificación y no repara el fichero. Hasta esta feature lo leía igualmente y
+`SUSCRIPCIÓN PREMIUM` se guardaba como `SUSCRIPCI�N PREMIUM` **sin un solo fallo**
+—11 movimientos, cero filas sin parsear—, y esa pérdida es irreversible. Un fichero
+rechazado se arregla en un minuto; un dato corrupto que entra callado, no.
+
+La comprobación vive en [`src/lib/utf8.ts`](../src/lib/utf8.ts) (`decodeUtf8Strict`),
+fuera del módulo de cualquier banco: la codificación no es un formato, así que se
+comparte. Hoy la usa el parser del extracto `.csv` de MyInvestor
+([`myinvestor.statement.parser.ts`](../src/modules/myinvestor/myinvestor.statement.parser.ts));
+el `.xlsx` de Bankinter no la necesita (no es texto plano) y los `.json` de producto
+se escriben aparte. **Al dar de alta un banco cuyo fichero sea texto, su parser
+descodifica con `decodeUtf8Strict`, no con `toString('utf8')`.**
 
 ## Reglas del nombre de banco (las aplica `normalizeBankName`)
 

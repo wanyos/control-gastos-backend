@@ -99,9 +99,9 @@ ALTER TABLE "Movement" ADD CONSTRAINT "Movement_categoryId_fkey" FOREIGN KEY ("c
 
 -- CreateIndex (raw SQL: Prisma 7 cannot express a PARTIAL unique index)
 -- Dedup of imported movements. `daySequence` is part of the key on purpose:
--- a real statement brings identical legitimate lines the same day (three
--- `TRANS INM/ Openbank -1000,00` on 2026-07-24 in the sample), and without it
--- two of the three would be silently discarded as duplicates.
+-- a real statement brings identical legitimate lines the same day (the sample
+-- holds three transfers of the same amount, same concept and same date), and
+-- without it two of the three would be silently discarded as duplicates.
 -- `manual` movements stay out of the predicate: no uniqueness is imposed on them.
 CREATE UNIQUE INDEX "Movement_imported_dedup_key"
   ON "Movement" ("accountId", "bookingDate", "type", "amount", "description", "daySequence")

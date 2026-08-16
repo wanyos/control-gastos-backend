@@ -50,6 +50,7 @@ Códigos estables:
 | `VALIDATION_ERROR`      | 400  | El body o los params no cumplen el esquema de la ruta, o la operación es incoherente (p. ej. subcategoría de una subcategoría). |
 | `NOT_FOUND`             | 404  | El recurso pedido no existe, o la ruta no existe.          |
 | `CONFLICT`              | 409  | El recurso ya existe: `iban` de cuenta duplicado, o categoría raíz duplicada `(kind, name)`. |
+| `NOT_UTF8`              | 422  | Los **bytes** de un fichero no son UTF-8 válido (típicamente guardado en cp1252/ANSI por el editor). El fichero se **rechaza entero**; nunca se decodifica ni se repara. Como `MISSING_ACCOUNT_DATA`, viaja **dentro del informe de un fichero** en una respuesta 200, no como cuerpo de error HTTP. |
 | `MISSING_ACCOUNT_DATA`  | 422  | Los metadatos de un extracto no bastan para resolver la cuenta (falta el `iban` en el fichero y su banco no tiene exactamente una cuenta dada de alta). **Ya no está reservado:** desde la feature 12 lo emite `POST /api/import` **dentro del informe de un fichero**, en una respuesta 200, no como cuerpo de error HTTP (ver la nota más abajo). |
 | `INTERNAL_SERVER_ERROR` | 500  | Error inesperado; el cuerpo no expone detalles internos.   |
 | `DRIVE_CONNECTION_ERROR`| 503  | No se puede hablar con Google Drive (token caducado, API deshabilitada, scope insuficiente…). |
@@ -60,6 +61,17 @@ Códigos estables:
 > por fichero dentro de un 200 (un fichero roto no invalida los demás), así que este
 > código aparece en `files[].error.code` de `POST /api/import`. Su `message` pide
 > escribir el IBAN **una vez** en el fichero; ninguna cuenta se crea nunca sin IBAN.
+>
+> **Nota (`NOT_UTF8`, feature "statement-encoding-guard", 2026-08-15):** todo
+> fichero que entra por un parser se descodifica en **UTF-8 estricto**
+> ([`src/lib/utf8.ts`](../src/lib/utf8.ts)). Un byte que no sea UTF-8 válido
+> **rechaza el fichero entero** en vez de convertirse en `�` en silencio, que es
+> lo que ocurría hasta hoy: un extracto guardado en cp1252 se parseaba sin un solo
+> fallo y dejaba `SUSCRIPCI�N PREMIUM` de forma irreversible. El backend **no
+> aprende cp1252** ni adivina codificaciones: el `message` dice qué byte y qué
+> línea, y pide volver a guardar el fichero en UTF-8. Aparece en
+> `files[].error.code` de `POST /api/import` y, como motivo de texto, en
+> `failed[].reason` de `POST /api/parser/myinvestor`.
 >
 > **Nota (`DRIVE_CONNECTION_ERROR`, actualizada en la feature "drive-read",
 > 2026-08-03):** desde la feature 5 este código **sí** sale en el cuerpo de error
@@ -570,6 +582,7 @@ Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve*
 | `code`                   | Cuándo                                                                            |
 | ------------------------ | --------------------------------------------------------------------------------- |
 | `MISSING_ACCOUNT_DATA`   | El archivo no trae `iban` y su banco tiene **cero** o **más de una** cuenta dada de alta. Escribe el IBAN una vez en el archivo. |
+| `NOT_UTF8`               | Los bytes del archivo no son UTF-8 (guardado en cp1252/ANSI al editarlo). Vuelve a guardarlo como UTF-8 y reintenta: **no** se importa nada de él y **no** se mueve a `procesados/`. |
 | `VALIDATION_ERROR`       | El archivo no es un extracto reconocible para el parser de su banco.               |
 | `DRIVE_CONNECTION_ERROR` | Falló la descarga de **ese** archivo.                                              |
 | `INTERNAL_SERVER_ERROR`  | Cualquier otro fallo de ese archivo (mensaje sanitizado).                          |
@@ -711,6 +724,17 @@ Sin cuerpo de petición.
 >   o va por debajo de la cabecera, `accountIban` es `null`. Con ella, la cuenta se
 >   crea sola al importar y ya no hace falta darla de alta a mano.
 
+> 🔴 **El extracto DEBE estar guardado en UTF-8** (feature
+> "statement-encoding-guard", 2026-08-15). El fichero se descodifica en UTF-8
+> **estricto**: si sus bytes no son UTF-8 válido —lo que hace el Bloc de notas o
+> Excel en modo ANSI cuando editas el fichero para añadir la línea `iban;`— el
+> extracto **entero** se rechaza como fallo de ese archivo (`NOT_UTF8`), con el
+> byte y la línea del problema y la instrucción de volver a guardarlo. No se
+> rechazan «solo las filas afectadas» y **no** se descodifica cp1252: la
+> codificación es una propiedad del fichero completo, y aceptar la mitad buena
+> dejaría entrar un extracto que parece completo y no lo es. El BOM inicial sigue
+> siendo válido y tolerado.
+
 Columnas reales del extracto (`;` como separador, UTF-8, BOM tolerado), mapeadas
 **por nombre** de cabecera y no por posición:
 `Fecha de operación | Fecha de valor | Concepto | Importe | Divisa` →
@@ -737,9 +761,9 @@ Modelo de un producto parseado, tal como aparece en el volcado:
 ```json
 {
   "bank": "myinvestor",
-  "file": "fondo-indexado-global-2026-08-31.json",
+  "file": "mi-fondo-2026-08-31.json",
   "type": "fund",
-  "name": "Fondo Indexado Global",
+  "name": "Mi Fondo de Ejemplo",
   "date": "2026-08-31",
   "currency": "EUR",
   "openedAt": "2025-01-15",
@@ -815,9 +839,9 @@ Sin cuerpo de petición.
     {
       "bank": "myinvestor",
       "year": "2026",
-      "file": "fondo-indexado-global-2026-08-31.json",
+      "file": "mi-fondo-2026-08-31.json",
       "type": "fund",
-      "name": "Fondo Indexado Global",
+      "name": "Mi Fondo de Ejemplo",
       "date": "2026-08-31",
       "dumpPath": "myinvestor/2026/products.json"
     }
@@ -846,7 +870,9 @@ Sin cuerpo de petición.
   volcado contiene `{ bank, year, products[], failed[], ignored[] }` de ese año, y
   solo se escribe si el año tiene algún `.json` de producto.
 - `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado, para las dos
-  entradas. Un archivo de producto mal escrito acumula **todos** sus problemas en un
+  entradas. Un extracto cuyos bytes no sean UTF-8 cae aquí entero, con el motivo
+  «el archivo no está guardado en UTF-8 (byte 0xD3 no válido en la línea N)…» y sin
+  escribir volcado. Un archivo de producto mal escrito acumula **todos** sus problemas en un
   solo `reason` (campos obligatorios que faltan, valores que no son números, un
   número escrito **como texto**, fechas en otro formato, claves desconocidas, o el
   choque con otro archivo que declara el mismo producto y fecha). Un fallo por

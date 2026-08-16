@@ -42,6 +42,19 @@ export class MissingAccountDataError extends AppError {
   }
 }
 
+/**
+ * The bytes of a file are not valid UTF-8 (typically saved as cp1252/ANSI by an
+ * editor). It is a rejection, never a repair: decoding it anyway would silently
+ * turn every accent into `U+FFFD` and store corrupted text. 422 keeps it apart
+ * from VALIDATION_ERROR (400): the file is a well-formed request, its bytes are
+ * what cannot be read.
+ */
+export class NotUtf8Error extends AppError {
+  constructor(message = 'File is not valid UTF-8') {
+    super(message, 'NOT_UTF8', 422)
+  }
+}
+
 export class DriveConnectionError extends AppError {
   constructor(message = 'Cannot reach Google Drive') {
     super(message, 'DRIVE_CONNECTION_ERROR', 503)

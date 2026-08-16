@@ -3,10 +3,89 @@
 > Este archivo se vacía al cerrar cada sesión y se mueve a `history.md`.
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
-- **Tarea en curso:** ninguna. La **F15 `product-opened-at`** se cerró en esta misma
-  sesión (2026-08-13). Las 15 features están `done`.
-- **Inicio:** 2026-08-13
+- **Tarea en curso:** ninguna. La **F17 `statement-encoding-guard`** se cerró en esta
+  sesión (2026-08-15): `reviewer` **APROBADO sin cambios requeridos**. Queda `pending`
+  la **F16 `statement-balance`**.
+- **Inicio:** 2026-08-15
 - **Agente:** leader + implementer + reviewer
+
+## F17 `statement-encoding-guard` — cerrada
+
+Nace del hallazgo 🔴 E de la [prueba real del 2026-08-15](prueba-drive-real-2026-08-15.md).
+Sin spec (`sdd: false`). Informe:
+[`implementations/statement-encoding-guard.md`](implementations/statement-encoding-guard.md) ·
+veredicto: [`reviews/statement-encoding-guard.md`](reviews/statement-encoding-guard.md) ·
+resumen: [`summaries/statement-encoding-guard.md`](summaries/statement-encoding-guard.md).
+
+1. ✅ `src/lib/utf8.ts` → `decodeUtf8Strict`: veredicto por **bytes**
+   (`TextDecoder` con `fatal: true`) y guardia secundaria por `U+FFFD`; lanza
+   `NotUtf8Error` (`NOT_UTF8`, 422) con el byte, la línea y qué hacer.
+2. ✅ El parser del extracto lo usa en lugar de `toString('utf8')`: **un solo sitio**
+   cubre los dos caminos (`/api/parser/myinvestor` y `/api/import`), que ya aíslan el
+   fallo por archivo.
+3. ✅ Tests con fixtures sintéticos, con los bytes cp1252 escritos en código.
+4. ✅ Documentación: ADR-018, `api-contract.md`, `dar-de-alta-un-banco.md`,
+   `conventions.md`.
+5. ✅ **`./init.sh` en verde: 396 tests, 396 pasan, 0 saltados**, con la capa de
+   comparación del guardián de la F14 **activa** (los 0 saltados importan). Los rojos
+   que reportó el implementer eran ajenos a la F17 —lo dejó fuera de su scope con razón—
+   y el leader saneó después lo que era suyo.
+
+### El guardián de la F14 destapó tres cosas, y solo una era la esperada
+
+**✅ Saneado ya (era del leader, no del implementer).** El informe de la prueba real
+llevaba el **IBAN real** del humano, sus importes y los conceptos literales de su
+extracto, y el `intent` de la F16 citaba su saldo. Lo escribió el leader pegando la
+salida de la consola en un archivo versionado. Corregido: cifras inventadas, IBAN
+sintético, nombres de sus archivos sustituidos por genéricos, y una nota al principio
+del informe explicando el saneamiento. Las capas de IBAN e importes vuelven a verde.
+
+**✅ Cerrado el falso positivo del ejemplo de la plantilla.** El nombre de ejemplo del
+fondo saltaba en `docs/` y `specs/` porque el humano copió ese ejemplo tal cual a su
+archivo del ETF (hallazgo 🔴 D), así que el ejemplo de la documentación pasó a estar en
+`var/` y el guardián lo leyó como dato suyo. **El dato copió a la plantilla, no al
+revés.** Arreglado en la raíz: el ejemplo se renombró en `docs/api-contract.md`,
+`docs/myinvestor-product-files.md` y `specs/myinvestor-products/design.md`, y las
+plantillas ya usan marcadores `<…>` en vez de valores copiables.
+
+**✅ Resueltas las 3 colisiones PREEXISTENTES**, ninguna escrita en esta sesión: el
+guardián solo las veía ahora porque `var/` tiene capturas nuevas. Decididas por el
+humano el 2026-08-15:
+
+1. **El comentario del enum de tipos de producto** (`docs/data-model.md`,
+   `specs/investments-data-model/design.md`) — **falso positivo**: es la traducción al
+   castellano del tipo de producto, el nombre que le da el banco, y colisiona solo
+   porque el humano llamó al suyo igual. Cerrado con el escape documentado, un
+   **`no-real-data-ok` por línea con su motivo escrito al lado**. El comentario
+   conserva el término exacto que se ve en la web del banco, que es lo que lo hace
+   reconocible.
+2. **`prisma/migrations/20260806191700_data_model/migration.sql`** — 🔴 **acierto real
+   y preexistente**: un comentario citaba un movimiento auténtico del extracto de
+   Bankinter (concepto, importe y fecha) como ejemplo de por qué `daySequence` entra en
+   el índice. **Saneado**: el ejemplo pasa a ser genérico. Solo cambia el comentario, el
+   DDL no se toca ni una letra, así que el esquema es idéntico. **Checksum: cerrado.**
+   El guardado en `_prisma_migrations` sí difería tras editar el comentario; se realineó
+   con el del archivo, los tres coinciden y `prisma migrate status` dice «up to date».
+   **No hace falta resetear la base de datos.**
+3. **El propio `current.md` llegó a colisionar** al documentar los dos puntos de
+   arriba: citar la frase infractora la reintroduce. Se describen sin transcribirlas.
+
+6. ✅ **`reviewer`: APROBADO sin cambios requeridos** →
+   [`reviews/statement-encoding-guard.md`](reviews/statement-encoding-guard.md), resumen
+   en [`summaries/statement-encoding-guard.md`](summaries/statement-encoding-guard.md).
+   F17 marcada **`done`** en `feature_list.json` y anotada en
+   [`history.md`](history.md). Sus 17 tests nuevos, verdes.
+
+### Siguen abiertas (anotadas, no se abren ahora)
+
+Las tres sugerencias fuera de scope del informe de la F17: el `readFile(…, 'utf8')` del
+JSON de producto —mismo silencio, pero el `que_no_quiero` pedía no tocar ese formato—, el
+motivo de la **coma decimal** (§A) y el del **archivo nativo de Google** (§B), que el
+humano ya clasificó como de menor prioridad.
+
+---
+
+## Sesión anterior (2026-08-13): F15 cerrada
 
 ## F15 `product-opened-at` — cerrada
 
@@ -37,25 +116,42 @@ llevase la fecha de apertura. Sin spec (`sdd: false`).
    `openedAt`. Nadie comprueba que coincida con la documentación: todo archivo escrito
    con la plantilla vieja fallará. Plantillas en
    [`docs/myinvestor-product-files.md`](../docs/myinvestor-product-files.md).
-2. **Prueba pendiente, anunciada por él:** va a poner la línea `iban;ES…` en el CSV de
-   MyInvestor y a subir sus JSON de inversión para probar el camino entero.
+2. ✅ **Prueba del camino entero: hecha el 2026-08-15** →
+   [`prueba-drive-real-2026-08-15.md`](prueba-drive-real-2026-08-15.md). Drive
+   responde y el extracto se lee bien (IBAN + 11 movimientos), pero **0 de 4 JSON
+   de producto parsean**: llevan coma decimal, que JSON no admite. Y el `.csv` se
+   subió **convertido a hoja de Google**, así que no se puede descargar. Los dos
+   son cosas que arregla él en Drive; el informe propone además dos mensajes de
+   error mejores en el backend (candidato a F16).
+
+   **Segunda pasada el mismo día, tras corregirlos: el camino entra entero**
+   (6/6 descargados, 5 productos, 1 extracto con IBAN, 0 fallos). Quedan dos
+   problemas **silenciosos**, que no dan error: el `.csv` viene ahora en cp1252 y
+   el parser convierte la `Ó` de los conceptos en `�` de forma irreversible, y
+   `etf-<...>-*.json` conserva el `type` y el `name` del ejemplo de la plantilla.
+   Decidido también que el **saldo** se leerá de una línea `saldo;…` en el
+   preámbulo, junto al `iban;…`.
 3. **Inventario por banco** ([`docs/ideas.md`](../../docs/ideas.md)): sigue vacío y
    sigue bloqueando la E4 entera.
 
-## ⚠️ El histórico de git NO está saneado (verificado el 2026-08-13)
+## ✅ El histórico de git: cerrado como riesgo aceptado (2026-08-13)
 
-El humano lo dio por arreglado; se comprobó y **no lo está**. Los 36 commits conservan
-sus hashes y fechas originales, así que **no hubo reescritura**. Quedan dos IBAN
-**válidos por checksum** (no son de manual) alcanzables en commits antiguos, ninguno en
-HEAD:
+**Tema cerrado. No volver a sacarlo.** El humano lo dio por arreglado, se verificó y
+**no lo estaba** (los 36 commits conservan hash y fecha: no hubo reescritura). Se le
+devolvió el alcance real medido, mayor de lo que él creía:
 
-- `ES15 0128…` (0128 = Bankinter) en **14 commits**, desde `4caeb38` (F6, 2026-08-04),
-  en `bankinter.parser.test.ts`.
-- `ES30 1544…` en **4 commits**, de la F12 (2026-08-12).
+- `ES15 0128…` (0128 = Bankinter), IBAN **válido por checksum**, en **14 commits** desde
+  `4caeb38` (F6, 2026-08-04), en `bankinter.parser.test.ts`.
+- `ES30 1544…`, también válido, en **4 commits** de la F12.
+- Más lo que saneó la F14 en ~40 archivos: importes, conceptos del extracto, el nombre
+  de su empresa y el nombre completo de un tercero.
 
-HEAD está limpio (solo los dos IBAN de manual y uno inválido a propósito). **Pendiente
-de que el humano diga qué hizo** — si puso el repo en privado o borró el remoto, reduce
-el riesgo pero no cierra el tema.
+Se le ofrecieron las dos salidas reales (commit inicial único, o rewrite de los 35
+commits) y **eligió dejarlo**: repositorio privado, HEAD limpio y el guardián de la F14
+impidiendo la recaída. Anotado en `docs/roadmap.md`, con la nota de que **si el
+repositorio deja de ser privado esto vuelve a la mesa**, y de que la salida limpia exige
+rewrite **más** borrar y recrear el repo (un force-push deja los commits viejos
+alcanzables por SHA).
 
 ## Cerrado también en esta sesión (no es código)
 

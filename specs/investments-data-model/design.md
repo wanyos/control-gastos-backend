@@ -104,8 +104,10 @@ como todo el dominio (`docs/conventions.md` §Idioma).
 enum InvestmentProductType {
   fund               // fondo de inversión
   etf                // ETF
-  managed_portfolio  // cartera automatizada: UN producto con su valor total
-  deposit            // depósito a plazo: el único con parte específica
+  // El nombre del tipo es el que usa el banco, no un dato del humano: colisiona con
+  // var/ solo porque él llama al suyo igual. Por eso las dos líneas van marcadas.
+  managed_portfolio  // cartera automatizada: UN producto con su valor total  // no-real-data-ok
+  deposit            // depósito a plazo: el único con parte específica  // no-real-data-ok
 }
 
 // ── Modelos ───────────────────────────────────────────────

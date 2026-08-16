@@ -56,20 +56,36 @@ en otro formato se rechaza diciendo el formato esperado. Aplica a `date`, `opene
 
 ---
 
+> ### ⚠️ Las plantillas llevan marcadores `<…>` a propósito
+>
+> Ningún ejemplo de aquí es copiable tal cual: **todos los valores son marcadores**
+> del tipo `<nombre del producto>`. Es deliberado. Antes las plantillas traían valores
+> de aspecto real y el 2026-08-15 pasó lo previsible: un archivo del ETF de oro se
+> subió conservando `"type": "fund"` y `"name": "Mi Fondo de Ejemplo"` del ejemplo.
+> **El parser no puede atrapar eso** —los dos valores son legales, solo que falsos—,
+> así que el producto entró con el nombre equivocado sin una sola queja, y sobrevivió
+> a una revisión humana. Con marcadores, un campo sin editar canta a la vista.
+>
+> Un `<…>` que llegue sin sustituir se rechaza como cualquier otro valor inválido
+> (`type` no admitido, fecha no `AAAA-MM-DD`, número como texto). No hace falta código
+> nuevo para eso: la propia forma del marcador ya es inválida en los cuatro sitios.
+
 ## Plantilla A — `fund`, `etf` y `managed_portfolio`
 
-Los tres tipos llevan **exactamente los mismos campos**.
+Los tres tipos llevan **exactamente los mismos campos**. 🔴 `type` y `name` son los
+dos que hay que cambiar **siempre** y los dos que es más fácil dejarse: la plantilla
+se copia entera y ellos no cambian de un mes a otro, así que la vista pasa de largo.
 
 ```json
 {
-  "type": "fund",
-  "name": "Fondo Indexado Global",
-  "date": "2026-08-31",
-  "openedAt": "2025-01-15",
-  "invested": 800,
-  "marketValue": 947.25,
-  "gain": 147.25,
-  "gainPercent": 18.41,
+  "type": "<fund | etf | managed_portfolio>",
+  "name": "<nombre del producto, tal y como lo llamas siempre>",
+  "date": "<AAAA-MM-DD: la fecha de esta foto>",
+  "openedAt": "<AAAA-MM-DD: el día que lo abriste; el mismo todos los meses>",
+  "invested": <lo aportado, número sin comillas>,
+  "marketValue": <lo que vale hoy>,
+  "gain": <la ganancia, con signo>,
+  "gainPercent": <el porcentaje, con signo>,
   "uninvestedCash": null,
   "closedAt": null
 }
@@ -80,14 +96,14 @@ La cartera automatizada es la que suele traer efectivo sin invertir:
 ```json
 {
   "type": "managed_portfolio",
-  "name": "Cartera Automatizada",
-  "date": "2026-08-31",
-  "openedAt": "2025-03-01",
-  "invested": 3000,
-  "marketValue": 3210.4,
-  "gain": 210.4,
-  "gainPercent": 7.01,
-  "uninvestedCash": 12.05,
+  "name": "<nombre de la cartera>",
+  "date": "<AAAA-MM-DD>",
+  "openedAt": "<AAAA-MM-DD>",
+  "invested": <lo aportado>,
+  "marketValue": <lo que vale hoy>,
+  "gain": <la ganancia, con signo>,
+  "gainPercent": <el porcentaje, con signo>,
+  "uninvestedCash": <el efectivo aún sin invertir>,
   "closedAt": null
 }
 ```
@@ -101,13 +117,13 @@ incluye `openedAt`: es **siempre el mismo valor** en todos los archivos de ese p
 ```json
 {
   "type": "deposit",
-  "name": "Depósito a 3 meses",
-  "date": "2026-08-31",
-  "openedAt": "2026-01-15",
-  "principal": 1200,
-  "interestRate": 1.5,
-  "expectedGain": 4.5,
-  "maturityDate": "2027-04-15",
+  "name": "<nombre del depósito>",
+  "date": "<AAAA-MM-DD: el día que escribes esto>",
+  "openedAt": "<AAAA-MM-DD: el día que lo contrataste>",
+  "principal": <el capital colocado>,
+  "interestRate": <la TAE que se aplica, en porcentaje: 1.5 es 1,5 %>,
+  "expectedGain": <los intereses brutos de esa TAE>,
+  "maturityDate": "<AAAA-MM-DD: el día que vence>",
   "closedAt": null
 }
 ```
@@ -194,6 +210,15 @@ la aportación mensual que todavía no se ha invertido. El patrimonio de un prod
 - Un producto cerrado puede seguir apareciendo en meses posteriores con su `closedAt`
   puesto: es idempotente y evita tener que acordarse de borrarlo.
 
+> **Los depósitos son la excepción, y es correcta (humano, 2026-08-15).** En un depósito
+> se escribe `closedAt` **igual a `maturityDate` desde el primer archivo**, aunque el
+> depósito siga vivo. No es un despiste: sus depósitos **se cancelan solos el mismo día
+> que vencen**, así que la fecha de cierre se conoce el día que se contratan. Un
+> `closedAt` en el futuro es, por tanto, un estado válido y **no significa que el dinero
+> ya esté liberado**: quien construya vistas de patrimonio debe mirar la fecha, no la
+> mera presencia del campo. En los fondos, ETF y carteras no aplica: ahí un `closedAt`
+> puesto sí significa que reembolsaste.
+
 ---
 
 ## Cómo se llama el archivo
@@ -202,7 +227,7 @@ la aportación mensual que todavía no se ha invertido. El patrimonio de un prod
 y el nombre solo se usa para reportar y como procedencia.
 
 **Convención recomendada (no obligatoria):** `<producto>-<AAAA-MM-DD>.json`, p. ej.
-`fondo-indexado-global-2026-08-31.json`. Ordena cronológicamente sola y evita un límite
+`mi-fondo-2026-08-31.json`. Ordena cronológicamente sola y evita un límite
 real: la ingesta **sobrescribe la copia local** si dos archivos del mismo
 `<banco>/<año>/` se llaman igual, así que subiendo `fondo.json` todos los meses cada
 descarga pisaría la anterior.

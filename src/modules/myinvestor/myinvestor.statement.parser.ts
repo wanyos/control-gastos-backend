@@ -1,6 +1,7 @@
 import { ValidationError } from '../../errors/app-error.js'
 import { assignDaySequence } from '../../lib/parsed-statement.js'
 import type { ParsedMovementDraft, UnparsedRow } from '../../lib/parsed-statement.js'
+import { decodeUtf8Strict } from '../../lib/utf8.js'
 import { deriveMovementTypeFromAmount } from '../movements/movements.service.js'
 import { parseAmountText, parseStatementDate } from './myinvestor.format.js'
 import type { MyinvestorStatementResult } from './myinvestor.types.js'
@@ -50,18 +51,25 @@ interface HeaderRow {
  * it once as a labelled `iban;<IBAN>` preamble line; it is read ONLY from that
  * line and never inferred from the shape of a concept.
  *
- * The file is decoded explicitly as UTF-8 (with a leading BOM tolerated) and the
- * header row is located by column name, not by position. Blank lines are
+ * The file is decoded STRICTLY as UTF-8 (with a leading BOM tolerated): bytes
+ * that are not valid UTF-8 reject the WHOLE file instead of becoming `U+FFFD`
+ * (feature 17). The header row is located by column name, not by position. Blank
+ * lines are
  * skipped; a line that cannot be interpreted is not dropped but collected in
  * `unparsedRows` with its 1-based line number (the header being line 1 of the
  * table) and the reason. It never deduplicates: two identical lines both appear.
  *
- * Throws `ValidationError` only for a structural failure (no recognizable header
- * row), i.e. the file is not a MyInvestor statement.
+ * Throws for a failure of the WHOLE file and nothing else: `NotUtf8Error` when
+ * its bytes are not UTF-8, and `ValidationError` for a structural failure (no
+ * recognizable header row), i.e. the file is not a MyInvestor statement. Both
+ * travel as a per-file failure through the callers' `failed[]`, never as an
+ * error of the request.
  */
 export function parseMyinvestorStatement(content: Buffer): MyinvestorStatementResult {
-  const lines = content
-    .toString('utf8')
+  // Rejecting bad bytes is the FIRST thing done, before the header is even
+  // looked for: the header survives a bad decoding (it is matched by its ASCII
+  // prefix) and would make a corrupted file look perfectly parsed.
+  const lines = decodeUtf8Strict(content)
     .replace(/^\uFEFF/, '')
     .split(/\r?\n/)
 

@@ -1285,6 +1285,57 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     cifras siguen en los commits `9588389` y `0e95035` y el repositorio es privado.
     Riesgo **conocido y aceptado**; si dejara de ser privado, sanear el árbol no basta.
 
+### ADR-018: Un fichero que no es UTF-8 se rechaza entero — `decodeUtf8Strict` en `lib/`, verdicto por bytes y ni una rama de tolerancia
+
+- **Fecha:** 2026-08-15.
+- **Estado:** aceptada (feature 17 `statement-encoding-guard`).
+- **Contexto:** la prueba con archivos reales del 2026-08-15
+  (`progress/prueba-drive-real-2026-08-15.md` §E) midió el daño byte a byte: el humano
+  editó el CSV que MyInvestor exporta en UTF-8 y su editor lo guardó en **cp1252**
+  (la `Ó` pasó de `c3 93` a `d3`). `content.toString('utf8')` **no lanza nunca**: los
+  bytes inválidos se convirtieron en `U+FFFD` y `SUSCRIPCIÓN PREMIUM` quedó como
+  `SUSCRIPCI�N PREMIUM` de forma **irreversible**, mientras el parseo aparentaba ir
+  perfecto (11 movimientos, cero `unparsedRows` de más). La cabecera sobrevive porque
+  se reconoce por su prefijo ASCII —previsión deliberada de la F10—, lo que hace el
+  fallo aún más invisible.
+- **Decisión:** descodificar en **UTF-8 estricto** y **rechazar**, nunca reparar.
+  1. **Detección por los BYTES, no por el `�`.** `new TextDecoder('utf-8', { fatal:
+     true })` es el veredicto: es el hecho real («estos bytes no son UTF-8») y no una
+     heurística. Buscar `U+FFFD` en el texto ya descodificado sería mirar la
+     consecuencia, y además `U+FFFD` **puede** venir en un fichero UTF-8 perfectamente
+     válido que ya lo contenga. Esa segunda comprobación existe igualmente, pero como
+     guardia secundaria y con su propio motivo: un `�` en un extracto es la cicatriz de
+     una decodificación fallida **anterior**, texto ya corrompido, y merece el mismo
+     rechazo. El motivo primario nombra el **byte** y la **línea** (`0xD3`), que es lo
+     que el humano puede reconocer en su editor.
+  2. **Se rechaza el FICHERO ENTERO, no las filas afectadas.** La codificación es una
+     propiedad del flujo de bytes, no de una línea: un guardado en cp1252 corrompe
+     toda línea con acentos y deja intactas las de puro ASCII, así que un rechazo por
+     filas importaría un subconjunto arbitrario **con pinta de completo** y su
+     reintento sería un lío de duplicados parciales. Y el arreglo es atómico —volver a
+     guardar el fichero—, así que la unidad de rechazo debe ser la misma.
+  3. **Vive en `src/lib/utf8.ts`, no en el módulo del banco.** La codificación no es un
+     formato: no hay conocimiento de ningún banco ahí dentro, así que compartirla no
+     rompe la norma «un parser por banco» (§ADR-013 hizo lo propio con la forma de la
+     salida). Y como el guardián está **dentro del parser**, los **dos** caminos que lo
+     llaman —`POST /api/parser/myinvestor` y `POST /api/import`— quedan cubiertos sin
+     duplicar una línea.
+  4. **Sale por el camino de fallo POR ARCHIVO**, no como error de la petición: se
+     lanza `NotUtf8Error` (código estable `NOT_UTF8`, 422), que el aislamiento ya
+     existente convierte en un elemento de `failed[]`/`files[].error` dentro de un 200.
+     El resto del lote se parsea igual y el fichero **no se mueve a `procesados/`**:
+     sigue pendiente y se reintenta solo con volver a guardarlo.
+- **Alternativa descartada:** descodificar cp1252 como *fallback* (era la
+  recomendación nº 1 de la propia prueba). **El humano la descartó explícitamente el
+  2026-08-15:** sus ficheros los escribe él y prefiere volver a guardar uno a que el
+  código acumule ramas de tolerancia; adivinar la codificación además acierta «casi
+  siempre», que es la peor garantía posible para un dato que luego va a la base de
+  datos. Cero dependencias nuevas (`TextDecoder` es de Node).
+- **Consecuencia:** cualquier parser de banco cuyo fichero sea **texto** usa
+  `decodeUtf8Strict` y no `toString('utf8')` (anotado en `docs/conventions.md`
+  §Parsers de banco y en `docs/dar-de-alta-un-banco.md`). El BOM inicial se sigue
+  tolerando: es UTF-8 válido y la función no lo toca —quien lee el formato decide—.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

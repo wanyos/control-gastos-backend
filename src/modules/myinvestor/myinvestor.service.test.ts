@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
+  buildCp1252StatementCsv,
   buildProductDeposit,
   buildProductFund,
   buildProductJson,
@@ -103,6 +104,45 @@ describe('parseLocalMyinvestorCopies', () => {
     await expect(
       readFile(join(dumpDir, 'myinvestor', '2026', 'bueno-1.csv.json'), 'utf8'),
     ).resolves.toContain('myinvestor')
+  })
+
+  it('reports a statement that is not UTF-8 as a failed FILE, sparing the rest (feature 17)', async () => {
+    await writeLocalCopy(sourceDir, '2026', 'bueno.csv', buildStatementCsv())
+    await writeLocalCopy(sourceDir, '2026', 'cp1252.csv', buildCp1252StatementCsv())
+    await writeLocalCopy(sourceDir, '2026', 'producto.json', buildProductJson(buildProductFund()))
+
+    const result = await parseLocalMyinvestorCopies(sourceDir, dumpDir)
+
+    // The bad file is one failure among the results, never an error of the run.
+    expect(result.failedCount).toBe(1)
+    expect(result.failed[0]).toMatchObject({
+      bank: 'myinvestor',
+      year: '2026',
+      file: 'cp1252.csv',
+    })
+    expect(result.failed[0].reason).toContain('no está guardado en UTF-8')
+    expect(result.failed[0].reason).toContain('UTF-8 («CSV UTF-8»')
+    // The healthy statement and the product of the same batch are parsed.
+    expect(result.parsedCount).toBe(1)
+    expect(result.statements[0].file).toBe('bueno.csv')
+    expect(result.productCount).toBe(1)
+    // And the rejected file wrote no dump: nothing corrupted reaches var/parsed.
+    await expect(readdir(join(dumpDir, 'myinvestor', '2026'))).resolves.toEqual([
+      'bueno.csv.json',
+      'products.json',
+    ])
+  })
+
+  it('writes no replacement character to any dump (feature 17)', async () => {
+    await writeLocalCopy(sourceDir, '2026', 'bueno.csv', buildStatementCsv())
+    await writeLocalCopy(sourceDir, '2026', 'cp1252.csv', buildCp1252StatementCsv())
+
+    await parseLocalMyinvestorCopies(sourceDir, dumpDir)
+
+    const dumped = await readFile(join(dumpDir, 'myinvestor', '2026', 'bueno.csv.json'), 'utf8')
+    expect(dumped).toContain('SUSCRIPCIÓN AÑO PREMIUM €')
+    expect(dumped).not.toContain('\\ufffd')
+    expect(dumped).not.toContain('�')
   })
 
   it('reports the extensions it does not handle in ignored, not as failures (R49, R50)', async () => {

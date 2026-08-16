@@ -47,6 +47,34 @@ export function buildStatementCsv(fixture: StatementCsvFixture = {}): Buffer {
 }
 
 /**
+ * The same synthetic CSV, saved as cp1252 (ANSI) instead of UTF-8: exactly what
+ * an editor does to the file when the human adds the `iban;` line (measured on
+ * 2026-08-15, feature 17). Every byte is written explicitly here — no real file
+ * is ever copied into a test — and the accented characters come out as the
+ * single bytes cp1252 uses (`Ó` → `0xD3`), which are not valid UTF-8.
+ */
+export function buildCp1252StatementCsv(fixture: StatementCsvFixture = {}): Buffer {
+  return toCp1252(buildStatementCsv(fixture).toString('utf8'))
+}
+
+/**
+ * Encodes text as cp1252. Only what a Spanish statement needs: the Latin-1
+ * range, whose code points are their own byte, plus the euro sign, which cp1252
+ * places at `0x80`. Anything else throws instead of being silently dropped: a
+ * fixture must be exactly the bytes it claims to be.
+ */
+export function toCp1252(text: string): Buffer {
+  return Buffer.from(
+    [...text].map((character) => {
+      if (character === '€') return 0x80
+      const code = character.codePointAt(0) ?? 0
+      if (code <= 0xff) return code
+      throw new Error(`character '${character}' cannot be written in cp1252`)
+    }),
+  )
+}
+
+/**
  * The canonical synthetic rows used across the tests, in the direction the bank
  * exports (most recent first). They cover every acceptance criterion:
  * - the five numeric shapes that coexist in one file (`-60`, `-9,49`, `-4200`,

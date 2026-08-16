@@ -47,6 +47,10 @@ describe('architecture invariants', () => {
       // shared shape, never shared format-reading code.
       'lib/parsed-statement.ts',
       'lib/parsed-statement.test.ts',
+      // The strict UTF-8 decoding every file goes through (feature 17): it is
+      // encoding, not format reading, so it is shared and not per bank.
+      'lib/utf8.ts',
+      'lib/utf8.test.ts',
       'plugins/drive.ts',
       'plugins/error-handler.ts',
       'modules/accounts/accounts.routes.ts',

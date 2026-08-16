@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { buildApp } from '../../app.js'
+import { NotUtf8Error } from '../../errors/app-error.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
 import { importPending, toMovementRows } from './import.service.js'
@@ -549,6 +550,41 @@ describe('importPending', () => {
     expect(broken.error?.message).toContain('unreadable file')
     expect(ok).toMatchObject({ fileId: 'good', status: 'imported', movedToProcessed: true })
     // Only the healthy one moved; the broken one stays pending and retryable.
+    expect(update).toHaveBeenCalledOnce()
+    expect(update.mock.calls[0][0].fileId).toBe('good')
+    expect(result.failedCount).toBe(1)
+    expect(result.importedCount).toBe(1)
+  })
+
+  it('reports a file its parser refuses for not being UTF-8 with NOT_UTF8, and does not move it (feature 17)', async () => {
+    const bank = uniqueBank()
+    const iban = uniqueIban()
+    const { client, update } = buildDrive(
+      treeWith(bank, [
+        { id: 'bad', name: 'ansi.csv' },
+        { id: 'good', name: 'ok.csv' },
+      ]),
+    )
+    // Any parser may reject the bytes of its file: the importer knows no bank,
+    // it only propagates the per-file failure.
+    const parsers = [
+      fakeAdapter(bank, (content) => {
+        if (content.toString('utf8').includes('bad')) {
+          throw new NotUtf8Error('el archivo no está guardado en UTF-8 (byte 0xD3 …)')
+        }
+        return statement(bank, { accountIban: iban })
+      }),
+    ]
+
+    const result = await run(client, parsers)
+
+    const rejected = attempted(result, 0)
+    expect(rejected).toMatchObject({ fileId: 'bad', status: 'failed', movedToProcessed: false })
+    expect(rejected.error?.code).toBe('NOT_UTF8')
+    expect(rejected.error?.message).toContain('UTF-8')
+    expect(rejected.imported).toBe(0)
+    // The rest of the batch is imported all the same, and only it moves.
+    expect(attempted(result, 1)).toMatchObject({ fileId: 'good', status: 'imported' })
     expect(update).toHaveBeenCalledOnce()
     expect(update.mock.calls[0][0].fileId).toBe('good')
     expect(result.failedCount).toBe(1)
