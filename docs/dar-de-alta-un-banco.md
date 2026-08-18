@@ -102,7 +102,11 @@ Tres reglas que no se negocian:
    [`deriveMovementTypeFromAmount`](../src/modules/movements/movements.service.ts#L33).
 
 Ejemplos vivos que se pueden copiar tal cual: `src/modules/bankinter/` (`.xlsx`,
-ADR-010) y `src/modules/myinvestor/` (`.csv`, ADR-014).
+ADR-010), `src/modules/myinvestor/` (`.csv` con `;`, ADR-014) y
+`src/modules/n26/` (`.csv` con `,` **y comillas**, feature 18). «Copiar» quiere
+decir **copiar el patrón**, nunca importar: los tres módulos no comparten una
+sola línea de lectura de formato, y hay guardián en
+[`src/architecture.test.ts`](../src/architecture.test.ts) que lo comprueba.
 
 **Cuarto paso, en `src/app.ts` (una línea):** para que la **importación** use ese
 parser hay que añadir el banco al registro que se le inyecta (ADR-015):
@@ -113,6 +117,15 @@ const parsers: BankParserRegistry = [
   { bank: '<banco>', extensions: ['.csv'], parse: parse<Banco>Statement },
 ]
 ```
+
+> **Un CSV no es «el CSV».** Antes de escribir el parser, mira con qué separa el
+> fichero y si entrecomilla. MyInvestor separa por `;` y no entrecomilla, así que
+> partir la línea basta; N26 separa por `,` **y entrecomilla los campos de texto,
+> con comas dentro**, así que partir por `,` corta filas por la mitad. El segundo
+> caso necesita un lector de CSV de verdad, y ese lector vive **dentro del módulo
+> del banco** ([`n26.csv.ts`](../src/modules/n26/n26.csv.ts)), no en `lib/`:
+> `lib/` comparte la **forma de la salida** y la **codificación**, nunca la
+> lectura del formato.
 
 `app.ts` es **el único archivo de `src/` que puede nombrar un banco**. Mientras
 esa línea no exista, sus ficheros se reportan como `skipped` en el informe de
@@ -148,6 +161,24 @@ Si falta y ese banco no tiene **exactamente una** cuenta ya dada de alta, ese
 fichero se reporta como `failed` con el código `MISSING_ACCOUNT_DATA`, no se
 importa y **no se mueve**: se corrige el fichero y se reintenta.
 
+- **N26 tampoco lo trae** (feature 18): trae el IBAN **del otro** —la
+  contraparte—, que no sirve para nada aquí y que el parser **nunca** confunde
+  con el tuyo. Se escribe a mano igual que en MyInvestor.
+
+  🔴 **Y se escribe con `;`, aunque el fichero de N26 separe por comas:**
+
+  ```
+  iban;ES9121000418450200051332
+  Saldo;1500,00
+  <aquí, sin tocar, la fila de cabecera en inglés que exporta N26>
+  ```
+
+  Es a propósito, y es decisión tomada: **una sola forma de escribir estas dos
+  líneas en todo el proyecto**, la que ya estaba documentada aquí, y así la línea
+  nuestra se distingue a simple vista de las del banco. (Si algún día te sale
+  escribirla con la coma del fichero, el parser de N26 también la entiende, pero
+  la forma buena es esta.)
+
 ## El saldo de la cuenta va en la misma cabecera, una línea más
 
 > Añadido el 2026-08-16 con la feature 16 (`statement-balance`).
@@ -176,6 +207,13 @@ Fecha de operación;Fecha de valor;Concepto;Importe;Divisa
   backend **no** la lee: hay una sola forma de escribir este dato, la de arriba.
   Si se queda, cae en `unparsedRows` como cualquier fila que no es un movimiento.
 
+- **En N26 vale lo mismo, con dos matices** (feature 18): la línea se escribe
+  también con `;` (ver arriba) y el importe puedes escribirlo **a la española**
+  (`1.500,00`) o **como lo escribe ese fichero** (`1500.00`): las dos se
+  entienden, porque esa línea la escribes tú y no el banco. La columna de
+  importes del propio banco, en cambio, se lee **estricta**: punto decimal y nada
+  más.
+
 Este saldo es **el de la cuenta**, no el saldo tras cada movimiento (`balance`),
 que MyInvestor no reporta y sigue vacío en todas las líneas. Son dos datos
 distintos y se guardan aparte a propósito. Por ahora **solo se parsea y se
@@ -191,8 +229,10 @@ de notas en modo ANSI y Excel guardan en **cp1252** sin avisar, y ahí la `Ó` d
 de ser `c3 93` para ser un solo byte `d3` que no es UTF-8 válido.
 
 - En el Bloc de notas: *Guardar como → Codificación: **UTF-8***.
-- En Excel: *Guardar como → **CSV UTF-8** (delimitado por comas)* (ojo también al
-  separador: el parser espera `;`).
+- En Excel: *Guardar como → **CSV UTF-8***. Ojo también al **separador de la
+  tabla**, que es del banco y no se toca: MyInvestor exporta con `;` y N26 con
+  `,`. Lo único que escribes tú son las dos líneas de preámbulo, y esas van
+  siempre con `;`.
 
 **Qué hace el backend si se te escapa:** rechaza **el fichero entero** con el
 código `NOT_UTF8` y un motivo que dice el byte, la línea y qué hacer. No se importa
@@ -207,8 +247,12 @@ rechazado se arregla en un minuto; un dato corrupto que entra callado, no.
 
 La comprobación vive en [`src/lib/utf8.ts`](../src/lib/utf8.ts) (`decodeUtf8Strict`),
 fuera del módulo de cualquier banco: la codificación no es un formato, así que se
-comparte. Hoy la usa el parser del extracto `.csv` de MyInvestor
-([`myinvestor.statement.parser.ts`](../src/modules/myinvestor/myinvestor.statement.parser.ts));
+comparte. Hoy la usan los dos parsers de texto: el del extracto `.csv` de MyInvestor
+([`myinvestor.statement.parser.ts`](../src/modules/myinvestor/myinvestor.statement.parser.ts))
+y el de N26
+([`n26.statement.parser.ts`](../src/modules/n26/n26.statement.parser.ts)) — la muestra
+de N26 es ASCII puro hoy, pero eso es suerte del mes: en cuanto un comercio traiga
+una tilde, el problema es el mismo;
 el `.xlsx` de Bankinter no la necesita (no es texto plano) y los `.json` de producto
 se escriben aparte. **Al dar de alta un banco cuyo fichero sea texto, su parser
 descodifica con `decodeUtf8Strict`, no con `toString('utf8')`.**

@@ -108,6 +108,21 @@ describe('architecture invariants', () => {
       'modules/myinvestor/myinvestor.statement.parser.test.ts',
       'modules/myinvestor/myinvestor.service.test.ts',
       'modules/myinvestor/myinvestor.routes.test.ts',
+      // Third bank with its own parser module (feature 18): the first file of
+      // the repo that is a REAL quoted CSV, so it brings its own reader — which
+      // stays inside the bank folder, like every other piece of format reading.
+      'modules/n26/n26.csv.ts',
+      'modules/n26/n26.format.ts',
+      'modules/n26/n26.statement.parser.ts',
+      'modules/n26/n26.service.ts',
+      'modules/n26/n26.routes.ts',
+      'modules/n26/n26.types.ts',
+      'modules/n26/n26.fixture.ts',
+      'modules/n26/n26.csv.test.ts',
+      'modules/n26/n26.format.test.ts',
+      'modules/n26/n26.statement.parser.test.ts',
+      'modules/n26/n26.service.test.ts',
+      'modules/n26/n26.routes.test.ts',
       // investments is a partial folder on purpose: feature 9 is schema plus
       // migration, with no HTTP surface (no routes/service/schema/types).
       // Precedent: modules/health/. The importer feature will add its service
@@ -258,15 +273,30 @@ describe('architecture invariants', () => {
     }
   })
 
+  it('keeps the n26 parser module free of data access (no "prisma" reference)', () => {
+    const files = [
+      'modules/n26/n26.csv.ts',
+      'modules/n26/n26.format.ts',
+      'modules/n26/n26.statement.parser.ts',
+      'modules/n26/n26.service.ts',
+      'modules/n26/n26.routes.ts',
+      'modules/n26/n26.types.ts',
+    ]
+
+    for (const file of files) {
+      expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
   it('shares no parsing code between bank modules (one parser per bank)', () => {
-    const bankModules = ['bankinter', 'myinvestor']
-    const myinvestorDir = join(srcDir, 'modules/myinvestor')
+    const bankModules = ['bankinter', 'myinvestor', 'n26']
     // What a bank module may import: vendor/node, its own files, the shared
     // error classes, `lib/` (the output contract) and the single sign helper of
     // `modules/movements/`, which is NOT a bank module.
     const allowedRelative = ['./', '../../errors/', '../../lib/', '../movements/']
 
-    const forbiddenImports = sourceFiles(myinvestorDir)
+    const forbiddenImports = bankModules
+      .flatMap((bank) => sourceFiles(join(srcDir, 'modules', bank)))
       .flatMap((file) =>
         [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)]
           .map((match) => match[1])
@@ -281,16 +311,18 @@ describe('architecture invariants', () => {
 
     expect(forbiddenImports).toEqual([])
 
-    // And no other bank module reaches into it. `app.ts` is the composition
+    // And no other bank module reaches into one. `app.ts` is the composition
     // root and registers every module: it is the single expected importer.
-    const outsideImporters = sourceFiles(srcDir)
-      .filter(
-        (file) => !relative(srcDir, file).replace(/\\/g, '/').startsWith('modules/myinvestor/'),
-      )
-      .filter((file) => readFileSync(file, 'utf8').includes('myinvestor'))
-      .map((file) => relative(srcDir, file).replace(/\\/g, '/'))
+    for (const bank of bankModules) {
+      const outsideImporters = sourceFiles(srcDir)
+        .filter(
+          (file) => !relative(srcDir, file).replace(/\\/g, '/').startsWith(`modules/${bank}/`),
+        )
+        .filter((file) => readFileSync(file, 'utf8').includes(bank))
+        .map((file) => relative(srcDir, file).replace(/\\/g, '/'))
 
-    expect(outsideImporters).toEqual(['app.ts'])
+      expect(outsideImporters).toEqual(['app.ts'])
+    }
     // Neither bank module names the other one.
     for (const bank of bankModules) {
       const others = bankModules.filter((name) => name !== bank)
@@ -307,6 +339,10 @@ describe('architecture invariants', () => {
   it('normalizes the bank name to the slug of its Drive folder and its module', () => {
     expect(normalizeBankName('MyInvestor')).toBe('myinvestor')
     expect(existsSync(join(srcDir, 'modules', normalizeBankName('MyInvestor')))).toBe(true)
+    // The Drive folder of this one is written in capitals (`N26`): the module is
+    // found through the normalized slug, never through the raw folder name.
+    expect(normalizeBankName('N26')).toBe('n26')
+    expect(existsSync(join(srcDir, 'modules', normalizeBankName('N26')))).toBe(true)
   })
 
   it('declares the parsed movement contract in ONE module only (feature 11)', () => {

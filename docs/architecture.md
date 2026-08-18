@@ -1393,6 +1393,55 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   volcado. El día que la importación quiera usarlo, el dato ya está en el contrato y
   con un nombre que no se confunde con el otro saldo.
 
+### ADR-020: N26 — lector de CSV entrecomillado **dentro** del módulo del banco, preámbulo con `;` en un fichero de comas y concepto **compuesto**
+
+- **Fecha:** 2026-08-17.
+- **Estado:** aceptada (feature 18 `n26-statement`).
+- **Contexto:** el tercer banco exporta un `.csv` **separado por comas y con los
+  campos de texto entrecomillados**, con comas dentro de las comillas
+  (`progress/explorations/inventario-bancos-2026-08-17.md` §N26). Es el primer
+  fichero del repo que no se puede leer partiendo la línea. Además no trae el IBAN
+  de la cuenta (trae el de la contraparte), no trae saldo de ninguna clase y **no
+  tiene columna de concepto**.
+- **Decisión:**
+  1. **El lector de CSV con comillas vive en `src/modules/n26/n26.csv.ts`**, no en
+     `lib/`, aunque el algoritmo sea genérico y Revolut vaya a necesitar otro
+     igual. La norma no prohíbe compartir «lo difícil», prohíbe compartir **el
+     código que lee un formato**: si N26 cambia el entrecomillado, el arreglo tiene
+     que caber en su módulo y en su suite. Lo que sí se comparte es lo que no es
+     formato: la forma de la salida (ADR-013) y la codificación (ADR-018). El banco
+     siguiente copia el patrón, no el módulo.
+  2. **Las dos líneas de preámbulo se escriben con `;` también aquí.** Una sola
+     forma de escribirlas en todo el proyecto, ya documentada, y la línea nuestra
+     se distingue a simple vista de las del banco. Se acepta además la variante con
+     la coma del fichero **al leer** —entenderla no cuesta nada y evita un `null`
+     silencioso en una línea que el humano da por escrita—, pero la forma
+     documentada es una sola. El importe de esa línea admite coma o punto decimal
+     porque **la escribe una persona**; la columna de importes del banco se lee
+     estricta (punto decimal), porque cualquier tolerancia ahí sería adivinar.
+  3. **El concepto se compone: contraparte + referencia libre**, unidas por
+     `" - "`, saltando lo que esté vacío y sin repetir la referencia cuando solo
+     copia a la contraparte; si no hay ninguna de las dos, el **tipo de apunte**
+     del banco. Ningún movimiento sale con concepto vacío y ninguna otra columna
+     se convierte en un campo nuevo del contrato: el IBAN de la contraparte, el
+     alias de la cuenta, el importe/divisa de origen y el tipo de cambio se quedan
+     en el fichero. **Por qué compuesto y no solo la contraparte:** sin la
+     referencia, dos transferencias a la misma persona son indistinguibles; **por
+     qué no solo la referencia:** viene vacía en casi todas las filas.
+  4. **La divisa sale de la cabecera de la columna de importes** (`Amount (EUR)`),
+     que la declara una vez, en vez de escribirse `'EUR'` a mano en el código: el
+     dato está en el fichero y leerlo de ahí es lo mismo que hacemos con todo lo
+     demás.
+- **Alternativas descartadas:** (a) subir el lector de CSV a `lib/`, descartada por
+  §1; (b) preámbulo con la coma del fichero, descartada por §2 (dos formas del
+  mismo dato según el banco); (c) usar solo la contraparte como concepto o
+  inventarle campos nuevos al contrato para las seis columnas restantes,
+  descartadas por §3.
+- **Consecuencia:** `POST /api/parser/n26` y una línea más en el registro de
+  `src/app.ts`, que es lo que hace que `POST /api/import` deje de reportar sus
+  ficheros como `skipped`. `balance` por línea sigue a `null` y el ADR-013 no se
+  toca.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

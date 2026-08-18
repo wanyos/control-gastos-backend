@@ -12,6 +12,8 @@ import ingestionRoutes from './modules/ingestion/ingestion.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
 import myinvestorRoutes from './modules/myinvestor/myinvestor.routes.js'
 import { parseMyinvestorStatement } from './modules/myinvestor/myinvestor.statement.parser.js'
+import n26Routes from './modules/n26/n26.routes.js'
+import { parseN26Statement } from './modules/n26/n26.statement.parser.js'
 import drivePlugin from './plugins/drive.js'
 import errorHandlerPlugin from './plugins/error-handler.js'
 import prismaPlugin from './plugins/prisma.js'
@@ -36,6 +38,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   const parsers: BankParserRegistry = [
     { bank: 'bankinter', extensions: ['.xlsx'], parse: parseBankinterXlsx },
     { bank: 'myinvestor', extensions: ['.csv'], parse: parseMyinvestorStatement },
+    { bank: 'n26', extensions: ['.csv'], parse: parseN26Statement },
   ]
 
   // Shared infrastructure. The error handler goes first so it covers every module.
@@ -52,6 +55,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(importRoutes, { prefix: '/api/import', parsers })
   app.register(bankinterRoutes, { prefix: '/api/parser' })
   app.register(myinvestorRoutes, { prefix: '/api/parser' })
+  app.register(n26Routes, { prefix: '/api/parser' })
 
   return app
 }

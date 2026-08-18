@@ -187,6 +187,15 @@ class NotFoundError extends AppError {
 - **El importador no conoce ningún banco.** `src/app.ts` es el **único** archivo de
   `src/` que puede nombrar uno; un guardián de `architecture.test.ts` lo comprueba
   también sobre `src/modules/import/`.
+- **El lector del formato es del banco, incluso cuando el algoritmo es genérico**
+  (precisado 2026-08-17, F18). N26 exporta un CSV **de comas con campos
+  entrecomillados**, así que necesita un lector de CSV de verdad; ese lector vive
+  en [`src/modules/n26/n26.csv.ts`](../src/modules/n26/n26.csv.ts) y **no** en
+  `lib/`. La regla no es «no compartir lo que sea difícil», es **no compartir el
+  código que lee un formato**: el día que N26 cambie las comillas, el cambio se
+  queda en su módulo. Lo que sí se comparte es lo que no es formato: la **forma de
+  la salida** (`lib/parsed-statement.ts`) y la **codificación** (`lib/utf8.ts`).
+  El banco siguiente que traiga CSV entrecomillado copia el patrón, no el módulo.
 - **Un fichero de texto se descodifica con `decodeUtf8Strict`, nunca con
   `toString('utf8')`** (decidido 2026-08-15, F17; ver ADR-018). `toString('utf8')`
   no lanza jamás: un byte que no es UTF-8 se convierte en `�` en silencio y el dato
@@ -207,6 +216,15 @@ class NotFoundError extends AppError {
   en la tabla, y la etiqueta se compara sin acentos ni mayúsculas porque quien la
   escribe es una persona. Un banco que necesite un tercer dato así **reutiliza
   `findPreambleLine`** (ADR-019) en vez de escribir otro buscador casi igual.
+  Cada banco tiene el suyo: el mecanismo se copia, el código no.
+- **Esas líneas van con `;` sea cual sea el separador del fichero** (decidido
+  2026-08-17 al llegar N26, cuyo CSV separa por comas). Son **líneas nuestras, no
+  del banco**: una sola forma de escribirlas en todo el proyecto, ya documentada
+  en `docs/dar-de-alta-un-banco.md`, y se distinguen a simple vista de las del
+  banco. La alternativa —usar el separador de cada fichero— daría dos formas del
+  mismo dato según el banco. Y como las escribe **una persona**, su importe se lee
+  con manga ancha (coma o punto decimal); la columna de importes **del banco** se
+  lee con la regla estricta de ese banco.
 
 ### Lo que NO es propio de cada banco: la forma de la salida
 
@@ -242,8 +260,8 @@ class NotFoundError extends AppError {
 - **Cada parser emite `daySequence` ya normalizado**: `1` es **el movimiento más
   antiguo de ese `bookingDate`**, y el número crece hacia el más reciente del
   mismo día (no es el orden de aparición en el fichero). El sentido en que exporta
-  cada banco es conocimiento suyo: Bankinter exporta de más reciente a más
-  antiguo. Si lo calculara el importador, el importador sería bank-specific y
+  cada banco es conocimiento suyo: Bankinter y MyInvestor exportan de más reciente
+  a más antiguo, y N26 al revés (de más antiguo a más reciente). Si lo calculara el importador, el importador sería bank-specific y
   dejaría de poder compartirse. La numeración la hace el helper compartido
   [`assignDaySequence`](../src/lib/parsed-statement.ts#L96); lo único que pone el
   banco es el argumento que dice cómo exporta

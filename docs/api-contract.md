@@ -71,7 +71,7 @@ Códigos estables:
 > aprende cp1252** ni adivina codificaciones: el `message` dice qué byte y qué
 > línea, y pide volver a guardar el fichero en UTF-8. Aparece en
 > `files[].error.code` de `POST /api/import` y, como motivo de texto, en
-> `failed[].reason` de `POST /api/parser/myinvestor`.
+> `failed[].reason` de `POST /api/parser/myinvestor` y de `POST /api/parser/n26`.
 >
 > **Nota (`DRIVE_CONNECTION_ERROR`, actualizada en la feature "drive-read",
 > 2026-08-03):** desde la feature 5 este código **sí** sale en el cuerpo de error
@@ -498,6 +498,12 @@ cada `<banco>/<año>/`, en el orden en que Drive los lista (por nombre):
    ese archivo, o ninguno);
 6. **solo entonces** mueve el original a `<banco>/<año>/procesados/`.
 
+> **Qué bancos lee hoy el importador:** `bankinter` (`.xlsx`), `myinvestor`
+> (`.csv`) y, desde la feature 18, `n26` (`.csv`). El registro vive en
+> `src/app.ts`, el único archivo de `src/` que puede nombrar un banco (ADR-015);
+> mientras un banco no tenga su línea ahí, sus archivos salen como `skipped` (ni
+> se importan ni se mueven), que es justo lo que permite inspeccionarlos.
+
 Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve**
 (sigue pendiente y se puede reintentar) y el resto continúa.
 
@@ -659,8 +665,8 @@ Divisa`; un banco que no reporte saldo (o IBAN) deja esos campos en `null`.
 
 | Campo del resultado | Qué es | Quién lo trae hoy |
 | --- | --- | --- |
-| `accountBalance` (nivel **extracto**) | Saldo **de la cuenta** en la fecha del extracto. Un solo valor por archivo | MyInvestor, de la línea de preámbulo `saldo;<importe>` que escribe el humano. Bankinter: `null` |
-| `balance` (dentro de cada **movimiento**) | Saldo **tras esa línea**. Uno por movimiento | Bankinter, de su columna `Saldo`. MyInvestor: `null` siempre (ADR-013) |
+| `accountBalance` (nivel **extracto**) | Saldo **de la cuenta** en la fecha del extracto. Un solo valor por archivo | MyInvestor y N26, de la línea de preámbulo `saldo;<importe>` que escribe el humano. Bankinter: `null` |
+| `balance` (dentro de cada **movimiento**) | Saldo **tras esa línea**. Uno por movimiento | Bankinter, de su columna `Saldo`. MyInvestor y N26: `null` siempre (ADR-013) |
 
 Son **dos datos distintos y no comparten campo ni nombre**: sumarlos o usar uno
 como sustituto del otro es un error. `accountBalance` es `number | null`, con
@@ -926,6 +932,132 @@ Sin cuerpo de petición.
   no maneja (los `.txt` con notas, una hoja de cálculo suelta…). **No** son un
   fallo: son visibles y quedan fuera de la lista de cosas que arreglar. Los `.json`
   de producto **ya no caen aquí**: tienen su parser desde la feature 13.
+
+---
+
+## Parser de N26 (sin base de datos)
+
+> **Feature "n26-statement" (2026-08-17).** Convierte el **extracto `.csv` de la
+> cuenta de N26** (la copia local que dejó la ingesta de la f5) en movimientos
+> estructurados, **sin base de datos, sin deduplicar y sin mover nada en Drive**.
+> Devuelve el **mismo contrato** `ParsedMovement` / `ParsedStatement` que los
+> otros dos bancos (ver §Modelo `ParsedMovement`): el módulo del banco no declara
+> su propia forma de movimiento. El volcado va al mismo `var/parsed/`
+> **gitignoreado**; el endpoint solo expone la ruta relativa
+> `<banco>/<año>/<archivo>.json`. Sin autenticación nueva.
+
+**Qué tiene de distinto este fichero** (y por qué tiene su propio lector, en
+`src/modules/n26/n26.csv.ts`):
+
+- **Separador coma y campos entrecomillados**, con comas **dentro** de las
+  comillas. Se lee como CSV de verdad (comillas, `""` como comilla literal y
+  saltos de línea dentro de un campo); partir la línea por `,` cortaría filas.
+- **Fechas ya en ISO `AAAA-MM-DD`**: no se convierten. Se valida que el día
+  exista (`2026-02-31` no se «arregla», se reporta).
+- **Importes con punto decimal y el signo dentro** (`-3.40`). La columna del
+  banco se lee **estricta**: cualquier otra forma va a `unparsedRows` en vez de
+  adivinarse.
+- **11 columnas**, mapeadas **por nombre** de cabecera y no por posición. Las que
+  no tienen sitio en el contrato (IBAN de la contraparte, alias de la cuenta,
+  importe/divisa de origen y tipo de cambio) **no se inventan como campos
+  nuevos**: se quedan en el fichero.
+- **La divisa del movimiento sale de la cabecera** de la columna de importes,
+  que la declara una sola vez (`Amount (EUR)` → `"EUR"`), nunca fila a fila.
+
+> 🧩 **El concepto se COMPONE: este banco no exporta ninguna columna de concepto.**
+> `description` = **contraparte** + (`" - "` + **referencia libre**, si está
+> escrita y no repite a la contraparte). Si no hay contraparte, manda la
+> referencia; si no hay ninguna de las dos, se usa el **tipo de apunte** del
+> banco, que siempre viene relleno. Un movimiento **nunca** sale con el concepto
+> vacío, y una fila en la que no se pueda componer ninguno se **reporta** en
+> `unparsedRows` en lugar de recibir un nombre inventado.
+
+> 📌 **Dos datos que este banco NO aporta y que salen como `null` explícito**
+> (nunca `0`, nunca `""`):
+>
+> - `balance` en **todos** los movimientos: no hay columna de saldo y el parser
+>   **no lo calcula ni lo acumula**.
+> - `accountIban`: el fichero trae el IBAN **de la contraparte**, que no es el de
+>   la cuenta y **nunca** se confunde con él. El de la cuenta lo escribe el humano
+>   **una vez**, como línea de preámbulo `iban;ES…` **encima** de la cabecera,
+>   igual que en MyInvestor. Sin esa línea, la importación se apoya en el camino
+>   que ya existe: la **única** cuenta registrada de ese banco, o
+>   `MISSING_ACCOUNT_DATA` si hay cero o varias.
+
+> 💶 **El saldo de la cuenta**, `accountBalance`, sale de la segunda línea de
+> preámbulo, `saldo;<importe>`, con las mismas reglas que en MyInvestor: etiqueta
+> sin distinguir mayúsculas ni acentos, separadores de relleno finales inocuos,
+> **ausente o vacía → `null` y el fichero se parsea igual**, presente pero
+> ilegible → `unparsedRows` con su nº de línea y su motivo, repetida → gana la
+> primera, y **solo por encima de la cabecera** (debajo es data).
+>
+> 🔴 **Las dos líneas de preámbulo se escriben con `;` aunque este fichero separe
+> por comas** (decisión del leader, feature 18): una sola forma de escribirlas en
+> todo el proyecto y una línea que se distingue a simple vista de las del banco.
+> Escrita con la coma del fichero también se entiende, pero la forma documentada
+> es la del `;` (ver `docs/dar-de-alta-un-banco.md`).
+>
+> El **importe de esa línea** admite las dos escrituras —`1.500,00` (española) y
+> `1500.00` (la del fichero)— porque esa línea **la escribe el humano**, no el
+> banco. La columna de importes del banco, no: ahí solo vale el punto decimal.
+
+> 🔴 **El extracto DEBE estar guardado en UTF-8** (feature
+> "statement-encoding-guard"): se descodifica con `decodeUtf8Strict` y un byte que
+> no sea UTF-8 válido **rechaza el fichero entero** (`NOT_UTF8`). La muestra de hoy
+> es ASCII puro, pero en cuanto un comercio traiga una tilde el problema es el
+> mismo. El BOM inicial es válido y se tolera.
+
+Otras reglas, idénticas a las de los demás bancos: **no** se deduplica (dos filas
+idénticas salen las dos), las líneas en blanco se ignoran, una fila no
+interpretable va a `unparsedRows` (`{ row, reason }`, `row` 1-based contando la
+cabecera) sin detener el resto y **sin consumir `daySequence`**, y `daySequence`
+se numera con `1` = el **más antiguo** del día (este banco exporta de más antiguo
+a más reciente).
+
+### `POST /api/parser/n26`
+
+Acción **explícita** de parseo. Recorre las copias locales de N26
+(`var/drive-read/n26/<año>/`), parsea los `.csv` (cualquier otra extensión →
+`ignored`) y escribe el resultado de cada uno en
+`var/parsed/n26/<año>/<archivo>.json`. Read-only respecto a Drive y a la base de
+datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo sobre
+los mismos archivos produce **exactamente el mismo resultado**.
+
+Sin cuerpo de petición.
+
+**Respuesta 200**
+```json
+{
+  "parsedCount": 1,
+  "failedCount": 0,
+  "ignoredCount": 0,
+  "statements": [
+    {
+      "bank": "n26",
+      "year": "2026",
+      "file": "extracto.csv",
+      "accountIban": "ES9820385778983000760236",
+      "accountBalance": 1500,
+      "movements": 90,
+      "unparsedRows": 0,
+      "dumpPath": "n26/2026/extracto.csv.json"
+    }
+  ],
+  "failed": [],
+  "ignored": []
+}
+```
+
+- `accountIban` / `accountBalance`: `null` salvo que el archivo traiga sus líneas
+  de preámbulo (ver arriba). El IBAN del ejemplo es sintético.
+- `dumpPath`: ruta **relativa** a la carpeta de volcado local (nunca la absoluta
+  de la máquina).
+- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un fallo
+  por archivo **no** cambia el código HTTP: la respuesta es 200 con el fallo
+  dentro. Un fichero que no esté en UTF-8, o que no tenga cabecera reconocible,
+  cae aquí entero y **no** se escribe volcado.
+- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
+  no maneja. **No** son un fallo.
 
 ---
 
