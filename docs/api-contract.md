@@ -51,6 +51,7 @@ Códigos estables:
 | `NOT_FOUND`             | 404  | El recurso pedido no existe, o la ruta no existe.          |
 | `CONFLICT`              | 409  | El recurso ya existe: `iban` de cuenta duplicado, o categoría raíz duplicada `(kind, name)`. |
 | `NOT_UTF8`              | 422  | Los **bytes** de un fichero no son UTF-8 válido (típicamente guardado en cp1252/ANSI por el editor). El fichero se **rechaza entero**; nunca se decodifica ni se repara. Como `MISSING_ACCOUNT_DATA`, viaja **dentro del informe de un fichero** en una respuesta 200, no como cuerpo de error HTTP. |
+| `INVALID_IBAN`          | 422  | El IBAN recibido no es un IBAN: forma incorrecta, longitud que no es la de su país, o **dígito de control mod-97 que no cuadra** (un dígito mal tecleado). Lo aplican por igual `POST /api/accounts` —donde sí es cuerpo de error HTTP— y los tres parsers de banco, donde **rechaza el fichero entero** y viaja dentro del informe de ese fichero en un 200. Nunca se crea una cuenta con él. Desde la feature 21 (2026-08-18). |
 | `MISSING_ACCOUNT_DATA`  | 422  | Los metadatos de un extracto no bastan para resolver la cuenta (falta el `iban` en el fichero y su banco no tiene exactamente una cuenta dada de alta). **Ya no está reservado:** desde la feature 12 lo emite `POST /api/import` **dentro del informe de un fichero**, en una respuesta 200, no como cuerpo de error HTTP (ver la nota más abajo). |
 | `INTERNAL_SERVER_ERROR` | 500  | Error inesperado; el cuerpo no expone detalles internos.   |
 | `DRIVE_CONNECTION_ERROR`| 503  | No se puede hablar con Google Drive (token caducado, API deshabilitada, scope insuficiente…). |
@@ -61,6 +62,15 @@ Códigos estables:
 > por fichero dentro de un 200 (un fichero roto no invalida los demás), así que este
 > código aparece en `files[].error.code` de `POST /api/import`. Su `message` pide
 > escribir el IBAN **una vez** en el fichero; ninguna cuenta se crea nunca sin IBAN.
+>
+> **Nota (`INVALID_IBAN`, feature "iban-normalization", 2026-08-18):** el IBAN se
+> **normaliza** (sin espacios —tampoco los interiores— y en mayúsculas) y se
+> **valida** (forma, longitud del país y dígito de control mod-97) en un único
+> sitio, [`src/lib/iban.ts`](../src/lib/iban.ts), que usan los tres bancos y el
+> alta de cuenta. Antes se guardaba literal, así que el mismo IBAN escrito con y
+> sin espacios creaba **dos cuentas**, sin aviso. El `message` nombra el problema
+> en castellano (`el iban de la línea 2 no es válido: el dígito de control no
+> cuadra`) y **nunca repite el IBAN**. Ver ADR-021.
 >
 > **Nota (`NOT_UTF8`, feature "statement-encoding-guard", 2026-08-15):** todo
 > fichero que entra por un parser se descodifica en **UTF-8 estricto**
@@ -250,7 +260,7 @@ Crea una cuenta bancaria.
 **Body**
 | Campo            | Tipo   | Obligatorio | Reglas                                                        |
 | ---------------- | ------ | ----------- | ------------------------------------------------------------- |
-| `iban`           | string | sí          | No vacío (`minLength: 1`). Se normaliza a mayúsculas sin espacios. |
+| `iban`           | string | sí          | No vacío (`minLength: 1`). Se **normaliza** (mayúsculas, sin espacios, tampoco los interiores) y se **valida** (forma, longitud del país y dígito de control mod-97). Misma regla exacta que la vía de los ficheros de banco (ADR-021). |
 | `bank`           | string | sí          | No vacío (`minLength: 1`).                                     |
 | `alias`          | string | no          | No vacío. Def.: `"<bank> ···<4 últimos del IBAN>"`.            |
 | `type`           | string | no          | `"checking"` \| `"savings"`. Def. `"checking"`.                |
@@ -264,7 +274,8 @@ Crea una cuenta bancaria.
 | Código HTTP | `code`             | Cuándo                                        |
 | ----------- | ------------------ | --------------------------------------------- |
 | 400         | `VALIDATION_ERROR` | Falta `iban` o `bank`, o el body no cumple el esquema. |
-| 409         | `CONFLICT`         | Ya existe una cuenta con ese `iban`.          |
+| 422         | `INVALID_IBAN`     | El `iban` no es un IBAN (forma, longitud del país o dígito de control). No se crea nada. |
+| 409         | `CONFLICT`         | Ya existe una cuenta con ese `iban`. Se compara **ya normalizado**: el mismo IBAN escrito con espacios o en minúsculas es un duplicado, no una cuenta nueva. |
 
 > **Alta automática de cuentas al importar.** Existe además un servicio interno
 > de find-or-create por IBAN a partir de los metadatos de un extracto
@@ -588,6 +599,7 @@ Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve*
 | `code`                   | Cuándo                                                                            |
 | ------------------------ | --------------------------------------------------------------------------------- |
 | `MISSING_ACCOUNT_DATA`   | El archivo no trae `iban` y su banco tiene **cero** o **más de una** cuenta dada de alta. Escribe el IBAN una vez en el archivo. |
+| `INVALID_IBAN`           | El IBAN del archivo (la línea `iban;<IBAN>` o, en Bankinter, la que escribe el propio banco) no es un IBAN válido. El archivo se rechaza **entero**, no se crea ninguna cuenta y **no** se mueve a `procesados/`: corrige la línea y reintenta. |
 | `NOT_UTF8`               | Los bytes del archivo no son UTF-8 (guardado en cp1252/ANSI al editarlo). Vuelve a guardarlo como UTF-8 y reintenta: **no** se importa nada de él y **no** se mueve a `procesados/`. |
 | `VALIDATION_ERROR`       | El archivo no es un extracto reconocible para el parser de su banco.               |
 | `DRIVE_CONNECTION_ERROR` | Falló la descarga de **ese** archivo.                                              |
@@ -652,7 +664,11 @@ Divisa`; un banco que no reporte saldo (o IBAN) deja esos campos en `null`.
 > conocimiento de cada banco: Bankinter lo trae en el preámbulo de su `.xlsx`; en
 > MyInvestor lo escribe el humano **una vez**, como línea `iban;<IBAN>` encima de la
 > cabecera del `.csv` (feature 12). Ningún parser lo infiere de un concepto con
-> forma de IBAN. `amount` y `balance` se interpretan tanto
+> forma de IBAN. **Desde la feature 21 (2026-08-18) ese `accountIban` sale siempre
+> normalizado —sin espacios y en mayúsculas— y validado —forma, longitud del país y
+> dígito de control mod-97—: si la línea está y lo que lleva al lado no es un IBAN,
+> el archivo se rechaza entero con `INVALID_IBAN` (ADR-021); si no está o está
+> vacía, sigue siendo `null` como siempre.** `amount` y `balance` se interpretan tanto
 > desde el número nativo del Excel como desde texto español (coma decimal / punto
 > de miles, `1.234,56` → `1234.56`). **No** se deduplica: dos filas idénticas
 > aparecen las dos. Una fila no interpretable (fecha, importe o saldo ilegibles) va

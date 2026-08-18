@@ -1,6 +1,8 @@
 import ExcelJS from 'exceljs'
 
 import { ValidationError } from '../../errors/app-error.js'
+import { readPreambleIban } from '../../lib/iban.js'
+import type { PreambleIbanLine } from '../../lib/iban.js'
 import { assignDaySequence } from '../../lib/parsed-statement.js'
 import type { ParsedMovementDraft, UnparsedRow } from '../../lib/parsed-statement.js'
 import { deriveMovementTypeFromAmount } from '../movements/movements.service.js'
@@ -58,7 +60,9 @@ export async function parseBankinterXlsx(content: Buffer): Promise<BankinterPars
   }
 
   const rows = collectRows(worksheet)
-  const accountIban = findIban(rows)
+  // Normalized and validated by the SINGLE shared reader (feature 21): a line
+  // that is there with something that is not an IBAN rejects the whole file.
+  const accountIban = readPreambleIban(findIbanLine(rows))
 
   const header = findHeaderRow(rows)
   if (!header) {
@@ -112,22 +116,21 @@ function collectRows(worksheet: ExcelJS.Worksheet): SheetRow[] {
 }
 
 /**
- * Extracts the account IBAN from the preamble line `MOVIMIENTOS DE LA CUENTA
- * <IBAN>`. Returns `null` when no such line is present: the contract says an
- * absent datum is `null`, never an empty string. Spaces inside the IBAN are
- * removed and the token is validated to look like an IBAN (2 letters + 2 digits).
+ * Locates the preamble line `MOVIMIENTOS DE LA CUENTA <IBAN>` — this bank is
+ * the only one that writes it itself — and returns its row number and whatever
+ * it says, RAW. Returns `null` when no such line is present: the contract says
+ * an absent datum is `null`, never an empty string.
+ *
+ * Judging that text is NOT this function's business (feature 21): normalizing
+ * and validating live in `lib/iban.ts`, the single place every bank and
+ * `POST /api/accounts` share, so the rule cannot drift between doors.
  */
-function findIban(rows: SheetRow[]): string | null {
+function findIbanLine(rows: SheetRow[]): PreambleIbanLine | null {
   for (const row of rows) {
     for (const cell of row.cells) {
-      const text = cellToString(cell)
-      const match = text.match(/MOVIMIENTOS DE LA CUENTA\s+(.+)/i)
-      if (!match) {
-        continue
-      }
-      const candidate = match[1].replace(/\s+/g, '').toUpperCase()
-      if (/^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(candidate)) {
-        return candidate
+      const match = cellToString(cell).match(/MOVIMIENTOS DE LA CUENTA\s+(.+)/i)
+      if (match) {
+        return { line: row.rowNumber, value: match[1] }
       }
     }
   }

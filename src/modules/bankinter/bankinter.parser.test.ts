@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { parseBankinterXlsx, parseSpanishAmount, parseSpanishDate } from './bankinter.parser.js'
 import { bankinterSampleFixture, buildStatementXlsx } from './bankinter.fixture.js'
-import { ValidationError } from '../../errors/app-error.js'
+import { InvalidIbanError, ValidationError } from '../../errors/app-error.js'
+import { mistypedIban } from '../../lib/iban.fixture.js'
 
 describe('parseBankinterXlsx', () => {
   it('skips the preamble, locates the header and extracts the account IBAN', async () => {
@@ -302,5 +303,57 @@ describe('parseSpanishDate', () => {
     expect(parseSpanishDate('32/01/2026')).toBeNull()
     expect(parseSpanishDate('2026-01-05')).toBeNull()
     expect(parseSpanishDate('not a date')).toBeNull()
+  })
+})
+
+// ── Feature 21 `iban-normalization` ────────────────────────────────────────
+//
+// Criteria C1, C2 and C4 on the door of this bank — the only one that writes
+// the IBAN line itself instead of having it hand-written. The IBAN below is the
+// synthetic one this suite has used since feature 8 (allow-listed in the
+// privacy guardian); it is nobody's account.
+describe('parseBankinterXlsx — the iban is normalized and validated (feature 21)', () => {
+  const syntheticStatementIban = 'ES9820385778983000760236'
+
+  async function ibanOf(written: string): Promise<string | null> {
+    const buffer = await buildStatementXlsx({
+      ibanLine: `MOVIMIENTOS DE LA CUENTA ${written}`,
+      headers: ['Fecha contable', 'Fecha valor', 'Descripción', 'Importe', 'Saldo'],
+      rows: [['01/02/2026', '01/02/2026', 'ALGO', 10, 100]],
+    })
+    return (await parseBankinterXlsx(buffer)).accountIban
+  }
+
+  it('reads the same account with spaces, without them and in lowercase (C2)', async () => {
+    const spaced = 'ES98 2038 5778 9830 0076 0236'
+
+    expect(await ibanOf(spaced)).toBe(syntheticStatementIban)
+    expect(await ibanOf(spaced.toLowerCase())).toBe(syntheticStatementIban)
+    expect(await ibanOf(spaced)).toBe(await ibanOf(syntheticStatementIban))
+  })
+
+  it('REJECTS the file when the check digits do not add up (C4)', async () => {
+    const buffer = await buildStatementXlsx({
+      ibanLine: `MOVIMIENTOS DE LA CUENTA ${mistypedIban(syntheticStatementIban)}`,
+      headers: ['Fecha contable', 'Fecha valor', 'Descripción', 'Importe', 'Saldo'],
+      rows: [['01/02/2026', '01/02/2026', 'ALGO', 10, 100]],
+    })
+
+    await expect(parseBankinterXlsx(buffer)).rejects.toThrowError(InvalidIbanError)
+    await expect(parseBankinterXlsx(buffer)).rejects.toThrowError(
+      /el iban de la línea \d+ no es válido: el dígito de control no cuadra/,
+    )
+  })
+
+  it('keeps reading a file with no iban line at all as `null` (C4)', async () => {
+    const buffer = await buildStatementXlsx({
+      headers: ['Fecha contable', 'Fecha valor', 'Descripción', 'Importe', 'Saldo'],
+      rows: [['01/02/2026', '01/02/2026', 'ALGO', 10, 100]],
+    })
+
+    const result = await parseBankinterXlsx(buffer)
+
+    expect(result.accountIban).toBeNull()
+    expect(result.movements).toHaveLength(1)
   })
 })

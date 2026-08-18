@@ -43,6 +43,23 @@ export class MissingAccountDataError extends AppError {
 }
 
 /**
+ * The IBAN of an account is not an IBAN: wrong shape, wrong length for its
+ * country, or check digits that do not add up (feature 21). It is a rejection,
+ * never a repair — the same doctrine as `NotUtf8Error`: storing a mistyped IBAN
+ * creates a SECOND account for an account that already exists, in silence, and
+ * the movements land in the wrong place.
+ *
+ * 422, like the other errors of a well-formed request carrying an unusable
+ * datum: through a bank file it travels inside `files[].error` of a 200; through
+ * `POST /api/accounts` it is the body of the response.
+ */
+export class InvalidIbanError extends AppError {
+  constructor(message = 'Invalid IBAN') {
+    super(message, 'INVALID_IBAN', 422)
+  }
+}
+
+/**
  * The bytes of a file are not valid UTF-8 (typically saved as cp1252/ANSI by an
  * editor). It is a rejection, never a repair: decoding it anyway would silently
  * turn every accent into `U+FFFD` and store corrupted text. 422 keeps it apart

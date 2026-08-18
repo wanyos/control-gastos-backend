@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
-import { NotUtf8Error, ValidationError } from '../../errors/app-error.js'
+import { InvalidIbanError, NotUtf8Error, ValidationError } from '../../errors/app-error.js'
+import { mistypedIban } from '../../lib/iban.fixture.js'
 import type { ParsedStatement } from '../../lib/parsed-statement.js'
 import {
   buildCp1252StatementCsv,
@@ -571,5 +572,73 @@ describe('the fixture stays synthetic (criterion 13)', () => {
     expect(n26SampleRows().filter(Boolean).length).toBeGreaterThan(0)
     // Quoted only where it is needed, exactly like the real export.
     expect(buildStatementCsv().toString('utf8')).toContain('"Cafeteria Ficticia, S.L."')
+  })
+})
+
+// ── Feature 21 `iban-normalization` ────────────────────────────────────────
+//
+// Criteria C1, C2, C4 and C6 on the door of this bank. Every IBAN here is
+// synthetic: the Spanish one is the public documentation example already on the
+// allow-list of the privacy guardian, and the German ones have an all-zero body
+// with computed check digits. Nothing is read from disk and nothing is real.
+describe('parseN26Statement — the iban is normalized and validated (feature 21)', () => {
+  const oneRow = [n26SampleRows()[0] as string[]]
+  /** Invented German IBAN: all-zero body, check digits computed for it. */
+  const germanIban = 'DE36000000000000000000'
+
+  function ibanOf(written: string): string | null {
+    return parseN26Statement(buildStatementCsv({ preamble: [`iban;${written}`], rows: oneRow }))
+      .accountIban
+  }
+
+  it('reads the same account whether the iban is written with spaces or without (C2)', () => {
+    expect(ibanOf('DE36 0000 0000 0000 0000 00')).toBe(germanIban)
+    expect(ibanOf(germanIban)).toBe(germanIban)
+    expect(ibanOf('DE36 0000 0000 0000 0000 00')).toBe(ibanOf(germanIban))
+  })
+
+  it('reads the same account when he writes it in lowercase (C2)', () => {
+    expect(ibanOf('de36 0000 0000 0000 0000 00')).toBe(germanIban)
+    expect(ibanOf(germanIban.toLowerCase())).toBe(ibanOf(germanIban))
+  })
+
+  it('REJECTS the file when a digit is mistyped, naming the line and the problem (C4)', () => {
+    const content = buildStatementCsv({
+      preamble: [`iban;${mistypedIban(germanIban)}`],
+      rows: oneRow,
+    })
+
+    expect(() => parseN26Statement(content)).toThrowError(InvalidIbanError)
+    expect(() => parseN26Statement(content)).toThrowError(
+      /el iban de la línea \d+ no es válido: el dígito de control no cuadra/,
+    )
+  })
+
+  it('rejects it as a failure of the FILE, not as an unparsed row (C4)', () => {
+    // Same doctrine as a file that is not UTF-8: nothing of it is imported, so
+    // no account is ever created from a mistyped IBAN.
+    const content = buildStatementCsv({ preamble: ['iban;no-es-un-iban'], rows: oneRow })
+
+    const failure = (() => {
+      try {
+        return parseN26Statement(content)
+      } catch (error) {
+        return error
+      }
+    })()
+
+    expect(failure).toBeInstanceOf(InvalidIbanError)
+    expect((failure as InvalidIbanError).code).toBe('INVALID_IBAN')
+    expect((failure as InvalidIbanError).statusCode).toBe(422)
+  })
+
+  it('still does NOT accept `:` as the separator of the preamble line (C6)', () => {
+    // Decision of the human of 2026-08-18: the documented form is `iban;<IBAN>`
+    // and `iban: <IBAN>` keeps failing, loudly, as it did before this feature.
+    const content = buildStatementCsv({ preamble: [`iban: ${germanIban}`], rows: oneRow })
+
+    const result = parseN26Statement(content)
+
+    expect(result.accountIban).toBeNull()
   })
 })

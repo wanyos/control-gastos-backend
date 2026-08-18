@@ -1,21 +1,21 @@
 import type { FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
+import { mistypedIban, syntheticIban } from '../../lib/iban.fixture.js'
 import { buildApp } from '../../app.js'
-import { MissingAccountDataError } from '../../errors/app-error.js'
+import { InvalidIbanError, MissingAccountDataError } from '../../errors/app-error.js'
 import { AccountType } from '../../generated/prisma/client.js'
 import { accountsDb, findOrCreateAccountFromMetadata } from './accounts.service.js'
 import type { SerializedAccount } from './accounts.types.js'
 
-let ibanCounter = 0
-
 /**
  * Unique IBAN per call: the column is the natural key, the DB is shared and
- * test files run in parallel (hence the random suffix, not just a counter).
+ * test files run in parallel (hence the random body, not just a counter).
+ * WELL FORMED since feature 21: the door validates it, so a made-up string with
+ * the wrong length and wrong check digits would now be rejected — rightly.
  */
 function uniqueIban(): string {
-  ibanCounter += 1
-  return `ES${Date.now()}${ibanCounter}${Math.floor(Math.random() * 1_000_000)}`
+  return syntheticIban()
 }
 
 describe('account routes and service', () => {
@@ -314,5 +314,80 @@ describe('account routes and service', () => {
     expect((failure as MissingAccountDataError).code).toBe('MISSING_ACCOUNT_DATA')
     expect((failure as MissingAccountDataError).statusCode).toBe(422)
     expect(await app.prisma.account.count({ where: { iban } })).toBe(0)
+  })
+  // ── Feature 21 `iban-normalization` ──────────────────────────────────────
+  //
+  // Criterion C5: this door applies the SAME normalization and the SAME
+  // validation as the bank files. Two doors with different rules for the same
+  // datum is exactly how the same account ends up stored twice.
+  it('POST /api/accounts stores the iban written with interior spaces as one string (C2, C5)', async () => {
+    const iban = uniqueIban()
+    const spaced = (iban.match(/.{1,4}/g) ?? []).join(' ')
+
+    const account = await createAccount({ iban: spaced, bank: 'bankinter' })
+
+    expect(spaced).toContain(' ')
+    expect(account.iban).toBe(iban)
+  })
+
+  it('POST /api/accounts refuses to create a SECOND account for a spaced iban (C2, C5)', async () => {
+    const iban = uniqueIban()
+    await createAccount({ iban, bank: 'bankinter' })
+
+    const duplicated = await postAccount({
+      iban: (iban.toLowerCase().match(/.{1,4}/g) ?? []).join(' '),
+      bank: 'bankinter',
+    })
+
+    expect(duplicated.statusCode).toBe(409)
+    expect(duplicated.json()).toMatchObject({ code: 'CONFLICT' })
+    expect(await app.prisma.account.count({ where: { iban } })).toBe(1)
+  })
+
+  it('POST /api/accounts with a mistyped digit returns 422 INVALID_IBAN and creates nothing (C4, C5)', async () => {
+    const wrong = mistypedIban(uniqueIban())
+
+    const response = await postAccount({ iban: wrong, bank: 'bankinter' })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json()).toMatchObject({
+      statusCode: 422,
+      code: 'INVALID_IBAN',
+      message: expect.stringContaining('el dígito de control no cuadra'),
+    })
+    expect(await app.prisma.account.count({ where: { iban: wrong } })).toBe(0)
+  })
+
+  it('POST /api/accounts with something that is not an iban says so by its name (C4, C5)', async () => {
+    const response = await postAccount({ iban: 'mi cuenta de siempre', bank: 'bankinter' })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json().message).toContain('no tiene la forma de un iban')
+  })
+
+  it('findOrCreateAccountFromMetadata rejects a mistyped iban and creates nothing (C4)', async () => {
+    const wrong = mistypedIban(uniqueIban())
+
+    const failure = await findOrCreateAccountFromMetadata(accountsDb(app), {
+      iban: wrong,
+      bank: 'bankinter',
+    }).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(InvalidIbanError)
+    expect((failure as InvalidIbanError).code).toBe('INVALID_IBAN')
+    expect(await app.prisma.account.count({ where: { iban: wrong } })).toBe(0)
+  })
+
+  it('findOrCreateAccountFromMetadata finds the account when the file writes the iban spaced (C2)', async () => {
+    const iban = uniqueIban()
+    const existing = await createAccount({ iban, bank: 'bankinter' })
+
+    const result = await findOrCreateAccountFromMetadata(accountsDb(app), {
+      iban: (iban.match(/.{1,4}/g) ?? []).join(' ').toLowerCase(),
+      bank: 'bankinter',
+    })
+
+    expect(result.created).toBe(false)
+    expect(result.account.id).toBe(existing.id)
   })
 })

@@ -8,6 +8,7 @@ import {
   NotFoundError,
   ValidationError,
 } from '../../errors/app-error.js'
+import { normalizeIban, requireValidIban } from '../../lib/iban.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { computeAccountBalance } from '../movements/movements.service.js'
 import type { BalanceMovement } from '../movements/movements.types.js'
@@ -34,11 +35,6 @@ const balanceMovementSelect = {
   bookingDate: true,
   daySequence: true,
 } as const
-
-/** IBANs are compared as the natural key of an account: no spaces, uppercase. */
-export function normalizeIban(iban: string): string {
-  return iban.replace(/\s+/g, '').toUpperCase()
-}
 
 function deriveAlias(bank: string, iban: string): string {
   return `${bank} ···${iban.slice(-4)}`
@@ -133,6 +129,12 @@ export async function createAccount(
   if (iban.length === 0) throw new ValidationError('iban is required')
   if (bank.length === 0) throw new ValidationError('bank is required')
 
+  // The SAME rule as the file path (feature 21): this door and the statements
+  // cannot judge the same datum differently, or the two of them create the two
+  // accounts the feature exists to prevent. `requireValidIban` is the single
+  // normalizer+validator of `src/lib/iban.ts`.
+  requireValidIban(input.iban)
+
   const alias = input.alias?.trim()
 
   try {
@@ -173,6 +175,12 @@ export async function findOrCreateAccountFromMetadata(
   if (missing.length > 0) {
     throw new MissingAccountDataError(`Missing data to create the account: ${missing.join(', ')}`)
   }
+
+  // Last gate before the database, shared with `createAccount` and with the
+  // three bank parsers (feature 21). The importer already gets a validated IBAN
+  // from its parser; this is what makes the rule true for ANY future caller of
+  // this reusable service, not just for the ones that exist today.
+  requireValidIban(iban)
 
   const existing = await prisma.account.findUnique({ where: { iban } })
   if (existing) {

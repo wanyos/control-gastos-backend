@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
-import { NotUtf8Error, ValidationError } from '../../errors/app-error.js'
+import { InvalidIbanError, NotUtf8Error, ValidationError } from '../../errors/app-error.js'
+import { mistypedIban } from '../../lib/iban.fixture.js'
 import type { ParsedStatement } from '../../lib/parsed-statement.js'
 import {
   buildCp1252StatementCsv,
@@ -654,5 +655,47 @@ describe('the fixture stays synthetic (R59)', () => {
     ])
     expect(buildStatementCsv().toString('utf8').split('\n')[0]).toBe(myinvestorHeaders.join(';'))
     expect(myinvestorSampleRows().length).toBeGreaterThan(0)
+  })
+})
+
+// ── Feature 21 `iban-normalization` ────────────────────────────────────────
+//
+// Criteria C1, C2, C4 and C6 on the door of this bank. The IBAN used here is
+// the PUBLIC example of the Spanish documentation (valid checksum, nobody's
+// account), the same one the rest of this file already uses.
+describe('parseMyinvestorStatement — the iban is normalized and validated (feature 21)', () => {
+  function ibanOf(written: string): string | null {
+    return parseMyinvestorStatement(buildStatementCsv({ preamble: [`iban;${written}`] }))
+      .accountIban
+  }
+
+  it('reads the same account with spaces, without them and in lowercase (C2)', () => {
+    const spaced = 'ES91 2100 0418 4502 0005 1332'
+
+    expect(ibanOf(spaced)).toBe(documentationIban)
+    expect(ibanOf(spaced.toLowerCase())).toBe(documentationIban)
+    expect(ibanOf(spaced)).toBe(ibanOf(documentationIban))
+  })
+
+  it('REJECTS the file when a digit is mistyped, naming the line and the problem (C4)', () => {
+    const content = buildStatementCsv({ preamble: [`iban;${mistypedIban(documentationIban)}`] })
+
+    expect(() => parseMyinvestorStatement(content)).toThrowError(InvalidIbanError)
+    expect(() => parseMyinvestorStatement(content)).toThrowError(
+      /el iban de la línea \d+ no es válido: el dígito de control no cuadra/,
+    )
+  })
+
+  it('rejects a value that is not an IBAN at all, by its name (C4)', () => {
+    expect(() =>
+      parseMyinvestorStatement(buildStatementCsv({ preamble: ['iban;1234'] })),
+    ).toThrowError(/no tiene la forma de un iban/)
+  })
+
+  it('still does NOT accept `:` as the separator of the preamble line (C6)', () => {
+    // Decision of the human of 2026-08-18: the documented form is `iban;<IBAN>`.
+    const content = buildStatementCsv({ preamble: [`iban: ${documentationIban}`] })
+
+    expect(parseMyinvestorStatement(content).accountIban).toBeNull()
   })
 })

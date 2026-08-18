@@ -3,6 +3,92 @@
 > Este archivo se vacía al cerrar cada sesión y se mueve a `history.md`.
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
+## F21 `iban-normalization` — CERRADA el 2026-08-18
+
+**`reviewer`: APROBADO sin cambios requeridos**
+([`reviews/iban-normalization.md`](reviews/iban-normalization.md)), con el camino real
+ejecutado contra la base de datos del humano. `./init.sh` verde: **535 tests, 0
+saltados**. F21 a **`done`** en `feature_list.json` y línea añadida en
+[`history.md`](history.md). Sin spec (`sdd: false`): se trabajó del `intent` y de los
+**9 criterios de `acceptance`**.
+Informe: [`implementations/iban-normalization.md`](implementations/iban-normalization.md) ·
+veredicto: [`reviews/iban-normalization.md`](reviews/iban-normalization.md) ·
+resumen: [`summaries/iban-normalization.md`](summaries/iban-normalization.md).
+
+> 👤 **Qué cambia para ti:** el IBAN **puedes escribirlo como quieras** —con espacios
+> de cuatro en cuatro o del tirón, en mayúsculas o en minúsculas— y es siempre la
+> misma cuenta: se acabó que el mismo IBAN escrito de dos formas te creara **dos
+> cuentas** en silencio. A cambio, **un dígito mal tecleado ya no cuela**: ese fichero
+> se rechaza entero con `INVALID_IBAN` (422), diciéndote la línea y el problema por su
+> nombre, y **no se crea ninguna cuenta** — antes te creaba una con pinta de buena. No
+> hay que reimportar nada ni cambia la forma de escribir la línea (`iban;<IBAN>`, con
+> `;`; con `:` sigue fallando).
+
+Sale del 🔴 que dejó la [prueba real de N26](explorations/prueba-real-n26-2026-08-18.md)
+§Pasada 2: el IBAN se guardaba **literal**, así que el mismo IBAN con y sin
+espacios creaba **dos cuentas**, en silencio, en los tres bancos.
+
+Plan y estado:
+
+1. ✅ **Un solo normalizador+validador** en [`src/lib/iban.ts`](../src/lib/iban.ts)
+   —un IBAN no es el formato de un banco, es el identificador ISO de una cuenta—,
+   consumido por los **tres** parsers (`readPreambleIban`) y por las **dos**
+   entradas del servicio de cuentas (`requireValidIban`). El `normalizeIban` que
+   vivía en `accounts.service.ts` **se movió, no se reexportó**.
+2. ✅ **Validación con dígito de control mod-97** (decisión del humano en la
+   puerta), más forma y longitud del país. Error nuevo `InvalidIbanError` →
+   **`INVALID_IBAN`, 422**, que **rechaza el fichero entero** con el nº de línea y
+   el problema por su nombre, y no crea ninguna cuenta.
+3. ✅ **`:` sigue fallando** (decisión del humano): `firstSeparatorIndex` no se ha
+   tocado, y hay test que lo fija en dos bancos.
+4. ✅ **Las tres decisiones delegadas, resueltas por escrito** en el informe:
+   dónde vive el normalizador, qué es «un IBAN válido» y con qué código se
+   rechaza, y **por qué NO se escribe migración** (las dos cuentas de hoy ya están
+   en forma canónica y el normalizador es idempotente: el `UPDATE` no cambiaría
+   ninguna fila).
+5. ✅ Docs: **ADR-021** en `architecture.md`, `api-contract.md` (código estable,
+   `POST /api/accounts`, códigos por archivo de `/api/import` y contrato del
+   parser), `conventions.md` §Parsers de banco (dos normas nuevas),
+   `dar-de-alta-un-banco.md`, `data-model.md` (el comentario de `Account.iban`) y
+   `roadmap.md` §Deberes tuyos.
+6. ✅ **`./init.sh` verde: 535 tests, 535 pasan, 0 saltados** (baseline 493), con
+   la capa de comparación del guardián de la F14 **activa**.
+
+> 🐞 **Efecto colateral que destapó la feature, y estaba bien destaparlo:** los
+> `uniqueIban()` de cuatro suites construían `ES` + timestamp — longitud imposible
+> y dígito de control aleatorio. Con la validación puesta, esos fixtures dejaron de
+> pasar por su propia puerta. Se arreglaron con
+> [`src/lib/iban.fixture.ts`](../src/lib/iban.fixture.ts), que calcula los dígitos
+> de control **con el propio validador**. Era el fixture el que estaba mal.
+
+> 🔒 Guardián de la F14: ningún IBAN nuevo escrito en un archivo versionado. El
+> español es el ejemplo público de la documentación (ya en la lista blanca), el
+> alemán tiene el cuerpo **todo ceros** con los dígitos de control calculados, y los
+> de `syntheticIban()` **solo existen en tiempo de ejecución**. Y ojo con el efecto
+> de la F18: al redactar el ADR se evitó a propósito transcribir el prefijo del IBAN
+> real que citaba el `intent`.
+
+> ✅ **Saneado después de la review (leader, 2026-08-18):** el **prefijo truncado** del
+> IBAN real que el reviewer dejó anotado como observación **no bloqueante** ya no está:
+> se limpió en el `intent` y en un criterio de la F21 de `feature_list.json` y en
+> [`explorations/prueba-real-n26-2026-08-18.md`](explorations/prueba-real-n26-2026-08-18.md).
+> Solo textos de documentación: **ni código ni tests**. La nota 3 de «Notas para el
+> futuro» del resumen queda por tanto atendida (el resumen no se reescribe: es del
+> reviewer).
+
+### Anotado, no se abre ahora
+
+- 🟠 Escribir `iban:` con dos puntos acaba en `MISSING_ACCOUNT_DATA` («no hay iban en
+  el fichero»), que es verdad pero manda a añadir una línea **ya escrita**. Decirlo
+  mejor tocaría el buscador de preámbulo, que el criterio 6 dejaba fuera de límites.
+  Candidato a feature pequeña.
+- ⚪ `prettier --check` sigue fallando en `myinvestor.product.parser.test.ts`, como ya
+  fallaba antes de esta feature. `init.sh` no lo ejecuta.
+
+---
+
+## Sesión anterior (2026-08-17 / 18): el inventario de bancos y la F18
+
 - **Tarea en curso (2026-08-17):** **inventario de bancos y diagnóstico de sus
   ficheros**. No es una feature: se leyeron las muestras que el humano subió a
   Drive (10 ficheros, 5 carpetas de banco pendientes, 10/10 descargados sin
@@ -120,9 +206,16 @@ esta sesión se sacaron con el rol inyectado a mano.
 1. ✅ **Renombrada la carpeta `N26` a `n26`** en Drive (hecho por el humano el
    2026-08-18). El importador la normaliza, pero la copia local se escribe con el
    nombre crudo, así que en Linux no habría casado.
-2. ✅ **Escritos el IBAN y el saldo** en el `.csv` de N26 (primera y segunda línea),
-   el 2026-08-18. **Sin verificar todavía contra el camino real**: no se ha vuelto a
-   ejecutar `POST /api/import` desde entonces.
+2. ✅ **N26 verificado de punta a punta el 2026-08-18**: `POST /api/import` mete
+   **204 movimientos, 0 duplicados, 0 sin parsear, 0 fallidos**, con la cuenta
+   creada, los conceptos compuestos del ADR-020 sin un solo vacío y el
+   `accountBalance` con sus céntimos. Costó tres pasadas —Excel reescribió el
+   primer fichero, y el segundo llevaba el preámbulo con `:` y el IBAN con
+   espacios—; las tres están en
+   [`explorations/prueba-real-n26-2026-08-18.md`](explorations/prueba-real-n26-2026-08-18.md).
+   ✅ **El bug que dejó abierto —el IBAN se guardaba literal, así que el mismo IBAN
+   con y sin espacios eran dos cuentas distintas, en silencio, en los tres bancos—
+   lo cierra la F21**, cerrada el mismo día (ver arriba).
 3. 🟠 **Escribir el IBAN de Openbank** una vez, donde diga el spec de la F19.
 4. ⚪ **Re-exportar Revolut** el día que haya movimientos.
 

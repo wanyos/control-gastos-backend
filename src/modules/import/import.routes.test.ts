@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { loadConfig } from '../../config/env.js'
 import type { AppDriveClient } from '../../lib/drive.js'
+import { syntheticIban } from '../../lib/iban.fixture.js'
 import type { ParsedStatement } from '../../lib/parsed-statement.js'
 import errorHandlerPlugin from '../../plugins/error-handler.js'
 import prismaPlugin from '../../plugins/prisma.js'
@@ -16,7 +17,7 @@ import type { ImportRunResult } from './import.types.js'
 
 const folderMime = 'application/vnd.google-apps.folder'
 const bank = `zz-import-routes-${Date.now()}`
-const iban = `ES${Date.now()}${Math.floor(Math.random() * 1_000_000)}`
+const iban = syntheticIban()
 
 /** One bank folder, one year, one pending file, with its `procesados/` present. */
 function driveDouble() {

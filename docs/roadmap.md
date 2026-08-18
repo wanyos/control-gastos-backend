@@ -339,6 +339,12 @@ tiene etapa, es que se va a perder.
   `iban;ES30…` **encima** de la fila de cabecera. Con ponerlo en uno de sus
   ficheros basta: los siguientes ya no lo necesitan. Si lo editas con Excel,
   guárdalo como **«CSV UTF-8»**.
+- **El IBAN puedes escribirlo como quieras, pero bien** (F21, 2026-08-18): con
+  espacios o sin ellos, en mayúsculas o en minúsculas, da lo mismo — el backend lo
+  normaliza y el mismo IBAN ya no te crea **dos cuentas**. Lo que sí falla ahora es
+  un **dígito mal tecleado**: el fichero se rechaza entero (`INVALID_IBAN`) y no se
+  crea ninguna cuenta. El separador sigue siendo `;`; `iban: …` con dos puntos no
+  vale, por decisión tuya del mismo día. Ver ADR-021.
 - **El saldo, cada mes, debajo del IBAN** (F16, 2026-08-16): línea `saldo;1500,00`
   encima de la cabecera, y **borrar la fila `Saldo` del final** del fichero, que el
   backend no lee. Si algún mes se te olvida, no falla nada: el saldo sale vacío.

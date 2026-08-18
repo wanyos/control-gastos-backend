@@ -161,6 +161,29 @@ Si falta y ese banco no tiene **exactamente una** cuenta ya dada de alta, ese
 fichero se reporta como `failed` con el código `MISSING_ACCOUNT_DATA`, no se
 importa y **no se mueve**: se corrige el fichero y se reintenta.
 
+### Cómo escribes el IBAN da igual; que esté bien tecleado, no
+
+> Añadido el 2026-08-18 con la feature 21 (`iban-normalization`).
+
+- **Puedes escribirlo con espacios de cuatro en cuatro o del tirón, en mayúsculas o
+  en minúsculas.** El backend lo normaliza antes de nada, así que
+  `iban;ES91 2100 0418 4502 0005 1332` y `iban;es9121000418450200051332` son **la
+  misma cuenta**. Hasta hoy no lo eran: se guardaba tal cual y te salían **dos
+  cuentas** para la misma, sin un solo aviso.
+- 🔴 **Pero si te equivocas en un dígito, el fichero falla.** El IBAN lleva dos
+  dígitos de control (mod-97) y el backend los comprueba: si no cuadran, ese
+  fichero se reporta como `failed` con el código `INVALID_IBAN` y el motivo
+  `el iban de la línea 2 no es válido: el dígito de control no cuadra`. **No se
+  crea ninguna cuenta**, no se importa nada y el fichero **no se mueve** a
+  `procesados/`: corriges la línea, lo vuelves a subir y ya. Es a propósito
+  (decisión tuya del 2026-08-18): más vale un fallo en ese momento que una cuenta
+  con pinta de buena y los movimientos del mes dentro.
+- **El separador sigue siendo `;`.** `iban: <IBAN>` con dos puntos **no vale** y
+  no va a valer: si lo escribes así, el fichero acaba en `MISSING_ACCOUNT_DATA`,
+  como hasta ahora. (Ya pasó el 2026-08-18 con el fichero de N26.)
+- **Esto vale igual para el alta manual por la API** (`POST /api/accounts`): la
+  misma normalización y la misma validación. No hay dos reglas para el mismo dato.
+
 - **N26 tampoco lo trae** (feature 18): trae el IBAN **del otro** —la
   contraparte—, que no sirve para nada aquí y que el parser **nunca** confunde
   con el tuyo. Se escribe a mano igual que en MyInvestor.

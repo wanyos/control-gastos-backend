@@ -1,4 +1,5 @@
 import { ValidationError } from '../../errors/app-error.js'
+import { readPreambleIban } from '../../lib/iban.js'
 import { assignDaySequence } from '../../lib/parsed-statement.js'
 import type { ParsedMovementDraft, UnparsedRow } from '../../lib/parsed-statement.js'
 import { decodeUtf8Strict } from '../../lib/utf8.js'
@@ -143,7 +144,10 @@ export function parseN26Statement(content: Buffer): N26StatementResult {
 
   return {
     bank: 'n26',
-    accountIban: ibanLine === null || ibanLine.value === '' ? null : ibanLine.value,
+    // `null` when the line is absent or empty, as always; when it IS written,
+    // normalized and validated by the single shared reader (feature 21), which
+    // rejects the whole file if what is next to the label is not an IBAN.
+    accountIban: readPreambleIban(ibanLine),
     // The balance of the ACCOUNT, exactly as the human wrote it: it is never
     // checked against the sum of the movements, and it is NOT the per-movement
     // balance above, which stays null for this bank forever (ADR-013).

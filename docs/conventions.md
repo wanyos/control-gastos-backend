@@ -209,6 +209,19 @@ class NotFoundError extends AppError {
   `iban;<IBAN>` **encima** de la cabecera; el parser la lee **solo si está
   etiquetada así** y **nunca** infiere un IBAN por su forma dentro de un concepto.
   Sin IBAN no se crea jamás una cuenta.
+- **El IBAN se normaliza y se valida en un solo sitio, y ningún banco escribe esa
+  regla** (decidido 2026-08-18, F21; ver ADR-021). El único normalizador+validador es
+  [`src/lib/iban.ts`](../src/lib/iban.ts) —un IBAN no es el formato de un banco, es el
+  identificador ISO de una cuenta, por eso se comparte igual que `lib/utf8.ts`— y lo
+  usan los **tres** parsers (`readPreambleIban` sobre su línea etiquetada) y el alta de
+  cuenta de `POST /api/accounts`. Normaliza quitando **todos** los espacios (también
+  los interiores, que son los que escribe un humano al agrupar de cuatro en cuatro) y
+  pasando a mayúsculas; valida forma, longitud del país y **dígito de control mod-97**.
+  Un IBAN que no pasa **rechaza el fichero entero** (`InvalidIbanError`, código
+  `INVALID_IBAN`, 422) con el nº de línea y el problema por su nombre; no es una fila
+  de `unparsedRows`, porque el IBAN dice a qué cuenta van **todos** los movimientos del
+  fichero. Sin esto, el mismo IBAN escrito de dos formas creaba **dos cuentas**, en
+  silencio.
 - **Lo que el humano escribe a mano en un fichero de banco va en una LÍNEA DE
   PREÁMBULO ETIQUETADA, encima de la cabecera** (ampliado el 2026-08-16, F16, con el
   saldo de la cuenta: `saldo;<importe>`). Un dato escrito a mano se reconoce **por su
@@ -225,6 +238,11 @@ class NotFoundError extends AppError {
   mismo dato según el banco. Y como las escribe **una persona**, su importe se lee
   con manga ancha (coma o punto decimal); la columna de importes **del banco** se
   lee con la regla estricta de ese banco.
+- **El separador de esas líneas es `;` (o la coma del propio fichero): `:` NO se
+  acepta** (ratificado por el humano el 2026-08-18, F21). `iban: <IBAN>` no se lee y el
+  fichero acaba en `MISSING_ACCOUNT_DATA`, que es un fallo ruidoso y con un motivo
+  accionable. Tolerarlo se descartó a propósito: una sola forma documentada vale más
+  que dos formas admitidas.
 
 ### Lo que NO es propio de cada banco: la forma de la salida
 

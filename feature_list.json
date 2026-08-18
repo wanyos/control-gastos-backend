@@ -882,6 +882,45 @@
       ],
       "sdd": true,
       "status": "spec_ready"
+    },
+    {
+      "id": 21,
+      "name": "iban-normalization",
+      "title": "El IBAN se normaliza y se valida al entrar: el mismo IBAN no puede ser dos cuentas",
+      "intent": {
+        "_procedencia": "Hallazgo de la prueba real de N26 del 2026-08-18 (progress/explorations/prueba-real-n26-2026-08-18.md, secciones 'Pasada 2' y 'Candidato que deja esta prueba'). No lo pidió el humano: lo encontró el leader al diagnosticar por qué fallaba su fichero, y el humano lo aprobó como feature el mismo día. Las dos decisiones de alcance las cerró él en la puerta: SÍ se valida el dígito de control, y NO se acepta ':' como separador del preámbulo.",
+        "que_quiero": "Que si un mes escribo el iban con espacios, o en minúsculas, el backend lo entienda igual y NO me cree una segunda cuenta para la cuenta que ya tengo. Y que si me equivoco al teclear un dígito, me lo diga en ese momento en vez de crearme una cuenta que parece buena.",
+        "por_que": "El iban lo escribo a mano una vez por banco, en un fichero, y hoy se guarda tal cual lo escribo. 'XX00 1111 …' y 'XX001111…' son la misma cuenta para mí y dos cuentas distintas para el sistema, sin ningún aviso. Con Openbank a punto de entrar por la misma vía, prefiero cerrarlo antes.",
+        "como_se_que_esta_bien": [
+          "Escribo el iban con espacios en el fichero de un banco y entra en la cuenta que ya existe, no en una nueva.",
+          "Lo escribo en minúsculas y pasa lo mismo.",
+          "Si me equivoco en un dígito, el fichero falla y el motivo dice que el iban no es válido, no me crea una cuenta.",
+          "Mis dos cuentas de hoy (myinvestor y n26) siguen siendo las mismas y sus movimientos no se mueven de sitio."
+        ],
+        "que_no_quiero": [
+          "No quiero que esto cambie la forma en la que escribo la línea del preámbulo: sigue siendo 'iban;<IBAN>', con punto y coma, como está documentado.",
+          "No quiero que se acepte ':' como separador: si me equivoco ahí, prefiero que falle y me lo diga, como hace hoy.",
+          "No quiero que esto toque los movimientos que ya tengo importados ni me obligue a reimportar nada."
+        ],
+        "delego_en_agente": [
+          "Dónde vive el normalizador para que lo usen los tres bancos Y el alta manual de cuenta por la API, sin duplicar la regla en cuatro sitios.",
+          "Qué se considera exactamente 'un iban válido' (forma, longitud por país y dígito de control mod-97) y con qué código y mensaje se rechaza el que no lo es.",
+          "Si hace falta hacer algo con las cuentas ya guardadas: hoy las dos están limpias (comprobado el 2026-08-18), así que el implementer debe justificar por escrito si escribe migración o si no hace falta ninguna."
+        ]
+      },
+      "acceptance": [
+        "Existe UN SOLO normalizador de iban en src/lib/ y lo usan los tres bancos y el alta de cuenta de POST /api/accounts: la regla no se repite en cada módulo (deriva de: 'que lo usen los tres bancos y el alta manual', delego_en_agente nº 1)",
+        "El normalizador quita los espacios (incluidos los interiores, que son los que escribe un humano al agrupar de cuatro en cuatro) y pasa a mayúsculas: 'xx00 1111 …' y 'XX001111…' producen exactamente la misma cadena",
+        "El iban se VALIDA con el dígito de control mod-97 además de por su forma (dos letras, dos dígitos, alfanumérico, longitud del país). DECISIÓN DEL HUMANO del 2026-08-18 en la puerta: se valida, no solo se normaliza",
+        "Un iban que no pasa la validación RECHAZA el fichero con un motivo que dice el problema por su nombre ('el iban de la línea N no es válido: el dígito de control no cuadra') y NO crea ninguna cuenta. Misma cortesía que los motivos del parser de productos de MyInvestor",
+        "POST /api/accounts aplica la misma normalización y la misma validación que la vía de los ficheros: no puede haber dos puertas con reglas distintas para el mismo dato",
+        "La forma de escribir la línea de preámbulo NO cambia: sigue siendo 'iban;<IBAN>' con ';' (o la coma del propio fichero, como ya se admite). ':' SIGUE FALLANDO, por decisión del humano del 2026-08-18 (deriva de: 'no quiero que se acepte : como separador')",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 3): las dos cuentas guardadas hoy están limpias (sin espacios y en mayúsculas, comprobado contra la base de datos el 2026-08-18), así que hay que justificar si se escribe migración o si no hace falta. Si no se escribe, queda dicho por qué",
+        "Los movimientos ya importados NO se tocan y no hace falta reimportar nada (deriva de: 'no quiero que esto toque los movimientos que ya tengo')",
+        "Cada criterio tiene al menos un test con fixtures SINTÉTICOS en memoria, sin datos reales y sin red, mapeado en progress/implementations/iban-normalization.md; ./init.sh termina en verde con la suite completa, incluido el guardián de la F14 con su capa de comparación activa"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

@@ -51,6 +51,11 @@ describe('architecture invariants', () => {
       // encoding, not format reading, so it is shared and not per bank.
       'lib/utf8.ts',
       'lib/utf8.test.ts',
+      // The single normalizer+validator of an IBAN (feature 21): it is the ISO
+      // identifier of an account, not the format of any bank, so it is shared
+      // by the three banks and by POST /api/accounts.
+      'lib/iban.ts',
+      'lib/iban.test.ts',
       'plugins/drive.ts',
       'plugins/error-handler.ts',
       'modules/accounts/accounts.routes.ts',

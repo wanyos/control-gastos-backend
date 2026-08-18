@@ -143,7 +143,8 @@ enum MovementStatus {
 // ── Modelos ──────────────────────────────────────────────
 model Account {
   id             Int         @id @default(autoincrement())
-  iban           String      @unique   // clave natural (normalizada: mayúsculas, sin espacios)
+  iban           String      @unique   // clave natural (normalizada Y validada en src/lib/iban.ts:
+                                       // mayúsculas, sin espacios, mod-97 — ADR-021, F21)
   bank           String                // p. ej. "bankinter"
   alias          String                // por defecto "<bank> ···<4 últimos del IBAN>"
   type           AccountType @default(checking)

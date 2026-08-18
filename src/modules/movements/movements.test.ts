@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
+import { syntheticIban } from '../../lib/iban.fixture.js'
 import { buildApp } from '../../app.js'
 import * as prismaEnums from '../../generated/prisma/enums.js'
 import {
@@ -180,11 +181,9 @@ describe('movement routes (read-only) and database indexes', () => {
   let app: FastifyInstance
   const createdAccountIds: number[] = []
   const createdCategoryIds: number[] = []
-  let ibanCounter = 0
-
+  // Well formed since feature 21: an IBAN is validated wherever it enters.
   function uniqueIban(): string {
-    ibanCounter += 1
-    return `ES${Date.now()}${ibanCounter}${Math.floor(Math.random() * 1_000_000)}`
+    return syntheticIban()
   }
 
   beforeAll(async () => {

@@ -17,6 +17,7 @@ import {
   normalizeBankName,
   processedFolderName,
 } from '../../lib/drive-structure.js'
+import { normalizeIban } from '../../lib/iban.js'
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { findOrCreateAccountFromMetadata } from '../accounts/accounts.service.js'
@@ -116,7 +117,10 @@ export async function resolveAccount(
   statement: ParsedStatement,
   bankSlug: string,
 ): Promise<AccountResolution> {
-  const iban = statement.accountIban?.trim() ?? ''
+  // Normalized with the SINGLE normalizer of `lib/iban.ts` (feature 21). The
+  // parser already returns it normalized; doing it again here is what keeps the
+  // seam honest if a parser ever forgets, and it costs nothing.
+  const iban = normalizeIban(statement.accountIban ?? '')
 
   if (iban.length > 0) {
     return findOrCreateAccountFromMetadata(prisma, { iban, bank: statement.bank || bankSlug })

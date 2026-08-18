@@ -1442,6 +1442,76 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   ficheros como `skipped`. `balance` por línea sigue a `null` y el ADR-013 no se
   toca.
 
+### ADR-021: El IBAN se normaliza y se valida en `src/lib/iban.ts`, una sola vez, y un IBAN que no pasa el mod-97 rechaza el fichero entero
+
+- **Fecha:** 2026-08-18.
+- **Estado:** aceptada (feature 21 `iban-normalization`).
+- **Contexto:** la prueba real del tercer banco del 2026-08-18
+  (`progress/explorations/`, §Pasada 2) midió el fallo: el IBAN se guardaba
+  **literal**. `import.service.ts` lo tomaba con un `.trim()` y el esquema del alta
+  manual solo exigía `minLength: 1`, así que el mismo IBAN escrito
+  `ES91 2100 …` y `ES912100…` producía **dos cuentas distintas, en silencio**, y los
+  movimientos del mes se repartían entre las dos. La línea la escribe el humano a
+  mano en todo banco que no exporta su IBAN, así que la variación no es hipotética;
+  y con un cuarto banco entrando por la misma vía, el coste de arreglarlo después
+  crece con cada importación.
+- **Decisión:**
+  1. **Un solo normalizador+validador, en [`src/lib/iban.ts`](../src/lib/iban.ts).**
+     Un IBAN **no es el formato de ningún banco**: es el identificador ISO 13616 de
+     una cuenta. Compartirlo no rompe la norma «un parser por banco» por la misma
+     razón que no la rompen la codificación (ADR-018) ni la forma de la salida
+     (ADR-013). Lo consumen los **tres** parsers (`readPreambleIban`, sobre la línea
+     etiquetada que cada uno ya sabía localizar) y el **servicio de cuentas**
+     (`requireValidIban`, en `createAccount` y en `findOrCreateAccountFromMetadata`),
+     que son las dos únicas puertas por las que un IBAN llega a la base de datos. El
+     antiguo `normalizeIban` de `accounts.service.ts` **desaparece**: no se
+     reexporta, se mueve, para que no queden dos sitios donde arreglar la regla. Un
+     guardián de [`iban.test.ts`](../src/lib/iban.test.ts) falla si aparece un
+     segundo normalizador o un segundo mod-97 en `src/`.
+  2. **Qué es «un IBAN válido»**, en este orden: no vacío; la forma ISO (dos letras
+     de país, dos dígitos de control y a partir de ahí solo letras o dígitos); la
+     **longitud que declara su país**; y el **dígito de control mod-97** (ISO 7064
+     MOD 97-10), que es la única capa que caza un dígito mal tecleado. La tabla de
+     longitudes es **deliberadamente asimétrica**: un país que no está en ella no se
+     rechaza por longitud (solo por el rango genérico 15–34) porque una fila
+     equivocada o ausente rechazaría un fichero legítimo, que es un fallo peor que
+     aceptar el IBAN de un país que aquí no tiene nadie.
+  3. **Un IBAN inválido rechaza el FICHERO ENTERO**, con `InvalidIbanError` (código
+     estable `INVALID_IBAN`, 422), no una fila en `unparsedRows`. Es la doctrina del
+     ADR-018: el IBAN es propiedad del fichero entero —dice a qué cuenta van **todos**
+     sus movimientos—, así que importar «el resto» sería importar movimientos sin
+     saber de quién son. Sale por el camino de fallo **por archivo**, dentro del 200
+     de `POST /api/import`, el fichero **no** se mueve a `procesados/` y se reintenta
+     con solo corregir la línea. Ninguna cuenta se crea.
+  4. **El motivo va en castellano y nombra el problema**, como los del parser de
+     productos: `el iban de la línea 2 no es válido: el dígito de control no cuadra`.
+     Lo lee la persona que escribió esa línea, y es la misma frase en las dos puertas
+     (la del fichero añade la línea; el alta manual no la tiene). **El IBAN nunca se
+     repite en el motivo**: es un número de cuenta y ese texto acaba en la respuesta
+     HTTP y en los logs.
+  5. **Sin migración de las cuentas guardadas.** Las dos que existen hoy ya están en
+     forma canónica (sin espacios y en mayúsculas, comprobado contra la base de datos
+     el 2026-08-18) y el normalizador es **idempotente**, así que una migración sería
+     un `UPDATE` que no cambia ninguna fila. Justificado por escrito y con test en
+     `progress/implementations/iban-normalization.md`. La consecuencia práctica: los
+     movimientos ya importados **no se tocan** y no hay que reimportar nada.
+- **Alternativas descartadas:** (a) **solo normalizar, sin validar** — la descartó el
+  humano el 2026-08-18 en la puerta: normalizar arregla el IBAN bien escrito de dos
+  formas, pero un dígito mal tecleado seguiría creando una cuenta con pinta de buena,
+  que es la mitad cara del problema; (b) **aceptar `:` como separador del preámbulo**
+  — descartada también por él el mismo día: hoy falla y falla con un motivo
+  accionable, y prefiere una sola forma documentada (`iban;<IBAN>`) a dos formas
+  toleradas; `firstSeparatorIndex` no se toca; (c) **validar en el esquema JSON de la
+  ruta** (`pattern`) — JSON Schema no puede calcular un mod-97, así que la regla
+  quedaría partida en dos mitades que se contradicen con el tiempo; (d) **arreglar el
+  IBAN en la base de datos al vuelo** (buscar por IBAN normalizado y actualizar) —
+  innecesario con las dos cuentas limpias y peligroso: escribiría en una fila que el
+  usuario no ha pedido tocar.
+- **Consecuencia:** un banco nuevo **no** escribe validación de IBAN: llama a
+  `readPreambleIban` sobre su línea y ya. `docs/api-contract.md` gana el código
+  `INVALID_IBAN`, `docs/conventions.md` §Parsers de banco lo recoge como norma y
+  `docs/dar-de-alta-un-banco.md` explica qué pasa si el IBAN se teclea mal.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

@@ -6,7 +6,8 @@ import type { FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { buildApp } from '../../app.js'
-import { NotUtf8Error } from '../../errors/app-error.js'
+import { InvalidIbanError, NotUtf8Error } from '../../errors/app-error.js'
+import { syntheticIban } from '../../lib/iban.fixture.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
 import { importPending, toMovementRows } from './import.service.js'
@@ -201,7 +202,7 @@ describe('importPending', () => {
   }
 
   function uniqueIban(): string {
-    return `ES${Date.now()}${Math.floor(Math.random() * 1_000_000)}`
+    return syntheticIban()
   }
 
   /**
@@ -725,5 +726,55 @@ describe('importPending', () => {
     const client = { files: { list } } as unknown as AppDriveClient
 
     await expect(run(client, [])).rejects.toMatchObject({ code: 'DRIVE_CONNECTION_ERROR' })
+  })
+  // ── Feature 21 `iban-normalization` ──────────────────────────────────────
+  //
+  // Criteria C2, C4 and C8 at the seam: the importer is where an IBAN becomes
+  // an account, so it is where the same account written two ways used to become
+  // two accounts.
+  it('lands the file on the SAME account when the iban is written with spaces (C2, C8)', async () => {
+    const bank = uniqueBank()
+    const iban = uniqueIban()
+    const spaced = (iban.match(/.{1,4}/g) ?? []).join(' ').toLowerCase()
+    await app.prisma.account.create({ data: { iban, bank, alias: 'the one and only' } })
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [fakeAdapter(bank, () => statement(bank, { accountIban: spaced }))]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('imported')
+    expect(file.account).toMatchObject({ iban, created: false })
+    // The whole point of the feature: ONE account, not two.
+    expect(await accountsOfTheBank(bank)).toBe(1)
+    const stored = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    expect(await app.prisma.movement.count({ where: { accountId: stored.id } })).toBe(1)
+  })
+
+  it('fails the file and creates NO account when its iban is not valid (C4)', async () => {
+    const bank = uniqueBank()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    // What a bank parser does with a mistyped IBAN since feature 21: it rejects
+    // the file, the same way it rejects one that is not UTF-8.
+    const parsers = [
+      fakeAdapter(bank, () => {
+        throw new InvalidIbanError(
+          'el iban de la línea 2 no es válido: el dígito de control no cuadra',
+        )
+      }),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('failed')
+    expect(file.error?.code).toBe('INVALID_IBAN')
+    expect(file.error?.message).toContain('el dígito de control no cuadra')
+    expect(file.imported).toBe(0)
+    expect(await accountsOfTheBank(bank)).toBe(0)
+    // And the file stays pending in Drive, so fixing the line and re-running is
+    // all it takes: nothing was half-imported (C8).
+    expect(file.movedToProcessed).toBe(false)
+    expect(update).not.toHaveBeenCalled()
   })
 })
