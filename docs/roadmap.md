@@ -47,8 +47,12 @@ queda ninguna abierta, ningún `intent` en borrador ni ninguna decisión esperan
 tu visto bueno. Antes de que un agente pueda arrancar algo, **la elección es
 tuya** y son dos caminos distintos:
 
-- **Seguir con bancos (E4).** Bloqueado por ti: sin el inventario por banco no se
-  sabe ni cuántas features son (ver §E4).
+- **Seguir con bancos (E4).** ✅ **Desbloqueado el 2026-08-17**: el inventario está
+  relleno y son **6 bancos, 3 parsers por escribir** (Openbank, Revolut, Trade
+  Republic; **N26 ✅ hecho** por la F18 el 2026-08-18). Diagnóstico de cada formato en
+  [`progress/explorations/inventario-bancos-2026-08-17.md`](../progress/explorations/inventario-bancos-2026-08-17.md).
+  Antes de abrir la primera feature hay **6 decisiones tuyas** anotadas ahí; las
+  cuatro primeras bloquean.
 - **Empezar a enriquecer (E6).** No está bloqueado por nada, pero **no tiene
   ninguna feature escrita**: hay que redactar el `intent` de la primera.
 
@@ -64,7 +68,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 | E1 | **El remoto** — hablar con Google Drive y organizarlo | ✅ | F3, F4 |
 | E2 | **Traer los ficheros** — detectar pendientes y descargarlos | ✅ (deuda saldada por la F12) | F5 |
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
-| E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 2 de ~7 bancos, **contrato ✅** · bloqueada por el inventario | F6, F7, F11, F10, F13 |
+| E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 **3 de 6 bancos**, **contrato ✅** · inventario ✅ (2026-08-17), 3 parsers por escribir | F6, F7, F11, F10, F13, **F18** |
 | E5 | **La importación** — del fichero parseado a la base de datos | ✅ | **F12** |
 | E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | ⬜ **candidata a siguiente** | *sin features* |
 | E7 | **Consultar** — filtros, saldos, totales, patrimonio | ⬜ | *sin features* |
@@ -142,7 +146,10 @@ la salida**, no el código que lee el formato.
 | Bankinter | `.xlsx` de la cuenta | ✅ F6 + F7 (renombrado a inglés) |
 | MyInvestor · extracto | CSV de la cuenta corriente | ✅ **F10 `myinvestor-statement`** (2026-08-11) — primer parser nacido ya contra el contrato. **F17** (2026-08-15) rechaza el fichero que no venga en UTF-8 y **F16** (2026-08-16) lee el **saldo de la cuenta** de una segunda línea de preámbulo `saldo;…` |
 | MyInvestor · productos | un JSON por producto de inversión | ✅ **F13 `myinvestor-products`** (2026-08-12, ADR-016) — misma ruta `POST /api/parser/myinvestor`, encaminado por extensión; **no toca base de datos**. **F15** (2026-08-13) le añadió `openedAt` **obligatorio en los cuatro tipos** |
-| Los ~5 restantes | sin inventariar | ⬜ **no existen ni como feature** |
+| N26 | `.csv` de la cuenta (comas, con comillas) | ✅ **F18 `n26-statement`** (2026-08-18, ADR-020) — sin spec. El humano pone el IBAN y el saldo en el preámbulo con `;`, como en MyInvestor. Primer **lector de CSV entrecomillado** del repo (vive dentro del módulo) y **concepto compuesto** porque N26 no exporta ninguna columna de concepto |
+| Openbank | «`.xls`» de la cuenta, que **es HTML en cp1252** | ⏳ **F19 `openbank-statement`** (2026-08-17) — **con spec**. Se lee tal cual, sin conversión manual. Trae el saldo en el fichero; el IBAN lo escribe el humano una vez |
+| Revolut | `.csv` de la cuenta (comas) | 🅿️ **aparcado**: hoy sin movimientos ni saldo. Sus carpetas siguen en Drive; se retoma con un archivo con datos |
+| Trade Republic | `.pdf` del extracto | ⏳ **F20 `trade-republic-product-file`** (2026-08-17) — **con spec**. **No se parsea el PDF**: entra como `.json` de producto que el humano rellena cada mes, como los de MyInvestor. Provisional por decisión suya |
 
 **F11 `parsed-movement-contract`** ✅ (2026-08-11) — la pieza que faltaba, ya
 puesta. El contrato vive en

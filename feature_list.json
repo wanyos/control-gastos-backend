@@ -753,6 +753,135 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 18,
+      "name": "n26-statement",
+      "title": "Parser del extracto .csv de N26",
+      "intent": {
+        "_procedencia": "Dictado por el humano en la sesión del 2026-08-17, al revisar las muestras que subió a Drive (ver progress/explorations/inventario-bancos-2026-08-17.md). Sus palabras: 'para n26, cambio el nombre en google drive por n26, incluyo el iban en la primera fila como hice con la cuenta de myinvestor, tambien el saldo en la segunda fila'.",
+        "que_quiero": "Que el backend lea el .csv que exporta N26 y saque de él mis movimientos, igual que ya hace con Bankinter y con MyInvestor. Yo pongo de mi parte lo mismo que puse en MyInvestor: renombro la carpeta de Drive a 'n26', escribo el iban en la primera línea del archivo y el saldo en la segunda, y el resto del archivo lo dejo tal y como sale del banco.",
+        "por_que": "Es una de mis cuentas y hoy no entra en el sistema. De los cuatro bancos que faltan es el que viene mejor: fechas ya en AAAA-MM-DD, punto decimal y ninguna fila rota, así que es por donde tiene sentido empezar.",
+        "como_se_que_esta_bien": [
+          "Subo el .csv de N26 a su carpeta de Drive con mis dos líneas escritas arriba y sus movimientos entran, con su fecha, su concepto y su importe.",
+          "El iban y el saldo se leen de donde los escribo, igual que en MyInvestor.",
+          "Un gasto sale como gasto y un ingreso como ingreso, sin que yo tenga que tocar el signo.",
+          "Si un mes se me olvida escribir el saldo, el archivo entra igual y el saldo sale vacío, como en MyInvestor."
+        ],
+        "que_no_quiero": [
+          "No quiero tener que editar el archivo del banco más allá de esas dos líneas de arriba: lo demás se queda como lo exporta N26.",
+          "No quiero que el parser de N26 toque los de Bankinter ni MyInvestor.",
+          "No quiero tener que acordarme de escribir el iban todos los meses: con una vez basta, como está documentado."
+        ],
+        "delego_en_agente": [
+          "Cómo se lee un CSV de comas con campos entrecomillados que llevan comas dentro: es la primera vez que hace falta en este repo.",
+          "Con qué separador se escriben mis dos líneas de preámbulo en un archivo que el banco separa por comas.",
+          "Qué columna de las que trae N26 alimenta el concepto del movimiento, y qué se hace con las que no tienen sitio en el contrato."
+        ]
+      },
+      "acceptance": [
+        "N26 tiene su PROPIO módulo en src/modules/n26/ y no hereda una línea del parser de Bankinter ni del de MyInvestor (deriva de: 'no quiero que el parser de N26 toque los de Bankinter ni MyInvestor', y de docs/conventions.md §Parsers de banco)",
+        "El .csv se lee como CSV de VERDAD: separador coma, campos entrecomillados y comas DENTRO de un campo entrecomillado no parten la fila. Partir la línea por ',' es un fallo de la feature (deriva de 'el resto del archivo lo dejo tal y como sale del banco' y del delego_en_agente nº 1)",
+        "Las fechas del banco ya vienen en AAAA-MM-DD y se leen sin conversión. La fecha contable y la de valor se pueblan por SEPARADO: en la muestra difieren en 17 de 90 filas, así que copiar una en la otra pierde un dato (deriva de 'sus movimientos entran, con su fecha')",
+        "Los importes llevan punto decimal y el signo dentro. Un gasto sale como gasto y un ingreso como ingreso SIN que el humano toque el signo, usando deriveMovementTypeFromAmount que ya existe (deriva de: 'un gasto sale como gasto y un ingreso como ingreso, sin que yo tenga que tocar el signo')",
+        "DECISIÓN DEL LEADER (resuelve el delego_en_agente nº 2, apruébala o cámbiala): las dos líneas de preámbulo se escriben con ';' TAMBIÉN en este fichero de comas — 'iban;ES…' y 'saldo;…' —, exactamente igual que en MyInvestor. Motivo: una sola forma de escribirlo en todo el proyecto, ya documentada en docs/dar-de-alta-un-banco.md, y la línea nuestra se distingue a simple vista de las del banco. La alternativa (usar la coma del fichero) daría dos formas del mismo dato según el banco",
+        "Las etiquetas se reconocen sin distinguir mayúsculas ni acentos y toleran los separadores de relleno al final, igual que en la F16 (deriva de: 'como hice con la cuenta de myinvestor')",
+        "Las dos líneas son OPCIONALES y se comportan como en la F16: ausente o vacía → el campo sale vacío y el archivo se parsea igual; presente pero ilegible → cae en unparsedRows con su nº de línea y su motivo, y el resto se parsea igual; repetida → gana la primera (deriva de: 'si un mes se me olvida escribir el saldo, el archivo entra igual y el saldo sale vacío')",
+        "Un fichero sin la línea del iban entra por el camino que YA existe en el importador: se apoya en la única cuenta registrada de ese banco, o falla con MISSING_ACCOUNT_DATA si hay cero o varias. No se escribe un camino nuevo (deriva de: 'no quiero tener que acordarme de escribir el iban todos los meses: con una vez basta')",
+        "El contenido se descodifica con decodeUtf8Strict (F17), NUNCA con toString('utf8'): la muestra de hoy es ASCII puro, pero en cuanto un comercio traiga una tilde el problema de la F17 aparece aquí igual (DECISIÓN DEL LEADER: el humano no lo pidió, lo exige docs/dar-de-alta-un-banco.md §El fichero se guarda en UTF-8)",
+        "La salida es el contrato común ParsedStatement<'n26'> de src/lib/parsed-statement.ts: NO se redeclaran ParsedMovement, UnparsedRow ni ParsedMovementType (hay guardián en architecture.test.ts), el balance por línea es null porque N26 no lo reporta, y la posición dentro del día la emite assignDaySequence",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, que debe resolverla POR ESCRITO en su informe (delego_en_agente nº 3): N26 no trae una columna 'concepto'. La que identifica la contraparte está casi siempre rellena y la de referencia libre viene vacía en 88 de 90 filas. El movimiento debe llegar con un concepto NO VACÍO y el informe debe decir cómo se compone y por qué. Las columnas que no tienen sitio en el contrato no se inventan como campos nuevos",
+        "Existe POST /api/parser/n26 (misma forma que las de bankinter y myinvestor) y el banco queda añadido al registro de parsers de src/app.ts con la extensión .csv, que es lo que hace que POST /api/import deje de reportar sus ficheros como skipped",
+        "Cada criterio tiene al menos un test con fixtures SINTÉTICOS en memoria, sin datos reales y sin red, mapeado en progress/implementations/n26-statement.md; ./init.sh termina en verde con la suite completa, incluido el guardián de la F14 con su capa de comparación activa"
+      ],
+      "sdd": false,
+      "status": "done"
+    },
+    {
+      "id": 19,
+      "name": "openbank-statement",
+      "title": "Parser del extracto de Openbank, que es HTML disfrazado de .xls",
+      "intent": {
+        "_procedencia": "Dictado por el humano en la sesión del 2026-08-17 tras el diagnóstico del fichero (ver progress/explorations/inventario-bancos-2026-08-17.md). Sus palabras: 'si el archivo de openbank se puede leer como esta hagamos lo incorporamos para crear su feature creacion del parser, si por el contrario debo hacer alguna modificacion a mano que sea beneficiosa la hacemos'. Las cuatro decisiones cerradas ese día en la puerta de aprobación están en 'como_se_que_esta_bien' y 'que_no_quiero'.",
+        "que_quiero": "Que el backend lea el archivo de movimientos que descargo de Openbank tal y como sale del banco, sin que yo lo convierta a otro formato cada mes. Lo único que escribo a mano es el iban, y una sola vez.",
+        "por_que": "Es la cuenta con más movimiento de todas y el archivo trae dos años de histórico, así que es la que más llena el sistema. Y el archivo, aunque se llame .xls, se puede leer tal cual: convertirlo a mano cada mes sería justo el paso manual que ya me ha costado dos incidencias.",
+        "como_se_que_esta_bien": [
+          "Subo el archivo tal y como lo descargo de Openbank y sus movimientos entran, sin haberlo convertido a Excel ni a CSV.",
+          "Entran los 200 movimientos, incluidos los de 2024 y 2025: quiero el histórico entero, no solo el mes.",
+          "El saldo de la cuenta lo lee del propio archivo, que ya lo trae: ese no lo escribo yo.",
+          "El iban lo escribo yo una sola vez, como en MyInvestor y en N26, y a partir de ahí los archivos siguientes ya no lo necesitan."
+        ],
+        "que_no_quiero": [
+          "No quiero que el backend calcule ni deduzca el iban a partir del número de cuenta: prefiero escribirlo yo.",
+          "No quiero que se empiece a guardar el saldo que el archivo trae después de cada movimiento: ese campo sigue vacío como en los demás bancos, y ya se decidirá otro día.",
+          "No quiero convertir el archivo a mano cada mes.",
+          "No quiero que esto cambie los parsers de Bankinter, MyInvestor ni N26."
+        ],
+        "delego_en_agente": [
+          "Cómo se lee la tabla del archivo, que no es un Excel sino HTML, y con qué (dependencia nueva o lectura directa).",
+          "Qué hacer con la codificación: el archivo viene en cp1252 porque lo emite así el banco, no porque yo lo haya editado, y eso choca con la regla de la F17 de exigir UTF-8. Resolverlo a la vista y documentarlo.",
+          "Dónde escribo yo el iban en un archivo que es HTML, de forma que sea difícil equivocarse y que el banco pueda seguir sobrescribiendo el resto.",
+          "Qué se hace con las filas del preámbulo que no son movimientos (titular, descripción, fecha de descarga)."
+        ]
+      },
+      "acceptance": [
+        "Openbank tiene su PROPIO módulo en src/modules/openbank/ y no hereda una línea de los parsers de Bankinter, MyInvestor ni N26 (deriva de: 'no quiero que esto cambie los parsers de Bankinter, MyInvestor ni N26')",
+        "El fichero se lee TAL Y COMO SE DESCARGA del banco, sin que el humano lo convierta a Excel ni a CSV. Se llama .xls pero su contenido es HTML con una tabla dentro: exceljs no puede abrirlo y esta feature no lo intenta (deriva de: 'lo lee tal y como sale del banco, sin que yo lo convierta a otro formato cada mes')",
+        "Entra el HISTÓRICO ENTERO del fichero, incluidos los movimientos de 2024 y 2025: no se recorta por fecha ni se limita al mes en curso (deriva de: 'quiero el histórico entero, no solo el mes')",
+        "Las fechas vienen en DD/MM/AAAA y los importes con punto de miles y coma decimal, como en MyInvestor. El formato de ESTE banco vive en su módulo, no se comparte código con el de MyInvestor aunque la convención numérica coincida",
+        "El saldo de la cuenta se lee del PREÁMBULO DEL PROPIO FICHERO, que ya lo trae: aquí el humano NO escribe ninguna línea 'saldo;…' (deriva de: 'el saldo de la cuenta lo lee del propio archivo, que ya lo trae: ese no lo escribo yo'). Es el mismo campo accountBalance de la F16, no el saldo por movimiento",
+        "El saldo que el fichero trae DESPUÉS DE CADA MOVIMIENTO se lee pero NO se guarda: el balance por línea sigue siendo null, como en todos los demás bancos, y el ADR-013 no se toca en esta feature (deriva de: 'no quiero que se empiece a guardar el saldo que el archivo trae después de cada movimiento'). El informe debe dejar constancia de que el dato existe, para que la decisión futura no haya que redescubrirla",
+        "El backend NO deriva ni calcula el IBAN a partir del número de cuenta del fichero, que viene en formato CCC: el IBAN lo escribe el humano UNA SOLA VEZ, como en MyInvestor y en N26 (deriva de: 'no quiero que el backend calcule ni deduzca el iban a partir del número de cuenta: prefiero escribirlo yo')",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 3): dónde escribe el humano esa línea del iban en un fichero que es HTML, de forma que sea difícil equivocarse y que volver a descargar el fichero del banco no la borre por accidente. Debe quedar en el runbook docs/dar-de-alta-un-banco.md",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 2): el fichero llega en cp1252 porque LO EMITE ASÍ EL BANCO, no porque el humano lo haya editado. La regla de la F17 ('el fichero se guarda en UTF-8, siempre') se escribió para el texto que escribe el humano. Hay que decidir el alcance exacto de esa regla, dejarlo escrito en docs/ y en un ADR, y que el resultado NO debilite la guardia de MyInvestor: ningún concepto puede llegar al volcado con un carácter de sustitución dentro",
+        "Las filas del preámbulo que no son movimientos (fecha de descarga, número de cuenta, descripción del producto, titular) NO ensucian unparsedRows: ese campo existe para señalar lo que hay que mirar, y ruido permanente lo inutiliza (deriva del delego_en_agente nº 4 y de la lección de la F16 con la fila 'Saldo' del final)",
+        "La salida es el contrato común ParsedStatement<'openbank'>: NO se redeclaran ParsedMovement, UnparsedRow ni ParsedMovementType, el tipo ingreso/gasto se decide con deriveMovementTypeFromAmount y la posición dentro del día con assignDaySequence",
+        "Existe POST /api/parser/openbank y el banco queda añadido al registro de parsers de src/app.ts con su extensión, que es lo que hace que POST /api/import deje de reportar sus ficheros como skipped",
+        "🔒 El fichero de Openbank trae el NOMBRE DEL TITULAR y nombres de terceros dentro de los conceptos. Ni uno solo llega a un archivo versionado: los fixtures son sintéticos y el informe describe la forma, nunca el contenido (deriva de la F14; es la primera vez que un fichero de este proyecto trae nombres de personas)",
+        "Cada criterio tiene al menos un test con fixtures SINTÉTICOS en memoria, sin datos reales y sin red, mapeado en progress/implementations/openbank-statement.md; ./init.sh termina en verde con la suite completa, incluido el guardián de la F14 con su capa de comparación activa"
+      ],
+      "sdd": true,
+      "status": "spec_ready"
+    },
+    {
+      "id": 20,
+      "name": "trade-republic-product-file",
+      "title": "Trade Republic entra como archivo JSON de producto, no como parser de PDF",
+      "intent": {
+        "_procedencia": "Dictado por el humano en la sesión del 2026-08-17. Sus palabras: 'trade republic al ser un pdf, dificil de leer, no tengo movimientos, es solo una cuenta que he dejado con saldo y solo me genera los interes de cada mes, lo que puedo hacer es un json al igual que hice con las inversiones de myinvestor... preparemos una plantilla tipo json para rellenar cada mes como hicimos con las inversiones de myinvestor'. En la puerta de aprobación eligió la forma 'foto del saldo, como los productos de MyInvestor' frente a 'extracto con los movimientos del mes'.",
+        "que_quiero": "Que Trade Republic entre en el sistema con un archivo .json que relleno yo cada mes, igual que los productos de inversión de MyInvestor, y no con un parser del PDF. Necesito una plantilla clara que copiar, con marcadores, como la de MyInvestor.",
+        "por_que": "Es una cuenta que dejé con saldo y solo me genera los intereses de cada mes: no tiene movimientos que merezcan un parser. El PDF es difícil de leer y el esfuerzo no compensa para dos apuntes al mes. Si algún día eso cambia, ya haremos el parser.",
+        "como_se_que_esta_bien": [
+          "Tengo una plantilla .json que copiar cada mes, con marcadores tipo <...> para que se vea a simple vista lo que me he dejado sin rellenar.",
+          "Relleno el archivo, lo dejo en la carpeta de Trade Republic de Drive y el backend lo lee y me dice si está bien o qué le falta.",
+          "Si escribo un número con coma decimal, o una fecha en otro formato, me lo dice por su nombre, como ya hace el de MyInvestor.",
+          "Queda escrito que esto es provisional: el día que la cuenta tenga movimientos de verdad, se hace el parser."
+        ],
+        "que_no_quiero": [
+          "No quiero un parser del PDF ahora.",
+          "No quiero que esto toque la base de datos: los productos de MyInvestor tampoco la tocan y me parece bien que sea igual.",
+          "No quiero que el archivo de Trade Republic use el parser de MyInvestor: son bancos distintos."
+        ],
+        "delego_en_agente": [
+          "Qué campos lleva exactamente la plantilla para una cuenta remunerada, que no es ni un fondo ni un depósito de los que ya existen.",
+          "Si la salida de este archivo reutiliza la forma que ya tienen los productos de MyInvestor o necesita la suya.",
+          "Dónde se documenta la plantilla y cómo se enlaza con la de MyInvestor sin duplicar las reglas de escritura que ya están escritas."
+        ]
+      },
+      "acceptance": [
+        "Existe una plantilla .json documentada para la cuenta de Trade Republic, con TODOS sus valores como marcadores <…> y ningún valor de aspecto real copiable, por la misma razón que la de MyInvestor: un campo sin editar tiene que cantar a la vista (deriva de: 'una plantilla clara que copiar, con marcadores, como la de MyInvestor', y de la lección del 2026-08-15)",
+        "La plantilla NO duplica las reglas de escritura que ya están escritas en docs/myinvestor-product-files.md (número sin comillas y con punto decimal, fecha AAAA-MM-DD, claves que empiezan por '_' ignoradas, el banco sale de la carpeta y no se escribe): se enlazan (deriva del delego_en_agente nº 3)",
+        "Trade Republic tiene su PROPIO módulo en src/modules/trade-republic/ y NO reutiliza el parser de productos de MyInvestor (deriva de: 'no quiero que el archivo de Trade Republic use el parser de MyInvestor: son bancos distintos')",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1 y nº 2): qué campos lleva exactamente una CUENTA REMUNERADA, que no es ninguno de los cuatro tipos de producto que ya existen, y si su salida reutiliza la forma que ya tienen los productos de MyInvestor o necesita la suya. Debe justificarse contra la norma de que el CÓDIGO que lee el formato no se comparte pero la FORMA de la salida sí (ADR-013 para extractos)",
+        "El archivo se deja en la carpeta de Trade Republic de Drive, entra por la ingesta que ya existe y el backend dice si está bien o qué le falta, sin que haga falta ningún paso nuevo por parte del humano (deriva de: 'lo dejo en la carpeta de Trade Republic de Drive y el backend lo lee y me dice si está bien o qué le falta')",
+        "Los motivos de error dicen el problema POR SU NOMBRE y TODOS de golpe, no el primero: número escrito con coma decimal, número escrito como texto, fecha en otro formato, campo obligatorio que falta, clave desconocida. Misma cortesía que el parser de productos de MyInvestor (deriva de: 'si escribo un número con coma decimal, o una fecha en otro formato, me lo dice por su nombre, como ya hace el de MyInvestor')",
+        "La feature NO toca el esquema Prisma ni la base de datos y NO persiste nada, igual que los productos de MyInvestor (deriva de: 'no quiero que esto toque la base de datos')",
+        "Queda escrito, en la documentación de la plantilla y en el roadmap, que esto es PROVISIONAL y qué lo revierte: el día que esa cuenta tenga movimientos de verdad se escribe el parser del PDF, cuyo diagnóstico ya está hecho en progress/explorations/inventario-bancos-2026-08-17.md (deriva de: 'queda escrito que esto es provisional')",
+        "Existe POST /api/parser/trade-republic, con la misma forma que las rutas de parser que ya existen, y el fichero se encamina por su extensión .json",
+        "Cada criterio tiene al menos un test con fixtures SINTÉTICOS en memoria, sin datos reales y sin red, mapeado en progress/implementations/trade-republic-product-file.md; ./init.sh termina en verde con la suite completa, incluido el guardián de la F14 con su capa de comparación activa"
+      ],
+      "sdd": true,
+      "status": "spec_ready"
     }
   ]
 }

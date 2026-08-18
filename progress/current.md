@@ -3,7 +3,130 @@
 > Este archivo se vacía al cerrar cada sesión y se mueve a `history.md`.
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
-- **Tarea en curso:** ninguna. La **F16 `statement-balance`** se cerró el 2026-08-16
+- **Tarea en curso (2026-08-17):** **inventario de bancos y diagnóstico de sus
+  ficheros**. No es una feature: se leyeron las muestras que el humano subió a
+  Drive (10 ficheros, 5 carpetas de banco pendientes, 10/10 descargados sin
+  fallo) y se diagnosticó cada formato. Informe:
+  [`explorations/inventario-bancos-2026-08-17.md`](explorations/inventario-bancos-2026-08-17.md).
+  Resultado: **6 bancos, 4 parsers por escribir**; el inventario de
+  `docs/ideas.md` queda relleno y la **E4 desbloqueada**. Quedan **6 decisiones
+  del humano** anotadas en el informe (4 bloquean) y **4 tareas suyas**:
+  re-exportar Revolut con movimientos, renombrar la carpeta `N26` → `n26`,
+  escribir el IBAN de N26 y Openbank, y decidir. **No se tocó código ni se
+  ejecutó `POST /api/import`.**
+## Las tres features que abre el inventario (2026-08-17)
+
+El humano decidió el mismo día, en la puerta de aprobación. **Revolut se aparca**
+(hoy sin movimientos ni saldo): sus carpetas se quedan en Drive y se retoma con un
+archivo con datos. **No se le abre feature.**
+
+| # | Feature | Spec | Estado |
+|---|---|---|---|
+| F18 | `n26-statement` | no | ✅ **`done`** (2026-08-18) — **APPROVED** en segunda pasada ([review](reviews/n26-statement.md)), resumen en [`summaries/n26-statement.md`](summaries/n26-statement.md) |
+| F19 | `openbank-statement` | **sí** | ⏸ **`spec_ready`** — esperando al humano ([decisions](../specs/openbank-statement/decisions.md), 6 puntos) |
+| F20 | `trade-republic-product-file` | **sí** | ⏸ **`spec_ready`** — esperando al humano ([decisions](../specs/trade-republic-product-file/decisions.md), 6 puntos) |
+
+**Las cuatro decisiones que cerró él**, y que ni el spec ni el implementer deben
+reabrir:
+
+1. **El IBAN de Openbank lo escribe él**, una vez. El backend **no** lo deriva del
+   CCC, aunque se comprobó que la derivación es exacta (checksum válido).
+2. **El `balance` por línea sigue a `null`.** Openbank es el único banco que lo
+   reporta y aun así no se guarda: el ADR-013 no se toca en la F19.
+3. **El histórico de Openbank entra entero**, los dos años y los 200 apuntes.
+4. **Trade Republic entra como `.json` de producto**, foto del saldo, al estilo de
+   los de MyInvestor — **no** como parser del PDF. Provisional y reversible el día
+   que esa cuenta tenga movimientos de verdad.
+
+**Decisión del leader que él debe ratificar (F18, criterio 5):** las dos líneas de
+preámbulo (`iban;…` y `saldo;…`) se escriben con `;` **también en el CSV de comas
+de N26**. Una sola forma de escribirlo en todo el proyecto, y la línea nuestra se
+distingue a simple vista de las del banco.
+
+### F18 `n26-statement` — CERRADA el 2026-08-18
+
+**Segunda pasada del `reviewer`: APPROVED**
+([`reviews/n26-statement.md`](reviews/n26-statement.md) §Segunda pasada). `./init.sh`
+verde: **493 tests, 0 saltados**. Resumen de cierre (C8) en
+[`summaries/n26-statement.md`](summaries/n26-statement.md); F18 a **`done`** en
+`feature_list.json`, línea añadida en [`history.md`](history.md) y `docs/roadmap.md`
+actualizado (N26 ✅, quedan **3 parsers por escribir**). Las F19 y F20 siguen en
+`spec_ready`, esperando al humano.
+
+### Cómo se corrigió la primera review (2026-08-17)
+
+**Primera review: CHANGES_REQUESTED** ([`reviews/n26-statement.md`](reviews/n26-statement.md)),
+dos puntos, los dos arreglados (detalle en el informe §Segunda pasada):
+
+- 🔴 **El saldo a la española perdía los céntimos, en silencio.** La línea de
+  preámbulo no es una fila de la tabla, pero el lector de CSV la partía por la
+  coma antes de que el buscador de etiquetas la viera: `Saldo;1.234,56` daba
+  `1234` y **sin aviso en `unparsedRows`**. Arreglado en el código (no en la
+  documentación, que decía la verdad): `CsvRecord` gana `raw` —la línea tal cual—
+  y el buscador corta **solo por el primer separador**, así que la coma decimal
+  es parte del valor. La variante con coma también conserva los céntimos ahora.
+- **Los tests no podían ver el fallo**: todos usaban `1500,00`, céntimos `00`.
+  `n26Preamble()` pasa a `1.234,56` (con la nota de por qué no redondearlo),
+  test nuevo con 5 casos de céntimos ≠ 0 y bloque nuevo para `raw`.
+
+**`./init.sh` verde otra vez: 493 tests, 0 saltados.** Sigue en `in_progress`.
+
+### F18 — primera pasada (2026-08-17)
+
+Feature no-SDD: se trabajó del `intent` + los 13 criterios de `acceptance`.
+Informe: [`implementations/n26-statement.md`](implementations/n26-statement.md)
+(cada criterio con su test). Estado en `feature_list.json`: **`in_progress`** —
+no se marca `done` hasta el veredicto del reviewer.
+
+1. ✅ `src/modules/n26/` (7 archivos + 5 de test): lector de **CSV con comillas
+   propio del banco** ([`n26.csv.ts`](../src/modules/n26/n26.csv.ts) — primer
+   fichero del repo que no se puede leer partiendo la línea), formatos, parser,
+   servicio, rutas, tipos y fixture sintético.
+2. ✅ Preámbulo `iban;…` / `saldo;…` con **`;` también en este fichero de comas**
+   (criterio 5, decisión del leader), etiquetas tolerantes y las tres reglas de
+   la F16 (ausente/ilegible/repetida). `decodeUtf8Strict` como primer paso.
+3. ✅ **Decisión delegada del criterio 11, resuelta por escrito:** el concepto se
+   **compone** de contraparte + referencia libre (y el tipo de apunte como último
+   recurso). Ningún movimiento sale con concepto vacío y ninguna columna sobrante
+   se convierte en campo nuevo. Argumentario en el informe y en el **ADR-020**.
+4. ✅ `POST /api/parser/n26` + la línea del registro de `src/app.ts` (lo que hace
+   que `/api/import` deje de reportar sus ficheros como `skipped`). Guardián de
+   «un parser por banco» **generalizado a los tres**.
+5. ✅ Docs: `api-contract.md` (§Parser de N26), `dar-de-alta-un-banco.md`,
+   `conventions.md` y **ADR-020** en `architecture.md`.
+6. ✅ **`./init.sh` verde: 490 tests, 490 pasan, 0 saltados** (baseline 412), con
+   la capa de comparación del guardián de la F14 **activa**.
+
+> 🐞 El guardián de la F14 saltó durante el desarrollo, y **no** por un dato del
+> humano: escribir los **nombres de las 11 columnas seguidos** reproduce una
+> secuencia de palabras del fichero real. Arreglado en la raíz (un comentario por
+> línea que rompe la secuencia y documenta la columna), **sin añadir ni un
+> `no-real-data-ok`**. A tener en cuenta en la F19: la cabecera de Openbank tiene
+> el mismo problema.
+
+### 🐞 Arreglado de paso: el subagente `spec_author` no existía para el harness
+
+Su archivo estaba en `.claude/agents/spec_author.md` desde el 12-ago, pero **el
+registro de agentes nunca lo cargó**: los otros tres (`leader`, `implementer`,
+`reviewer`) sí. La única diferencia era el **guion bajo** del nombre. Renombrado a
+`spec-author` (archivo, frontmatter y las referencias de `CLAUDE.md`, `AGENTS.md`,
+`.claude/agents/*`, `docs/specs.md`, `docs/intent-template.md` y `specs/README.md`;
+`progress/` se deja como registro histórico). **No está verificado**: el registro se
+lee al arrancar la sesión, así que se comprueba en la siguiente. Los dos specs de
+esta sesión se sacaron con el rol inyectado a mano.
+
+### 📌 Lo que le toca al humano
+
+1. ✅ **Renombrada la carpeta `N26` a `n26`** en Drive (hecho por el humano el
+   2026-08-18). El importador la normaliza, pero la copia local se escribe con el
+   nombre crudo, así que en Linux no habría casado.
+2. ✅ **Escritos el IBAN y el saldo** en el `.csv` de N26 (primera y segunda línea),
+   el 2026-08-18. **Sin verificar todavía contra el camino real**: no se ha vuelto a
+   ejecutar `POST /api/import` desde entonces.
+3. 🟠 **Escribir el IBAN de Openbank** una vez, donde diga el spec de la F19.
+4. ⚪ **Re-exportar Revolut** el día que haya movimientos.
+
+- **Tarea anterior:** ninguna. La **F16 `statement-balance`** se cerró el 2026-08-16
   (`reviewer`: **APROBADO sin cambios requeridos**) y con ella **no queda ninguna
   feature `pending`** en `feature_list.json`.
 - **Inicio:** 2026-08-15
