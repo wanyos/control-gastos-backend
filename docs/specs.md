@@ -8,7 +8,7 @@
 > Las features sin esa marca siguen el flujo simple (acceptance → implementer
 > → reviewer → done).
 
-> **Quién lee este documento:** el `spec_author`. Es su manual de autoría.
+> **Quién lee este documento:** el `spec-author`. Es su manual de autoría.
 >
 > El `implementer` y el `reviewer` **ya no lo leen**: lo que cada uno necesita de
 > un spec está escrito en su propia definición (`.claude/agents/`). Antes lo
@@ -68,7 +68,7 @@ repartidas por cientos de líneas.
 
 **2. Tope de tamaño: si no cabe en ~15 requirements, son dos features.** El
 tamaño del spec es un **síntoma**, no una causa: un spec largo casi nunca es un
-problema de redacción, es **una feature que hace tres cosas**. El `spec_author`
+problema de redacción, es **una feature que hace tres cosas**. El `spec-author`
 que se pase **para y propone el corte** en vez de escribir. Pasarse con una razón
 dicha en voz alta vale; llegar a 40 en silencio, no.
 
@@ -92,7 +92,7 @@ inmediato. Las reglas 1-3 atacan el **coste de revisión**; la 4 ataca el
 
 | Estado         | Significado                                                    |
 |----------------|----------------------------------------------------------------|
-| `pending`      | Sin spec. El `spec_author` es el primero en actuar (si `sdd: true`); si no, el `implementer` lo toma directamente. |
+| `pending`      | Sin spec. El `spec-author` es el primero en actuar (si `sdd: true`); si no, el `implementer` lo toma directamente. |
 | `spec_ready`   | Spec drafted (solo SDD). Esperando aprobación humana. NO se toca código. |
 | `in_progress`  | Aprobado (o tomado por el implementer si no es SDD). Trabajando. |
 | `done`         | Código verde, `reviewer` aprobó, sesión cerrada.               |
@@ -112,7 +112,7 @@ intent (humano) → acceptance (derivado) → requirements/design/tasks (spec) �
 
 ## La puerta de aprobación humana
 
-El flujo automático se detiene **una vez**: cuando el `spec_author` termina
+El flujo automático se detiene **una vez**: cuando el `spec-author` termina
 sus cuatro archivos, marca la feature como `spec_ready` y para. El humano
 lee **`specs/<feature>/decisions.md` y nada más**, y dice "aprobado" (o pide
 cambios).
@@ -127,7 +127,7 @@ Lo que el humano revisa en esa hoja son dos cosas:
 Debajo de la hoja, la maquinaria que sostiene la revisión sigue existiendo pero
 **no se le pide leerla**: `requirements.md` DEBE incluir su **sección de
 procedencia** (ver más abajo) para que el `reviewer` pueda comprobar que nada se
-coló de tapadillo, y el `spec_author` alimenta el bloque 🔴 de la hoja
+coló de tapadillo, y el `spec-author` alimenta el bloque 🔴 de la hoja
 precisamente con lo que ahí queda marcado como `(añadido)` y `(delegado)`. Así
 los huecos que el humano no contempló salen a la luz *antes* de escribirse el
 código, pero en una página en vez de en cientos de líneas.
@@ -139,7 +139,7 @@ Solo entonces el `leader` transiciona `spec_ready → in_progress` y lanza
 el `implementer`.
 
 ```
-pending → [spec_author] → spec_ready → ⏸ HUMANO → in_progress → [implementer → reviewer] → done
+pending → [spec-author] → spec_ready → ⏸ HUMANO → in_progress → [implementer → reviewer] → done
 ```
 
 ## decisions.md — la hoja del humano
@@ -168,7 +168,7 @@ página, el problema no es la hoja: es la feature (regla 2).
 
 ## Sección de procedencia (obligatoria en requirements.md)
 
-Al final de `requirements.md`, el `spec_author` clasifica cada `R<n>`:
+Al final de `requirements.md`, el `spec-author` clasifica cada `R<n>`:
 
 ```markdown
 ## Procedencia
@@ -210,7 +210,7 @@ Reglas duras:
   procedencia (`humano` / `delegado` / `añadido`).
 - No mezcles varios `DEBE` en un mismo requirement. Si hay más de uno, parte.
 - No uses verbos blandos ("podría", "puede", "soporta"). Solo `DEBE` / `NO DEBE`.
-- **Tope: ~15 requirements.** Si el spec se pasa, el `spec_author` PARA y
+- **Tope: ~15 requirements.** Si el spec se pasa, el `spec-author` PARA y
   propone partir la feature (regla 2). Si aun así hay que pasarse, la razón
   queda **dicha explícitamente** en `decisions.md`.
 

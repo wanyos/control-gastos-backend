@@ -38,7 +38,7 @@
 | `docs/verification.md`        | Cómo verificar que tu trabajo funciona (incluye trazabilidad requirements para SDD)                       | Antes de declarar una tarea como `done` |
 | `docs/related-projects.md`    | Proyectos hermanos (frontend↔backend, etc.)                                                               | Si tu cambio afecta a otro proyecto |
 | `CHECKPOINTS.md`              | Criterios objetivos de "estado final correcto"                                                            | Para auto-evaluarte |
-| `.claude/agents/`             | Definiciones de subagentes (`leader`, `spec_author`, `implementer`, `reviewer`)                           | Si orquestas trabajo |
+| `.claude/agents/`             | Definiciones de subagentes (`leader`, `spec-author`, `implementer`, `reviewer`)                           | Si orquestas trabajo |
 | `init.sh`                     | Verificación e inicialización del entorno                                                                 | Al empezar y antes de cerrar |
 
 ## 3. Reglas duras (no negociables)
@@ -47,7 +47,7 @@
 - **No declares una tarea `done` sin pruebas verdes.** Ejecuta `./init.sh` y
   asegúrate de que el bloque de tests pasa al 100%.
 - **No saltes la fase de spec.** Toda feature con `"sdd": true` debe pasar
-  por `spec_author` y obtener aprobación humana antes de tocar código.
+  por `spec-author` y obtener aprobación humana antes de tocar código.
 - **No saltes la puerta de aprobación humana.** El leader detiene el flujo
   en `spec_ready` y espera.
 - **En la puerta se enlaza `decisions.md` y nada más.** Un spec sin su hoja no
@@ -63,11 +63,11 @@
 ### 4a. Flujo SDD (features con `"sdd": true`)
 
 ```
-pending → [spec_author] → spec_ready → ⏸ HUMANO → in_progress → [implementer → reviewer] → done
+pending → [spec-author] → spec_ready → ⏸ HUMANO → in_progress → [implementer → reviewer] → done
 ```
 
 1. El leader detecta la primera feature `pending` con `"sdd": true`.
-2. El leader lanza `spec_author`, que crea
+2. El leader lanza `spec-author`, que crea
    `specs/<name>/{decisions,requirements,design,tasks}.md` y marca el status
    como `spec_ready`.
 3. **Pausa.** El humano lee **solo `specs/<name>/decisions.md`** — una página —

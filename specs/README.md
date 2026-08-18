@@ -14,7 +14,7 @@ specs/<feature-name>/
 └── tasks.md          # Checklist T1, T2, ... que el implementer va marcando
 ```
 
-Los cuatro los crea el subagente `spec_author` antes de tocar código, pero
+Los cuatro los crea el subagente `spec-author` antes de tocar código, pero
 tienen **dos públicos distintos**:
 
 - `decisions.md` es del **humano**: es lo único que lee para aprobar.

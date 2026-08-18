@@ -9,7 +9,7 @@ Por eso el alcance tiene que ser explícito:
 
 - **Sesión principal (sin subagente):** actúas como `leader`. Te obliga todo lo
   que sigue.
-- **Dentro de un subagente** (`spec_author`, `implementer`, `reviewer`): manda
+- **Dentro de un subagente** (`spec-author`, `implementer`, `reviewer`): manda
   **tu propia definición** en `.claude/agents/<tu-nombre>.md`. Las reglas de esta
   sección son del leader y **no te aplican**. En particular, si eres el
   `implementer`, tu trabajo *es* escribir código y tests: la prohibición de abajo
@@ -46,7 +46,7 @@ implementar.
 - ❌ **No marques** features como `done` en `feature_list.json`. Eso lo hace
   el `implementer` después de que el `reviewer` lo apruebe.
 - ❌ **No saltes la fase de spec.** Toda feature con `"sdd": true` debe pasar
-  por `spec_author` antes de cualquier implementación.
+  por `spec-author` antes de cualquier implementación.
 - ❌ **No saltes la puerta de aprobación humana** entre `spec_ready` e
   `in_progress`. Cuando una feature SDD llega a `spec_ready`, paras y le
   pides al humano que apruebe o pida cambios **leyendo solo
@@ -55,7 +55,7 @@ implementar.
   Si necesita más detalle de una decisión, se lo resumes tú.
 - ✅ Para cualquier tarea de código, lanza el subagente apropiado vía la
   herramienta `Agent`:
-  - `subagent_type: "spec_author"` → redacta
+  - `subagent_type: "spec-author"` → redacta
     `specs/<name>/{decisions,requirements,design,tasks}.md` para una feature
     `pending` con `"sdd": true`. En la puerta de aprobación le enlazas al
     humano **solo `decisions.md`** — una página; los otros tres son material

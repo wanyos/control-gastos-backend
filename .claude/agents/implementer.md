@@ -29,7 +29,7 @@ Ejecutas **una** feature de `feature_list.json` de inicio a verificación — o
    `docs/conventions.md`, `docs/verification.md`. Si es SDD, además
    `specs/<name>/` completo.
 
-   **No hace falta que leas `docs/specs.md`** — es el manual del `spec_author`.
+   **No hace falta que leas `docs/specs.md`** — es el manual del `spec-author`.
    Lo que te toca a ti de un spec son cuatro cosas:
    - Cada `T<n>` de `tasks.md` es lo que haces; cada `R<n>` de `requirements.md`
      es lo que debe quedar verdadero al final.
