@@ -3,6 +3,283 @@
 > Este archivo se vacía al cerrar cada sesión y se mueve a `history.md`.
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
+
+## Prueba real de Openbank (2026-08-19) y la F22 que sale de ella
+
+Informe: [`explorations/prueba-real-openbank-2026-08-19.md`](explorations/prueba-real-openbank-2026-08-19.md).
+
+✅ **El parser cumple con el fichero de verdad:** 200 movimientos, 0 sin parsear,
+histórico entero (2024-08-28 → 2026-08-17), saldo leído del preámbulo, ni un concepto
+vacío y **ni un `U+FFFD`** con los acentos del banco.
+
+🔴 **El camino completo falló, y no por el código.** Él añadió la línea del IBAN
+abriendo el fichero con **Visual Studio Code** y dándole a guardar: VS Code leyó como
+UTF-8 un fichero cp1252, convirtió sus **8 acentuados en `U+FFFD` de forma
+irreversible** y lo reguardó en UTF-8 **dejando la declaración `iso-8859-1` intacta**.
+El parser leyó lo que el fichero declaraba, la cabecera le llegó rota y falló con
+`VALIDATION_ERROR`: **«el archivo no es un extracto de este banco»**, que es **falso**.
+**Falló ruidosamente —lo correcto—, pero el mensaje manda al sitio equivocado.**
+`importedCount: 0`, nada persistido, fichero no movido a `procesados/`: nada que
+deshacer. **Su línea del IBAN está bien escrita**, verificado sobre copia reparada de
+prueba (IBAN leído, 200 movimientos, 0 sin parsear).
+
+→ **F22 `encoding-mismatch-guard`** creada a petición suya (`pending`, `sdd: false`,
+10 criterios) y `implementer` lanzado: mensaje que diga que el fichero se **reguardó en
+otra codificación**, motivo propio para el `U+FFFD` («ya no tiene arreglo, vuelve a
+descargarlo»), sin adivinar ni reparar, sin debilitar la guardia de la F19 y con el
+runbook contado para **VS Code** —el editor que usa de verdad— y no solo para el Bloc
+de notas.
+
+> ✅ **CERRADO el mismo día:** redescargó el extracto, lo reabrió en VS Code con
+> `Reopen with Encoding` → **`Western (ISO 8859-1)`** —su VS Code **no ofrecía ninguna
+> entrada «Windows 1252»**, solo las `ISO`, así que el runbook se corrigió por eso—,
+> escribió la línea del IBAN y lo guardó. **Openbank ya está en la base de datos.**
+
+### Pasada 3: el camino entero en verde
+
+`POST /api/import`: **201 importados, 0 duplicados, 0 sin parsear, 0 fallidos**, cuenta
+**creada** y fichero **movido a `procesados/`**. Histórico entero (2024-08-28 →
+2026-08-19), **0 conceptos vacíos**, **0 `U+FFFD`** y **0 señales de mojibake inverso**
+(`Ã`/`Â`): el guardado fue limpio en las dos direcciones. `balanceAfter` `null` en los
+201 y divisa `EUR`. La base de datos pasa de **2 cuentas y 215 movimientos a 3 y 416**.
+
+Dos observaciones, ninguna es fallo: la **divisa vacía del parser se vuelve `EUR` al
+persistir** (confirma que el punto 🔴 6 estaba bien resuelto: el parser no inventa, y el
+euro lo pone la capa que sí lo sabe), y **tres movimientos idénticos del mismo día**
+entran como tres, distinguidos por `daySequence` 2/3/4 — justo para lo que existe ese
+campo.
+
+> 📊 **Balance de la sesión:** la F19 llegó a la prueba real con **628 tests en verde** y
+> la prueba encontró **dos cosas que ningún test podía ver**: la fuga de importes al
+> fixture (la cazó el reviewer; el guardián de la F14 **no lee `.xls`**) y el mensaje
+> mentiroso ante un fichero reguardado (**F22**, abierta y cerrada el mismo día). Mismo
+> patrón que con N26 el 2026-08-18.
+
+> ⚪ **Anotado del leader:** al diagnosticar dejó la copia local de `var/drive-read/` en
+> cero bytes (un `open(…, 'wb')` que truncó antes de fallar el `encode`). Restaurada del
+> respaldo, sin pérdida —es un espejo que se rebaja en cada import—, pero queda dicho.
+
+## F22 `encoding-mismatch-guard` — CERRADA el 2026-08-19
+
+Feature **sin spec** (`sdd: false`): se trabajó del `intent` y de los **10 criterios
+de `acceptance`**. Sin lotes: un solo implementer.
+
+Nace de la prueba real del 2026-08-19: VS Code releyó como UTF-8 el `.xls` cp1252
+de Openbank, dejó **8 `U+FFFD`** y lo reguardó **en UTF-8** con el `<meta>`
+diciendo todavía `iso-8859-1`. El parser leyó cp1252 (que es lo correcto según lo
+que el fichero declara), la cabecera salió como mojibake y el error fue
+`VALIDATION_ERROR` «no se encuentra la cabecera… no es un extracto de este banco»:
+ruidoso, pero **falso**.
+
+**`reviewer`: APPROVED sin hallazgos que bloqueen**
+([`reviews/encoding-mismatch-guard.md`](reviews/encoding-mismatch-guard.md)), con
+`./init.sh` ejecutado por él: **verde, 647 tests, 0 saltados** (baseline 628),
+`package.json` y `pnpm-lock.yaml` **intactos frente a git**, los **10 criterios**, los
+CHECKPOINTS C1-C8 y el 🔒 de la F14 comprobados con el método de cruce de la F19. F22 a
+**`done`** en `feature_list.json` y línea añadida en [`history.md`](history.md).
+Informe: [`implementations/encoding-mismatch-guard.md`](implementations/encoding-mismatch-guard.md)
+(cada criterio con su(s) test(s)) ·
+veredicto: [`reviews/encoding-mismatch-guard.md`](reviews/encoding-mismatch-guard.md) ·
+resumen: [`summaries/encoding-mismatch-guard.md`](summaries/encoding-mismatch-guard.md).
+
+> ✅ **Verificado también FUERA de los tests, contra el caso que lo originó:** el leader
+> pasó la guardia nueva por el **fichero real dañado** (`var/drive-read/…`, gitignoreado)
+> vía `POST /api/parser/openbank`, y el rechazo salió con el motivo correcto — declara
+> `iso-8859-1`, se ha reguardado en UTF-8, trae el carácter de sustitución con su línea, y
+> manda a **redescargarlo del banco** y a guardarlo con **Western (Windows-1252)**. Ya no
+> dice, como el 2026-08-19 por la mañana, que el archivo no sea un extracto de este banco.
+
+> 👤 **Qué cambia para ti:** si abres el archivo de Openbank con **Visual Studio Code** y
+> le das a guardar sin más —que es lo que hiciste—, el backend te lo dice **con el motivo
+> verdadero**: que el fichero se ha vuelto a guardar en otra codificación y con cuál hay
+> que guardarlo (**Western/Windows-1252**), o, si las tildes ya salen como `�`, que
+> **están perdidas** y hay que volver a descargarlo del banco. El runbook explica los dos
+> comandos exactos de VS Code (`Reopen with Encoding` / `Save with Encoding`) y avisa de
+> que el guardado por defecto de un editor moderno **destruye este fichero sin avisar**.
+> Un archivo bueno entra exactamente igual que antes.
+
+Plan, ejecutado y aprobado:
+
+1. ✅ Guardia nueva en `src/lib/cp1252.ts` (`detectResaveAsUtf8`): señal **comprobable**
+   —bytes que son UTF-8 válido **con secuencias multibyte** en un fichero que declara
+   cp1252/iso-8859-1— más la línea del primer `U+FFFD`. Sin adivinar codificaciones.
+2. ✅ El parser de Openbank la llama entre la comprobación de la declaración y la
+   descodificación, y lanza `UnexpectedEncodingError` con **dos motivos distintos**
+   (reguardado / caracteres ya perdidos), los dos diciendo **qué hacer**.
+3. ✅ Tests: caso exacto del 2026-08-19, `U+FFFD`, no-regresión con **200 movimientos y
+   0 `unparsedRows`**, guardia de la F19 intacta y los otros tres bancos sin cambio.
+4. ✅ Docs: ADR-023, `api-contract.md`, `conventions.md` y el runbook con **Visual
+   Studio Code** (reabrir con Western/Windows-1252), no solo el Bloc de notas.
+5. ✅ `./init.sh` verde con 0 saltados (baseline 628) e informe en
+   [`implementations/encoding-mismatch-guard.md`](implementations/encoding-mismatch-guard.md).
+
+> 🟠 **Sigue pendiente lo tuyo, y la F22 no lo sustituye:** Openbank **todavía no ha
+> entrado en la base de datos**. Hay que **redescargar** el extracto (las tildes del
+> fichero que hay en Drive están perdidas), volver a escribir la línea del IBAN
+> (`<!-- iban;TU-IBAN -->`, primera línea) y guardarlo con **Western/Windows-1252**.
+> Lo que cambia es que ahora, si algo va mal, el error te lo dirá bien. Detalle arriba,
+> en la sección de la prueba real.
+
+---
+
+## F19 `openbank-statement` — CERRADA el 2026-08-19
+
+**`reviewer`: APPROVED en segunda pasada**
+([`reviews/openbank-statement.md`](reviews/openbank-statement.md) §Segunda pasada),
+tras rehacer la comprobación de fuga **con su propio método**: 286 cifras y 399
+pares contiguos del fichero real cruzados contra las **61 cifras** que escribe la
+feature, **0 coincidencias y 0 pares**. `./init.sh` verde: **628 tests, 0
+saltados**. F19 a **`done`** en `feature_list.json` y línea añadida en
+[`history.md`](history.md).
+
+Feature **SDD** con spec aprobado por el humano (los 6 puntos 🔴 confirmados en
+[`decisions.md`](../specs/openbank-statement/decisions.md)). Un solo implementer
+para los **cinco lotes** de `tasks.md`: **T1-T29 marcadas `[x]`**.
+Informe: [`implementations/openbank-statement.md`](implementations/openbank-statement.md)
+(cada `R<n>` y **cada criterio de `acceptance`** con su test) ·
+veredicto: [`reviews/openbank-statement.md`](reviews/openbank-statement.md) ·
+resumen: [`summaries/openbank-statement.md`](summaries/openbank-statement.md).
+
+> 👤 **Qué cambia para ti:** el archivo de **Openbank entra tal y como lo
+> descargas** —el que se llama `.xls` y por dentro es una página web—, con sus
+> **dos años de histórico completos** y **sin convertirlo a mano ningún mes**. El
+> **saldo de la cuenta lo saca del propio archivo**: aquí no escribes la línea
+> `saldo;`. Lo único que escribes es el **IBAN, una sola vez**, en la primera
+> línea y con esta forma exacta: `<!-- iban;TU-IBAN -->` — ábrelo con el **Bloc de
+> notas, nunca con Excel** (Excel lo reescribiría entero). Si algún día Openbank
+> cambia la codificación de su archivo, **te lo dirá fallando**, en vez de meterte
+> 200 conceptos con las tildes rotas en silencio.
+
+1. ✅ **`src/modules/openbank/`** (7 archivos + 5 de test): lector de **HTML
+   propio y sin ninguna dependencia nueva** (`cheerio` descartado por él),
+   formato español del banco, parser, servicio, rutas, tipos y fixture sintético.
+2. ✅ **Codificación (delegada nº 2), resuelta por escrito:** la regla «siempre
+   UTF-8» **se acota, no se rompe** — lo que escribe él sigue en UTF-8 (MyInvestor
+   y N26 **sin tocar**, con test de regresión) y lo que emite el banco se lee con
+   la codificación de ese banco: `decodeCp1252Strict` en
+   [`src/lib/cp1252.ts`](../src/lib/cp1252.ts). **ADR-022** + `conventions.md` +
+   runbook.
+   > 🔎 **Medido y no supuesto:** cp1252 **mapea los 256 bytes**, así que no falla
+   > nunca; un fichero que llegara en UTF-8 entraría con los 200 conceptos en
+   > mojibake **sin un solo error**. Por eso el parser **exige que el fichero
+   > declare su codificación** y lo rechaza entero con `UNEXPECTED_ENCODING` (422)
+   > si no lo hace.
+3. ✅ **Dónde escribe él el IBAN (delegada nº 3), resuelta por escrito** en
+   `docs/dar-de-alta-un-banco.md`: **comentario HTML en la primera línea**,
+   `<!-- iban;<IBAN> -->`, leído solo antes de `<table>`, con `;` (con `:` no
+   vale) y validado por el normalizador único de la F21.
+4. ✅ **El saldo de la cuenta sale del propio fichero** (fila `Saldo:` del
+   preámbulo); las otras cuatro filas del preámbulo se ignoran **en silencio**.
+   La divisa de cada movimiento queda **vacía**.
+5. 📌 **Queda constancia:** el fichero **sí trae el saldo tras cada movimiento**
+   (única de los seis bancos) y **a propósito no se guarda** — `balance` sigue
+   `null` y el **ADR-013 no se toca**. Escrito en el informe §4, en el parser y en
+   `api-contract.md`, para que no haya que redescubrirlo.
+6. ✅ `POST /api/parser/openbank` + la línea del registro de `src/app.ts` (lo que
+   hace que `/api/import` deje de reportar sus `.xls` como `skipped`). Guardianes
+   de `architecture.test.ts` generalizados a **cuatro** bancos.
+7. ✅ Docs: **ADR-022** (+ nota en ADR-018), `conventions.md`,
+   `dar-de-alta-un-banco.md`, `api-contract.md` (§Parser de Openbank y el código
+   `UNEXPECTED_ENCODING`) y `roadmap.md` (**4 de 6 bancos**, quedan 2 parsers).
+8. ✅ **`./init.sh` verde: 628 tests, 628 pasan, 0 saltados** (baseline 535), con
+   la capa de comparación del guardián de la F14 **activa**. `oxlint` y
+   `prettier --check` limpios en todo lo tocado. **Cero dependencias nuevas.**
+
+> 🔒 Guardián de la F14, contado como pasó de verdad: los **cinco nombres de
+> columna** se escribieron **uno por línea con su comentario** en los dos sitios
+> donde aparecen —la trampa que saltó en la F18—, arreglado **en la raíz y sin
+> añadir ni un `no-real-data-ok`**. Los **conceptos, el titular y el CCC** de los
+> fixtures estuvieron inventados desde el principio… pero **los IMPORTES no**: en
+> la primera pasada se colaron **cifras reales del extracto** (una fila entera con
+> su saldo, y otras en el mismo orden relativo que el fichero real), y el informe
+> llegó a afirmar lo contrario. **Lo destapó el reviewer y se corrigió en la
+> segunda pasada**: cifras inventadas de cero —no «perturbadas»—, con otro orden
+> relativo y otros pares contiguos, y verificación explícita contra el fichero
+> gitignoreado. Lección, que es lo que hay que recordar: el 🔒 de `tasks.md` dice
+> «ni un **importe**, concepto, IBAN, CCC ni nombre», y el ADR-017 va de **datos
+> financieros**, no solo de personas.
+
+### Segunda pasada — el reviewer devolvió CHANGES_REQUESTED (5 puntos, uno solo de fondo)
+
+**El rechazo fue el 🔒 y solo el 🔒: había IMPORTES REALES del extracto de Openbank
+en archivos versionados.** Los conceptos, el titular y el CCC sí estaban
+inventados; las cifras no. Todo lo demás lo aprobó el reviewer y **no se ha
+tocado**. Detalle completo en el informe §Segunda pasada; veredicto en
+[`reviews/openbank-statement.md`](reviews/openbank-statement.md).
+
+1. ✅ **Cifras inventadas de cero, no «perturbadas»:** `openbankSampleRows()`
+   reescrita entera (importes **y** saldos), con **otro orden relativo** y **otros
+   pares contiguos** —el par contiguo era justo lo que delataba una fila copiada—.
+   Se conservan las propiedades que los tests prueban (miles, coma decimal, signo,
+   céntimos ≠ 00, el `0,00` del caso neutral, el ilegible y las dos filas
+   repetidas).
+2. ✅ Mismo arreglo en el **docstring de `parseAmountText`** (llevaba el **saldo
+   real de su cuenta**), en los `expect()` de `openbank.format.test.ts` —
+   actualizados, no borrados—, en las cifras al vuelo de los demás tests y en el
+   ejemplo de `docs/api-contract.md` §Parser de Openbank.
+3. ✅ **Cabecera de `openbank.fixture.ts` corregida** (afirmaba que todo estaba
+   inventado) y ampliada con la instrucción para quien toque una cifra.
+4. ✅ **Las dos afirmaciones falsas del informe, corregidas** —no reescritas—: el
+   🔒 de `tasks.md:8` dice «ni un **importe**, concepto, IBAN, CCC ni nombre», y yo
+   lo leí como «ni un nombre».
+5. ✅ **Verificado a mano, con tres reglas y auto-probando el verificador**: la del
+   propio guardián de la F14 (≥ 4 dígitos significativos) aplicada al `.xls` que
+   **ese guardián hoy no lee**, la de **pares contiguos** del reviewer, y una
+   exacta sobre los archivos de esta feature. **0 coincidencias en las tres.** El
+   script vive fuera del repo y ninguna cifra real se ha transcrito a ningún
+   archivo versionado, este incluido.
+6. ✅ **Ni un `no-real-data-ok` nuevo.** Arreglado en la raíz.
+7. ✅ **`./init.sh` verde otra vez: 628 tests, 0 saltados**; `oxlint` y
+   `prettier --check` limpios. **El reviewer aprobó esta segunda pasada** tras
+   rehacer la comprobación con su propio método (0 coincidencias, 0 pares), y con
+   eso la feature quedó **`done`**.
+
+> ⚠️ **Hallazgo del reviewer que NO es de esta feature:** el guardián de la F14
+> **no compara `.xls`**, así que el único banco cuyo fichero trae nombres de
+> personas es justo el que no vigilaba. Por eso la fuga pasó con la suite en
+> verde. Anotado abajo, en «Anotado, no se abre ahora», **pendiente de que lo
+> decida el humano**.
+
+> ⚠️ **Anotado, no reproducido:** una ejecución intermedia de `./init.sh` dio **1
+> test fallido sin poder identificar cuál** (salida truncada); las **cuatro**
+> siguientes, en verde 628/628 sin tocar nada. Posible flakiness preexistente de
+> la suite de integración contra Postgres. Está en el informe.
+
+> 📌 **Lo que le toca a él:** escribir el comentario del IBAN **una sola vez** en
+> su fichero de Openbank (Bloc de notas, **no Excel**) y probar el camino real.
+
+---
+
+### Primera review: CHANGES_REQUESTED (5 puntos), y el motivo es uno solo
+
+[`reviews/openbank-statement.md`](reviews/openbank-statement.md). Todo lo demás lo dio
+por bueno **comprobado, no leído del informe**: `./init.sh` verde (**628 tests, 0
+saltados**), `package.json` y `pnpm-lock.yaml` **intactos frente a git** (cero
+dependencias nuevas), los 6 puntos de la puerta cumplidos uno por uno, la guardia UTF-8
+de la F17 **no debilitada** (test de regresión), ADR-013 intacto, contrato común sin
+redeclarar y las dos decisiones delegadas resueltas por escrito.
+
+🔒 **El rechazo es el guardián de la F14: hay importes reales del fichero del humano en
+archivos versionados** — el fixture (una fila entera copiada, y cuatro importes más en
+el mismo orden relativo que el extracto real), un docstring de `openbank.format.ts` que
+lleva **el saldo real de la cuenta**, tres aserciones de `openbank.format.test.ts`, un
+ejemplo de `api-contract.md`, y el punto 🔒 de arriba y el informe **afirmando lo
+contrario**. Los conceptos, el titular y el CCC **sí** estaban inventados (comprobado
+palabra a palabra). `implementer` relanzado: inventar esas cifras de verdad —sin
+perturbar las reales, sin reproducir el orden relativo ni los pares (importe, saldo)
+contiguos— y **sin añadir ni un `no-real-data-ok`**.
+
+> 🐞 **Por qué la suite en verde no lo vio, y es lo que más deja esta review:**
+> [`src/no-real-data.test.ts:74`](../src/no-real-data.test.ts#L74) solo compara
+> `.txt .csv .json .md .tsv` — **el `.xls` de Openbank no se lee**, aunque sea texto
+> plano; y no existe `var/parsed/openbank/`, que es la otra vía. El único banco cuyo
+> fichero trae **nombres de personas** es justo el que el guardián no comparaba por
+> ninguna de las dos. «El guardián corrió con su capa activa» era cierto y **no probaba
+> nada para este banco**. **Tarea aparte anotada** (toca la F14, no entra en la F19):
+> añadir `.xls`/`.html` a `captureExtensions`, o exigir el volcado a
+> `var/parsed/<banco>/` antes de cerrar un banco nuevo.
+
+
 ## F21 `iban-normalization` — CERRADA el 2026-08-18
 
 **`reviewer`: APROBADO sin cambios requeridos**
@@ -77,6 +354,25 @@ Plan y estado:
 > reviewer).
 
 ### Anotado, no se abre ahora
+
+- 🟠 **El guardián de la F14 no vigila el fichero de Openbank, y es el único banco
+  cuyo fichero trae nombres de personas.** Lo descubrió el reviewer de la F19 y es
+  lo que explica que la fuga de importes pasara con la suite en verde: la capa de
+  comparación de [`src/no-real-data.test.ts`](../src/no-real-data.test.ts) solo lee
+  `.txt .csv .json .md .tsv`, así que **no abre el `.xls`** (que es texto plano,
+  HTML, y perfectamente comparable), y la otra vía —el volcado de `var/parsed/`—
+  tampoco existe hoy para este banco. **Tarea aparte y pendiente de que decidas
+  tú**, porque toca la F14 y no la F19: las salidas sobre la mesa son añadir
+  `.xls`/`.html` a las extensiones que compara, o exigir el volcado parseado antes
+  de dar por cerrado un banco nuevo. **Mientras no se haga, un `0 saltados` del
+  guardián no prueba nada para Openbank.**
+- 🟠 **Un test de la F12 falla una de cada tres pasadas completas**
+  (`src/modules/import/import.routes.test.ts`, «lists the imported movements most
+  recent first»: un `GET /api/movements` que devuelve 500). Lo vimos el implementer
+  y el reviewer por separado, en ejecuciones distintas; **ejecutado solo, pasa**.
+  Huele a carrera de la suite de integración contra Postgres en paralelo. No es de
+  la F19 y no bloqueó nada, pero un rojo intermitente enseña a ignorar los rojos,
+  que es lo caro.
 
 - 🟠 Escribir `iban:` con dos puntos acaba en `MISSING_ACCOUNT_DATA` («no hay iban en
   el fichero»), que es verdad pero manda a añadir una línea **ya escrita**. Decirlo

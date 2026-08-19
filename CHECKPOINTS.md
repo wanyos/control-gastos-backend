@@ -36,6 +36,27 @@
 - [ ] Los tests cubren al menos un camino feliz y un camino de error donde
       aplique.
 
+## C4 bis — La prueba real, en las features que leen ficheros del humano
+
+> Añadido el 2026-08-19, decidido por el humano tras la F19. **No sustituye a los
+> tests: los complementa.** Los tests usan fixtures sintéticos y no tocan ni la red ni
+> sus datos; la prueba real comprueba lo que el banco hace de verdad.
+
+- [ ] Si la feature añade o cambia un **parser de banco** (o cualquier lectura de un
+      fichero que escribe o descarga el humano), se hace **una pasada real con su
+      fichero** antes de dar la feature por cerrada, y su informe va a
+      `progress/explorations/prueba-real-<tema>-<fecha>.md`.
+- [ ] El informe lleva **recuentos y forma, nunca contenido**: ni importes, ni IBAN,
+      ni nombres, ni conceptos literales (🔒 F14 / ADR-017).
+
+**Por qué está aquí:** las dos veces que se ha hecho, encontró defectos que **la suite
+en verde no podía ver**. En N26 (2026-08-18, 493 tests verdes): el IBAN se guardaba
+literal, así que el mismo IBAN con y sin espacios creaba **dos cuentas** en silencio →
+F21. En Openbank (2026-08-19, 628 tests verdes): importes reales colados en un fixture
+—que el guardián de la F14 **no podía ver porque no lee `.xls`**— y un mensaje de error
+**falso** ante un fichero reguardado en otra codificación → F22. Dos features nuevas
+salidas de dos pasadas manuales.
+
 ## C5 — La sesión se cerró bien
 
 - [ ] No hay archivos sin trackear sospechosos (temporales, builds, caches

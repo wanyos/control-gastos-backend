@@ -196,14 +196,56 @@ class NotFoundError extends AppError {
   queda en su módulo. Lo que sí se comparte es lo que no es formato: la **forma de
   la salida** (`lib/parsed-statement.ts`) y la **codificación** (`lib/utf8.ts`).
   El banco siguiente que traiga CSV entrecomillado copia el patrón, no el módulo.
-- **Un fichero de texto se descodifica con `decodeUtf8Strict`, nunca con
-  `toString('utf8')`** (decidido 2026-08-15, F17; ver ADR-018). `toString('utf8')`
+  **Lo mismo con el HTML** (2026-08-19, F19): el fichero de Openbank se llama `.xls`
+  y por dentro es una página HTML, así que su lector de tablas vive en
+  [`src/modules/openbank/openbank.html.ts`](../src/modules/openbank/openbank.html.ts)
+  y **sin añadir ninguna dependencia** (decisión del humano: `cheerio` descartado
+  para trocear una tabla plana generada por máquina). El día que ese HTML se
+  complique, el cambio se queda dentro de ese archivo.
+- **Cada parser declara la codificación de ORIGEN de su banco, y la descodifica
+  estricta; `toString('utf8')` no se usa jamás** (ampliado 2026-08-19, F19; ver
+  ADR-022). La regla de la F17 no se rompe, se acota por **quién escribe el
+  fichero**: lo que escribe **el humano** va en UTF-8 (`decodeUtf8Strict`, sin
+  cambiar una línea en MyInvestor ni en N26) y lo que **emite el banco** se lee con
+  la codificación de ese banco. Hoy hay dos casos y eso es lo normal, no un
+  descuido: `decodeUtf8Strict` ([`src/lib/utf8.ts`](../src/lib/utf8.ts)) y
+  `decodeCp1252Strict` ([`src/lib/cp1252.ts`](../src/lib/cp1252.ts)), que es lo que
+  emite Openbank. Los dos viven en `lib/` por la misma razón —la codificación no es
+  un formato— y comparten el guardián del carácter de sustitución
+  (`assertNoReplacementCharacter`), que se **extrajo**, no se copió; el motivo y el
+  código los pone quien llama. **Siguen prohibidas las tres cosas de siempre:**
+  adivinar la codificación, encadenar *fallbacks* y reparar un fichero.
+  - **Un descodificador permisivo obliga a una guardia extra:** cp1252 mapea los 256
+    bytes, así que **no falla nunca** y un fichero que llegara en UTF-8 se leería
+    entero como mojibake sin dar un solo error. Por eso el parser de Openbank exige
+    que el fichero **declare** su codificación (`<meta>`), y si declara otra lo
+    **rechaza entero** (`UnexpectedEncodingError`, código `UNEXPECTED_ENCODING`,
+    422). El criterio es lo que el fichero **afirma**, no una corazonada sobre sus
+    bytes.
+  - **Y lo que el fichero afirma tiene que cuadrar con lo que sus bytes pueden ser**
+    (ampliado 2026-08-19, F22; ver ADR-023). Un fichero que declara cp1252/iso-8859-1
+    y cuyos bytes son **UTF-8 válido con secuencias multibyte** no lo escribió el
+    banco: un cp1252 con acentos **no es** UTF-8 válido, porque cada letra acentuada
+    es un byte suelto de `0xC0-0xFF`. Eso es un **hecho comprobable**, no una
+    detección de codificación, así que las tres prohibiciones siguen en pie. Lo
+    detecta `detectResaveAsUtf8` ([`src/lib/cp1252.ts`](../src/lib/cp1252.ts)), que
+    es **opt-in**: la llama el parser cuyo banco emite una codificación de un solo
+    byte, y por eso los otros tres bancos no cambian (hay guardián en
+    `architecture.test.ts`). Un fichero **puramente ASCII** no la dispara a propósito:
+    las dos lecturas son los mismos bytes y no hay daño posible. El motivo distingue
+    dos remedios —guardar con **Western (Windows-1252)** si los acentos siguen ahí,
+    **volver a descargar** el fichero si ya trae `U+FFFD`— porque el que trae `U+FFFD`
+    **no tiene arreglo**: eso es lo que le pasó al fichero real el 2026-08-19 al
+    abrirlo con Visual Studio Code y darle a guardar.
+- **La norma anterior, tal como se escribió en su día** (decidido 2026-08-15, F17;
+  ver ADR-018), y que sigue vigente para el fichero que edita el humano: `toString('utf8')`
   no lanza jamás: un byte que no es UTF-8 se convierte en `�` en silencio y el dato
   queda corrupto **de forma irreversible** con el parseo aparentando ir perfecto. El
   guardián compartido es [`src/lib/utf8.ts`](../src/lib/utf8.ts) —encoding, no
   formato, por eso se comparte— y **rechaza el fichero entero** (`NotUtf8Error`,
   código `NOT_UTF8`) con el byte, la línea y la instrucción de volver a guardarlo en
-  UTF-8. No se adivina la codificación ni se aprende cp1252.
+  UTF-8. Nunca se **adivina** una codificación: la de cada banco se **declara** en
+  su parser (ADR-022), que no es lo mismo.
 - **El IBAN de la cuenta va en el fichero, una sola vez** (decidido 2026-08-12).
   Si el banco no lo exporta, lo escribe el humano como línea de preámbulo
   `iban;<IBAN>` **encima** de la cabecera; el parser la lee **solo si está
@@ -230,6 +272,11 @@ class NotFoundError extends AppError {
   escribe es una persona. Un banco que necesite un tercer dato así **reutiliza
   `findPreambleLine`** (ADR-019) en vez de escribir otro buscador casi igual.
   Cada banco tiene el suyo: el mecanismo se copia, el código no.
+  **En un fichero que no es texto plano, la línea de preámbulo toma la forma
+  equivalente de ese formato** (2026-08-19, F19): en el HTML de Openbank es un
+  **comentario HTML en la primera línea**, `<!-- iban;<IBAN> -->`, leído solo si
+  está **antes de `<table>`**. Sigue siendo lo mismo: etiquetada, con `;`, encima
+  de los datos del banco y nunca inferida por la forma de nada de la tabla.
 - **Esas líneas van con `;` sea cual sea el separador del fichero** (decidido
   2026-08-17 al llegar N26, cuyo CSV separa por comas). Son **líneas nuestras, no
   del banco**: una sola forma de escribirlas en todo el proyecto, ya documentada

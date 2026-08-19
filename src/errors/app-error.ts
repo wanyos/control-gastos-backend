@@ -72,6 +72,26 @@ export class NotUtf8Error extends AppError {
   }
 }
 
+/**
+ * A file does not arrive in the encoding its bank emits, and the file itself is
+ * what says so (feature 19).
+ *
+ * Why it is NOT `NotUtf8Error`: there the file is WRONG — the human saved it in
+ * cp1252 and the fix is to save it again. Here the file may be perfectly fine
+ * and simply be written in another encoding than the one its parser declares as
+ * its origin, so telling the human to "save it as UTF-8" would be plainly bad
+ * advice. Two situations, two codes, two reasons.
+ *
+ * 422 like the rest of the well-formed request carrying unreadable content, and
+ * it rejects the WHOLE file: an encoding is a property of the byte stream, never
+ * of one row (ADR-018 decision 2, ADR-022).
+ */
+export class UnexpectedEncodingError extends AppError {
+  constructor(message = 'Unexpected file encoding') {
+    super(message, 'UNEXPECTED_ENCODING', 422)
+  }
+}
+
 export class DriveConnectionError extends AppError {
   constructor(message = 'Cannot reach Google Drive') {
     super(message, 'DRIVE_CONNECTION_ERROR', 503)

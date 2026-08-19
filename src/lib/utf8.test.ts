@@ -102,6 +102,56 @@ describe('decodeUtf8Strict — bytes that are not UTF-8 (feature 17)', () => {
   })
 })
 
+/**
+ * Feature 19 extracted the replacement-character guard into an exported helper
+ * so the cp1252 decoder of another bank could reuse it. This block is the
+ * regression that says the extraction changed NOTHING here: MyInvestor's guard
+ * is not weakened, which is the explicit condition of that feature (R2).
+ */
+describe('decodeUtf8Strict is untouched by the extraction of the guard (feature 19, T5)', () => {
+  it('still rejects the exact same inputs, with the same code and the same reason', () => {
+    const cases: Array<{ bytes: Buffer; contains: string }> = [
+      // Bytes that are not UTF-8: the cp1252 `Ó` of the measured incident.
+      { bytes: Buffer.from([0x53, 0xd3, 0x4e]), contains: 'no está guardado en UTF-8' },
+      // Valid UTF-8 that spells out the scar of an earlier failed decoding.
+      { bytes: Buffer.from('CONCEPTO �N', 'utf8'), contains: 'carácter de sustitución' },
+    ]
+
+    for (const { bytes, contains } of cases) {
+      const error = catchError(() => decodeUtf8Strict(bytes))
+      expect(error.code).toBe('NOT_UTF8')
+      expect(error.message).toContain(contains)
+    }
+  })
+
+  it('still accepts what it accepted before, unchanged', () => {
+    expect(decodeUtf8Strict(Buffer.from('SUSCRIPCIÓN AÑO €', 'utf8'))).toBe('SUSCRIPCIÓN AÑO €')
+  })
+})
+
+/**
+ * Feature 22 added a second consistency check for the files a BANK emits in a
+ * single-byte encoding. This block is the regression that says it changed
+ * nothing here, which is the explicit condition of that feature (C5): the guard
+ * of the file the HUMAN writes — MyInvestor and N26 — behaves exactly as before,
+ * and it is not wired into this decoder at all.
+ */
+describe('decodeUtf8Strict is untouched by the mismatch guard (feature 22, C5)', () => {
+  it('still accepts UTF-8 with accents, which is what the human is told to save', () => {
+    // The very shape the new guard rejects when a file DECLARES cp1252 — valid
+    // UTF-8 with multibyte sequences — is the CORRECT shape here, and it must
+    // keep entering without a word.
+    expect(decodeUtf8Strict(Buffer.from('GESTIÓN AÑO ÚNICO', 'utf8'))).toBe('GESTIÓN AÑO ÚNICO')
+  })
+
+  it('still rejects a file saved as cp1252, with the same code and reason', () => {
+    const error = catchError(() => decodeUtf8Strict(Buffer.from([0x53, 0xd3, 0x4e])))
+
+    expect(error.code).toBe('NOT_UTF8')
+    expect(error.message).toContain('no está guardado en UTF-8')
+  })
+})
+
 function catchError(run: () => unknown): NotUtf8Error {
   try {
     run()

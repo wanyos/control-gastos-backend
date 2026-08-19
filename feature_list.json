@@ -841,7 +841,7 @@
         "Cada criterio tiene al menos un test con fixtures SINTÉTICOS en memoria, sin datos reales y sin red, mapeado en progress/implementations/openbank-statement.md; ./init.sh termina en verde con la suite completa, incluido el guardián de la F14 con su capa de comparación activa"
       ],
       "sdd": true,
-      "status": "spec_ready"
+      "status": "done"
     },
     {
       "id": 20,
@@ -918,6 +918,46 @@
         "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 3): las dos cuentas guardadas hoy están limpias (sin espacios y en mayúsculas, comprobado contra la base de datos el 2026-08-18), así que hay que justificar si se escribe migración o si no hace falta. Si no se escribe, queda dicho por qué",
         "Los movimientos ya importados NO se tocan y no hace falta reimportar nada (deriva de: 'no quiero que esto toque los movimientos que ya tengo')",
         "Cada criterio tiene al menos un test con fixtures SINTÉTICOS en memoria, sin datos reales y sin red, mapeado en progress/implementations/iban-normalization.md; ./init.sh termina en verde con la suite completa, incluido el guardián de la F14 con su capa de comparación activa"
+      ],
+      "sdd": false,
+      "status": "done"
+    },
+    {
+      "id": 22,
+      "name": "encoding-mismatch-guard",
+      "title": "Un fichero que declara una codificación y trae otra se rechaza diciendo la verdad",
+      "intent": {
+        "_procedencia": "Nace de la prueba real de Openbank del 2026-08-19 (progress/explorations/, misma sesión). El humano añadió la línea del iban a su extracto de Openbank abriéndolo con Visual Studio Code y dándole a guardar. Sus palabras: 'de todas formas abri el archivo con visual studio, solo le di a guardar despues de escribir la linea del iban'. VS Code leyó como UTF-8 un fichero cp1252, convirtió sus 8 caracteres acentuados en el carácter de sustitución y lo reguardó en UTF-8, dejando intacta la declaración 'iso-8859-1' del propio fichero. El importador falló —bien— pero con el mensaje 'no se encuentra la cabecera de la tabla de Openbank: el archivo no es un extracto de este banco', que es falso y manda a mirar al sitio equivocado. La feature la pidió el humano explícitamente: 'si abre la feature'.",
+        "que_quiero": "Que cuando un fichero venga reguardado en otra codificación, el error me diga exactamente eso y qué tengo que hacer, en vez de decirme que el archivo no es de ese banco. Y que si el fichero ya trae caracteres destrozados, me lo diga también y me mande a descargarlo otra vez, porque eso ya no tiene arreglo.",
+        "por_que": "Me ha pasado a la primera, haciendo lo obvio: abrir el archivo con el editor que uso y darle a guardar. Me va a volver a pasar cada mes. El mensaje actual me hizo pensar que el parser estaba mal o que había subido el archivo equivocado, y lo que estaba mal era el guardado. Perdí una vuelta entera por un mensaje que decía una cosa que no era verdad.",
+        "como_se_que_esta_bien": [
+          "Si subo un fichero de Openbank que declara iso-8859-1 pero está guardado en UTF-8, el error me dice que se ha reguardado en otra codificación, no que el archivo no sea un extracto del banco.",
+          "Si el fichero ya trae caracteres rotos (los rombos con interrogación), el error me lo dice y me manda a descargarlo otra vez del banco, porque las tildes ya no se pueden recuperar.",
+          "El mensaje me dice qué hacer, no solo qué ha pasado: con qué codificación tengo que guardarlo.",
+          "Un fichero bueno sigue entrando exactamente igual que hoy: esto no puede empezar a rechazar lo que hoy funciona."
+        ],
+        "que_no_quiero": [
+          "No quiero que el backend intente adivinar la codificación ni reparar el fichero: si está roto, se rechaza y lo vuelvo a bajar del banco.",
+          "No quiero que se toquen los parsers de Bankinter, MyInvestor ni N26 más allá de lo imprescindible: esto sale de Openbank.",
+          "No quiero perder la guardia que ya hay: si un día el fichero deja de declarar su codificación, se sigue rechazando entero, como decidí en la feature 19."
+        ],
+        "delego_en_agente": [
+          "Cómo se detecta que un fichero declara una codificación y trae otra, sin adivinar codificaciones: qué señal es fiable y cuál no.",
+          "Si esto vive solo en el parser de Openbank o en src/lib/ al lado de los dos descodificadores que ya hay, y si los otros bancos deberían heredarlo.",
+          "Qué código de error se usa (uno nuevo, o el UNEXPECTED_ENCODING que ya existe con otro motivo) y dónde se documenta."
+        ]
+      },
+      "acceptance": [
+        "Un fichero de Openbank que DECLARA iso-8859-1 y en realidad está guardado en UTF-8 se rechaza con un error que dice que el fichero se ha reguardado en otra codificación, NUNCA con el mensaje de cabecera no encontrada (deriva de: 'el error me dice que se ha reguardado en otra codificación, no que el archivo no sea un extracto del banco'). Test con el caso exacto que se dio el 2026-08-19",
+        "Un fichero que contiene el carácter de sustitución U+FFFD se rechaza con un motivo propio que dice que los caracteres ya están perdidos y que hay que volver a descargarlo del banco: no se intenta reparar (deriva de: 'me manda a descargarlo otra vez, porque las tildes ya no se pueden recuperar' y de 'no quiero que el backend intente adivinar ni reparar')",
+        "Los dos mensajes dicen QUÉ HACER, no solo qué pasa: nombran la codificación con la que se debe guardar y, en el caso del U+FFFD, que hay que redescargar (deriva de: 'el mensaje me dice qué hacer, no solo qué ha pasado')",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1): cómo se detecta el desajuste sin adivinar codificaciones. La señal admitida es la comprobable —un fichero que declara cp1252/iso-8859-1 y cuyos bytes son UTF-8 válido con secuencias multibyte NO es cp1252 escrito por el banco—, y hay que justificar por qué no hay falsos positivos con ficheros legítimos (un cp1252 puro con acentos NO es UTF-8 válido)",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 2): si la guardia vive en el módulo de Openbank o en src/lib/ junto a decodeUtf8Strict y decodeCp1252Strict, y si los otros bancos la heredan. Los parsers de Bankinter, MyInvestor y N26 NO cambian de comportamiento (deriva de: 'no quiero que se toquen los parsers de los otros bancos')",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 3): código de error nuevo o reutilización de UNEXPECTED_ENCODING, documentado en docs/api-contract.md con su HTTP status, y en el ADR que corresponda",
+        "La guardia de la F19 NO se debilita: un fichero que no declara ninguna codificación, o declara una que el parser no acepta, se sigue rechazando entero (deriva de: 'no quiero perder la guardia que ya hay')",
+        "Un fichero legítimo del banco (cp1252, declarando iso-8859-1) sigue entrando con sus 200 movimientos y 0 unparsedRows, exactamente como hoy: hay test de no-regresión (deriva de: 'un fichero bueno sigue entrando exactamente igual que hoy')",
+        "docs/dar-de-alta-un-banco.md dice cómo guardar el fichero SIN romperlo con el editor que el humano usa de verdad, Visual Studio Code (reabrir y guardar con la codificación Western/Windows-1252), no solo con el Bloc de notas: el runbook actual le costó una vuelta entera el 2026-08-19",
+        "Cada criterio tiene al menos un test con fixtures SINTÉTICOS en memoria, sin datos reales y sin red, mapeado en progress/implementations/encoding-mismatch-guard.md; ./init.sh termina en verde con la suite completa, incluido el guardián de la F14 con su capa de comparación activa"
       ],
       "sdd": false,
       "status": "done"

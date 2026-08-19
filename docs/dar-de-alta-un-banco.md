@@ -202,6 +202,57 @@ importa y **no se mueve**: se corrige el fichero y se reintenta.
   escribirla con la coma del fichero, el parser de N26 también la entiende, pero
   la forma buena es esta.)
 
+### Si el fichero del banco es HTML: el IBAN va en un comentario de la primera línea
+
+> Añadido el 2026-08-19 con la feature 19 (`openbank-statement`). Es la decisión
+> delegada nº 3 de esa feature, resuelta aquí por escrito.
+
+El fichero de **Openbank** se llama `.xls` pero **no es un Excel**: por dentro es
+una página HTML con una tabla. Ahí no hay «primera línea de la tabla» que puedas
+escribir sin pelearte con el HTML, así que el IBAN va en un **comentario HTML, en
+la primera línea del fichero**, con esta forma exacta:
+
+```html
+<!-- iban;ES9121000418450200051332 -->
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" ...>
+```
+
+> Ese IBAN es el **público de la documentación española**, no el tuyo. El tuyo va
+> solo en tu fichero de Drive y en su copia local de `var/drive-read/`, que está
+> gitignoreada.
+
+Por qué ahí y no en otro sitio:
+
+- **Se ve nada más abrir el fichero** y es difícil ponerlo en el sitio
+  equivocado: o está en la primera línea o no está.
+- **Es HTML válido:** el navegador y Excel lo ignoran, así que el fichero se
+  sigue abriendo exactamente igual que antes de tocarlo.
+- **Es la misma forma `etiqueta;valor` de los otros bancos**, con el mismo `;`
+  (con `:` no vale, como en todos los demás) y leída **solo** si está **antes de
+  la tabla**. El número de cuenta que el propio fichero imprime es un **CCC** y
+  el backend **nunca** deriva de él un IBAN, aunque el cálculo sea exacto:
+  decisión tuya del 2026-08-17.
+
+Cómo se escribe, en la práctica:
+
+1. 🔴 **No lo abras con Excel.** Excel reescribiría el fichero entero y dejaría de
+   ser lo que dio el banco.
+2. 🔴 **Y si lo abres con Visual Studio Code —o con cualquier editor moderno—,
+   guárdalo con la codificación del banco, no con la de por defecto.** Esto es lo
+   que hay que hacer, paso a paso, y por qué está en 🔴: ver
+   §*Editarlo con Visual Studio Code sin romperlo*, aquí abajo.
+3. Añade la línea del comentario arriba del todo y guarda **sin cambiar la
+   codificación** (ver la sección de codificación, más abajo: este fichero **no**
+   va en UTF-8, va como lo emite el banco).
+4. **Solo hace falta la primera vez.** Los ficheros siguientes ya no lo
+   necesitan: la cuenta ya existirá y el importador la resuelve sola. Si un mes
+   se te olvida, no falla nada.
+
+**El saldo de Openbank NO lo escribes tú**: ese banco lo trae en su propio
+preámbulo (la fila `Saldo:`) y el backend lo lee de ahí. Las demás filas de ese
+preámbulo —fecha de descarga, número de cuenta, descripción y titular— se ignoran
+en silencio y **no** aparecen como filas sin parsear.
+
 ## El saldo de la cuenta va en la misma cabecera, una línea más
 
 > Añadido el 2026-08-16 con la feature 16 (`statement-balance`).
@@ -242,16 +293,30 @@ que MyInvestor no reporta y sigue vacío en todas las líneas. Son dos datos
 distintos y se guardan aparte a propósito. Por ahora **solo se parsea y se
 vuelca**: todavía no se persiste en la base de datos.
 
-## El fichero se guarda en UTF-8, siempre
+## Lo que escribes TÚ se guarda en UTF-8; lo que emite el banco, como lo emita
 
 > Añadido el 2026-08-15 con la feature 17 (`statement-encoding-guard`), después de
-> que pasara de verdad.
+> que pasara de verdad. **Acotado el 2026-08-19 con la feature 19**
+> (`openbank-statement`), que es la decisión delegada nº 2 de esa feature: la
+> regla no se rompe, se dice de quién es.
+
+**La regla, en dos líneas:**
+
+- **El fichero que EDITAS tú se guarda en UTF-8** (MyInvestor, N26). Aquí no
+  cambia absolutamente nada de lo que ya hacías.
+- **El fichero que emite el BANCO se lee con la codificación de ese banco**, que
+  su parser declara. Openbank exporta en **cp1252** y así se lee: **tú no
+  reconviertes nada**.
 
 **Al editar el fichero para meterle la línea `iban;`, guárdalo en UTF-8.** El Bloc
 de notas en modo ANSI y Excel guardan en **cp1252** sin avisar, y ahí la `Ó` deja
 de ser `c3 93` para ser un solo byte `d3` que no es UTF-8 válido.
 
 - En el Bloc de notas: *Guardar como → Codificación: **UTF-8***.
+- En Visual Studio Code: la barra de estado (abajo a la derecha) dice la
+  codificación del archivo abierto; **`Save with Encoding` → `UTF-8`**. Aquí el
+  valor por defecto del editor es el bueno — **el único fichero donde NO lo es es
+  el de Openbank**, que va en cp1252 (ver más abajo).
 - En Excel: *Guardar como → **CSV UTF-8***. Ojo también al **separador de la
   tabla**, que es del banco y no se toca: MyInvestor exporta con `;` y N26 con
   `,`. Lo único que escribes tú son las dos líneas de preámbulo, y esas van
@@ -278,7 +343,90 @@ de N26 es ASCII puro hoy, pero eso es suerte del mes: en cuanto un comercio trai
 una tilde, el problema es el mismo;
 el `.xlsx` de Bankinter no la necesita (no es texto plano) y los `.json` de producto
 se escriben aparte. **Al dar de alta un banco cuyo fichero sea texto, su parser
-descodifica con `decodeUtf8Strict`, no con `toString('utf8')`.**
+declara con qué codificación lo lee y usa el descodificador estricto que le
+corresponda —`decodeUtf8Strict` o el de la codificación de ese banco—, nunca
+`toString('utf8')`.**
+
+### El caso de Openbank: cp1252 y no es un error
+
+Openbank emite su fichero en **cp1252** y lo **declara** dentro
+(`<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />`).
+No es un fichero mal guardado: es lo que da el banco. Por eso:
+
+- **Tú no lo conviertes.** Lo subes tal y como lo descargas; el único cambio que
+  le haces es el comentario del IBAN, y **la primera vez nada más**.
+- 🔴 **No lo vuelvas a guardar con Excel.** Excel lo reescribiría entero (y muy
+  probablemente le cambiaría la codificación), y entonces sí fallaría.
+- **Si algún día Openbank deja de declarar esa codificación** —porque pase a
+  UTF-8, por ejemplo—, ese fichero se **rechaza entero** con el código
+  `UNEXPECTED_ENCODING` y un motivo que dice qué se esperaba y qué se encontró.
+  No se lee «por si acaso»: leerlo igual metería 200 conceptos con los acentos
+  rotos **sin dar ni un fallo**, que es el daño de la F17 al revés. Cuando pase,
+  es una línea de código (la lista de codificaciones que acepta ese parser), no
+  un drama.
+
+### Editarlo con Visual Studio Code sin romperlo
+
+> Añadido el 2026-08-19 con la feature 22 (`encoding-mismatch-guard`), **después de
+> que pasara de verdad**: hasta ese día esta página solo hablaba del Bloc de notas,
+> y el editor que usas es Visual Studio Code. Te costó una vuelta entera de
+> diagnóstico.
+
+🔴 **El guardado por defecto de un editor moderno es UTF-8, y eso destruye este
+fichero sin avisarte.** VS Code abre el `.xls` de Openbank suponiendo UTF-8; como
+sus acentos son bytes cp1252, no son UTF-8 válido y el editor **ya te los enseña
+como `�`**. En cuanto le das a guardar, escribe esos `�` de verdad en el fichero
+—en UTF-8— y deja el `<meta charset=iso-8859-1>` intacto. Las tildes originales
+**ya no están** y no hay forma de recuperarlas.
+
+**Cómo hacerlo bien** (los dos comandos están en la barra de estado, abajo a la
+derecha, donde pone la codificación del archivo abierto):
+
+1. Abre el fichero y, **antes de tocar nada**, pulsa la codificación de la barra de
+   estado → **`Reopen with Encoding`** → **`Western (ISO 8859-1)`** (escribe `8859`
+   en el buscador de la lista). Si tu VS Code también ofrece
+   **`Western (Windows 1252)`**, vale igual: ver el recuadro de abajo. Los acentos
+   tienen que verse bien; si ves `�`, ese fichero ya está roto: **bórralo y
+   descárgalo otra vez del banco**.
+2. Escribe la línea del IBAN arriba del todo.
+3. Guarda con la codificación correcta: barra de estado → **`Save with Encoding`**
+   → la misma con la que reabriste. (Un `Ctrl+S` normal, después de haber reabierto
+   con esa codificación, también la conserva; lo que no puede pasar es que ponga
+   `UTF-8` en la barra de estado cuando guardas.)
+
+> ⚠️ **`Reopen with Encoding` y `Save with Encoding` no son lo mismo, y el orden
+> importa.** *Reopen* vuelve a leer el fichero interpretando otra codificación: es
+> el que **repara** la vista. *Save* escribe **lo que ya tienes en pantalla**, con
+> los `�` incluidos si los hay. Si abriste en UTF-8 y ves rombos, hacer *Save with
+> Encoding* no arregla nada: consolida el destrozo.
+
+> 📌 **`ISO 8859-1` o `Windows 1252`: las dos valen, y `ISO 8859-1` es la que verás
+> seguro.** Según la versión y el idioma de VS Code, la lista puede no ofrecer
+> ninguna entrada con el nombre «Windows 1252» (pasó el 2026-08-19: solo salían las
+> `ISO`). No es un problema: las dos codificaciones **solo se diferencian en el
+> rango 0x80-0x9F** —comillas tipográficas, guion largo, el símbolo del euro— y son
+> **idénticas byte a byte** en vocales acentuadas y `ñ`, que es lo único que trae
+> este fichero. Además `ISO 8859-1` mapea **los 256 bytes**, así que reabrir y
+> guardar con ella **no puede perder nada**, y es justamente el nombre que el propio
+> fichero declara en su `<meta charset=iso-8859-1>`. El backend lo lee como cp1252,
+> que acepta esos bytes exactamente igual.
+
+**Si se te escapa, el backend te lo dice y te dice qué hacer** (feature 22): el
+fichero se **rechaza entero** con el código `UNEXPECTED_ENCODING` y un motivo que
+distingue los dos casos —«se ha vuelto a guardar en UTF-8: guárdalo con la
+codificación Western (Windows-1252)» y, si ya trae `�`, «los caracteres acentuados
+ya se han perdido: vuelve a descargarlo del banco»—. **No** te dirá, como hacía
+antes, que el archivo no es un extracto de este banco: eso era falso y te mandaba a
+mirar al sitio equivocado.
+
+**Y el fichero no se repara nunca**, ni aquí ni en el backend: si trae `�`, se baja
+otra vez del banco. Un fichero que se «arregla» solo es un fichero en el que no
+puedes confiar.
+
+El decodificador vive en [`src/lib/cp1252.ts`](../src/lib/cp1252.ts)
+(`decodeCp1252Strict`), al lado del de UTF-8 y por el mismo motivo: la
+codificación no es un formato. Lo que **sigue igual** es todo lo demás: nadie
+adivina la codificación, no hay cascada de intentos y nunca se repara un fichero.
 
 ## Reglas del nombre de banco (las aplica `normalizeBankName`)
 

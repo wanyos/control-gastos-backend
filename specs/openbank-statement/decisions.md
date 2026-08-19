@@ -50,3 +50,26 @@ base de datos: esta feature es parser y volcado, como las anteriores.
 
 - **Dos bancos, dos codificaciones distintas**, a propósito: MyInvestor rechaza todo lo que no sea UTF-8 y Openbank exige cp1252. Es lo que dice el punto 🔴 2; el ADR nuevo lo deja escrito para que dentro de seis meses no parezca un descuido.
 - **Nada se persiste todavía.** El extracto se parsea y se vuelca a JSON local; el saldo de la cuenta sigue sin llegar a la base de datos, igual que en MyInvestor desde la F16.
+
+---
+
+## ✅ Puerta de aprobación — APROBADA por el humano (2026-08-19)
+
+Los **6 puntos 🔴 se confirman tal cual estaban redactados**, todos en su opción
+principal; ninguna alternativa se toma. Literal de lo que dijo, punto por punto:
+
+1. **Leer el HTML nosotros, sin añadir ninguna dependencia ni librería.** `cheerio`
+   queda descartado.
+2. **Openbank se lee en cp1252**, «como llega del banco». La regla «siempre UTF-8» se
+   acota al fichero que escribe él (MyInvestor), no se rompe.
+3. **Si algún día cambia la codificación, da error y se rechaza el fichero entero.**
+   Nada de leerlo como cp1252 pase lo que pase.
+4. **El IBAN va en la primera línea**, en el comentario HTML, «como en el resto» de
+   bancos: una línea de preámbulo que él escribe una vez.
+5. **Del preámbulo solo se lee `Saldo:`**; fecha, número de cuenta, descripción y
+   titular se ignoran en silencio, sin ensuciar `unparsedRows`.
+6. **La divisa de cada movimiento queda vacía.** Se entiende que es todo en euros,
+   pero el dato no está en el fichero y no nos lo inventamos.
+
+Las 4 decisiones ya cerradas, las 5 técnicas y las consecuencias de más arriba **no se
+reabren**. La feature pasa de `spec_ready` a `in_progress`.

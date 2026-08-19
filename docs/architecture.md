@@ -1335,6 +1335,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   `decodeUtf8Strict` y no `toString('utf8')` (anotado en `docs/conventions.md`
   §Parsers de banco y en `docs/dar-de-alta-un-banco.md`). El BOM inicial se sigue
   tolerando: es UTF-8 válido y la función no lo toca —quien lee el formato decide—.
+- **Acotado por el ADR-022 (2026-08-19), sin debilitarse:** esta guardia es la del
+  fichero que **escribe el humano**, y ahí **no cambia ni una línea** (MyInvestor y
+  N26 siguen exactamente igual, con test de regresión que lo fija). Lo que el
+  ADR-022 añade es el otro caso, que este ADR no contemplaba porque todavía no
+  existía: el fichero que **emite el banco** en su propia codificación.
 
 ### ADR-019: El saldo de la cuenta es un campo del contrato común (`accountBalance`), no el `balance` de una línea, y se lee de una segunda línea de preámbulo etiquetada
 
@@ -1511,6 +1516,168 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   `readPreambleIban` sobre su línea y ya. `docs/api-contract.md` gana el código
   `INVALID_IBAN`, `docs/conventions.md` §Parsers de banco lo recoge como norma y
   `docs/dar-de-alta-un-banco.md` explica qué pasa si el IBAN se teclea mal.
+
+
+### ADR-022: El alcance de la regla de codificación — lo que escribe el humano va en UTF-8; lo que emite el banco se lee con la codificación de ESE banco, declarada por su parser y exigida al fichero
+
+- **Fecha:** 2026-08-19.
+- **Estado:** aceptada (feature 19 `openbank-statement`, decisión delegada nº 2 del
+  `intent`, aprobada por el humano en la puerta el mismo día).
+- **Contexto:** Openbank exporta su extracto en **cp1252** y lo declara en su
+  `<meta http-equiv="Content-Type" … charset=iso-8859-1 />`. No es un fichero mal
+  guardado: es lo que da el banco, todos los meses. La regla del ADR-018 —«el
+  fichero se guarda en UTF-8, siempre»— se escribió para el texto que **edita el
+  humano**, y aplicada tal cual a este banco rechazaría su fichero cada mes y
+  obligaría a una conversión manual mensual, que es justo el tipo de paso que ya
+  ha costado dos incidencias a este proyecto (la coma decimal y el cp1252 de
+  MyInvestor).
+- **Decisión:** acotar la regla por **quién escribe el fichero**, no debilitarla.
+  1. **Lo que escribe el humano se guarda en UTF-8** (ADR-018, intacto).
+     `decodeUtf8Strict` sigue rechazando un extracto que él guardó en ANSI, con el
+     mismo código y el mismo motivo; hay **test de regresión** que lo fija
+     (`src/lib/utf8.test.ts`, feature 19, T5).
+  2. **Lo que emite un banco se descodifica con la codificación DE ESE BANCO,
+     declarada explícitamente en su parser.** Openbank usa `decodeCp1252Strict`
+     (`src/lib/cp1252.ts`); MyInvestor y N26 no cambian.
+  3. **Las tres prohibiciones del ADR-018 siguen en pie:** nadie adivina la
+     codificación, no hay cascada de *fallback* y no se repara ningún fichero.
+  4. **El descodificador vive en `lib/`, no en el módulo del banco**, por el mismo
+     razonamiento del ADR-018 §3: la codificación no es un formato y no lleva
+     dentro conocimiento de ningún banco. El guardián del carácter de sustitución
+     se **extrajo** de `utf8.ts` a un export reutilizable
+     (`assertNoReplacementCharacter`) en vez de copiarse, y el **motivo y el
+     código** los pone quien llama, porque pertenecen a la codificación que se
+     estaba leyendo.
+  5. **La guardia nueva, que es el núcleo de este ADR: el fichero tiene que
+     DECLARAR su codificación.** cp1252 mapea los **256 bytes** (medido en Node
+     24: los cinco no asignados salen como su control C1), así que **no puede
+     fallar nunca**: un fichero que llegara en UTF-8 se leería como cp1252 y
+     produciría mojibake (`Ó` → `Ã“`) **sin un solo byte inválido, sin `U+FFFD` y
+     sin ningún error** — el daño exacto del ADR-018, en espejo. Por eso el parser
+     lee lo que el propio fichero **afirma** (`<meta>`) y, si no dice
+     `iso-8859-1`/`windows-1252`, **rechaza el fichero entero** con
+     `UnexpectedEncodingError` (código estable `UNEXPECTED_ENCODING`, 422). Es un
+     hecho del fichero, no una heurística sobre sus bytes.
+  6. **Código nuevo y no reutilización de `NOT_UTF8`:** ahí el fichero **está mal**
+     y el arreglo es volver a guardarlo; aquí el fichero puede estar perfecto y
+     simplemente venir en otra codificación, así que decirle al humano «guárdalo
+     en UTF-8» sería un consejo equivocado. Dos situaciones, dos códigos, dos
+     motivos.
+- **Alternativas descartadas:** (a) **que el humano reconvierta el fichero a UTF-8
+  cada mes** — descartada por el `intent` («no quiero convertir el archivo a mano
+  cada mes») y por el historial de incidencias de los pasos manuales recurrentes;
+  (b) **leer siempre cp1252 pase lo que pase, sin exigir la declaración** —
+  descartada por el humano en la puerta: nunca falla nada… hasta el mes en que
+  entran 200 conceptos con la tilde rota y nadie se entera; (c) **cascada UTF-8 →
+  cp1252** — es adivinar la codificación, prohibido por el ADR-018; (d) **aprender
+  la codificación de los bytes** (detección estadística) — acierta «casi siempre»,
+  que es la peor garantía posible para un dato que va a la base de datos.
+- **Consecuencia:** al dar de alta un banco, su parser **declara con qué
+  codificación lee**; el descodificador estricto que le toque vive en `lib/` y
+  `toString('utf8')` sigue prohibido en todo el proyecto. Dos bancos con dos
+  codificaciones distintas es, a partir de hoy, lo normal y no un descuido:
+  `docs/conventions.md` §Parsers de banco lo recoge como norma y
+  `docs/dar-de-alta-un-banco.md` explica al humano qué le toca a él (nada, salvo
+  no volver a guardar el fichero con Excel). `docs/api-contract.md` gana el código
+  `UNEXPECTED_ENCODING`.
+
+> **Completado por el ADR-023 (2026-08-19, feature 22), sin cambiar nada de aquí:**
+> exigir la declaración resuelve «el fichero no dice en qué codificación viene»,
+> pero no «lo dice y miente», que es lo que hace un editor al reabrir el fichero y
+> guardarlo. Esa segunda mitad se comprueba contra los bytes, y solo en la dirección
+> en que hacerlo es un hecho y no una adivinación.
+
+> **Nota de numeración:** el `design.md` de la feature 19 llamaba a este ADR
+> «ADR-020». Ese número lo ocupa la feature 18 y el 021 la feature 21, ambas
+> cerradas después de redactarse ese spec: el contenido es el mismo y solo cambia
+> el número.
+
+### ADR-023: Declarar una codificación y traer otra se detecta por un hecho comprobable (bytes que son UTF-8 válido multibyte), se rechaza con `UNEXPECTED_ENCODING` y el motivo dice qué hacer
+
+- **Fecha:** 2026-08-19.
+- **Estado:** aceptada (feature 22 `encoding-mismatch-guard`, las tres decisiones
+  delegadas del `intent`).
+- **Contexto:** el mismo día que se cerró la F19, el humano probó su fichero real de
+  Openbank. Llegó del banco en **cp1252**, declarando `iso-8859-1`, con 8 caracteres
+  acentuados. Lo abrió con **Visual Studio Code** para escribir la línea del IBAN y le
+  dio a guardar: el editor lo leyó como UTF-8, convirtió esos 8 bytes en **`U+FFFD`** y
+  lo reguardó **en UTF-8**, dejando la declaración `iso-8859-1` **intacta**. Medido
+  sobre el fichero resultante: decodifica **limpiamente como UTF-8**, contiene **8
+  `U+FFFD`** y ningún otro carácter no-ASCII, y el `<meta>` sigue diciendo
+  `iso-8859-1`. El parser hizo lo correcto —leerlo como cp1252, que es lo que el
+  fichero afirma—, la cabecera pasó a ser `Fecha Operaci<U+FFFD>n` y el fichero se
+  rechazó con `VALIDATION_ERROR`: «no se encuentra la cabecera de la tabla de Openbank:
+  el archivo no es un extracto de este banco». **Falló ruidosamente, que está bien, pero
+  el mensaje era falso** y mandaba a mirar al sitio equivocado; costó una vuelta entera
+  de diagnóstico.
+- **Decisión:**
+  1. **La señal es un hecho comprobable, no una adivinación** (delegada nº 1). Se
+     rechaza el fichero cuando **declara cp1252/iso-8859-1** y sus bytes son **UTF-8
+     válido con al menos una secuencia multibyte**. Es una comprobación de
+     **consistencia** entre lo que el fichero afirma y lo que sus bytes pueden ser: la
+     declaración sigue decidiendo cómo se lee, no se husmea ninguna codificación y no
+     hay cascada de *fallbacks* (las tres prohibiciones del ADR-018 y del ADR-022,
+     intactas).
+     - **Por qué no da falsos positivos:** un cp1252 **con acentos no es UTF-8
+       válido**. En cp1252 cada letra acentuada es **un byte** de `0xC0-0xFF`, y UTF-8
+       exige que tras un byte así venga uno de continuación `0x80-0xBF` —que en cp1252
+       son las comillas tipográficas, las rayas y el euro—. Para un falso positivo
+       **todos** los bytes no-ASCII del fichero **entero** tendrían que caer en pares
+       así (`Ã` + `“`, y ningún vecino distinto en ninguna parte), que no es español ni
+       es lo que imprime un banco. Hay test de fuerza bruta: cada carácter acentuado que
+       este banco puede escribir, en tres posiciones de una frase, **nunca** dispara.
+     - **El fichero puramente ASCII se deja pasar a propósito:** por debajo de `0x80`
+       cp1252 y UTF-8 son **los mismos bytes**, así que no hay dos lecturas que puedan
+       diferir y **no hay daño posible** del que proteger. Por eso el criterio no puede
+       ser «no tiene acentos, sospechoso».
+     - **La dirección contraria no es decidible y no se intenta:** texto UTF-8 leído
+       como cp1252 es mojibake **sin un solo byte inválido**, y eso lo cubre la guardia
+       de la declaración de la F19, que **no se debilita** (sin `<meta>`, o con una
+       codificación que el parser no acepta, se sigue rechazando entero, y esa
+       comprobación va **primero**: sin declaración no hay nada que contradecir).
+  2. **Dónde vive** (delegada nº 2): en **`src/lib/cp1252.ts`**
+     (`detectResaveAsUtf8`), junto al descodificador del que es la otra mitad, y por el
+     mismo motivo del ADR-018 §3 y el ADR-022 §4: **la codificación no es un formato**.
+     Pero es **opt-in, no herencia**: la llama el parser cuyo banco emite una
+     codificación de un solo byte. **Bankinter, MyInvestor y N26 no cambian de
+     comportamiento** —los dos de texto siguen con `decodeUtf8Strict`, donde este
+     desajuste no existe (declaran UTF-8 y llegan en UTF-8) y donde la forma que aquí se
+     rechaza es justo la **correcta**—. Hay un guardián en `architecture.test.ts` que
+     comprueba que el único parser que la cablea es el de Openbank, y tests de regresión
+     en `src/lib/utf8.test.ts`.
+  3. **Se reutiliza `UNEXPECTED_ENCODING` (422), no se crea un código nuevo**
+     (delegada nº 3). La familia del fallo es exactamente la que ese código ya nombra
+     —«este fichero no llega en la codificación que emite su banco, y lo dice el propio
+     fichero»— y la consecuencia es la misma: **se rechaza entero**, no se importa nada
+     y no se mueve a `procesados/`. Lo que cambia es el **motivo**, que es lo que lee el
+     humano. Un código nuevo obligaría a cada consumidor a aprender un segundo código
+     para el mismo remedio, y el ADR-005 reserva el código para la **clase** de error,
+     no para su causa concreta. Documentado en `docs/api-contract.md`.
+  4. **Dos motivos distintos, porque el remedio no es el mismo:**
+     - **reguardado, caracteres intactos** → «vuelve a abrirlo y guárdalo con la
+       codificación **Western (Windows-1252)**», nombrada como la escribe un editor;
+     - **reguardado y ya con `U+FFFD`** → los acentos **están perdidos**, no se reparan
+       y hay que **volver a descargar el fichero del banco**. Los dos empiezan diciendo
+       que el fichero **se ha vuelto a guardar en otra codificación** y los dos dicen
+       explícitamente que **no** es que el archivo no sea un extracto de este banco.
+  5. **No se adivina y no se repara nada.** El fichero reguardado no se «arregla»
+     releyéndolo como UTF-8 (podría hacerse, y sería exactamente el *fallback*
+     prohibido): con `U+FFFD` dentro los caracteres ya no existen, y sin él seguiría
+     siendo un fichero que miente sobre sí mismo.
+- **Alternativas descartadas:** (a) **detectar la codificación por estadística** —
+  acierta «casi siempre», la peor garantía posible para un dato que va a la base de
+  datos (ADR-018); (b) **releer como UTF-8 cuando cp1252 dé mojibake** — es la cascada
+  de *fallbacks* prohibida, y además el mojibake no es detectable sin adivinar; (c)
+  **código de error nuevo** — ver §3; (d) **mejorar solo el mensaje de «cabecera no
+  encontrada»** — el mensaje seguiría siendo el del sitio equivocado y no distinguiría
+  un fichero reguardado de un fichero que de verdad no es de este banco.
+- **Consecuencia:** el runbook `docs/dar-de-alta-un-banco.md` explica cómo editar el
+  fichero **con Visual Studio Code**, que es el editor que el humano usa de verdad
+  (reabrir con *Reopen with Encoding* y guardar con *Save with Encoding →
+  Western (Windows 1252)*), y advierte de que el guardado por defecto de un editor
+  moderno es UTF-8 y **destruye el fichero sin avisar**. Un banco futuro que emita en
+  una codificación de un solo byte llama a la misma guardia; uno que emita UTF-8 no la
+  necesita.
 
 ## Qué NO hacer
 

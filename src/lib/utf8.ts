@@ -37,16 +37,38 @@ export function decodeUtf8Strict(content: Buffer): string {
   // decision as above. The verdict, though, is the byte-level one: a file is
   // rejected because its bytes are not UTF-8, and only then because it carries
   // this evidence.
-  const scar = text.indexOf(replacementCharacter)
-  if (scar !== -1) {
-    throw new NotUtf8Error(
-      `el archivo contiene el carácter de sustitución � (línea ${lineOf(text, scar)}), ` +
-        'rastro de una decodificación fallida anterior: vuelve a exportarlo del banco y ' +
-        'guárdalo con codificación UTF-8',
-    )
-  }
+  assertNoReplacementCharacter(
+    text,
+    (line) =>
+      new NotUtf8Error(
+        `el archivo contiene el carácter de sustitución � (línea ${line}), ` +
+          'rastro de una decodificación fallida anterior: vuelve a exportarlo del banco y ' +
+          'guárdalo con codificación UTF-8',
+      ),
+  )
 
   return text
+}
+
+/**
+ * Throws when the decoded text carries a replacement character, whatever the
+ * encoding it came from.
+ *
+ * It is exported so the decoder of ANOTHER encoding reuses this guard instead of
+ * copying it (feature 19: cp1252 is far more permissive than UTF-8 and never
+ * fails on its own, so this is the only layer that catches an earlier scar
+ * there). The CALLER supplies the error, because the reason — and the code —
+ * belong to the encoding it was decoding: a `�` in a file the human saved
+ * wrong is not the same situation as one in a file the bank emitted.
+ *
+ * `onScar` receives the 1-based line where the first one sits, which is what
+ * makes it findable in an editor.
+ */
+export function assertNoReplacementCharacter(text: string, onScar: (line: number) => Error): void {
+  const scar = text.indexOf(replacementCharacter)
+  if (scar !== -1) {
+    throw onScar(lineOf(text, scar))
+  }
 }
 
 const replacementCharacter = '�'

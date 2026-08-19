@@ -51,6 +51,10 @@ describe('architecture invariants', () => {
       // encoding, not format reading, so it is shared and not per bank.
       'lib/utf8.ts',
       'lib/utf8.test.ts',
+      // The encoding a BANK emits, decoded with its own table (feature 19,
+      // ADR-022): same reasoning as `utf8.ts` — encoding is not format.
+      'lib/cp1252.ts',
+      'lib/cp1252.test.ts',
       // The single normalizer+validator of an IBAN (feature 21): it is the ISO
       // identifier of an account, not the format of any bank, so it is shared
       // by the three banks and by POST /api/accounts.
@@ -128,6 +132,21 @@ describe('architecture invariants', () => {
       'modules/n26/n26.statement.parser.test.ts',
       'modules/n26/n26.service.test.ts',
       'modules/n26/n26.routes.test.ts',
+      // Fourth bank with its own parser module (feature 19): its file is called
+      // `.xls` and is an HTML page, so it brings its own HTML reader — which
+      // stays inside the bank folder, like every other piece of format reading.
+      'modules/openbank/openbank.html.ts',
+      'modules/openbank/openbank.format.ts',
+      'modules/openbank/openbank.statement.parser.ts',
+      'modules/openbank/openbank.service.ts',
+      'modules/openbank/openbank.routes.ts',
+      'modules/openbank/openbank.types.ts',
+      'modules/openbank/openbank.fixture.ts',
+      'modules/openbank/openbank.html.test.ts',
+      'modules/openbank/openbank.format.test.ts',
+      'modules/openbank/openbank.statement.parser.test.ts',
+      'modules/openbank/openbank.service.test.ts',
+      'modules/openbank/openbank.routes.test.ts',
       // investments is a partial folder on purpose: feature 9 is schema plus
       // migration, with no HTTP surface (no routes/service/schema/types).
       // Precedent: modules/health/. The importer feature will add its service
@@ -293,8 +312,23 @@ describe('architecture invariants', () => {
     }
   })
 
+  it('keeps the openbank parser module free of data access (no "prisma" reference)', () => {
+    const files = [
+      'modules/openbank/openbank.html.ts',
+      'modules/openbank/openbank.format.ts',
+      'modules/openbank/openbank.statement.parser.ts',
+      'modules/openbank/openbank.service.ts',
+      'modules/openbank/openbank.routes.ts',
+      'modules/openbank/openbank.types.ts',
+    ]
+
+    for (const file of files) {
+      expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
   it('shares no parsing code between bank modules (one parser per bank)', () => {
-    const bankModules = ['bankinter', 'myinvestor', 'n26']
+    const bankModules = ['bankinter', 'myinvestor', 'n26', 'openbank']
     // What a bank module may import: vendor/node, its own files, the shared
     // error classes, `lib/` (the output contract) and the single sign helper of
     // `modules/movements/`, which is NOT a bank module.
@@ -341,6 +375,19 @@ describe('architecture invariants', () => {
     }
   })
 
+  it('wires the encoding-mismatch guard into ONE parser only (feature 22)', () => {
+    // The guard is shared code in `lib/` because an encoding is not a format,
+    // but it is OPT-IN: a parser calls it only if its bank emits a single-byte
+    // encoding. This is what says the other three banks did not change
+    // behaviour, instead of trusting the report that says so.
+    const users = sourceFiles(srcDir)
+      .filter((file) => readFileSync(file, 'utf8').includes('detectResaveAsUtf8'))
+      .map((file) => relative(srcDir, file).replace(/\\/g, '/'))
+      .sort()
+
+    expect(users).toEqual(['lib/cp1252.ts', 'modules/openbank/openbank.statement.parser.ts'])
+  })
+
   it('normalizes the bank name to the slug of its Drive folder and its module', () => {
     expect(normalizeBankName('MyInvestor')).toBe('myinvestor')
     expect(existsSync(join(srcDir, 'modules', normalizeBankName('MyInvestor')))).toBe(true)
@@ -348,6 +395,8 @@ describe('architecture invariants', () => {
     // found through the normalized slug, never through the raw folder name.
     expect(normalizeBankName('N26')).toBe('n26')
     expect(existsSync(join(srcDir, 'modules', normalizeBankName('N26')))).toBe(true)
+    expect(normalizeBankName('Openbank')).toBe('openbank')
+    expect(existsSync(join(srcDir, 'modules', normalizeBankName('Openbank')))).toBe(true)
   })
 
   it('declares the parsed movement contract in ONE module only (feature 11)', () => {

@@ -52,6 +52,7 @@ Códigos estables:
 | `CONFLICT`              | 409  | El recurso ya existe: `iban` de cuenta duplicado, o categoría raíz duplicada `(kind, name)`. |
 | `NOT_UTF8`              | 422  | Los **bytes** de un fichero no son UTF-8 válido (típicamente guardado en cp1252/ANSI por el editor). El fichero se **rechaza entero**; nunca se decodifica ni se repara. Como `MISSING_ACCOUNT_DATA`, viaja **dentro del informe de un fichero** en una respuesta 200, no como cuerpo de error HTTP. |
 | `INVALID_IBAN`          | 422  | El IBAN recibido no es un IBAN: forma incorrecta, longitud que no es la de su país, o **dígito de control mod-97 que no cuadra** (un dígito mal tecleado). Lo aplican por igual `POST /api/accounts` —donde sí es cuerpo de error HTTP— y los tres parsers de banco, donde **rechaza el fichero entero** y viaja dentro del informe de ese fichero en un 200. Nunca se crea una cuenta con él. Desde la feature 21 (2026-08-18). |
+| `UNEXPECTED_ENCODING`   | 422  | Un fichero **no llega en la codificación que emite su banco**, y es el propio fichero el que lo dice: o no declara ninguna, o declara otra distinta. Se **rechaza entero**; nunca se lee «por si acaso». No es `NOT_UTF8`: allí el fichero está mal guardado y la solución es volver a guardarlo, aquí puede estar perfecto y venir en otra codificación. Viaja **dentro del informe de un fichero** en un 200. Desde la feature 19 (2026-08-19). **Desde la feature 22 (2026-08-19) cubre también el caso inverso:** el fichero declara una codificación y sus bytes **son de otra** (un editor lo reabrió y lo reguardó en UTF-8). Mismo código y mismo 422 porque la familia del fallo y el remedio son los mismos —se rechaza entero—; lo que cambia es el **motivo**, que dice si los caracteres siguen ahí (guárdalo con Western/Windows-1252) o si ya se han perdido (vuelve a descargarlo del banco). Ver ADR-023. |
 | `MISSING_ACCOUNT_DATA`  | 422  | Los metadatos de un extracto no bastan para resolver la cuenta (falta el `iban` en el fichero y su banco no tiene exactamente una cuenta dada de alta). **Ya no está reservado:** desde la feature 12 lo emite `POST /api/import` **dentro del informe de un fichero**, en una respuesta 200, no como cuerpo de error HTTP (ver la nota más abajo). |
 | `INTERNAL_SERVER_ERROR` | 500  | Error inesperado; el cuerpo no expone detalles internos.   |
 | `DRIVE_CONNECTION_ERROR`| 503  | No se puede hablar con Google Drive (token caducado, API deshabilitada, scope insuficiente…). |
@@ -82,6 +83,33 @@ Códigos estables:
 > línea, y pide volver a guardar el fichero en UTF-8. Aparece en
 > `files[].error.code` de `POST /api/import` y, como motivo de texto, en
 > `failed[].reason` de `POST /api/parser/myinvestor` y de `POST /api/parser/n26`.
+>
+> **Nota (`UNEXPECTED_ENCODING`, feature "openbank-statement", 2026-08-19):** la
+> regla de arriba se **acota, no se rompe** (ADR-022). Lo que escribe **el humano**
+> sigue teniendo que ir en UTF-8; lo que **emite el banco** se lee con la
+> codificación de ese banco, declarada en su parser. Openbank exporta en cp1252 y
+> se lee con `decodeCp1252Strict` ([`src/lib/cp1252.ts`](../src/lib/cp1252.ts)).
+> Como cp1252 mapea los 256 bytes y **no puede fallar**, ese parser exige que el
+> fichero **declare** su codificación (`<meta … charset=iso-8859-1 />`): si no la
+> declara, o declara otra, el fichero se rechaza entero con este código. Sin esa
+> guardia, un fichero que llegara en UTF-8 entraría con los 200 conceptos en
+> mojibake y **sin un solo error**. Aparece en `files[].error.code` de
+> `POST /api/import` y, como texto, en `failed[].reason` de
+> `POST /api/parser/openbank`.
+>
+> **Nota (`UNEXPECTED_ENCODING`, feature "encoding-mismatch-guard", 2026-08-19):**
+> el mismo código cubre el desajuste **al revés**, que es el que pasó de verdad ese
+> día: el fichero **declara** `iso-8859-1` y sus bytes **están guardados en UTF-8**,
+> porque un editor lo reabrió y le dio a guardar dejando el `<meta>` intacto. Se
+> detecta por un **hecho**, no por una corazonada —un cp1252 con acentos **no es**
+> UTF-8 válido, así que unos bytes que sí lo son, con secuencias multibyte, no los
+> escribió el banco— y **nunca** se adivina ni se repara nada. Un fichero puramente
+> ASCII **no** lo dispara: ahí las dos lecturas son los mismos bytes. El `message`
+> distingue dos situaciones: **reguardado** (los acentos siguen ahí → guárdalo con
+> la codificación *Western (Windows-1252)*) y **reguardado con `U+FFFD` dentro**
+> (los acentos **ya se han perdido** → vuelve a descargarlo del banco). Antes de
+> esta feature ese fichero acababa en `VALIDATION_ERROR` diciendo que **no era un
+> extracto de este banco**, que era falso. Ver ADR-023.
 >
 > **Nota (`DRIVE_CONNECTION_ERROR`, actualizada en la feature "drive-read",
 > 2026-08-03):** desde la feature 5 este código **sí** sale en el cuerpo de error
@@ -601,6 +629,7 @@ Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve*
 | `MISSING_ACCOUNT_DATA`   | El archivo no trae `iban` y su banco tiene **cero** o **más de una** cuenta dada de alta. Escribe el IBAN una vez en el archivo. |
 | `INVALID_IBAN`           | El IBAN del archivo (la línea `iban;<IBAN>` o, en Bankinter, la que escribe el propio banco) no es un IBAN válido. El archivo se rechaza **entero**, no se crea ninguna cuenta y **no** se mueve a `procesados/`: corrige la línea y reintenta. |
 | `NOT_UTF8`               | Los bytes del archivo no son UTF-8 (guardado en cp1252/ANSI al editarlo). Vuelve a guardarlo como UTF-8 y reintenta: **no** se importa nada de él y **no** se mueve a `procesados/`. |
+| `UNEXPECTED_ENCODING`    | El archivo no llega en la codificación que emite su banco: no la declara, declara otra, **o declara una y sus bytes son de otra** (lo reabriste y lo guardaste, y el editor lo pasó a UTF-8). Se rechaza **entero**, no se importa nada y **no** se mueve a `procesados/`. El motivo te dice cuál de las dos cosas es: si los acentos siguen ahí, vuelve a guardarlo con **Western (Windows-1252)**; si ya salen como `�`, están perdidos y hay que **volver a descargarlo del banco**. |
 | `VALIDATION_ERROR`       | El archivo no es un extracto reconocible para el parser de su banco.               |
 | `DRIVE_CONNECTION_ERROR` | Falló la descarga de **ese** archivo.                                              |
 | `INTERNAL_SERVER_ERROR`  | Cualquier otro fallo de ese archivo (mensaje sanitizado).                          |
@@ -1072,6 +1101,150 @@ Sin cuerpo de petición.
   por archivo **no** cambia el código HTTP: la respuesta es 200 con el fallo
   dentro. Un fichero que no esté en UTF-8, o que no tenga cabecera reconocible,
   cae aquí entero y **no** se escribe volcado.
+- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
+  no maneja. **No** son un fallo.
+
+---
+
+## Parser de Openbank (sin base de datos)
+
+> **Feature "openbank-statement" (2026-08-19).** Convierte el **extracto de la
+> cuenta de Openbank** (la copia local que dejó la ingesta de la f5) en
+> movimientos estructurados, **sin base de datos, sin deduplicar y sin mover nada
+> en Drive**. Devuelve el **mismo contrato** `ParsedMovement` / `ParsedStatement`
+> que los otros tres bancos (ver §Modelo `ParsedMovement`). El volcado va al mismo
+> `var/parsed/` **gitignoreado**; el endpoint solo expone la ruta relativa
+> `<banco>/<año>/<archivo>.json`. Sin autenticación nueva.
+
+**Qué tiene de distinto este fichero** (y por qué tiene su propio lector, en
+`src/modules/openbank/openbank.html.ts`):
+
+- 🔴 **Se llama `.xls` y NO es un Excel: por dentro es una página HTML** con una
+  sola `<table>`. `exceljs` no puede abrirlo (no hay ZIP ni OOXML) y este parser
+  **no lo intenta**. La tabla se lee con código propio y **sin ninguna
+  dependencia nueva** (decisión del humano: `cheerio` descartado). La extensión
+  `.xls` solo dice **qué parser aplica**; lo que hay dentro es asunto del parser.
+- 🔴 **Llega en cp1252 porque lo emite así el banco**, y lo **declara** en su
+  `<meta http-equiv="Content-Type" … charset=iso-8859-1 />`. Se descodifica con
+  `decodeCp1252Strict`; el humano **no convierte nada**. Si el fichero deja de
+  declarar esa codificación, se **rechaza entero** con `UNEXPECTED_ENCODING`
+  (ver §Errores y ADR-022).
+- 🔴 **Y si declara una codificación pero sus bytes son de otra, también se
+  rechaza entero, con el mismo código y un motivo que dice qué hacer** (feature
+  22, ADR-023). Es lo que pasa al abrir el fichero con un editor moderno y darle a
+  guardar: lo reescribe en UTF-8 y deja el `<meta>` diciendo `iso-8859-1`. Se
+  detecta porque unos bytes que son **UTF-8 válido con secuencias multibyte** no
+  los puede haber escrito un cp1252 con acentos; nada se adivina y nada se repara.
+  Si además el fichero ya trae `U+FFFD`, los acentos están **perdidos** y el motivo
+  manda a **volver a descargarlo del banco**. Antes de la feature 22 este caso
+  salía como `VALIDATION_ERROR` diciendo que el archivo no era un extracto de este
+  banco, que era **falso**.
+- **Cada `<tr>` trae diez celdas**: cinco separadores decorativos vacíos
+  alternados con las cinco que llevan contenido. Una fila de movimiento es la que
+  está **después de la cabecera** y tiene **exactamente cinco celdas con algo**;
+  las filas de solo separadores son decoración y no se reportan.
+- **Fechas `DD/MM/AAAA` e importes con punto de miles y coma decimal**
+  (`-2.615,08`), como en MyInvestor — pero **el código no se comparte**: el
+  formato de este banco vive en su módulo (`openbank.format.ts`).
+- **Entra el histórico entero**: el fichero real trae **dos años y 200
+  movimientos** y entran los 200. No se recorta por fecha ni se limita al mes.
+- **El orden del fichero es de más reciente a más antiguo**, así que
+  `daySequence` se numera con `1` = el **más antiguo** del día, como en todos los
+  demás bancos (lo hace el helper compartido).
+
+> 💶 **El saldo de la cuenta lo trae el propio fichero: aquí el humano NO escribe
+> ninguna línea `saldo;…`.** `accountBalance` sale de la fila `Saldo:` del
+> preámbulo, descartando la divisa pegada al número (`1.234,56 EUR` → `1234.56`).
+> Si esa fila no está → `null` y el fichero se parsea igual; si está y el número
+> no se entiende → `unparsedRows` con su nº de fila y su motivo. Es el mismo campo
+> de la feature 16, **no** el saldo por movimiento.
+
+> 📌 **El saldo TRAS CADA MOVIMIENTO existe en este fichero y NO se guarda.**
+> Openbank es el **único** de los seis bancos que lo reporta (quinta columna de
+> cada fila). Se **lee** —una fila cuya quinta celda no es un importe no es una
+> fila de esta tabla— y se **descarta**: `balance` sigue siendo `null` en todos
+> los movimientos, igual que en los demás bancos, y el **ADR-013 no se toca**
+> (decisión del humano del 2026-08-17). Queda anotado aquí y en
+> `progress/implementations/openbank-statement.md` para el día que se decida.
+
+> 📌 **La divisa de cada movimiento sale vacía** (`""`). El fichero **no tiene
+> columna de divisa**: la única que aparece es la que acompaña al saldo del
+> preámbulo, y **no se propaga** a los movimientos. Es todo en euros, pero el dato
+> no está en el fichero y no se inventa (decisión del humano).
+
+> 📌 **El IBAN lo escribe el humano UNA SOLA VEZ, en un comentario HTML de la
+> primera línea:**
+>
+> ```html
+> <!-- iban;ES9121000418450200051332 -->
+> ```
+>
+> Se lee **solo** de un comentario **anterior a `<table>`** y gana el primero;
+> con `:` en lugar de `;` no se lee (una sola forma documentada, feature 21). El
+> número de cuenta que el fichero imprime en su preámbulo es un **CCC** y el
+> backend **nunca** deriva de él un IBAN, aunque el cálculo sea exacto. Sin esa
+> línea, `accountIban` es `null` y la importación se apoya en el camino que ya
+> existe: la **única** cuenta registrada de ese banco, o `MISSING_ACCOUNT_DATA`.
+> El IBAN escrito se **normaliza y se valida** como en todos los bancos
+> (`INVALID_IBAN` rechaza el fichero entero).
+
+> 🤫 **Las demás filas del preámbulo se ignoran en silencio**: fecha de descarga,
+> número de cuenta, descripción del producto y titular. **No** aparecen en
+> `unparsedRows`: ese campo señala lo que hay que mirar, y cuatro avisos fijos en
+> cada fichero lo inutilizarían.
+
+Otras reglas, idénticas a las de los demás bancos: **no** se deduplica (dos filas
+idénticas salen las dos), el concepto se emite **entero y sin trocear**, y una
+fila con forma de movimiento que no se entiende va a `unparsedRows`
+(`{ row, reason }`, con `row` = **nº de `<tr>` del documento**, 1-based, contando
+las decorativas) sin detener el resto y **sin consumir `daySequence`**. Un
+fichero sin cabecera reconocible se rechaza entero con `VALIDATION_ERROR`.
+
+### `POST /api/parser/openbank`
+
+Acción **explícita** de parseo. Recorre las copias locales de Openbank
+(`var/drive-read/openbank/<año>/`), parsea los `.xls` (cualquier otra extensión →
+`ignored`) y escribe el resultado de cada uno en
+`var/parsed/openbank/<año>/<archivo>.json`. Read-only respecto a Drive y a la
+base de datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo
+sobre los mismos archivos produce **exactamente el mismo resultado**.
+
+Sin cuerpo de petición.
+
+**Respuesta 200**
+```json
+{
+  "parsedCount": 1,
+  "failedCount": 0,
+  "ignoredCount": 0,
+  "statements": [
+    {
+      "bank": "openbank",
+      "year": "2026",
+      "file": "movimientos.xls",
+      "accountIban": "ES9820385778983000760236",
+      "accountBalance": 1234.56,
+      "movements": 200,
+      "unparsedRows": 0,
+      "dumpPath": "openbank/2026/movimientos.xls.json"
+    }
+  ],
+  "failed": [],
+  "ignored": []
+}
+```
+
+- `accountIban`: `null` salvo que el archivo traiga el comentario del IBAN. El del
+  ejemplo es **sintético**.
+- `accountBalance`: sale del propio fichero (fila `Saldo:`), no de una línea
+  escrita a mano.
+- `dumpPath`: ruta **relativa** a la carpeta de volcado local (nunca la absoluta
+  de la máquina).
+- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un fallo
+  por archivo **no** cambia el código HTTP: la respuesta es 200 con el fallo
+  dentro. Un fichero que no declare la codificación del banco, que no tenga
+  cabecera reconocible o cuyo IBAN escrito no sea válido, cae aquí **entero** y
+  **no** se escribe volcado.
 - `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
   no maneja. **No** son un fallo.
 
