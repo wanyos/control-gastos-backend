@@ -103,3 +103,47 @@ export class UnknownBankError extends AppError {
     super(message, 'UNKNOWN_BANK', 404)
   }
 }
+
+/**
+ * A file was read without a single error and carries NO movement line at all
+ * (feature 25). It is the silent failure of the importer written down: until
+ * now such a file was reported as `imported: 0` AND moved to `procesados/`,
+ * which is a one-way door — the same thing that happened in August 2026 and
+ * left a whole bank out of the database with the suite in green.
+ *
+ * 422, like the rest of a well-formed request carrying unusable content, and it
+ * travels inside `files[].error` of the 200 report. The file does NOT move.
+ */
+export class EmptyStatementError extends AppError {
+  constructor(message = 'The file carries no movement') {
+    super(message, 'EMPTY_STATEMENT', 422)
+  }
+}
+
+/**
+ * The file DOES carry rows and the parser could not interpret a single one
+ * (feature 25). It is not the same as `EmptyStatementError`: there the file is
+ * empty, here the file is full and unreadable, which is what a changed bank
+ * format looks like from the outside. Two situations, two codes, two reasons.
+ *
+ * A file where SOME rows are read keeps the behaviour it always had: the good
+ * ones are stored, the rest are reported and the file moves (ADR-015 §4).
+ */
+export class UnreadableStatementError extends AppError {
+  constructor(message = 'No row of the file could be interpreted') {
+    super(message, 'ALL_ROWS_UNPARSED', 422)
+  }
+}
+
+/**
+ * The local copy asked for is not on disk (feature 25). It is its own code, and
+ * not an empty report, because "nothing to import" and "what you asked for is
+ * not here" are different answers and only one of them tells the human what to
+ * do (the lesson of feature 22: a message that sends you to look in the wrong
+ * place costs a whole round).
+ */
+export class LocalCopyNotFoundError extends AppError {
+  constructor(message = 'No local copy for what was asked') {
+    super(message, 'LOCAL_COPY_NOT_FOUND', 404)
+  }
+}

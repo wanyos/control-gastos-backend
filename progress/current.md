@@ -4,6 +4,217 @@
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
 
+## F25 `reimport-from-local-copy` — CERRADA el 2026-08-20
+
+Feature **sin spec** (`sdd: false`): manda su `acceptance` de 10 criterios. Parte del
+[diagnóstico del 2026-08-20](explorations/diagnostico-bankinter-sin-persistir-2026-08-20.md)
+(opciones (b) + (e) de su §3). Plan:
+
+1. Extraer de `importFile` la parte que no es Drive (parsear → resolver cuenta → mapear →
+   persistir) para que la reimportación local la reutilice sin duplicar reglas.
+2. `POST /api/import/local` con cuerpo opcional `{ bank?, year?, name? }` que recorre
+   `var/drive-read/<banco>/<año>/`, **sin cliente de Drive** y sin mover ni borrar nada.
+3. Copia local ausente → **404 `LOCAL_COPY_NOT_FOUND`** nombrando lo que no se encontró;
+   nunca «0 ficheros importados».
+4. Tapar el §1.4: cero movimientos parseados **no** se cuenta como `imported` ni mueve el
+   fichero a `procesados/` (dos códigos nuevos, según el caso).
+5. Documentar en `docs/api-contract.md` y ADR-025; mapeo criterio→test en
+   [`implementations/reimport-from-local-copy.md`](implementations/reimport-from-local-copy.md).
+
+Los 5 puntos del plan están, con las **dos decisiones delegadas** y el mapeo criterio→test
+por escrito en
+[`implementations/reimport-from-local-copy.md`](implementations/reimport-from-local-copy.md).
+**`reviewer`: APPROVED en segunda pasada**
+([`reviews/reimport-from-local-copy.md`](reviews/reimport-from-local-copy.md)), tras
+comprobar ejecutando el 404 en sus dos casos y en las once combinaciones restantes, el
+dedup intacto, **cero llamadas a Drive también en el camino del 404** y la salvedad del
+parser escrita justo antes de la llamada sin cuerpo. En la primera pasada pidió dos
+cambios, ambos aplicados: (1) el 404 ahora **nombra el banco pedido** cuando su carpeta
+existe pero no tiene copias dentro, con dos tests nuevos; (2) contrato y **ADR-025** dicen
+que la idempotencia vale **si el parser no ha cambiado desde la importación original**, y
+qué hacer en su lugar. F25 a **`done`** en `feature_list.json` y línea añadida en
+[`history.md`](history.md). `./init.sh` verde: **767/767** (739 antes, **+28**).
+
+> 👤 **Qué cambia para ti:** `procesados/` **deja de ser una puerta de un solo sentido**.
+> Un archivo que ya está ahí se vuelve a importar **desde la copia local**, sin que entres
+> en Drive a mover carpetas —lo que hoy tuviste que hacer a mano con Bankinter—, y esa vía
+> **no toca tu Drive**: ni descarga, ni mueve, ni borra. Y un archivo del que **no entra ni
+> un movimiento** deja de decirte que lo ha importado: sale como fallo, con motivo, y se
+> queda pendiente. **Ojo al único límite que queda**: la llamada **sin cuerpo** solo es
+> inocua mientras el parser de ese banco sea el mismo con el que se importó; sobre copias
+> antiguas, pide **el archivo concreto** y mira el recuento.
+
+- ✅ **Por dónde se pide** (decisión delegada, resuelta por escrito): **ruta nueva**
+  `POST /api/import/local`, no una bandera de la que ya hay — las dos operaciones tienen
+  garantías distintas (una mueve lo que guarda, la otra no mueve nunca) y no podía
+  depender de leer bien un campo del cuerpo. El archivo se identifica **por su ruta**
+  (banco + año + nombre), porque en disco no hay id y el nombre no es identificador.
+- ✅ **Dónde se corta «cero movimientos»** (decisión delegada, resuelta por escrito): son
+  **tres casos** — sin ninguna línea → `EMPTY_STATEMENT`; con líneas y ninguna
+  interpretable → `ALL_ROWS_UNPARSED` (los dos **fallan y no mueven**); todas duplicadas →
+  `imported: 0, duplicates: n` y **sí mueve**, porque todas sus filas están guardadas. En
+  corto: se llega a `procesados/` **solo si al menos una fila del archivo está en la base
+  de datos**.
+- ⚠️ **Cabo suelto documentado, no cerrado:** `daySequence` se recalcula al parsear, así
+  que un parser que hoy lee una fila que antes no leía **renumera el día** y puede insertar
+  copias al reimportar. Escrito en `docs/api-contract.md` y en el ADR-025 con qué hacer en
+  su lugar; arreglarlo de raíz es otra feature, con migración.
+- 🐞 **Flake conocido, no tapado:** la **primera** ejecución de la sesión, antes de tocar
+  código, falló en `import.routes.test.ts` (R3, un 500 en `GET /api/movements`); la
+  siguiente, con el mismo código, 739/739. Mismo patrón que el de
+  `movements.test.ts:318`.
+
+
+## F24 `guardian-own-words` — CERRADA el 2026-08-20
+
+Feature **sin spec** (`sdd: false`): de los **10 criterios de `acceptance`**. Sale del
+[Hallazgo 2 de la prueba real de Trade Republic](explorations/prueba-real-trade-republic-2026-08-20.md).
+**`reviewer`: APPROVED en segunda pasada**
+([`reviews/guardian-own-words.md`](reviews/guardian-own-words.md)), tras atacar la
+invariante nueva con **20 formas de entrecomillado** sin perder una frase, comprobar que
+los importes siguen intactos y que el ruido se calla **solo** por la condición (b). F24 a
+**`done`** en `feature_list.json` y línea añadida en [`history.md`](history.md).
+Informe con el mapeo criterio→test y **las dos decisiones por escrito**:
+[`implementations/guardian-own-words.md`](implementations/guardian-own-words.md) ·
+veredicto: [`reviews/guardian-own-words.md`](reviews/guardian-own-words.md) ·
+resumen: [`summaries/guardian-own-words.md`](summaries/guardian-own-words.md).
+
+> 👤 **Qué cambia para ti:** el guardián de tus datos **deja de gritar por sus propias
+> palabras**. Cuando un fichero tuyo se rechaza, el volcado se queda con el mensaje que
+> escribe *nuestro* programa, y la documentación publica ese mismo mensaje: el guardián
+> lo leía como «una frase de su extracto copiada en los docs» y soltaba **270 avisos
+> falsos**. Ahora distingue las dos cosas, **sin bajar la guardia**: los cinco importes
+> que ese mensaje lleva dentro se siguen vigilando igual, y el aviso de que Trade
+> Republic no estaba vigilado **ha desaparecido** porque ya hay un `.json` tuyo legible.
+
+- ✅ **Cómo se separan** (decisión delegada, resuelta por escrito): **por tramo**, y solo
+  donde coinciden **dos** condiciones — (a) el tramo está **fuera de las comillas** (todo
+  valor tuyo se devuelve entrecomillado) **y** (b) la frase está **literal en el código
+  de producción** (sin tests ni fixtures). Un dato tuyo devuelto sin comillas falla (b) y
+  se sigue vigilando; una frase nuestra entrecomillada por error falla (a) y también.
+- ✅ **El hueco de los cinco importes NO se abrió:** descartar el `reason` entero era una
+  línea y habría dejado de vigilar importes reales. **La capa de importes no se ha
+  tocado**: sigue mirando el texto crudo, motivos incluidos. Hay test que lo fija.
+- ✅ **`unwatchedBanks` queda vacía:** la entrada de `trade-republic` se borró, tal y como
+  su propio texto ordenaba, y el test que exige que la lista sea exactamente el estado
+  real sigue **sin debilitar**.
+- ✅ **Cero excepciones nuevas**: ni una ruta añadida, ni un `no-real-data-ok`, ni una
+  frase quitada de los docs. Los `docs/` **ganan** texto (ADR-017 y `conventions.md`).
+- 🟠 **Lo único que se estrecha, dicho en voz alta:** una frase copiada **a caballo entre
+  dos campos** de un volcado ya no se caza — esa frase no está escrita en ningún fichero
+  tuyo, es la costura de nuestro JSON, y el extracto original se sigue comparando entero.
+- `./init.sh`: **736/736 verde**, con la capa de comparación **activa** (nada de `var/`
+  se ha borrado ni movido). La **primera** pasada cayó en el **flake conocido** de
+  `movements.test.ts:318`, ajeno a este diff; la segunda, verde.
+- 🔁 **Segunda pasada (review CHANGES_REQUESTED, cerrada el 2026-08-20).** El reviewer
+  encontró un **silencio** que el código y los docs declaraban imposible: un valor tuyo
+  con **apóstrofo dentro** (`COMPRA D'ALIMENTS…`, y los hay en conceptos de tarjeta
+  reales) entrecomillado con simples partía el corte por dentro del valor, cada mitad
+  caía en un cubo distinto y **el concepto entero dejaba de compararse** — una
+  **regresión**, porque antes de la F24 ese motivo se comparaba entero. **Arreglado de
+  fondo:** el motivo **ya no se trocea**, va entero a la comparación y lo entrecomillado
+  se añade encima, así que un corte mal puesto solo puede hacer que algo se compare **dos
+  veces**, nunca menos. Tres tests nuevos lo fijan (los tres se ponen rojos si alguien
+  repone el troceo) y la afirmación falsa está corregida en los **tres** sitios donde
+  estaba escrita. `./init.sh`: **739/739**.
+- ✅ **Cerrada:** F24 en **`done`**, con su línea en `history.md` —que **corrige** el
+  final de la línea de la F23, donde Trade Republic quedaba «sin vigilancia»— y su
+  [resumen de cierre](summaries/guardian-own-words.md).
+- ✅ **La F20 `trade-republic-product-file` ya está cerrada** (2026-08-20, tras su prueba
+  real): `in_progress` queda en **cero** y `./init.sh` deja de marcar `[FAIL]` en el paso
+  3. Tipos y **739 tests**, verdes.
+
+---
+
+## F23 `no-real-data-blind-spot` — CERRADA el 2026-08-19
+
+**`reviewer`: APPROVED en segunda pasada**
+([`reviews/no-real-data-blind-spot.md`](reviews/no-real-data-blind-spot.md) §Segunda
+pasada), tras repetir **él** la comprobación del aviso sin flags (de **0 líneas a 3**, en
+las 5 ejecuciones completas) y confirmar **por mutación revertida** que el test nuevo se
+pone rojo si alguien vuelve a `console.warn`. `./init.sh` verde: **659 tests, 0
+saltados** (baseline 647; +12, todos del guardián). F23 a **`done`** en
+`feature_list.json` y línea añadida en [`history.md`](history.md).
+
+Feature **sin spec** (`sdd: false`): del `intent` y de los **10 criterios de
+`acceptance`**. Sin lotes: un solo implementer.
+Informe: [`implementations/no-real-data-blind-spot.md`](implementations/no-real-data-blind-spot.md)
+(cada criterio con su(s) test(s)) ·
+veredicto: [`reviews/no-real-data-blind-spot.md`](reviews/no-real-data-blind-spot.md) ·
+resumen: [`summaries/no-real-data-blind-spot.md`](summaries/no-real-data-blind-spot.md).
+
+> 👤 **Qué cambia para ti:** el guardián que impide que tus datos acaben en el
+> repositorio **mira ya todos tus ficheros de banco**. El `.xls` de Openbank —el único
+> que trae **nombres de personas**, y el que **nunca se había abierto**: por ahí pasó la
+> fuga de importes de la F19 con la suite entera en verde— entra y se compara como
+> cualquier `.csv`. Y lo que **no** puede vigilar te lo dice **por su nombre en la salida
+> de `./init.sh`**, en toda ejecución, en vez de darte el visto bueno callado.
+
+1. ✅ **La captura la deciden los bytes, no la extensión** (delegada nº 1, resuelta por
+   escrito): binario = un NUL o > 1 % de bytes de control en los primeros 8 KiB. Medido
+   sobre `var/`: **de 14 a 16 ficheros capturados**, y los dos que entran son exactamente
+   los dos `.xls` de Openbank (+338 KB). Una lista de extensiones vuelve a dejar un hueco
+   dentro de un año; esto no.
+2. ✅ **Los dos binarios de verdad quedan fuera y se dice por qué:** el `.xlsx` de
+   Bankinter (ZIP) ya está vigilado por su volcado de `var/parsed/`; el `.pdf` de Trade
+   Republic no lo está por ninguna vía. Leerlos como texto metería ruido de bytes → falsos
+   positivos → excepciones, que es cómo se desarma un guardián. Se **probó** extraer el
+   texto del PDF con `zlib` (sin dependencias): salen 336 caracteres de títulos y **ni un
+   importe**, así que decir «vigilado» sería el bug de la F19 otra vez.
+3. ✅ **De un fichero de marcado se compara lo que DICE, no sus etiquetas** (las del
+   `.xls` son el formato del banco, que nuestro parser reproduce), conservando lo que dice
+   el **comentario HTML** donde él escribe su IBAN.
+4. ✅ **Contabilidad por banco** (delegada nº 2): carpeta con ficheros y **ninguno
+   capturable** ≠ carpeta **vacía**. Un hueco se **imprime**, vive en `unwatchedBanks` con
+   su motivo y con cómo se cierra, y el test exige que esa lista sea **exactamente** el
+   estado real **en las dos direcciones**: un banco ilegible nuevo pone la suite en
+   **rojo**, y uno que pase a ser legible también hasta que se borre su entrada.
+5. ✅ **El caso de la F19, probado con fichero de banco sintético** en directorio temporal
+   (delegada nº 3), con control negativo: el test falla si el mecanismo deja de detectar
+   **y** si detecta de más. Y **el mensaje deja de transcribir el importe**: dice
+   `archivo:línea` y el tipo, nunca el valor.
+6. ✅ **Ni un `no-real-data-ok` nuevo, ninguna excepción añadida, cero dependencias.** Al
+   ampliar la captura **no apareció ninguna coincidencia real nueva**. Docs: **ADR-017
+   revisado** y `conventions.md` §Tests.
+7. ⏱ **Coste medido, porque cambió:** la primera versión rebasó el `testTimeout` de 5 s
+   con los dos `.xls` dentro. **No se subió el timeout**, se arregló el algoritmo de la
+   capa de frases (trigramas de la línea contra un `Set`, en vez de cada frase contra cada
+   línea): **2.429 ms → 523 ms** *con más datos capturados que antes*.
+
+> 🟠 **SIGUE ABIERTO, y es información que conviene no perder de vista: Trade Republic no
+> lo vigila nadie.** Su extracto es un **PDF** cuyo texto vive en flujos comprimidos con
+> fuentes subset, así que no se recupera; y volcado no habrá, porque la F20 decidió que
+> ese banco entra como **JSON de producto**. **Si alguien copia un importe de ese PDF a un
+> archivo del repositorio, no lo caza nada**: hay que mirarlo a mano, como hizo el reviewer
+> de la F19. No está resuelto: está **declarado y a la vista** —sale en la salida de
+> `./init.sh` en toda ejecución— y **se cierra solo** el día que ese JSON aterrice en
+> `var/drive-read/trade-republic/`, que es cuando el test se pondrá rojo para obligar a
+> borrar la entrada.
+
+### Las dos pasadas del reviewer, en corto
+
+- 🔴 **Primera: CHANGES_REQUESTED**, y el fallo era real: el aviso del hueco era un
+  `console.warn` y **vitest intercepta la consola**, así que con el reporter por defecto
+  —el de `./init.sh`— **no se imprimía nada**. La suite terminaba **verde y en silencio**
+  sobre Trade Republic, que es justo el criterio 3 y la frase que originó la feature.
+  Arreglado escribiendo al **descriptor 2** (`writeSync(2, …)`, fuera del alcance de
+  cualquier reporter), **verificado con `grep` sobre la salida real de `./init.sh`** y con
+  dos tests nuevos, uno comprobado por mutación.
+- ⚪ **Al aprobar dejó dos aristas, arregladas antes de cerrar:** un comentario que
+  afirmaba **sin medirlo** que vitest parchea también `process.stderr` (es **falso**: por
+  ahí también sale; la aserción se queda, pero ahora dice la verdad — «un solo mecanismo
+  elegido y fijado», no «el otro no funciona»), y un **número mágico** de 220 caracteres
+  para acotar la ventana del test, sustituido por **el cuerpo real de la función**. Las
+  dos comprobadas por mutación.
+
+> ⚠️ **Anotado, no es de esta feature:** `src/modules/movements/movements.test.ts` («GET
+> /api/movements lists newest first…») devuelve **500 en vez de 200** en **2 de 7**
+> pasadas completas; **ejecutado solo, 24/24 en verde**. Es la flakiness preexistente ya
+> anotada más abajo (carrera de la suite de integración contra Postgres). El diff de la
+> F23 no sale del guardián.
+
+---
+
 ## Prueba real de Openbank (2026-08-19) y la F22 que sale de ella
 
 Informe: [`explorations/prueba-real-openbank-2026-08-19.md`](explorations/prueba-real-openbank-2026-08-19.md).
@@ -355,6 +566,11 @@ Plan y estado:
 
 ### Anotado, no se abre ahora
 
+- ✅ **CERRADO por la F23 el 2026-08-19** (ver arriba): el guardián ya lee el `.xls` de
+  Openbank, la captura la decide el **contenido** y no una lista de extensiones, y un
+  banco que no puede leer sale **por su nombre en la salida de `./init.sh`**. Queda vivo
+  y declarado el caso de **Trade Republic** (PDF). Se conserva el texto original porque
+  explica **por qué** pasó la fuga de la F19:
 - 🟠 **El guardián de la F14 no vigila el fichero de Openbank, y es el único banco
   cuyo fichero trae nombres de personas.** Lo descubrió el reviewer de la F19 y es
   lo que explica que la fuga de importes pasara con la suite en verde: la capa de
@@ -732,3 +948,47 @@ documentación**, y con razón: `docs/data-model.md` se declara a sí mismo el r
 único de columnas sin escritor, y una feature que le da escritor a una columna sin
 actualizar ese registro deja una trampa para la feature siguiente. El código estaba
 bien a la primera; lo que faltaba era el rastro.
+
+---
+
+## F20 `trade-republic-product-file` — CERRADA el 2026-08-20
+
+Feature SDD, spec aprobado con cambios el 2026-08-19 (cuadre aritmético
+que **rechaza**). Un solo implementer para los **cuatro lotes** de
+[`tasks.md`](../specs/trade-republic-product-file/tasks.md) (A doc, B parser, C
+servicio+ruta+contrato, D guardianes+ADR).
+
+Baseline antes de tocar nada: `./init.sh` verde, **659 tests, 0 saltados**, con las 3
+líneas de aviso del guardián de la F14 sobre `trade-republic` (su `.pdf` no se puede
+vigilar).
+
+Informe: [`implementations/trade-republic-product-file.md`](implementations/trade-republic-product-file.md).
+
+**Implementación TERMINADA el 2026-08-19**: las **25 tasks** de `tasks.md` en `[x]`,
+`./init.sh` verde con **721 tests, 0 saltados** (baseline 659, +62).
+
+**`reviewer`: CHANGES_REQUESTED** ([`reviews/trade-republic-product-file.md`](reviews/trade-republic-product-file.md))
+con **un solo punto bloqueante**: el checkpoint **C4 bis**, la prueba real, que no se
+había hecho. Todo lo demás —el cuadre, el mensaje de descuadre, el aislamiento, el
+`.pdf`, el UTF-8 estricto, el 🔒 cruzado contra el fichero real y los 16 requirements—
+quedó **comprobado y sin hallazgos**. Ni una línea de código de la feature necesitó
+cambiar.
+
+**C4 bis hecho y limpio el 2026-08-20** —la **primera vez** que se aplica—:
+[`explorations/prueba-real-trade-republic-2026-08-20.md`](explorations/prueba-real-trade-republic-2026-08-20.md).
+Pasada final con el archivo ya corregido: **`productCount: 1`, `failedCount: 0`,
+`ignoredCount: 1`** — su cuenta entra entera, el cuadre no protesta y el `.pdf` se lista
+como **ignorado con su motivo**, no como fallo. Lo que la prueba dejó por el camino, ya
+cerrado: la corrección de `docs/trade-republic-product-files.md` (el resumen del extracto
+**no da los datos del mes, da los del periodo**; los tres campos salen de la tabla de
+transacciones), la plantilla copiable
+[`docs/plantillas/trade-republic-cuenta-remunerada.json`](../docs/plantillas/trade-republic-cuenta-remunerada.json)
+con su **candado de identidad a tres bandas**, y la **F24 `guardian-own-words`**, ya
+cerrada y aprobada.
+
+- ✅ **CERRADA el 2026-08-20:** F20 a **`done`** en `feature_list.json`, línea en
+  [`history.md`](history.md) y
+  [resumen de cierre](summaries/trade-republic-product-file.md).
+- `./init.sh`: **739/739 verde** y **cero features en `in_progress`**.
+- Con esto, **5 de 6 bancos**. Falta **Revolut**: su fichero ya se baja de Drive, pero
+  nadie lo parsea todavía.

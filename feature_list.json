@@ -881,7 +881,7 @@
         "Cada criterio tiene al menos un test con fixtures SINTÉTICOS en memoria, sin datos reales y sin red, mapeado en progress/implementations/trade-republic-product-file.md; ./init.sh termina en verde con la suite completa, incluido el guardián de la F14 con su capa de comparación activa"
       ],
       "sdd": true,
-      "status": "spec_ready"
+      "status": "done"
     },
     {
       "id": 21,
@@ -958,6 +958,126 @@
         "Un fichero legítimo del banco (cp1252, declarando iso-8859-1) sigue entrando con sus 200 movimientos y 0 unparsedRows, exactamente como hoy: hay test de no-regresión (deriva de: 'un fichero bueno sigue entrando exactamente igual que hoy')",
         "docs/dar-de-alta-un-banco.md dice cómo guardar el fichero SIN romperlo con el editor que el humano usa de verdad, Visual Studio Code (reabrir y guardar con la codificación Western/Windows-1252), no solo con el Bloc de notas: el runbook actual le costó una vuelta entera el 2026-08-19",
         "Cada criterio tiene al menos un test con fixtures SINTÉTICOS en memoria, sin datos reales y sin red, mapeado en progress/implementations/encoding-mismatch-guard.md; ./init.sh termina en verde con la suite completa, incluido el guardián de la F14 con su capa de comparación activa"
+      ],
+      "sdd": false,
+      "status": "done"
+    },
+    {
+      "id": 23,
+      "name": "no-real-data-blind-spot",
+      "title": "El guardián de datos reales deja de tener bancos que no mira",
+      "intent": {
+        "_procedencia": "Lo destapó el reviewer de la F19 el 2026-08-19 como hallazgo colateral, y se confirmó en la prueba real del mismo día (progress/explorations/prueba-real-openbank-2026-08-19.md). El humano pidió abrirlo con estas palabras: 'si haz la feature para el hueco del guardian'. Antes preguntó qué significaba y se le explicó: el guardián lee sus ficheros de banco para saber qué datos suyos existen, pero solo abre .txt .csv .json .md .tsv, así que el .xls de Openbank —el único banco cuyo fichero trae NOMBRES DE PERSONAS— no lo ha leído nunca.",
+        "que_quiero": "Que el guardián que impide que mis datos acaben en el repositorio mire TODOS mis ficheros de banco, no solo los de algunas extensiones. Y que si algún día hay un banco que no puede mirar, me lo diga en vez de quedarse callado dando el visto bueno.",
+        "por_que": "Ya ha fallado una vez y de la peor forma: en la feature 19 se colaron importes reales de mi extracto en el repositorio, la suite entera se quedó en verde y lo cazó el revisor a mano. Justo el banco con nombres de personas dentro es el que el guardián no leía. Un guardián que da verde sobre lo que no ha mirado es peor que no tenerlo, porque me hace confiar.",
+        "como_se_que_esta_bien": [
+          "El fichero de Openbank, que se llama .xls pero por dentro es una página HTML, lo lee y compara como cualquier otro.",
+          "Si mañana llega un banco con un formato que el guardián no puede leer, el test falla o me avisa diciendo qué banco no está vigilado: no se queda callado.",
+          "El caso exacto de la feature 19 —un importe mío copiado a un archivo del repositorio— lo detectaría ahora.",
+          "Sigue en verde con el repositorio de hoy; si encuentra algo real, se me dice y se arregla, no se silencia."
+        ],
+        "que_no_quiero": [
+          "No quiero que se silencie nada añadiendo excepciones para que pase: si encuentra algo, es que hay algo.",
+          "No quiero que el guardián escriba mis datos en ningún sitio: ni en un informe, ni en el mensaje de error, ni en un archivo temporal versionado.",
+          "No quiero que esto cambie los parsers ni el comportamiento de la aplicación: es solo el guardián."
+        ],
+        "delego_en_agente": [
+          "Cómo se distingue un fichero legible como texto de uno binario de verdad (mi Bankinter es un .xlsx que es un ZIP y no se puede leer así), sin ir extensión por extensión y volver a dejarme un hueco dentro de un año.",
+          "Qué hace exactamente el guardián cuando encuentra un banco que no puede leer: fallar el test, avisar, o distinguir entre 'no legible por formato' y 'carpeta vacía'.",
+          "Cómo se prueba que el guardián detecta el caso de la F19 sin meter un dato real en el test."
+        ]
+      },
+      "acceptance": [
+        "El fichero de Openbank (.xls que por dentro es HTML) ENTRA en la captura del guardián y sus valores se comparan contra los archivos versionados, igual que los .csv de los otros bancos (deriva de: 'el fichero de Openbank lo lee y compara como cualquier otro')",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1): la captura NO se decide por una lista de extensiones, que es lo que dejó el hueco, sino por si el contenido es legible como texto. El .xlsx de Bankinter (ZIP binario) y el .pdf de Trade Republic no pueden romper el guardián ni meter ruido: hay que decir qué se hace con ellos y por qué",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 2): qué pasa cuando una carpeta de banco de var/drive-read/ tiene ficheros y NINGUNO se pudo capturar. Debe distinguirse de 'carpeta vacía' y NO puede terminar en verde silencioso: el hueco de hoy es exactamente ese caso (deriva de: 'me lo diga en vez de quedarse callado dando el visto bueno')",
+        "Hay un test que demuestra que el guardián DETECTA el caso de la F19 —un valor del fichero de banco copiado a un archivo versionado— usando un fichero de banco SINTÉTICO y un archivo versionado simulado, ambos en un directorio temporal: se prueba el mecanismo, nunca con datos reales (deriva de: 'el caso exacto de la feature 19 lo detectaría ahora' y del delego_en_agente nº 3)",
+        "El guardián sigue en VERDE con el repositorio tal y como está hoy. Si al ampliar la captura aparece alguna coincidencia real que hoy no se veía, se REPORTA al humano con el archivo y la línea, y se arregla en la raíz: NO se añade ningún 'no-real-data-ok' ni ninguna excepción para que pase (deriva de: 'no quiero que se silencie nada')",
+        "El guardián no escribe ningún dato del humano en ningún sitio: ni en el mensaje de fallo, ni en un informe, ni en un archivo temporal que quede versionado. El mensaje dice DÓNDE está la coincidencia (archivo y línea) y de qué tipo es, nunca el valor (deriva de: 'no quiero que el guardián escriba mis datos en ningún sitio')",
+        "NO cambia el comportamiento de la aplicación: ni parsers, ni rutas, ni modelo de datos. El diff se limita al guardián, sus tests y la documentación (deriva de: 'es solo el guardián')",
+        "La suite no se vuelve significativamente más lenta: si leer los ficheros nuevos cuesta, se dice cuánto en el informe. El fichero de Openbank son ~165 KB",
+        "Queda documentado dónde toca (docs/conventions.md y/o el ADR-017 de datos reales): qué mira el guardián, por qué la lista de extensiones era el hueco, y qué hace ante un banco que no puede leer",
+        "Cada criterio tiene al menos un test, mapeado en progress/implementations/no-real-data-blind-spot.md; ./init.sh termina en verde con la suite completa y con la capa de comparación del guardián activa"
+      ],
+      "sdd": false,
+      "status": "done"
+    },
+    {
+      "id": 24,
+      "name": "guardian-own-words",
+      "title": "El guardián deja de confundir nuestras propias palabras con los datos del humano",
+      "intent": {
+        "_procedencia": "Hallazgo de la prueba real de Trade Republic del 2026-08-20 (progress/explorations/prueba-real-trade-republic-2026-08-20.md). Al rechazarse su primer archivo escrito a mano, el volcado de var/parsed/ pasó a contener el MENSAJE DE RECHAZO del propio parser, y ese mensaje lo publica la documentación palabra por palabra (la fórmula del cuadre, «se espera el formato AAAA-MM-DD»). El guardián lo leyó como «una frase de su extracto copiada en los docs» y devolvió 270 avisos falsos en 8 archivos. No lo pidió el humano: lo encontró el leader al lanzar la prueba real, y él lo aprobó el mismo día con estas palabras: «despues hacer la feature del guardian que me pides».",
+        "que_quiero": "Que el guardián compare mis datos, no las frases que escribe el propio programa. Y que siga saltando de verdad el día que un dato mío se cuele en el repositorio: no quiero que se arregle bajando la guardia.",
+        "por_que": "Un guardián que da 270 avisos falsos es un guardián que nadie lee, y el día que dé el aviso bueno se perderá entre los otros 269. Además pasa siempre que un archivo se rechaza, en cualquier banco, así que no es de Trade Republic: es de todos.",
+        "como_se_que_esta_bien": [
+          "La suite vuelve a verde con mi archivo de Trade Republic en var/, sin borrar nada de var/ y sin quitar frases de la documentación.",
+          "Si mañana copio un importe mío o una frase de mi extracto a un archivo del repositorio, el guardián lo sigue cazando.",
+          "El aviso de que Trade Republic no está vigilado desaparece, porque ya hay un .json mío que sí se puede leer.",
+          "Nadie ha silenciado nada con una excepción para que pase."
+        ],
+        "que_no_quiero": [
+          "No quiero que se arregle borrando el volcado, añadiendo el archivo a una lista de excepciones ni quitando la comparación de frases.",
+          "No quiero que el guardián escriba ningún dato mío en el mensaje de fallo ni en ningún informe, como ya está decidido.",
+          "No quiero que esto toque los parsers ni el comportamiento de la aplicación: es solo el guardián."
+        ],
+        "delego_en_agente": [
+          "Cómo se distingue en el volcado lo que es DATO MÍO de lo que es TEXTO NUESTRO (mensajes de error, motivos, nombres de campo), sin dejar un hueco por el que un dato real pueda esconderse dentro de un campo de texto nuestro.",
+          "Si la exclusión va por campo (el motivo de failed[] y de ignored[]), por procedencia (cadenas que produce nuestro código), o de otra forma; y qué pasa el día que un motivo lleve dentro un dato suyo, que es justo lo que hace el mensaje del descuadre.",
+          "Qué se hace con la entrada de unwatchedBanks de trade-republic, que el propio test obliga a borrar ahora que hay un .json legible."
+        ]
+      },
+      "acceptance": [
+        "La suite vuelve a VERDE con el archivo real de Trade Republic en var/drive-read/ y su volcado en var/parsed/, sin borrar ni mover nada de var/ (deriva de: «la suite vuelve a verde sin borrar nada de var/»)",
+        "La entrada de trade-republic en unwatchedBanks se BORRA, y el test que exige que la lista sea exactamente el estado real sigue vivo y sin debilitar: el banco ya tiene texto legible que vigilar",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1 y 2): cómo se separa el texto nuestro del dato suyo dentro del volcado. Hay que justificar por qué la regla elegida NO abre un hueco: el mensaje del descuadre de Trade Republic lleva DENTRO sus cinco importes, así que una exclusión por campo que se trague el motivo entero deja de vigilar unos importes reales que hoy sí se vigilan. Si se acepta ese trade-off, se dice en voz alta y se explica qué lo compensa",
+        "La comparación de frases y la de importes SIGUEN ACTIVAS y siguen cazando el caso de la F19: hay test que lo demuestra con un fichero sintético y un archivo versionado simulado en un directorio temporal, nunca con datos reales (misma técnica que la F23)",
+        "Hay un test de REGRESIÓN del caso exacto del 2026-08-20: un volcado sintético que contiene un mensaje de rechazo de nuestro propio parser, cuyas frases están también en un archivo versionado simulado, NO produce ni un aviso. Con datos inventados",
+        "No se silencia nada: cero excepciones nuevas por archivo, cero listas de «esto no se mira», cero frases quitadas de la documentación para que el guardián calle (deriva de: «nadie ha silenciado nada»)",
+        "El guardián sigue sin escribir ningún dato del humano: el mensaje dice archivo y línea, nunca el valor (ADR-017, ya decidido en la F23)",
+        "NO cambia el comportamiento de la aplicación: ni parsers, ni rutas, ni modelo de datos. El diff se limita al guardián, sus tests y la documentación (deriva de: «es solo el guardián»)",
+        "Queda documentado dónde toque (docs/conventions.md y/o el ADR de datos reales): que el volcado de var/parsed/ contiene texto nuestro además de datos suyos, y cómo se separan",
+        "Cada criterio tiene al menos un test, mapeado en progress/implementations/guardian-own-words.md; ./init.sh termina en verde con la suite completa y con la capa de comparación del guardián activa"
+      ],
+      "sdd": false,
+      "status": "done"
+    },
+    {
+      "id": 25,
+      "name": "reimport-from-local-copy",
+      "title": "Un fichero ya procesado se puede volver a importar sin tocar Drive a mano",
+      "intent": {
+        "_procedencia": "Sale del diagnóstico del 2026-08-20 (progress/explorations/diagnostico-bankinter-sin-persistir-2026-08-20.md), abierto porque los 39 movimientos de Bankinter no estaban en la base de datos. La causa no fue un fallo del importador de hoy: su fichero lo movió a procesados/ la ruta de ingesta de la F5 el 2026-08-04, cuando aún no existían ni el modelo de datos ni el importador. Se rescató a mano —el humano movió el fichero en Drive y el import entró limpio: 39 movimientos, 0 duplicados— y ese rescate manual es justo lo que esta feature viene a hacer innecesario. Él la aprobó el mismo día: «si hagamos la feature con lo recomendado».",
+        "que_quiero": "Que si un fichero mío ya está en procesados/ y resulta que sus movimientos no llegaron a la base de datos, se pueda volver a importar sin que yo tenga que entrar en Drive a mover carpetas. Y que un fichero del que no ha entrado ni un movimiento NO se me reporte como importado.",
+        "por_que": "Hoy procesados/ es una puerta de un solo sentido: en cuanto un fichero entra ahí, no hay forma de volver a importarlo. Esta vez lo he arreglado yo moviendo el fichero, pero eso no es un arreglo, es un rescate. Y el silencio es lo peor: un fichero que no mete ni un movimiento se mueve igual y me dice que lo ha importado, así que el fallo se repetiría sin que yo me entere.",
+        "como_se_que_esta_bien": [
+          "Puedo volver a importar un fichero que ya está en procesados/ sin mover nada en Drive.",
+          "Si lo reimporto dos veces, la segunda no me duplica ni un movimiento.",
+          "Un fichero que no aporta ni un movimiento NO se me cuenta como importado y no desaparece de la lista de pendientes como si estuviera hecho.",
+          "Mis 455 movimientos y mis 4 cuentas de hoy siguen exactamente igual después de todo esto."
+        ],
+        "que_no_quiero": [
+          "No quiero que la reimportación se convierta en una forma fácil de duplicarme los movimientos: si ya están, que se me diga que ya estaban.",
+          "No quiero que esto cambie la importación normal de cada mes, que funciona.",
+          "No quiero que la reimportación mueva ni borre nada en mi Drive."
+        ],
+        "delego_en_agente": [
+          "Por dónde se pide una reimportación (ruta nueva, parámetro de la que hay, otra cosa) y cómo se nombra el fichero que se quiere reimportar, sabiendo que el nombre no es identificador y que la copia local vive en var/drive-read/<banco>/<año>/.",
+          "Qué pasa si la copia local NO existe (nunca se descargó, o se borró): tiene que decirse por su nombre, nunca fallar en silencio ni inventarse que no hay nada que importar.",
+          "Dónde se corta exactamente el caso de CERO movimientos: qué es «cero» (parsea bien pero no trae filas, todas duplicadas, todas sin parsear son casos distintos), qué se reporta en cada uno y cuál de ellos justifica NO mover el fichero a procesados/."
+        ]
+      },
+      "acceptance": [
+        "Se puede reimportar un fichero **desde la copia local** de `var/drive-read/<banco>/<año>/` sin depender de que esté pendiente en Drive y **sin mover ni borrar nada en Drive** (deriva de: «sin que yo tenga que entrar en Drive a mover carpetas» y «no quiero que mueva ni borre nada en mi Drive»)",
+        "Reimportar dos veces el mismo fichero NO duplica: la segunda pasada reporta los movimientos como **duplicados**, no como importados, apoyándose en la deduplicación que YA existe (el índice parcial `Movement_imported_dedup_key` con `daySequence`, que hay que localizar y reutilizar, no reinventar). Test que hace las dos pasadas seguidas",
+        "Un fichero que se importa y del que **no entra ni un movimiento** NO se cuenta como `imported` y **NO se mueve a `procesados/`**: se reporta de forma que obligue a mirarlo. Es el agujero residual que el diagnóstico dejó vivo y la forma que tiene este fallo de repetirse en silencio",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 3): qué es exactamente «cero movimientos». Parsear bien y no traer filas, traerlas todas duplicadas, o traerlas todas sin parsear son **casos distintos** y no todos justifican lo mismo. Hay que decir qué se reporta en cada uno y cuál impide mover el fichero",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1 y 2): por dónde se pide la reimportación y cómo se identifica el fichero; y qué se responde cuando la copia local no existe, que tiene que decirse **por su nombre** y nunca terminar en un «no había nada que importar» (deriva del patrón de la F22: un mensaje que manda a mirar donde no es cuesta una vuelta entera)",
+        "La importación normal de cada mes **no cambia**: mismos recuentos, mismo movimiento a `procesados/` cuando sí se persiste, mismo contrato. Hay test de no-regresión (deriva de: «no quiero que esto cambie la importación normal»)",
+        "Los datos de hoy no se tocan: **4 cuentas y 455 movimientos** (204 n26 + 201 openbank + 39 bankinter + 11 myinvestor) siguen igual, y la feature no obliga a reimportar nada ni a migrar nada",
+        "Queda documentado en `docs/api-contract.md` (la vía nueva, con su forma de pedirla, sus respuestas y sus errores) y en el ADR que corresponda: que `procesados/` **deja de ser una puerta de un solo sentido** y por qué lo era",
+        "Ni un dato real del humano en tests ni en fixtures: todo sintético y en directorio temporal, sin red (ADR-017)",
+        "Cada criterio con al menos un test, mapeado en `progress/implementations/reimport-from-local-copy.md`; `./init.sh` termina en verde con la suite completa y con la capa de comparación del guardián activa"
       ],
       "sdd": false,
       "status": "done"

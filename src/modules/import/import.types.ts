@@ -74,3 +74,68 @@ export interface ImportRunResult {
   skippedCount: number
   files: ImportedFileReport[]
 }
+
+/**
+ * The minimum a file report needs for the totals of a run to be computed
+ * (feature 25). It is structural so the two ways in -- Drive and the local
+ * copies -- share the arithmetic without sharing the shape: a local file has no
+ * Drive id, and a skipped one carries no counters at all.
+ */
+export interface FileCounts {
+  status: 'imported' | 'failed' | 'skipped'
+  imported?: number
+  duplicates?: number
+  unparsedCount?: number
+}
+
+/**
+ * What happened to ONE file once parsed, mapped and stored, with Drive left
+ * out (feature 25). It is the part of the report both ways in share; the Drive
+ * way adds the file id and whether it moved.
+ */
+export interface StatementResult {
+  status: 'imported' | 'failed'
+  account: AccountReport | null
+  imported: number
+  duplicates: number
+  unparsedCount: number
+  unparsedRows: UnparsedRow[]
+  error?: FileErrorReport
+}
+
+/**
+ * Where a local copy lives: bank folder, year and file name. There is NO Drive
+ * id here, on purpose -- the local copy is identified by its path, and this way
+ * in never talks to Drive.
+ */
+interface LocalFileReportBase {
+  bank: string
+  year: string
+  name: string
+  /**
+   * ALWAYS `false`, and typed as the literal so the compiler says it too: the
+   * local reimport moves nothing and deletes nothing in Drive (feature 25).
+   */
+  movedToProcessed: false
+}
+
+/** No parser for the bank of the folder, or an extension that parser does not read. */
+export interface SkippedLocalFileReport extends LocalFileReportBase {
+  status: 'skipped'
+  reason: string
+}
+
+/** A local copy the importer did try to import, whether it succeeded or not. */
+export interface AttemptedLocalFileReport extends LocalFileReportBase, StatementResult {}
+
+export type LocalFileReport = SkippedLocalFileReport | AttemptedLocalFileReport
+
+/** Outcome of one local reimport run: the totals plus the report of every copy seen. */
+export interface LocalImportRunResult {
+  importedCount: number
+  duplicateCount: number
+  unparsedCount: number
+  failedCount: number
+  skippedCount: number
+  files: LocalFileReport[]
+}

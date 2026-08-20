@@ -86,3 +86,62 @@ usa ni una línea del parser de MyInvestor.
   ([`myinvestor.service.ts:132`](../../src/modules/myinvestor/myinvestor.service.ts#L132)).
   Este banco **no hereda** esa divergencia; arreglar la de MyInvestor queda
   anotado como sugerencia fuera de scope.
+
+---
+
+## ✅ Puerta de aprobación — APROBADA CON CAMBIOS por el humano (2026-08-19)
+
+Los 6 puntos 🔴 quedan cerrados. **Dos cambian respecto a lo redactado** (el 1 y su
+consecuencia); los otros cuatro se confirman.
+
+### 🔄 Punto 1 — CAMBIA: se toma la alternativa, y con una vuelta de tuerca
+
+Sus palabras: «incluir todas las opciones, incluido saldo inicial y la demás». La
+plantilla pasa a llevar también **saldo inicial, entradas y salidas**, además de los 6
+campos que ya tenía.
+
+Y como esos tres campos hacen que **el archivo se pueda comprobar a sí mismo**, se
+añade un **cuadre aritmético** que él eligió expresamente en su versión más dura:
+
+> `saldo inicial + entradas − salidas + intereses = saldo final`
+> **Si no cuadra, el archivo de ese mes se RECHAZA**, diciendo cuánto se desvía y qué
+> campos no cuadran. No es un aviso: es un rechazo.
+
+Esto es lo que convierte los tres campos nuevos en algo más que teclear: son una **red
+contra erratas**. Un número mal escrito deja de entrar en silencio.
+
+### ✅ Puntos que se confirman tal cual
+
+- **2 — Cadencia: un archivo por abono de intereses** (uno al mes). «las primera opción».
+- **5 — El archivo lleva `"type": "savings_account"`**. «hacer la primera opción».
+- **6 — El `.pdf` se lista como ignorado, no como fallo.** «el pdf no lo usaré, crearé un
+  json todos los meses a mano como en las inversiones».
+- **3 — El IBAN NO va en la plantilla.** No lo entendía; se le explicó que el IBAN sirve
+  para enganchar movimientos a una cuenta, y que esta feature **no toca la base de
+  datos**, así que hoy no hay quien lo lea. Eligió **dejarlo fuera hasta que sirva**.
+- **4 — El tipo de interés (TAE) NO va en la plantilla.** Estaba confundiendo dos datos:
+  los **euros de intereses abonados** ya estaban dentro y obligatorios; el punto 4 era el
+  **porcentaje**, que no viene en el extracto. Eligió **dejarlo fuera**, con el argumento
+  de que con los cinco importes que ahora escribe el porcentaje **se calcula solo**, y un
+  campo tecleado a mano puede quedarse desfasado en silencio.
+
+Las 5 decisiones ya cerradas y las 7 técnicas **no se reabren**. La feature pasa de
+`spec_ready` a `in_progress` en cuanto el spec recoja estos cambios.
+
+---
+
+## ✅ Confirmación pendiente, cerrada por el humano (2026-08-20)
+
+El cuadre del punto 1 se apoyaba en que el extracto de Trade Republic trae **saldo
+inicial, entradas y salidas** del periodo. Nadie lo había comprobado: estaba **escrito
+como hecho** en `docs/trade-republic-product-files.md` cuando era una suposición — el
+mismo patrón que bloqueó tres reviews ese día.
+
+**El humano lo confirma contra su extracto:** los tres datos están, se toman del
+resumen y el cuadre se queda como está. Si un extracto futuro dejara de traerlos, esto
+se reabre: sin ellos habría que sacarlos de otro sitio cada mes.
+
+Además se crea la **plantilla copiable**
+`docs/plantillas/trade-republic-cuenta-remunerada.json`, byte a byte igual al bloque
+del documento, para escribir el primer archivo real y cerrar el checkpoint de la
+prueba real.

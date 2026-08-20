@@ -30,9 +30,10 @@ extractos que se importan, y aquí no se importa nada) y el IBAN de la cuenta.
 
 No es ninguno de los cuatro tipos de ADR-016 (`fund`, `etf`,
 `managed_portfolio`, `deposit`): es una cuenta con saldo que abona intereses cada
-mes. El juego de campos mínimo se elige **para que cada valor se pueda copiar de
-una fila del extracto**, sin que el humano tenga que calcular ni buscar nada
-fuera:
+mes. El juego de campos se elige **para que cada valor se pueda copiar del
+extracto**, sin que el humano tenga que buscar nada fuera. Tras la puerta del
+2026-08-19 son nueve campos obligatorios: los seis del mínimo original más los
+tres del cuadre (§2.1):
 
 | Campo | Obligatorio | De dónde sale |
 |---|---|---|
@@ -40,16 +41,27 @@ fuera:
 | `name` | sí | **HUMANO** — cómo llama él a esta cuenta. Es la **identidad**: cambiarlo crea otra cuenta. Misma semántica que `name` en ADR-016. |
 | `date` | sí | **MUESTRA** — la columna `FECHA` del apunte de intereses de ese mes. |
 | `openedAt` | sí | **HUMANO** — el extracto **no lo trae**. Obligatorio en todo producto desde la F15; se copia igual todos los meses. |
-| `balance` | sí | **MUESTRA** — la columna `BALANCE` de ese mismo apunte (el saldo justo después del abono). |
+| `balance` | sí | **MUESTRA** — la columna `BALANCE` de ese mismo apunte: el saldo final, justo después del abono. |
 | `interest` | sí | **MUESTRA** — la columna `ENTRADA DE DINERO` de ese mismo apunte: los intereses abonados ese mes. |
+| `openingBalance` | sí | **MUESTRA** — el saldo inicial del periodo, del resumen del extracto. Es el `balance` del archivo del mes anterior. |
+| `moneyIn` | sí | **MUESTRA** — lo que entró en el mes **sin contar los intereses** (ver aviso abajo). `0` si no entró nada. |
+| `moneyOut` | sí | **MUESTRA** — lo que salió en el mes. `0` si no salió nada. |
 | `currency` | no (def. `EUR`) | **ADR-016** — se hereda la doctrina: existe y no se escribe nunca. |
 | `closedAt` | no | **ADR-016** — se escribe una sola vez, el mes que cierre la cuenta. Dejar de escribir el archivo **no** la cierra. |
 | `_lo_que_sea` | no | **ADR-016** — sus notas, se ignoran. |
 
+> ⚠️ **`moneyIn` excluye los intereses**, que van aparte en `interest`. Si el
+> resumen del extracto los suma dentro de `ENTRADA DE DINERO`, hay que restarlos.
+> Es la única resta del archivo y **no es opcional**: si los intereses fueran
+> dentro de `moneyIn`, el cuadre de §2.1 los contaría dos veces y **rechazaría
+> todos los meses buenos**. En una cuenta sin más movimientos que el abono,
+> `moneyIn` es `0`. La plantilla lo dice en el propio marcador.
+
 **La consecuencia práctica es la cadencia: un archivo por abono de intereses**,
-es decir uno al mes, y lo que teclea cada vez son **tres valores** (`date`,
-`balance`, `interest`) leídos de la **misma fila** del extracto. El resto se
-copia. Si un extracto cubre varios meses (la muestra cubre cuatro), se escriben
+es decir uno al mes, y lo que teclea cada vez son **seis valores** (`date`,
+`openingBalance`, `moneyIn`, `moneyOut`, `interest` y `balance`): los tres
+primeros salen del resumen del extracto y los dos últimos de la **misma fila** del
+apunte de intereses. El resto se copia. Si un extracto cubre varios meses (la muestra cubre cuatro), se escriben
 tantos archivos como filas de intereses tenga: el extracto trae el `BALANCE` tras
 cada una, así que se rellenan hacia atrás sin calcular nada.
 
@@ -63,11 +75,66 @@ cada una, así que se rellenan hacia atrás sin calcular nada.
 - **`interestRate`** — **no está en el extracto**. Obligaría a ir a buscarlo a la
   app y a mantenerlo cuando el banco lo cambie, que es exactamente el tipo de
   paso manual que ya costó dos incidencias.
-- **`openingBalance` / `moneyIn` / `moneyOut`** — el resumen del extracto los
-  trae, pero el saldo inicial de un mes es el final del anterior y las entradas
-  ya son `interest`. Tres campos más que teclear para no aportar un dato nuevo.
 - **Los apuntes uno a uno** — eso es el parser del PDF, que es justo lo que esta
   feature no hace.
+
+> 📌 `openingBalance`, `moneyIn` y `moneyOut` **estuvieron descartados** en la
+> primera redacción («tres campos más que teclear que no aportan un dato nuevo»).
+> El humano los recuperó en la puerta del 2026-08-19 **con una condición que lo
+> cambia todo**: que sirvan para que el archivo se compruebe a sí mismo (§2.1).
+> Con el cuadre, dejan de ser tres campos redundantes y pasan a ser la única
+> defensa contra un dígito mal tecleado.
+
+## 2.1 Decisión del 2026-08-19 — el CUADRE ARITMÉTICO (rechaza, no avisa)
+
+```
+openingBalance + moneyIn − moneyOut + interest  ==  balance
+```
+
+Si no cuadra, **el archivo de ese mes se rechaza**. Es una elección explícita del
+humano frente a la versión blanda («avisar y dejarlo pasar»): un aviso en un
+`products.json` que él no lee cada mes no impide que el dato malo entre.
+
+**a) Cómo se comparan los importes sin que un céntimo dé un falso rechazo.**
+El cuadre **no se hace en `number`**: `0.1 + 0.2 !== 0.3` en coma flotante, y
+sumar cinco importes en euros produce restos del orden de `1e-13` que harían
+fallar meses perfectamente buenos. El procedimiento es:
+
+1. Cada importe se pasa a **céntimos enteros** con `Math.round(v * 100)`. El
+   valor que se devuelve en el producto sigue siendo el escrito, sin tocar (R7):
+   los céntimos son una variable local de la comprobación.
+2. Se comparan enteros: `expected = openingBalanceC + moneyInC − moneyOutC +
+   interestC`, `deviationC = balanceC − expected`.
+3. **Tolerancia de 1 céntimo**: `Math.abs(deviationC) <= 1` cuadra. Se admite
+   porque los cinco importes ya vienen redondeados a céntimo por el banco y el
+   abono de intereses es un redondeo suyo; una errata humana real (un dígito, una
+   coma, un signo) se desvía de céntimos a euros, nunca de un céntimo. Más margen
+   dejaría pasar erratas; menos rechazaría el redondeo del propio banco.
+4. **`deviationC` se reporta en euros y con signo**, para que se lea como lo que
+   es: cuánto sobra o falta.
+
+**b) Qué pasa si falta alguno de los tres campos nuevos.** Son **obligatorios,
+como los otros seis**, y su ausencia se rechaza por la vía normal (R8), no por el
+cuadre. Se descartó hacerlos opcionales y omitir el cuadre cuando falten:
+olvidarse de un campo desactivaría el guardián **en silencio**, que es
+exactamente el fallo que este cuadre viene a impedir. Y se descartó también
+inventarles un valor por defecto de `0`, que convertiría un olvido en un rechazo
+por descuadre y mandaría al humano a buscar un error de importes donde solo hay
+un campo sin escribir.
+
+**c) Cuándo NO se evalúa el cuadre (R18).** Solo se evalúa si los **cinco**
+importes son números válidos. Si falta alguno o alguno es inválido (número como
+texto, `null`, booleano), el archivo ya se rechaza por R8/R9 y el cuadre **no
+añade motivo**: un descuadre calculado sobre datos incompletos es ruido que
+esconde el problema de verdad. El cuadre es, por tanto, la **última**
+comprobación del parser.
+
+**d) Qué dice el motivo cuando no cuadra.** Los dos datos que el humano pidió
+—cuánto se desvía y qué campos no cuadran— más lo necesario para localizarlo sin
+abrir la calculadora: la desviación con signo, el saldo final esperado frente al
+escrito, y **los cinco campos que intervienen con su valor** (el parser no puede
+saber cuál de los cinco está mal; enseñarlos todos es lo que permite ver de un
+vistazo cuál chirría). Se acumula con los demás motivos del archivo (R12).
 
 ## 3. Decisión delegada nº 2 — la forma de la salida
 
@@ -115,7 +182,8 @@ de imports permitidos (`./`, `../../errors/`, `../../lib/`) y de importadores
 externos (`app.ts` y nadie más) sobre `modules/trade-republic/`. Con eso, el día
 que alguien importe `myinvestor.product.parser.js` desde aquí, la suite se pone en
 rojo. Se añade además el guardián «módulo libre de `prisma`», calcado del que ya
-tiene MyInvestor (R6), y las entradas del módulo a la lista del guardián del árbol.
+tiene MyInvestor (R5, que absorbió el antiguo R6), y las entradas del módulo a
+la lista del guardián del árbol.
 
 > ⚠️ **Cuando el TERCER banco escriba un `.json` a mano, esta decisión se
 > revisa.** Ahí sí habrá tres productores y el contrato compartido de producto
@@ -134,7 +202,7 @@ tiene MyInvestor (R6), y las entradas del módulo a la lista del guardián del �
 | `src/modules/trade-republic/trade-republic.service.ts` | recorre las copias locales, encamina por extensión, vuelca `products.json` |
 | `src/modules/trade-republic/trade-republic.routes.ts` | `POST /trade-republic` bajo el prefijo `/api/parser` |
 | `src/modules/trade-republic/trade-republic.fixture.ts` | fixtures **sintéticos** en memoria (ADR-017) |
-| `src/modules/trade-republic/trade-republic.product.parser.test.ts` | R2, R7-R12 |
+| `src/modules/trade-republic/trade-republic.product.parser.test.ts` | R2, R7-R9, R11, R12, R17, R18 |
 | `src/modules/trade-republic/trade-republic.service.test.ts` | R13-R15 |
 | `src/modules/trade-republic/trade-republic.routes.test.ts` | R16 |
 | `src/modules/trade-republic/trade-republic.docs.test.ts` | R1, R3, R4 (lee los `docs/`, no toca código) |
@@ -168,7 +236,13 @@ export interface ParsedSavingsAccount {
   /** ISO AAAA-MM-DD: el día que se abrió la cuenta. Obligatorio (F15). */
   openedAt: string
   currency: string
-  /** El saldo tras el abono, tal y como está escrito. */
+  /** El saldo inicial del mes, tal y como está escrito. */
+  openingBalance: number
+  /** Lo que entró en el mes SIN los intereses. Tal y como está escrito. */
+  moneyIn: number
+  /** Lo que salió en el mes, tal y como está escrito. */
+  moneyOut: number
+  /** El saldo final tras el abono, tal y como está escrito. */
   balance: number
   /** Los intereses abonados en esa fecha, tal y como están escritos. */
   interest: number
@@ -189,6 +263,17 @@ export function parseTradeRepublicProduct(
   file: string,
   content: string,
 ): ParsedSavingsAccount | { reason: string }
+
+/**
+ * Última comprobación del parser (§2.1). Solo se llama cuando los cinco
+ * importes son números válidos. `null` = cuadra dentro de la tolerancia.
+ */
+export function checkBalanceEquation(
+  amounts: Pick<
+    ParsedSavingsAccount,
+    'openingBalance' | 'moneyIn' | 'moneyOut' | 'interest' | 'balance'
+  >,
+): string | null
 
 // trade-republic.service.ts
 export async function parseLocalTradeRepublicCopies(
@@ -238,8 +323,26 @@ misma vía que los demás.
 - **Mover `ParsedProduct` a `src/lib/` en esta feature.** Descartada: ver §3b.
 - **Un archivo por extracto, con `periodStart`/`periodEnd` y el interés del
   periodo.** Descartada: obliga a sumar a mano cuando el extracto cubre varios
-  meses y pierde la serie mensual. La fila del extracto ya da los tres valores del
-  mes; una foto por mes es lo mismo que ya hace MyInvestor.
+  meses y pierde la serie mensual. El extracto ya da mes a mes los importes que
+  el archivo necesita; una foto por mes es lo mismo que ya hace MyInvestor.
+- **El cuadre como aviso en vez de como rechazo.** Descartada **por el humano**
+  en la puerta del 2026-08-19: un aviso dentro de un `products.json` que no se lee
+  cada mes no impide que el dato malo entre, y entonces los tres campos nuevos
+  solo serían tres campos más que teclear.
+- **Cuadrar en `number` con `===`, o con una tolerancia de tipo `1e-9`.**
+  Descartada: la primera rechaza meses buenos por el error de la coma flotante; la
+  segunda es tan fina que equivale a la primera. Céntimos enteros con 1 céntimo de
+  margen (§2.1a).
+- **Tolerancia «generosa» (p. ej. 1 €) para no molestar.** Descartada: una errata
+  de un dígito puede ser de menos de un euro, y una red que deja pasar el caso que
+  viene a cazar es peor que no tenerla, porque da confianza falsa.
+- **`moneyIn` con los intereses dentro y fórmula sin `+ interest`.** Descartada:
+  el humano escribió la fórmula con los intereses aparte, y separar el abono del
+  banco de lo que él ingresa hace el archivo más informativo. El coste es una
+  resta al copiar del resumen, avisada en la plantilla.
+- **Hacer opcionales los tres campos nuevos y omitir el cuadre si faltan.**
+  Descartada: convertiría el guardián en algo que se apaga olvidándose de escribir
+  un campo (§2.1b).
 - **Validar con AJV.** Descartada por el mismo motivo que ADR-016: es la
   herramienta de la capa HTTP y acumula peor los motivos, que es justo lo que R12
   necesita.

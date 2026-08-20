@@ -16,6 +16,7 @@ import n26Routes from './modules/n26/n26.routes.js'
 import { parseN26Statement } from './modules/n26/n26.statement.parser.js'
 import openbankRoutes from './modules/openbank/openbank.routes.js'
 import { parseOpenbankStatement } from './modules/openbank/openbank.statement.parser.js'
+import tradeRepublicRoutes from './modules/trade-republic/trade-republic.routes.js'
 import drivePlugin from './plugins/drive.js'
 import errorHandlerPlugin from './plugins/error-handler.js'
 import prismaPlugin from './plugins/prisma.js'
@@ -60,6 +61,9 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(myinvestorRoutes, { prefix: '/api/parser' })
   app.register(n26Routes, { prefix: '/api/parser' })
   app.register(openbankRoutes, { prefix: '/api/parser' })
+  // Trade Republic is a parser route but NOT a registry entry: it has no
+  // statement to import, only the hand-written account file (ADR-024).
+  app.register(tradeRepublicRoutes, { prefix: '/api/parser' })
 
   return app
 }

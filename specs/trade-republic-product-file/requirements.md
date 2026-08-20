@@ -40,22 +40,24 @@ DEBE llevar esa misma nota en su etapa E4.
 
 ## R5
 
-El módulo `src/modules/trade-republic/` NO DEBE importar nada de otro módulo de
-banco, ni nombrarlo, ni ser importado desde ningún archivo de `src/` que no sea
-`src/app.ts`.
-
-## R6
-
-El módulo `src/modules/trade-republic/` NO DEBE contener ninguna referencia a
-`prisma`, y la feature NO DEBE modificar `prisma/schema.prisma` ni añadir
+El módulo `src/modules/trade-republic/` DEBE quedar **aislado**: NO DEBE importar
+nada de otro módulo de banco, ni nombrarlo, ni ser importado desde ningún archivo
+de `src/` que no sea `src/app.ts`; y NO DEBE contener ninguna referencia a
+`prisma`. La feature NO DEBE modificar `prisma/schema.prisma` ni añadir
 migraciones.
+
+## R6 — retirado
+
+Fusionado en **R5**: es el mismo invariante (el módulo está aislado del resto de
+bancos y de la base de datos), comprobado por dos guardianes. El número **no se
+reutiliza**.
 
 ## R7
 
 CUANDO un archivo trae `type` = `savings_account`, `name`, `date`, `openedAt`,
-`balance` e `interest` válidos, el sistema DEBE devolver el producto con esos
-valores **exactamente como están escritos**, sin calcular, redondear ni
-reformatear ninguno.
+`openingBalance`, `moneyIn`, `moneyOut`, `balance` e `interest` válidos, el
+sistema DEBE devolver el producto con esos valores **exactamente como están
+escritos**, sin calcular, redondear ni reformatear ninguno.
 
 ## R8
 
@@ -64,16 +66,17 @@ enumerando por su nombre **todos** los que faltan, no el primero.
 
 ## R9
 
-SI un valor no cumple el formato de su campo —un número escrito como texto
-(`"1234.56"`, `"1.234,56"`), un valor que no es número (`true`, `[]`, `{}`), o una
-fecha fuera de `AAAA-MM-DD`— ENTONCES el sistema DEBE rechazar el archivo
-diciendo el campo, el valor recibido y el formato esperado, y NO DEBE
+SI un valor no cumple lo esperado para su campo —un número escrito como texto
+(`"1234.56"`, `"1.234,56"`), un valor que no es número (`true`, `[]`, `{}`), una
+fecha fuera de `AAAA-MM-DD`, o un `type` distinto de `savings_account` (o
+ausente)— ENTONCES el sistema DEBE rechazar el archivo diciendo el campo, el
+valor recibido y lo esperado (el formato, o el único valor admitido), y NO DEBE
 interpretarlo nunca, ni siquiera cuando el texto sería inequívoco.
 
-## R10
+## R10 — retirado
 
-SI `type` no es `savings_account` (o está ausente) ENTONCES el sistema DEBE
-rechazar el archivo diciendo el valor recibido y el único valor admitido.
+Fusionado en **R9**: un `type` no admitido es un valor que no cumple lo esperado
+para su campo, como los demás. El número **no se reutiliza**.
 
 ## R11
 
@@ -109,6 +112,24 @@ CUANDO un cliente hace `POST /api/parser/trade-republic`, el sistema DEBE
 responder `200` con el resultado del recorrido (`products`, `failed`, `ignored` y
 sus contadores), incluso cuando algún archivo haya fallado.
 
+## R17
+
+CUANDO los cinco importes del archivo (`openingBalance`, `moneyIn`, `moneyOut`,
+`interest`, `balance`) son números válidos, el sistema DEBE comprobar el cuadre
+`openingBalance + moneyIn − moneyOut + interest = balance` —donde `moneyIn` son
+las entradas del mes **sin contar los intereses**, que van aparte en `interest`—
+y SI no cuadra ENTONCES DEBE **rechazar** el archivo (no avisar) diciendo **la
+desviación con signo**, el **saldo final esperado** frente al escrito, y **los
+cinco campos que intervienen, con su valor**.
+
+## R18
+
+El cuadre de R17 DEBE compararse en **céntimos enteros** y con una **tolerancia
+de 1 céntimo** (una desviación de 0.01 o menor NO DEBE rechazar el archivo), y SI
+falta alguno de esos cinco importes o alguno es inválido ENTONCES el archivo DEBE
+rechazarse por R8/R9 y el cuadre NO DEBE evaluarse (nunca un motivo de cuadre
+calculado sobre datos incompletos).
+
 ---
 
 ## Procedencia
@@ -127,23 +148,22 @@ sus contadores), incluso cuando algún archivo haya fallado.
   escribirlo en dos sitios: la plantilla (donde lo verá cada mes) y el roadmap
   (donde se decide qué se hace después).
 - **R5** — (humano) Sale de «no quiero que el archivo de Trade Republic use el
-  parser de MyInvestor: son bancos distintos», y de la norma «un parser por
-  banco» de `docs/conventions.md`. El guardián que ya existe se amplía a este
-  banco.
-- **R6** — (humano) Sale de «no quiero que esto toque la base de datos».
+  parser de MyInvestor: son bancos distintos» y de «no quiero que esto toque la
+  base de datos», más la norma «un parser por banco» de `docs/conventions.md`. El
+  guardián que ya existe se amplía a este banco. (Absorbe el antiguo R6.)
 - **R7** — (delegado) Es el juego de campos de la **cuenta remunerada**, la
   decisión nº 1 del `delego_en_agente`. Elegidos: `type`, `name`, `date`,
-  `openedAt`, `balance`, `interest` obligatorios; `currency` (def. `EUR`),
-  `closedAt` y las claves `_` opcionales. Descartados con razón: `iban`,
-  `interestRate`, `openingBalance` / `moneyIn` / `moneyOut` y los apuntes uno a
+  `openedAt`, `balance`, `interest`, `openingBalance`, `moneyIn` y `moneyOut`
+  obligatorios; `currency` (def. `EUR`), `closedAt` y las claves `_` opcionales.
+  Los tres últimos **los pidió el humano en la puerta del 2026-08-19** (punto 1,
+  alternativa). Descartados con razón: `iban`, `interestRate` y los apuntes uno a
   uno (ver `design.md` §2). «Sin calcular nada» es doctrina heredada de ADR-016.
 - **R8, R9, R11, R12** — (humano) Salen de «si escribo un número con coma
   decimal, o una fecha en otro formato, me lo dice por su nombre, como ya hace el
   de MyInvestor». La **doctrina** se copia; el **código** no (R5).
-- **R10** — (añadido) El humano no dijo que el archivo llevara un campo `type`
-  teniendo un solo producto. **Propongo** llevarlo igualmente, con un único valor
-  admitido `savings_account`: mantiene la forma paralela a MyInvestor y deja sitio
-  al día que Trade Republic aporte un segundo producto. ← REVISAR EN APROBACIÓN.
+- **R10** — retirado, fusionado en R9. El campo `type` con un único valor
+  admitido `savings_account` fue propuesta del agente y el humano la **confirmó**
+  en la puerta del 2026-08-19 (punto 5).
 - **R13, R15** — (delegado) Forma de la salida, decisión nº 2 del
   `delego_en_agente`: se copia la **forma** de MyInvestor (un `products.json` por
   año, fallos aislados por archivo) sin compartir el código. Justificación
@@ -153,6 +173,20 @@ sus contadores), incluso cuando algún archivo haya fallado.
   que se liste como ignorado y no como fallo: si fuera un fallo, tendría un error
   rojo todos los meses por un archivo que hace bien en estar ahí. ← REVISAR EN
   APROBACIÓN.
+- **R17** — (humano) Sale de la puerta del 2026-08-19: eligió expresamente la
+  variante dura del cuadre («si no cuadra, se rechaza, diciendo cuánto se desvía y
+  qué campos no cuadran»). Es lo que convierte los tres campos nuevos en una red
+  contra erratas en vez de en más cosas que teclear. **Decido** que `moneyIn`
+  excluya los intereses: si los incluyera, un mes sin más movimientos que el abono
+  los contaría dos veces y el cuadre fallaría siempre.
+- **R18** — (delegado) El humano pidió el cuadre; **decido** cómo se compara y
+  cuándo no se evalúa. Céntimos enteros porque `0.1 + 0.2 !== 0.3` en coma
+  flotante y un cuadre hecho en `number` crudo rechazaría meses buenos. Tolerancia
+  de **1 céntimo**, ni más ni menos: los cinco importes vienen ya redondeados a
+  céntimo por el banco, así que más margen dejaría pasar erratas de verdad y menos
+  rechazaría un redondeo del propio banco. Y los tres campos nuevos son
+  **obligatorios como los demás**: si fueran opcionales, olvidarse de uno
+  desactivaría el guardián en silencio, justo lo contrario de lo que se pidió.
 - **R16** — (humano) Sale de «lo dejo en la carpeta de Trade Republic de Drive y
   el backend lo lee y me dice si está bien o qué le falta»; la ruta es la misma
   forma que las dos que ya existen.
@@ -163,14 +197,25 @@ sus contadores), incluso cuando algún archivo haya fallado.
 |---|---|
 | Plantilla con marcadores `<…>` | R1, R2 |
 | Lo dejo en Drive y el backend lo lee y me dice si está bien | R13, R14, R15, R16 |
-| Coma decimal o fecha mal → me lo dice por su nombre | R8, R9, R10, R11, R12 |
+| Coma decimal o fecha mal → me lo dice por su nombre | R8, R9, R11, R12 |
+| El archivo se comprueba a sí mismo: una errata no cuela | R17, R18 |
 | Queda escrito que es provisional | R4 |
 
 ### Nota de tamaño (regla 2)
 
-Son **16 requirements**, uno por encima del tope de ~15. No se propone partir la
-feature: **cuatro** (R1, R3, R4 y los dos guardianes R5/R6) son documentación e
-invariantes, no código nuevo, y **cinco** (R8-R12) son la misma cortesía de
-errores partida en sus casos verificables. Partirla dejaría una plantilla sin
-parser o un parser sin plantilla, que es exactamente lo que el humano no pidió.
-La razón queda dicha en `decisions.md`.
+El cuadre aritmético aprobado el 2026-08-19 añade dos requirements (R17, R18).
+Para no dejar el recuento creciendo sin más, **se han reagrupado dos pares que
+estaban partidos de más**: R6 se fusiona en R5 (un solo invariante, «el módulo
+está aislado», comprobado por dos guardianes) y R10 en R9 (un `type` no admitido
+es un valor inválido más). Los números retirados **no se reutilizan**, para que
+las referencias que ya circulan sigan valiendo.
+
+Quedan **16 requirements vivos** (R1-R5, R7-R9, R11-R18), uno por encima del tope
+de ~15, y sigue sin proponerse partir la feature. La razón, dicha mejor que antes:
+de esos 16, **tres son documentación** (R1, R3, R4), **uno es un invariante de
+arquitectura** (R5), **cuatro son la misma cortesía de errores** partida en sus
+casos verificables (R8, R9, R11, R12) y **dos son el cuadre** (R17, R18), que es
+una sola regla y su letra pequeña. De código con entidad propia hay **dos**: el
+parser (R7) y el recorrido (R13). La única frontera por la que se podría cortar es
+«plantilla» / «parser», y deja los dos lados inservibles: una plantilla que nadie
+lee, o un parser sin formato que leer. La razón queda dicha en `decisions.md`.

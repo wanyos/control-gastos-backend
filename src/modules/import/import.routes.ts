@@ -2,6 +2,8 @@ import { join } from 'node:path'
 
 import type { FastifyInstance } from 'fastify'
 
+import { importLocalCopies, type LocalImportSelection } from './import.local.service.js'
+import { localImportSchema } from './import.schema.js'
 import { importDb, importPending } from './import.service.js'
 import type { BankParserRegistry } from './import.types.js'
 
@@ -22,11 +24,17 @@ export interface ImportRoutesOptions {
 
 /**
  * HTTP layer of the importer:
- *   POST /api/import  -> download + parse + store + move to procesados/
+ *   POST /api/import        -> download + parse + store + move to procesados/
+ *   POST /api/import/local  -> parse + store from the local copy, Drive untouched
  *
- * Registered under the `/api/import` prefix (see `src/app.ts`). No request body
- * and no new authentication (consistent with the current contract). A per-file
- * failure does NOT change the status code: it travels inside the 200 report.
+ * Registered under the `/api/import` prefix (see `src/app.ts`). No new
+ * authentication (consistent with the current contract), and a per-file failure
+ * does NOT change the status code: it travels inside the 200 report.
+ *
+ * The two ways in differ in ONE thing and it is deliberate: the monthly one
+ * reads what is pending in Drive and moves what it stores; the local one reads
+ * what is already on this machine and moves NOTHING, which is what makes a file
+ * that already reached `procesados/` importable again (feature 25).
  */
 export default async function importRoutes(
   fastify: FastifyInstance,
@@ -45,5 +53,13 @@ export default async function importRoutes(
       rawCopyBaseDir,
       parsers,
     })
+  })
+
+  // Reimport from the local copy. Optional body `{ bank?, year?, name? }`: with
+  // none of the three it walks every copy on disk. Asking for something that is
+  // not there is a 404 LOCAL_COPY_NOT_FOUND, never an empty 200.
+  fastify.post('/local', { schema: localImportSchema }, async (request) => {
+    const selection = (request.body ?? {}) as LocalImportSelection
+    return importLocalCopies({ prisma, rawCopyBaseDir, parsers, selection })
   })
 }

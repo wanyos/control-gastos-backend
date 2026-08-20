@@ -94,6 +94,14 @@ describe('architecture invariants', () => {
       'modules/import/import.routes.ts',
       'modules/import/import.service.test.ts',
       'modules/import/import.routes.test.ts',
+      // The second way in of the importer (feature 25): the same core, reading
+      // the local copy instead of Drive. Its own file because it is the half
+      // that must NOT be able to touch Drive, and a file is what makes that
+      // checkable (see the test below).
+      'modules/import/import.local.service.ts',
+      'modules/import/import.schema.ts',
+      'modules/import/import.local.service.test.ts',
+      'modules/import/import.local.routes.test.ts',
       'modules/bankinter/bankinter.parser.ts',
       'modules/bankinter/bankinter.service.ts',
       'modules/bankinter/bankinter.routes.ts',
@@ -147,6 +155,18 @@ describe('architecture invariants', () => {
       'modules/openbank/openbank.statement.parser.test.ts',
       'modules/openbank/openbank.service.test.ts',
       'modules/openbank/openbank.routes.test.ts',
+      // Fifth bank with its own module (feature 20, ADR-024), and the first one
+      // that enters WITHOUT a parser of what the bank emits: its statement is a
+      // `.pdf` that is never opened, and the entry is a `.json` the human writes.
+      'modules/trade-republic/trade-republic.product.parser.ts',
+      'modules/trade-republic/trade-republic.service.ts',
+      'modules/trade-republic/trade-republic.routes.ts',
+      'modules/trade-republic/trade-republic.types.ts',
+      'modules/trade-republic/trade-republic.fixture.ts',
+      'modules/trade-republic/trade-republic.product.parser.test.ts',
+      'modules/trade-republic/trade-republic.service.test.ts',
+      'modules/trade-republic/trade-republic.routes.test.ts',
+      'modules/trade-republic/trade-republic.docs.test.ts',
       // investments is a partial folder on purpose: feature 9 is schema plus
       // migration, with no HTTP surface (no routes/service/schema/types).
       // Precedent: modules/health/. The importer feature will add its service
@@ -260,6 +280,26 @@ describe('architecture invariants', () => {
     }
   })
 
+  it('keeps the local reimport away from Drive: it moves and deletes nothing (feature 25)', () => {
+    // The promise of the feature said out loud: «no quiero que la reimportación
+    // mueva ni borre nada en mi Drive». A report can claim it; this checks it.
+    const source = readFileSync(join(srcDir, 'modules/import/import.local.service.ts'), 'utf8')
+
+    for (const forbidden of [
+      'moveFileToProcessed',
+      'downloadFileContent',
+      'ensureFolder',
+      'listPendingFiles',
+      'AppDriveClient',
+      'unlink',
+      'rename',
+      'rmdir',
+      'writeFile',
+    ]) {
+      expect(source).not.toContain(forbidden)
+    }
+  })
+
   it('never creates an account from the importer: only the accounts service does (R19)', () => {
     for (const file of sourceFiles(join(srcDir, 'modules/import'))) {
       const source = readFileSync(file, 'utf8')
@@ -327,8 +367,24 @@ describe('architecture invariants', () => {
     }
   })
 
+  it('keeps the trade-republic parser module free of data access (no "prisma" reference)', () => {
+    // This bank does not touch the database AT ALL (R5, decision of the human:
+    // «no quiero que esto toque la base de datos»), same as the MyInvestor
+    // product files. Nothing here is persisted, so nothing here names Prisma.
+    const files = [
+      'modules/trade-republic/trade-republic.product.parser.ts',
+      'modules/trade-republic/trade-republic.service.ts',
+      'modules/trade-republic/trade-republic.routes.ts',
+      'modules/trade-republic/trade-republic.types.ts',
+    ]
+
+    for (const file of files) {
+      expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
   it('shares no parsing code between bank modules (one parser per bank)', () => {
-    const bankModules = ['bankinter', 'myinvestor', 'n26', 'openbank']
+    const bankModules = ['bankinter', 'myinvestor', 'n26', 'openbank', 'trade-republic']
     // What a bank module may import: vendor/node, its own files, the shared
     // error classes, `lib/` (the output contract) and the single sign helper of
     // `modules/movements/`, which is NOT a bank module.

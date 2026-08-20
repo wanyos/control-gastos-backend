@@ -127,7 +127,39 @@ export default async function accountRoutes(fastify: FastifyInstance) {
     porqué**. No se desarma entero.
   - **Lo que NO caza** (está en el ADR-017, y conviene saberlo antes de fiarse del
     verde): importes redondos o cortos, valores **derivados** de los suyos, fechas, y
-    conceptos de menos de tres palabras.
+    conceptos de menos de tres palabras. Y **qué mira**, desde la F23 (2026-08-19):
+    **todo fichero de `var/` cuyos bytes se lean como texto** —el `.xls` de Openbank es
+    HTML y entra; se decide por contenido, **nunca por extensión**, que es justo lo que
+    dejó el hueco por el que pasó la fuga de la F19—. De un fichero de marcado compara
+    **lo que dice, no sus etiquetas**. Los dos binarios de verdad (el `.xlsx` de
+    Bankinter y el `.pdf` de Trade Republic) quedan fuera para no meter ruido de bytes:
+    el ZIP se vigila por su volcado de `var/parsed/`, y el PDF **no se vigila** y el
+    guardián **lo dice por su nombre en la salida de `./init.sh`**, en toda ejecución
+    (lista `unwatchedBanks`). Ese aviso se escribe al **descriptor 2**, no por
+    `console`: vitest **intercepta la consola** y con el reporter por defecto —el que
+    usa `./init.sh`— un `console.warn` **no se imprime**. Se intentó así en la primera
+    pasada de la F23 y el resultado fue un verde silencioso; hay test que lo impide
+    ahora.
+  - **Si aparece un banco que no puede leer**, la suite se pone **roja** hasta que se
+    decida qué hacer con él: nunca pasa en verde sobre lo que no ha mirado. Una carpeta
+    de banco **vacía** no es lo mismo y no dice nada.
+  - **Lo que hay en `var/parsed/` es texto NUESTRO además de datos suyos** (F24,
+    2026-08-20). El volcado lo escribe el parser: si un archivo se rechaza, guarda el
+    **motivo**, que es una frase nuestra y que los `docs/` publican tal cual. El
+    guardián ya no la confunde con «una frase de su extracto»: de un `reason` solo se da
+    por nuestra la frase que **no está dentro de unas comillas** (todo valor suyo va
+    entrecomillado, y lo entrecomillado se compara sin preguntar) **y** que además esté
+    **literal en el código de producción** (`src/**.ts`, sin tests ni fixtures). Las dos
+    condiciones, nunca una. El motivo **no se trocea** para preguntarlo —va entero—:
+    trocearlo hacía desaparecer un valor con **apóstrofo dentro** (`COMPRA D'ALIMENTS…`),
+    que es un silencio, y lo cazó la review de la F24. **La capa de
+    importes no cambia**: sigue mirando el texto crudo, motivos incluidos, así que los
+    cinco importes del mensaje del descuadre se vigilan igual. Si escribes un parser
+    nuevo, **entrecomilla el valor que devuelvas en un motivo**: no es cosmética, es la
+    mitad de esta regla. Detalle y porqué en el ADR-017.
+  - **Sus mensajes no llevan tu dato**: dicen `archivo:línea` y el tipo de coincidencia,
+    nunca el valor. Si al leer un fallo te falta saber qué cifra es, búscala en la línea
+    que te señala; el guardián no la transcribe a propósito.
   - **La bitácora también se sanea.** Las reviews, los resúmenes y `history.md` son
     documentos versionados como cualquier otro: en la F14 se saneó todo el histórico
     del árbol de trabajo, dejando dicho en cada sitio que las cifras son inventadas
@@ -187,6 +219,18 @@ class NotFoundError extends AppError {
 - **El importador no conoce ningún banco.** `src/app.ts` es el **único** archivo de
   `src/` que puede nombrar uno; un guardián de `architecture.test.ts` lo comprueba
   también sobre `src/modules/import/`.
+- **Un banco puede entrar solo por archivo escrito a mano cuando su formato no
+  compensa** (añadido 2026-08-19, F20; ver ADR-024). El caso es **Trade Republic**: su
+  extracto es un `.pdf` cuya tabla no sobrevive a la extracción de texto y la cuenta
+  tiene uno o dos apuntes al mes, así que **no se escribe parser de lo que emite el
+  banco**: el humano rellena un `.json` mensual
+  ([`docs/trade-republic-product-files.md`](./trade-republic-product-files.md)) y el
+  `.pdf` que sigue bajando se lista como `ignored`, nunca como fallo. Sigue siendo un
+  módulo de banco con todas las de la ley (`src/modules/trade-republic/`, su ruta y sus
+  guardianes); lo que no tiene es parser del fichero del banco. Es **provisional y está
+  escrito** dónde se revierte: el día que esa cuenta tenga movimientos de verdad. Y como
+  el archivo lo escribe una persona, **lleva un cuadre aritmético que lo rechaza si los
+  importes no encajan** — la red que en un extracto pone el banco, aquí hay que ponerla.
 - **El lector del formato es del banco, incluso cuando el algoritmo es genérico**
   (precisado 2026-08-17, F18). N26 exporta un CSV **de comas con campos
   entrecomillados**, así que necesita un lector de CSV de verdad; ese lector vive

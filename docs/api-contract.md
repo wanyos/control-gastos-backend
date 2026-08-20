@@ -552,7 +552,21 @@ Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve*
 | ---------- | ----------------------------------------------------------------------------- | ---------- |
 | `imported` | Sus movimientos están guardados (aunque alguna línea no se haya interpretado). | Sí         |
 | `skipped`  | Ningún parser lee ese banco, o su extensión no la lee el parser del banco.     | No         |
-| `failed`   | Falló la descarga, el parseo, la resolución de cuenta o el guardado.           | No         |
+| `failed`   | Falló la descarga, el parseo, la resolución de cuenta o el guardado, **o el archivo no aportó ni un movimiento** (feature 25). | No         |
+
+> **Un archivo del que no entra ni un movimiento NO se cuenta como importado**
+> (feature 25). «Cero movimientos» son tres casos distintos y no se tratan igual:
+>
+> | Caso | `code` | ¿Se mueve? |
+> | ---- | ------ | ---------- |
+> | El archivo se lee sin un solo error y **no trae ni una línea** de movimiento. | `EMPTY_STATEMENT` | **No** |
+> | El archivo trae líneas y **ninguna** se pudo interpretar. | `ALL_ROWS_UNPARSED` | **No** |
+> | Trae líneas y **todas ya estaban** guardadas (`imported: 0, duplicates: n`). | — (`imported`) | Sí |
+>
+> La regla, en una frase: **un archivo llega a `procesados/` solo cuando al menos
+> una de sus líneas está en la base de datos**, se haya guardado ahora o ya
+> estuviera. Un archivo con **algunas** líneas ilegibles y otras buenas sigue
+> comportándose como siempre: se guarda lo bueno, se reporta el resto y se mueve.
 
 **Respuesta 200**
 ```json
@@ -615,8 +629,10 @@ Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve*
 - Un fallo por archivo **NO** cambia el código HTTP: la respuesta es 200 con el
   detalle. Solo un fallo de Drive de nivel superior (no se pueden ni listar los
   bancos) devuelve 503.
-- Reimportar un archivo ya movido exige devolverlo a mano en Drive de
-  `procesados/` a la carpeta del año.
+- Reimportar un archivo ya movido **ya no exige tocar Drive**: se pide por
+  `POST /api/import/local`, que lee la copia local (ver más abajo). Devolverlo a
+  mano de `procesados/` a la carpeta del año sigue funcionando, pero es el
+  camino largo.
 
 **Errores**
 | Código HTTP | `code`                   | Cuándo                                                 |
@@ -630,9 +646,103 @@ Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve*
 | `INVALID_IBAN`           | El IBAN del archivo (la línea `iban;<IBAN>` o, en Bankinter, la que escribe el propio banco) no es un IBAN válido. El archivo se rechaza **entero**, no se crea ninguna cuenta y **no** se mueve a `procesados/`: corrige la línea y reintenta. |
 | `NOT_UTF8`               | Los bytes del archivo no son UTF-8 (guardado en cp1252/ANSI al editarlo). Vuelve a guardarlo como UTF-8 y reintenta: **no** se importa nada de él y **no** se mueve a `procesados/`. |
 | `UNEXPECTED_ENCODING`    | El archivo no llega en la codificación que emite su banco: no la declara, declara otra, **o declara una y sus bytes son de otra** (lo reabriste y lo guardaste, y el editor lo pasó a UTF-8). Se rechaza **entero**, no se importa nada y **no** se mueve a `procesados/`. El motivo te dice cuál de las dos cosas es: si los acentos siguen ahí, vuelve a guardarlo con **Western (Windows-1252)**; si ya salen como `�`, están perdidos y hay que **volver a descargarlo del banco**. |
+| `EMPTY_STATEMENT`        | El archivo se ha leído sin un solo error y **no trae ni una línea de movimiento**. No se guarda nada y **no** se mueve a `procesados/`, así que se puede reintentar. Comprueba que descargaste el extracto del periodo que querías. |
+| `ALL_ROWS_UNPARSED`      | El archivo trae líneas y **ninguna** se ha podido interpretar (formato del banco cambiado). No se guarda nada y **no** se mueve; el motivo de cada línea está en `unparsedRows`. |
 | `VALIDATION_ERROR`       | El archivo no es un extracto reconocible para el parser de su banco.               |
 | `DRIVE_CONNECTION_ERROR` | Falló la descarga de **ese** archivo.                                              |
 | `INTERNAL_SERVER_ERROR`  | Cualquier otro fallo de ese archivo (mensaje sanitizado).                          |
+
+### `POST /api/import/local`
+
+> **Feature "reimport-from-local-copy" (2026-08-20).** `procesados/` **deja de ser
+> una puerta de un solo sentido.** Cada archivo que se descarga deja una copia
+> cruda en `var/drive-read/<banco>/<año>/`; esta vía importa **desde esa copia**,
+> sin depender de que el archivo siga pendiente en Drive y **sin mover ni borrar
+> nada en Drive** (no hace ni una llamada a Drive).
+
+Cuerpo **opcional**, todas sus claves opcionales:
+
+```json
+{ "bank": "mibanco", "year": "2026", "name": "movs.csv" }
+```
+
+| Campo  | Qué hace                                                                                 |
+| ------ | ---------------------------------------------------------------------------------------- |
+| `bank` | Limita al banco indicado. Se normaliza igual que la carpeta de Drive (`MiBanco` → `mibanco`). |
+| `year` | Limita al año indicado (cuatro dígitos).                                                  |
+| `name` | Limita al archivo con **ese nombre exacto** dentro de las carpetas que queden.             |
+
+Sin cuerpo (o con `{}`) recorre **todas** las copias locales. No mueve nada nunca, y
+repetirlo **no duplica nada mientras el parser de ese banco sea el mismo con el que se
+importó el archivo la primera vez**.
+
+> ⚠️ **Si el parser ha cambiado desde aquella importación, reimportar ese archivo SÍ
+> puede insertar copias.** La deduplicación distingue dos líneas del mismo día por su
+> posición dentro del día (`daySequence`), y esa posición **se recalcula al parsear**: si
+> el parser antiguo dejaba una línea sin interpretar y el de hoy la lee, el día entero se
+> renumera y esas líneas entran como movimientos nuevos, con el mismo importe y el mismo
+> concepto que los que ya estaban. Es un límite heredado del modelo (ADR-011 / ADR-015),
+> no de esta vía, pero esta vía lo pone a una llamada de distancia y justo sobre el caso
+> que la motiva: **copias antiguas, importadas con parsers anteriores**.
+>
+> **Qué hacer en su lugar:** no dispares la llamada sin cuerpo sobre copias viejas. Pide
+> **un archivo concreto** con `{ bank, year, name }`, mira su `imported` / `duplicates` en
+> la respuesta y comprueba el recuento de ese periodo en `GET /api/movements` antes de
+> seguir con el siguiente. Si `imported` no es 0 en un archivo que creías ya importado,
+> eso es exactamente este caso.
+
+Por cada copia hace lo mismo que la importación normal **menos los pasos de
+Drive**: elige el parser por el banco de la **carpeta** y la extensión, parsea,
+resuelve la cuenta, guarda en una sola operación — y **no mueve nada**.
+
+**Respuesta 200** — mismo informe que `POST /api/import`, con dos diferencias:
+no hay `fileId` (una copia local se identifica por su ruta) y `movedToProcessed`
+es **siempre `false`**.
+
+```json
+{
+  "importedCount": 0,
+  "duplicateCount": 39,
+  "unparsedCount": 0,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "files": [
+    {
+      "bank": "MiBanco", "year": "2026", "name": "movs.xlsx",
+      "status": "imported",
+      "account": {
+        "id": 3, "iban": "ES9820385778983000760236", "bank": "mibanco",
+        "alias": "mibanco ···0236", "type": "checking",
+        "created": false, "appliedDefaults": { "alias": false, "type": false }
+      },
+      "imported": 0,
+      "duplicates": 39,
+      "unparsedCount": 0,
+      "unparsedRows": [],
+      "movedToProcessed": false
+    }
+  ]
+}
+```
+
+- **Reimportar dos veces no duplica** —con el **mismo parser**—. La segunda pasada sale
+  `imported: 0` y `duplicates: n`, porque el descarte lo hace el mismo índice único
+  parcial que usa la importación normal (`Movement_imported_dedup_key`, ADR-011). Ese
+  índice incluye `daySequence`, así que la garantía **vale mientras la numeración del día
+  no cambie**; ver el aviso de arriba.
+- **Los estados por archivo son los mismos** (`imported` / `skipped` / `failed`),
+  con la misma regla de cero movimientos, y un fallo por archivo **no** cambia el
+  código HTTP.
+
+**Errores**
+| Código HTTP | `code`                  | Cuándo                                                                 |
+| ----------- | ----------------------- | ---------------------------------------------------------------------- |
+| 404         | `LOCAL_COPY_NOT_FOUND`  | **No existe la copia local de lo que has pedido.** Nunca se responde «0 archivos importados»: el mensaje dice qué falta (el banco, el año o el archivo), qué **sí** hay ahí y dónde viven las copias. Ocurre si ese archivo nunca se descargó en esta máquina, si se borró `var/drive-read/`, o si te has equivocado de nombre. |
+| 400         | `VALIDATION_ERROR`      | `bank`, `year` o `name` no son un nombre simple (llevan `/`, `\` o `..`), o `year` no son cuatro dígitos. |
+
+> **Lo que esta vía NO hace:** no descarga nada, no mueve ni borra nada en Drive,
+> no crea la carpeta `procesados/` y no reemplaza a `POST /api/import`, que sigue
+> siendo la importación de cada mes y se comporta exactamente igual que antes.
 
 ---
 
@@ -1247,6 +1357,144 @@ Sin cuerpo de petición.
   **no** se escribe volcado.
 - `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
   no maneja. **No** son un fallo.
+
+---
+
+## Parser de Trade Republic (sin base de datos)
+
+> **Feature "trade-republic-product-file" (2026-08-19, ADR-024).** Este banco es el
+> **único que entra sin parser de lo que emite el banco**: su extracto es un `.pdf`
+> cuya tabla no sobrevive a la extracción de texto y la cuenta tiene uno o dos apuntes
+> al mes, así que **no se abre nunca**. Lo que se lee es un **`.json` de cuenta
+> remunerada que el humano escribe a mano cada mes**, igual que los productos de
+> MyInvestor. Sigue sin haber base de datos: solo parseo y volcado, y el `.pdf` que
+> sigue bajando a esa carpeta se lista como **`ignored`, no como fallo**.
+>
+> El **formato del archivo** (plantilla, tabla de campos, el cuadre aritmético y las
+> reglas de escritura) es `docs/trade-republic-product-files.md`, no este contrato.
+>
+> ⚠️ **Provisional por decisión del humano:** el día que esa cuenta tenga movimientos
+> de verdad se escribe el parser del PDF y esta vía desaparece.
+
+Modelo de una cuenta parseada, tal como aparece en el volcado (**valores inventados**):
+
+```json
+{
+  "bank": "trade-republic",
+  "file": "cuenta-remunerada-2026-08-31.json",
+  "type": "savings_account",
+  "name": "Cuenta Sintetica Remunerada",
+  "date": "2026-08-31",
+  "openedAt": "2025-03-10",
+  "currency": "EUR",
+  "openingBalance": 4000,
+  "moneyIn": 500,
+  "moneyOut": 120,
+  "balance": 4386.4,
+  "interest": 6.4,
+  "closedAt": null
+}
+```
+
+| Campo | Tipo | Notas |
+| --- | --- | --- |
+| `bank` | `string` | siempre `"trade-republic"`; sale de la carpeta, nunca del contenido |
+| `file` | `string` | **procedencia**: el nombre del archivo de origen. No decide ni el nombre ni la fecha |
+| `type` | `string` | **único valor admitido** `savings_account` |
+| `name` | `string` | identidad de la cuenta, escrita dentro del archivo |
+| `date` | `string` | ISO `YYYY-MM-DD`: el día del abono de intereses (la foto del mes) |
+| `openedAt` | `string` | ISO; **obligatorio**. Nunca `null`: un archivo sin él es un archivo **fallido** |
+| `currency` | `string` | `"EUR"` si el archivo no la trae |
+| `openingBalance` | `number` | saldo inicial del mes |
+| `moneyIn` | `number` | lo que entró en el mes **sin contar los intereses** (van aparte en `interest`) |
+| `moneyOut` | `number` | lo que salió en el mes |
+| `balance` | `number` | saldo final, justo después del abono |
+| `interest` | `number` | intereses abonados ese día |
+| `closedAt` | `string \| null` | ISO; `null` = viva. **Dejar de subir el archivo NO la cierra** |
+
+Todos los importes son **números**, emitidos **tal cual se escribieron**: sin redondear,
+sin fijar decimales y sin recalcular nada. **Pero sí se comprueban entre ellos:**
+
+```
+openingBalance + moneyIn − moneyOut + interest = balance
+```
+
+Si no cuadra, **el archivo de ese mes se RECHAZA** (cae en `failed[]`) y el motivo dice
+la desviación con signo, el saldo esperado frente al escrito y los cinco importes. La
+comparación se hace en **céntimos enteros** con **1 céntimo de tolerancia**, y **no se
+evalúa** cuando falta alguno de los cinco importes o alguno es inválido: ese archivo ya
+se rechaza por su campo, sin un descuadre encima.
+
+Este banco **no** está en el registro de parsers que recibe el importador
+(`POST /api/import`): no tiene extracto que importar.
+
+### `POST /api/parser/trade-republic`
+
+Acción **explícita** de parseo. Recorre las copias locales de Trade Republic
+(`var/drive-read/trade-republic/<año>/`), aplica el parser **por extensión** (`.json` →
+cuenta remunerada; cualquier otra, incluido el `.pdf` del extracto → `ignored`) y
+escribe **todas las cuentas del año** en
+`var/parsed/trade-republic/<año>/products.json`. Read-only respecto a Drive y a la base
+de datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo sobre los
+mismos archivos produce **exactamente el mismo resultado**.
+
+Sin cuerpo de petición.
+
+**Respuesta 200**
+```json
+{
+  "productCount": 1,
+  "failedCount": 1,
+  "ignoredCount": 1,
+  "products": [
+    {
+      "bank": "trade-republic",
+      "year": "2026",
+      "file": "cuenta-remunerada-2026-08-31.json",
+      "type": "savings_account",
+      "name": "Cuenta Sintetica Remunerada",
+      "date": "2026-08-31",
+      "dumpPath": "trade-republic/2026/products.json"
+    }
+  ],
+  "failed": [
+    {
+      "bank": "trade-republic",
+      "year": "2026",
+      "file": "cuenta-remunerada-2026-07-31.json",
+      "reason": "los importes no cuadran: se desvía +100.00 € (saldo final esperado 4006.40, escrito 4106.40); saldo inicial + entradas - salidas + intereses = saldo final; openingBalance 4000.00, moneyIn 0.00, moneyOut 0.00, interest 6.40, balance 4106.40"
+    }
+  ],
+  "ignored": [
+    {
+      "bank": "trade-republic",
+      "year": "2026",
+      "file": "extracto-2026.pdf",
+      "reason": "extensión no soportada por este parser ('.pdf')"
+    }
+  ]
+}
+```
+
+- `productCount` cuenta **cuentas parseadas**; `products[]` es un **resumen** por
+  cuenta (`bank`, `year`, `file`, `type`, `name`, `date`, `dumpPath`). La cuenta
+  completa, con sus cinco importes, vive en el volcado del año.
+- `dumpPath`: ruta del JSON volcado **relativa** a la carpeta de volcado local (no se
+  expone la ruta absoluta de la máquina). Todas las cuentas de un año comparten
+  `<banco>/<año>/products.json`: **un volcado por año**, no uno por archivo. Ese volcado
+  contiene `{ bank, year, products[], failed[], ignored[] }` de ese año, y solo se
+  escribe si el año tiene algún `.json`.
+- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un archivo mal
+  escrito acumula **todos** sus problemas en un solo `reason` (marcadores `<…>` sin
+  sustituir, campos obligatorios que faltan, valores que no son números, un número
+  escrito **como texto**, fechas en otro formato, claves desconocidas, **el descuadre de
+  los cinco importes**, o el choque con otro archivo que declara la misma cuenta y
+  fecha). Un archivo cuyos bytes no estén en UTF-8 cae aquí entero con el código
+  `NOT_UTF8` del §Errores. Un fallo por archivo **NO cambia el código HTTP**: la
+  respuesta es **200** con el fallo dentro.
+- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser no
+  maneja. El **`.pdf` del extracto cae siempre aquí**, y es lo correcto: no es un fallo,
+  es un archivo que hace bien en estar en esa carpeta y que nadie abre.
 
 ---
 

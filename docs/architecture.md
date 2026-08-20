@@ -104,6 +104,17 @@ src/
                            #   ParsedStatement<'myinvestor'> + los tipos de producto
                            #   (ParsedProduct, ParsedValuation, ...) + resúmenes (ADR-014/016)
       myinvestor.fixture.ts #  helper de test: CSV y JSON de producto sintéticos en memoria
+    trade-republic/        # el ÚNICO banco sin parser de lo que emite el banco (ADR-024):
+                           #   su .pdf no se abre nunca y se lista como ignorado
+      trade-republic.product.parser.ts # parser puro de UN .json de cuenta remunerada
+                           #   escrito a mano, con el CUADRE aritmético que rechaza el
+                           #   mes cuyos cinco importes no encajan
+      trade-republic.service.ts  # lee copias locales, encamina por extensión (.json) y
+                           #   vuelca un products.json por año (read-only, sin BD)
+      trade-republic.routes.ts   # POST /api/parser/trade-republic
+      trade-republic.types.ts    # SOLO lo suyo: ParsedSavingsAccount y sus resúmenes;
+                           #   NO comparte tipo con los productos de MyInvestor (ADR-024)
+      trade-republic.fixture.ts  # helper de test: archivos de cuenta sintéticos en memoria
     investments/           # inversiones: productos y su valoración (ADR-012)
       investments.model.test.ts  # CARPETA PARCIAL a propósito: la f9 es esquema +
                                  #   migración, sin superficie HTTP (precedente:
@@ -1218,6 +1229,18 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-017: Los datos reales del humano no se versionan — un guardián de dos capas (forma + comparación contra `var/`, que se salta si no está)
 
+> **Revisado el 2026-08-19 por la feature 23 `no-real-data-blind-spot`:** la captura ya
+> **no** se decide por una lista de extensiones (ese era el hueco por el que pasó la fuga
+> de la F19), y un banco que el guardián no puede leer **se nombra en la salida de
+> `./init.sh`**, en toda ejecución, en vez de pasar en verde. Detalle en §Consecuencias.
+
+> **Revisado el 2026-08-20 por la feature 24 `guardian-own-words`:** el volcado de
+> `var/parsed/` **no es una copia de su extracto**, es lo que *nuestro* parser escribió
+> sobre él; cuando un archivo se rechaza, el volcado lleva dentro **nuestro mensaje de
+> rechazo**, que la documentación publica palabra por palabra. La capa de frases se
+> tragaba eso como «una frase suya copiada en los docs» (270 avisos falsos en una
+> ejecución). Cómo se separan ahora las dos cosas, en §Consecuencias.
+
 - **Fecha:** 2026-08-12.
 - **Estado:** aceptada (feature 14 `no-real-data`).
 - **Contexto:** dos features seguidas versionaron datos financieros reales del dueño
@@ -1267,6 +1290,104 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     (`drive-read/` y `parsed/`): si falta una, **se salta diciendo cuál** en vez de
     comparar contra la mitad de los datos y pasar en verde. Ese verde silencioso era
     justo lo que esta feature existe para evitar.
+  - **Qué se captura lo decide el CONTENIDO, no la extensión** (revisión de la
+    **feature 23 `no-real-data-blind-spot`**, 2026-08-19). Hasta ese día la captura
+    abría `.txt .csv .json .md .tsv` y nada más, así que el `.xls` de Openbank —que es
+    una **página HTML en texto plano**— **no se abrió nunca**, y es el único banco
+    cuyo extracto trae **nombres de personas**. Por ahí pasó la fuga de la F19
+    (importes reales copiados a un fixture) **con la suite entera en verde**: el
+    guardián corrió «con su capa de comparación activa» sin haber leído el fichero
+    contra el que comparaba. Una lista de extensiones es una promesa sobre el futuro
+    que nadie cumple —el banco número siete llega con otra y el hueco se reabre en
+    silencio—, así que la pregunta pasa a ser sobre los **bytes**: ¿se leen como
+    texto? Binario = hay un byte NUL, o más del 1 % de bytes de control en los
+    primeros 8 KiB. Nada más decide.
+  - **Los dos binarios de verdad se quedan fuera a propósito**, y no es un olvido: el
+    `.xlsx` de Bankinter (un ZIP) y el `.pdf` de Trade Republic. Leerlos como texto
+    metería **bytes comprimidos** en la comparación, que es ruido, y el ruido produce
+    falsos positivos y enseña a añadir excepciones —justo lo que desarma un guardián—.
+    El ZIP **ya es comparable** por su volcado de `var/parsed/`; el PDF **no lo es por
+    ninguna vía**, y eso tampoco se tapa (siguiente punto).
+  - **De un fichero de marcado se compara lo que DICE, no sus etiquetas.** Las
+    etiquetas del `.xls` de Openbank son el formato del banco, que nuestro propio
+    parser tiene que reproducir: compararlas señalaría a nuestro código. Es el mismo
+    criterio que ya se aplicaba a las **claves** de un `.json` de `var/parsed/`. Lo
+    que el comentario HTML **dice** sí se conserva: ahí es donde el humano escribe su
+    IBAN (F19).
+  - **Contabilidad por banco: «carpeta que no se puede leer» ≠ «carpeta vacía».** Una
+    carpeta de `var/drive-read/<banco>/` **con ficheros** donde no se pudo capturar
+    ninguno **y** sin volcado en `var/parsed/<banco>/` es un **hueco declarado**, no un
+    verde silencioso: su nombre **se imprime en la salida de `./init.sh`** en toda
+    ejecución y vive en la lista `unwatchedBanks` del guardián, con su motivo y con
+    **cómo se cierra**. El aviso se escribe al **descriptor 2** (`writeSync(2, …)`) y
+    **no** por `console`: vitest intercepta la consola, así que un `console.warn` **no
+    sale** con el reporter por defecto. Así se redactó en la primera pasada de la F23 y
+    el resultado fue exactamente el fallo que la feature perseguía —verde y en
+    silencio—; lo cazó el reviewer y hay un test que ahora lo impide. El test
+    afirma que esa lista es **exactamente** el estado real **en las dos direcciones**:
+    un banco nuevo ilegible pone la suite en **rojo**, y un banco que pasa a ser
+    legible la pone en rojo hasta que se borra su entrada. Una carpeta **vacía** no
+    tiene nada suyo que vigilar y no dice nada.
+  - ✅ **El hueco de Trade Republic está cerrado** (2026-08-20). Su extracto es un PDF
+    cuyo texto visible vive en flujos comprimidos con **fuentes subset**, así que nunca
+    se leyó ni se leerá, y la F20 decidió que ese banco entra como **JSON de producto**
+    en vez de como parser del PDF. El día que ese JSON aterrizó en `var/drive-read/`, el
+    test se puso **rojo pidiendo que se borrase la entrada**, tal y como su propio texto
+    prometía, y se borró: `unwatchedBanks` está **vacía** y el test que exige que sea
+    exactamente el estado real sigue igual de estricto (banco número siete ilegible ⇒
+    rojo). El PDF sigue sin leerse, y ya no hace falta: lo que se vigila de ese banco es
+    el JSON que él escribe y su volcado.
+  - **En el volcado hay texto NUESTRO además de datos suyos** (feature 24, 2026-08-20).
+    `var/parsed/**.json` lo escribe nuestro parser: cuando un archivo se rechaza, el
+    volcado guarda el **motivo**, que es una frase nuestra —la fórmula del cuadre, el
+    formato de fecha que se espera— y que los `docs/` publican tal cual porque son
+    nuestras. Pasa con **cualquier banco** cada vez que un archivo se rechaza. Cómo se
+    separan, y por qué así:
+    - **No por archivo ni por lista de excepciones**: eso desarma al guardián, que es lo
+      que esta decisión lleva tres features evitando.
+    - **Tampoco por campo.** Descartar el `reason` entero era una línea, pero el mensaje
+      del descuadre lleva **dentro los cinco importes** del mes: se habría dejado de
+      vigilar un dato real para arreglar un aviso falso.
+    - **Por frase, y solo donde dos condiciones independientes coinciden:** (a) la frase
+      **no forma parte de un valor entrecomillado** —todo valor sacado de su fichero va
+      entre comillas, por convención de todos los parsers, y lo entrecomillado se
+      **sube** al cubo que se compara sin preguntar—; **y** (b) la frase está
+      **literalmente en nuestro código de producción** (los literales de mensaje de
+      `src/**.ts`, tests y fixtures excluidos: un test es donde una frase se **copia**,
+      no donde nace). Las dos, nunca una. Un dato suyo devuelto **sin comillas** falla
+      (b) y se sigue vigilando; una frase nuestra entrecomillada por accidente falla (a)
+      y se sigue vigilando. Y como los mensajes se componen **alrededor** de sus huecos
+      (`${key}: fecha inválida` en el código, `openedAt: fecha inválida` en el volcado),
+      (b) acepta también un trigrama cuyas **tres palabras** estén en nuestro
+      vocabulario; una sola palabra suya y la frase se vigila.
+    - **El mensaje NUNCA se trocea para hacer esa pregunta**, y esto es una **corrección
+      del 2026-08-20**, de la review de esta misma feature. La primera versión cortaba el
+      motivo por las comillas y repartía los trozos en dos cubos; un valor suyo con
+      **apóstrofo dentro** entrecomillado con simples —`COMPRA D'ALIMENTS…`, y apóstrofos
+      hay en conceptos de tarjeta reales (`L'…`, `D'…`, `O'…`)— partía por el sitio
+      equivocado, cada mitad caía en un cubo distinto, ninguna llegaba a tres palabras y
+      **el valor entero dejaba de compararse**. Era un **silencio**, y encima una
+      **regresión** (antes de la F24 ese motivo se comparaba entero), en la única función
+      cuyo comentario prometía que no podía producir uno. Ahora el motivo va **entero** a
+      la pregunta y lo entrecomillado se añade **encima**: un corte mal puesto solo puede
+      hacer que se compare un trozo **dos veces**, nunca que se compare un carácter
+      menos. Dicho como invariante, porque una promesa sin test es lo que falló:
+      **el corte solo puede AÑADIR a lo que se compara**, y hay tres tests que lo fijan
+      (uno de ellos se pone rojo si alguien vuelve a trocear el mensaje).
+    - **La capa de importes no se toca**: sigue comparando contra el texto **crudo** de
+      la captura, mensajes incluidos. Los cinco importes del descuadre se vigilan hoy
+      igual que ayer. La línea que se ha trazado es solo sobre **palabras**, que es
+      donde estaba la confusión.
+    - **Y una frase deja de inventarse donde no la escribió nadie:** los valores de un
+      volcado se comparan **uno a uno**, no pegados en un churro. `bank` y `year` se
+      repiten en cada entrada, así que el volcado de un archivo rechazado «contenía» la
+      frase «trade republic trade», y con eso se señalaba a todo documento que nombrase
+      al banco dos veces. Una frase suya vive **dentro de un valor**; la costura entre
+      dos valores es nuestro JSON, no su extracto.
+  - **El mensaje de fallo nunca lleva el valor.** Decía «el importe `X` está en
+    `var/`», y ese mensaje se imprime, se pega en informes y se versiona: un guardián
+    escribiendo el dato del humano para quejarse de que se escribe el dato del humano.
+    Desde la F23 dice **dónde** (`archivo:línea`) y **de qué tipo**, y nada más.
   - **Excepciones**: lista blanca de IBAN, lista de rutas con su motivo y marcador
     `no-real-data-ok` en la línea. El guardián **no se exceptúa a sí mismo**: si se
     exceptuara no podría cazarse, y en la primera pasada llevaba dentro un concepto
@@ -1678,6 +1799,191 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   moderno es UTF-8 y **destruye el fichero sin avisar**. Un banco futuro que emita en
   una codificación de un solo byte llama a la misma guardia; uno que emita UTF-8 no la
   necesita.
+
+### ADR-024: Un banco puede entrar SIN parser de lo que emite el banco — Trade Republic entra por `.json` escrito a mano, con un cuadre aritmético que RECHAZA, y sin compartir el tipo de producto con MyInvestor
+
+- **Fecha:** 2026-08-19.
+- **Estado:** aceptada (feature 20 `trade-republic-product-file`; las tres decisiones
+  delegadas del `intent` y los seis puntos de la puerta de aprobación, uno de ellos
+  cambiado por el humano).
+- **Contexto:** el inventario del 2026-08-17
+  ([`progress/explorations/inventario-bancos-2026-08-17.md`](../progress/explorations/inventario-bancos-2026-08-17.md)
+  §Trade Republic) midió el `.pdf` de este banco: el texto se extrae, pero **la tabla no
+  sobrevive a la extracción** —las descripciones se desalinean de su fila—, así que
+  reconstruirla exige agrupar por coordenadas. Es el parser más caro de los pendientes y
+  el banco con **menos apuntes**: uno o dos al mes, todos abonos de intereses sobre una
+  cuenta que el humano dejó con saldo. Su decisión, dictada el 2026-08-17: «lo que puedo
+  hacer es un json al igual que hice con las inversiones de myinvestor».
+- **Decisión:**
+  1. **Este banco entra sin parser del fichero del banco.** Tiene su módulo
+     [`src/modules/trade-republic/`](../src/modules/trade-republic/trade-republic.product.parser.ts),
+     su ruta `POST /api/parser/trade-republic` y sus guardianes, como cualquier otro;
+     lo que **no** tiene es código que lea el `.pdf`. Ese `.pdf` **sigue bajando cada
+     mes** a la misma carpeta y se lista como **`ignored`, nunca como fallo**: si fuera
+     un fallo, habría un error rojo mensual por un fichero que hace bien en estar ahí.
+     La norma «un parser por banco» no se rompe; se precisa: lo que no compensa leer,
+     **no se lee**, y queda escrito qué lo revierte.
+  2. **Es PROVISIONAL, y está escrito en los dos sitios donde se mira:** la referencia
+     del formato ([`docs/trade-republic-product-files.md`](./trade-republic-product-files.md),
+     que el humano ve cada mes) y `docs/roadmap.md` §E4 (donde se decide qué se hace
+     después). Lo revierte **el día que esa cuenta tenga movimientos de verdad**.
+  3. **Los campos de una cuenta remunerada, que no es ninguno de los cuatro tipos del
+     ADR-016.** Nueve obligatorios: `type` (único valor `savings_account`), `name`,
+     `date`, `openedAt`, `openingBalance`, `moneyIn`, `moneyOut`, `interest` y
+     `balance`; opcionales `currency` (def. `EUR`), `closedAt` y las claves `_`.
+     Descartados con razón: el **IBAN** (es el único banco que lo da solo, pero sin base
+     de datos no hay quien lo lea: se añade el día de la importación) y la **TAE** (no
+     está en el extracto y con los cinco importes se calcula sola).
+  4. **El fichero se comprueba a sí mismo, y el descuadre RECHAZA.**
+     `openingBalance + moneyIn − moneyOut + interest = balance`. Es la decisión del
+     humano en la puerta del 2026-08-19, en su variante dura y frente a la blanda
+     («avisar y dejarlo pasar»): un aviso dentro de un `products.json` que no se lee
+     cada mes no impide que el dato malo entre, y entonces los tres campos nuevos serían
+     solo tres campos más que teclear. **Es lo que convierte un formato escrito a mano en
+     algo con red:** en un extracto la consistencia la garantiza el banco; aquí no la
+     garantiza nadie.
+     - **Se compara en céntimos enteros** (`Math.round(v * 100)`), no en `number`:
+       `0.1 + 0.2 !== 0.3` y sumar cinco importes en euros deja restos de `1e-13` que
+       rechazarían meses buenos.
+     - **Tolerancia de 1 céntimo, ni más ni menos:** los cinco importes ya vienen
+       redondeados al céntimo por el banco, así que ese margen perdona **su** redondeo;
+       más dejaría pasar erratas y menos rechazaría el redondeo del propio banco.
+     - **`moneyIn` excluye los intereses**, que van aparte en `interest`: si fueran
+       dentro, un mes cuyo único movimiento es el abono los contaría dos veces.
+     - **No se evalúa** si falta alguno de los cinco importes o alguno es inválido: ese
+       fichero ya se rechaza por campo ausente o valor inválido, y un descuadre
+       calculado sobre datos incompletos mandaría a buscar un error de importes donde
+       solo hay un campo sin escribir. Es la **última** comprobación del parser.
+     - **No calcula nada:** los céntimos son locales a la comprobación y cada importe
+       sale **tal y como se escribió** (doctrina del ADR-016).
+  5. **La FORMA de la salida se copia; el TIPO no se comparte.** Vocabulario, reglas de
+     escritura, motivo acumulado por fichero y **un `products.json` por año** son los
+     mismos que en el ADR-016, a propósito. Pero `ParsedProduct` **no** se mueve a
+     `src/lib/`: lleva `valuation` y `depositTerms`, que una cuenta remunerada no tiene,
+     y compartirlo obligaría a una tercera rama nullable y a un quinto
+     `InvestmentProductType` **que MyInvestor no podría emitir jamás** — el mismo error
+     que el ADR-013 rechazó con `providesBalance`. Además `ParsedProduct` no es un
+     contrato: nació dentro del módulo de MyInvestor, con **un solo** productor.
+     [`trade-republic.types.ts`](../src/modules/trade-republic/trade-republic.types.ts)
+     declara lo suyo, como hicieron Bankinter, N26 y Openbank.
+  6. **Guardianes, no promesas.** `src/architecture.test.ts` añade este módulo a la
+     lista del árbol, lo mete en `bankModules` (imports permitidos `./`,
+     `../../errors/`, `../../lib/`; único importador externo `app.ts`; ningún módulo de
+     banco nombra a otro) y comprueba que **no contiene ninguna referencia a `prisma`**.
+     Y `trade-republic.docs.test.ts` vigila el documento: **todos** los valores de la
+     plantilla publicada son marcadores `<…>`, y esa plantilla es **la misma** que el
+     test del parser copia tal cual para comprobar que sale rechazada.
+  7. **Marcadores con dientes.** La plantilla lleva `<…>` en **todos** sus valores
+     (lección del 2026-08-15: un fichero se subió con los valores del ejemplo y
+     sobrevivió a una revisión humana). Los marcadores de los importes van **entre
+     comillas** para que la plantilla entera sea JSON válido y el parser pueda nombrar
+     **todos** los campos sin sustituir en vez de morir en el primer error de sintaxis.
+     Y el parser reconoce un valor con forma de marcador **explícitamente**: sin eso,
+     `name` —donde un marcador es una cadena perfectamente válida— habría entrado como
+     nombre de la cuenta, que es justo el accidente que los marcadores evitan.
+- **Consecuencias:**
+  - `docs/conventions.md` §Parsers de banco gana la excepción, acotada y con su caso.
+  - `docs/roadmap.md` §E4 pasa a **5 de 6 bancos**; solo queda Revolut, aparcado.
+  - **El guardián de datos reales sigue sin poder vigilar este banco**
+    (`unwatchedBanks` en `src/no-real-data.test.ts`): su `.pdf` es binario ilegible y
+    **no habrá volcado suyo**, porque esta decisión es justo que no se parsee. Esa
+    entrada se borra el día que el `.json` aterrice en `var/drive-read/trade-republic/`,
+    y hasta entonces la suite **lo dice en voz alta en cada ejecución**.
+  - **Cuando un TERCER banco entre por `.json` escrito a mano, esta decisión se
+    revisa**: ahí sí habrá tres productores y el contrato común de producto tendrá que
+    salir a `src/lib/` con su ADR y su guardián, igual que hizo el ADR-013 con los
+    extractos al llegar el segundo banco.
+
+> **Nota de numeración:** el `design.md` y el `tasks.md` de esta feature llamaban a este
+> ADR «ADR-019». Ese número lo ocupa la feature 16 y los 020-023 las features 18, 21, 22
+> y 19, todas cerradas después de redactarse ese spec: el contenido es el mismo y solo
+> cambia el número.
+
+### ADR-025: `procesados/` deja de ser una puerta de un solo sentido — reimportación desde la copia local en `POST /api/import/local`, sin Drive, y un archivo sin movimientos ni se cuenta como importado ni se mueve
+
+- **Fecha:** 2026-08-20.
+- **Estado:** aceptada (feature 25 `reimport-from-local-copy`).
+- **Contexto:** los 39 movimientos de Bankinter no estaban en la base de datos con la
+  suite en verde. El diagnóstico
+  ([`progress/explorations/diagnostico-bankinter-sin-persistir-2026-08-20.md`](../progress/explorations/diagnostico-bankinter-sin-persistir-2026-08-20.md))
+  encontró dos cosas distintas:
+  1. **Un artefacto histórico.** El 2026-08-04 la ruta de ingesta de la F5 movía el
+     archivo a `procesados/` **antes de que existieran el modelo de datos y el
+     importador**. Ese comportamiento murió en la F12, pero el archivo ya estaba fuera:
+     `listPendingFiles` solo mira los hijos directos de la carpeta del año, y **ningún
+     endpoint sabía leer `procesados/`**. Se rescató a mano, moviendo el archivo en Drive.
+  2. **Un agujero todavía vivo** (§1.4 del diagnóstico): `persistMovements` devuelve
+     `{ imported: 0, duplicates: 0 }` con `rows` vacío y `importFile` seguía adelante,
+     **movía el archivo y lo reportaba como `imported`**. Un parser que un día devuelva
+     cero movimientos en silencio repite la historia, esta vez sin histórico que la explique.
+- **Decisión:**
+  1. **Una segunda vía de entrada, no un parámetro de la que hay.**
+     `POST /api/import/local` en el mismo módulo, con cuerpo **opcional**
+     `{ bank?, year?, name? }`. La importación de cada mes (`POST /api/import`) no cambia
+     ni en contrato ni en comportamiento: son dos operaciones con **garantías
+     distintas** (una mueve lo que guarda, la otra no mueve nunca) y meterlas en la misma
+     ruta obligaba a leer una bandera para saber si tu Drive se toca o no.
+  2. **El origen es la copia local, no `procesados/`.** `var/drive-read/<banco>/<año>/`
+     ya guarda el mismo contenido que se descargó. Eso deja la vía **sin cliente de
+     Drive**: no descarga, no lista, no mueve y no borra — lo pidió el humano con esas
+     palabras y hay un guardián en `src/architecture.test.ts` que lo comprueba leyendo el
+     archivo, no fiándose del informe. Alternativa descartada: leer `procesados/` por API
+     (opción (c) del diagnóstico), que reintroduce en el importador la idea de «volver a
+     mirar lo ya procesado» que la F12 quitó, y necesita red para funcionar.
+  3. **El archivo se identifica por su RUTA** (carpeta de banco + año + nombre), porque
+     en disco no hay id y el nombre solo es único dentro de su año. Cada parte es
+     opcional y estrecha el recorrido; sin ninguna, recorre todas las copias — no mueve
+     nada y el índice parcial descarta lo ya guardado, **con la salvedad del `daySequence`
+     de la consecuencia de abajo**.
+  4. **Una copia que no está se responde por su nombre:** `LOCAL_COPY_NOT_FOUND` (404),
+     diciendo qué falta, qué sí hay ahí y dónde viven las copias. **Nunca** un 200 con
+     cero archivos: es la lección de la F22 —un mensaje que manda a mirar donde no es
+     cuesta una vuelta entera— y aquí «no hay nada que importar» y «lo que pides no está»
+     son respuestas distintas.
+  5. **«Cero movimientos» son tres casos y solo dos retienen el archivo.** Ninguna línea
+     y nada sin leer → `EMPTY_STATEMENT`; líneas que **ninguna** se pudo interpretar →
+     `ALL_ROWS_UNPARSED` (otro código: un archivo lleno e ilegible es un formato que ha
+     cambiado, no un mes sin actividad); **todas duplicadas** → `imported: 0,
+     duplicates: n` y **sí se mueve**, porque todas sus filas están en la base de datos.
+     Dicho como regla: **un archivo llega a `procesados/` solo si al menos una de sus
+     filas está guardada, ahora o de antes.** La comprobación va **antes** de resolver la
+     cuenta, así que un archivo vacío tampoco crea cuentas.
+  6. **El núcleo se extrae, no se duplica.** `importStatement()` (parsear → resolver
+     cuenta → mapear → guardar) lo comparten las dos vías; lo único que las distingue es
+     Drive. Así «qué significa un archivo» se decide en un solo sitio.
+- **Alternativas descartadas:**
+  - **Una bandera en `POST /api/import`:** una sola ruta, pero la garantía «esto no toca
+    tu Drive» pasaría a depender de un campo del cuerpo.
+  - **Escribir los movimientos a mano en la base de datos** (opción (d) del diagnóstico):
+    se salta el mapeo, el IBAN validado y el `daySequence`.
+  - **Reportar el archivo de cero movimientos como `skipped`:** `skipped` significa hoy
+    «nadie sabe leer esto» y no lleva error; el caso que se quiere tapar necesita
+    justamente un motivo que obligue a mirar.
+- **Consecuencias:**
+  - **Sin dependencias nuevas, sin migración y sin tocar un dato**: el índice parcial de
+    la ADR-011 ya hacía idempotente la reimportación.
+  - **Cambio de comportamiento acotado:** un archivo que hoy parsea a cero movimientos
+    pasa de `imported` + movido a `failed` + no movido. Es el objetivo de la feature.
+  - **La copia local pasa a ser parte del mecanismo de recuperación**, no solo un volcado
+    para inspeccionar. Sigue gitignoreada, y su límite conocido de la F5 (dos pendientes
+    homónimos se pisan) es ahora también un límite de la reimportación.
+  - **Sigue sin haber vuelta atrás desde `procesados/` sin copia local**: si el archivo
+    nunca se descargó en esta máquina, la respuesta es un 404 que lo dice, y el camino es
+    el de siempre (moverlo en Drive).
+  - **La idempotencia tiene una condición, y hay que decirla en voz alta: el parser tiene
+    que ser el mismo con el que se importó el archivo.** El índice parcial distingue dos
+    líneas del mismo día por su `daySequence`, que **se recalcula al parsear** y numera
+    solo las filas interpretadas (límite vivo heredado del ADR-013/ADR-015). Si el parser
+    antiguo dejaba una fila sin leer y el de hoy la lee, ese día se renumera y sus filas
+    entran **como movimientos nuevos**: mismo importe, mismo concepto, `daySequence`
+    distinto. Reproducido en la revisión de esta feature: 4 filas para 3 movimientos
+    reales. Esta vía **no crea** el defecto, pero lo pone a una llamada sin cuerpo de
+    distancia y justo sobre su caso de uso —copias antiguas, importadas con parsers
+    anteriores a la F19 y la F22—, y el humano pidió expresamente que la reimportación no
+    fuera «una forma fácil de duplicarme los movimientos». Por eso **la recomendación
+    escrita en el contrato es pedir el archivo concreto con `{ bank, year, name }` y mirar
+    el recuento**, no la llamada sin cuerpo. Arreglarlo de raíz (que la clave de dedup no
+    dependa de una posición recalculable) es otra feature, con su migración.
 
 ## Qué NO hacer
 

@@ -455,6 +455,9 @@ describe('importPending', () => {
     expect(attempted(firstRun)).toMatchObject({ imported: 2, duplicates: 0 })
     expect(attempted(secondRun)).toMatchObject({ status: 'imported', imported: 0, duplicates: 2 })
     expect(secondRun.duplicateCount).toBe(2)
+    // Case 3 of the zero-movements decision (feature 25): `imported: 0` because
+    // every row was ALREADY stored is a healthy import, so the file still moves.
+    expect(attempted(secondRun).movedToProcessed).toBe(true)
 
     const afterSecond = await app.prisma.movement.findMany({
       where: { accountId: account.id },
@@ -659,8 +662,12 @@ describe('importPending', () => {
     tree.files[`y-${other}`] = [{ id: 'f3', name: 'extracto.csv', mimeType: 'text/csv' }]
 
     const { client, update, create } = buildDrive(tree)
+    // The readable file brings a movement on purpose: since feature 25 a file
+    // that parses to zero movements is a failure and does NOT move.
     const parsers = [
-      fakeAdapter(bank, () => statement(bank, { accountIban: uniqueIban(), movements: [] })),
+      fakeAdapter(bank, () =>
+        statement(bank, { accountIban: uniqueIban(), movements: [movement()] }),
+      ),
     ]
 
     const result = await run(client, parsers)
@@ -727,6 +734,105 @@ describe('importPending', () => {
 
     await expect(run(client, [])).rejects.toMatchObject({ code: 'DRIVE_CONNECTION_ERROR' })
   })
+  // ── Feature 25 `reimport-from-local-copy`: the zero-movements rule ───────
+  //
+  // The hole the diagnosis of 2026-08-20 left alive (its section 1.4): a file
+  // nothing enters from used to be reported as `imported` and moved to
+  // `procesados/` all the same, which is a one-way door.
+  it('fails a file that parses with no error and brings no movement, and does NOT move it (C3, C4)', async () => {
+    const bank = uniqueBank()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, { accountIban: uniqueIban(), movements: [], unparsedRows: [] }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('failed')
+    expect(file.error?.code).toBe('EMPTY_STATEMENT')
+    expect(file.error?.message).toContain('no trae ni una línea de movimiento')
+    expect(file.imported).toBe(0)
+    expect(result.importedCount).toBe(0)
+    expect(result.failedCount).toBe(1)
+    // The two halves of the hole: it is not counted as imported AND it stays
+    // pending in Drive, so it can be retried.
+    expect(file.movedToProcessed).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('creates no account for a file that brings no movement (C3)', async () => {
+    const bank = uniqueBank()
+    const iban = uniqueIban()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [fakeAdapter(bank, () => statement(bank, { accountIban: iban, movements: [] }))]
+
+    const result = await run(client, parsers)
+
+    expect(attempted(result).account).toBeNull()
+    // The check runs before the account is resolved: an empty file cannot even
+    // leave an account behind.
+    expect(await accountsOfTheBank(bank)).toBe(0)
+    expect(await app.prisma.account.findUnique({ where: { iban } })).toBeNull()
+  })
+
+  it('fails a file whose rows could ALL not be read with its own code, and does NOT move it (C4)', async () => {
+    const bank = uniqueBank()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: uniqueIban(),
+          movements: [],
+          unparsedRows: [
+            { row: 2, reason: 'importe no interpretable' },
+            { row: 3, reason: 'importe no interpretable' },
+          ],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('failed')
+    // A different case from the empty one, so a different code: a full file
+    // nobody can read is a format that changed.
+    expect(file.error?.code).toBe('ALL_ROWS_UNPARSED')
+    expect(file.error?.message).toContain('ninguna de las 2 líneas')
+    expect(file.unparsedCount).toBe(2)
+    expect(file.unparsedRows).toHaveLength(2)
+    expect(file.movedToProcessed).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('keeps moving a file where SOME rows were read: the rule is about zero, not about partial (C6)', async () => {
+    const bank = uniqueBank()
+    const iban = uniqueIban()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          movements: [movement({ description: 'THE ONE GOOD ROW' })],
+          unparsedRows: [{ row: 7, reason: 'fecha de valor inválida' }],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    expect(attempted(result)).toMatchObject({
+      status: 'imported',
+      imported: 1,
+      unparsedCount: 1,
+      movedToProcessed: true,
+    })
+    expect(update).toHaveBeenCalledOnce()
+  })
+
   // ── Feature 21 `iban-normalization` ──────────────────────────────────────
   //
   // Criteria C2, C4 and C8 at the seam: the importer is where an IBAN becomes

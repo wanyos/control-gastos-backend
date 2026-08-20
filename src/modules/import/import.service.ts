@@ -5,7 +5,12 @@ import type { FastifyInstance } from 'fastify'
 
 import type { Prisma } from '../../generated/prisma/client.js'
 
-import { AppError, MissingAccountDataError } from '../../errors/app-error.js'
+import {
+  AppError,
+  EmptyStatementError,
+  MissingAccountDataError,
+  UnreadableStatementError,
+} from '../../errors/app-error.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import {
   downloadFileContent,
@@ -27,9 +32,11 @@ import type {
   AttemptedFileReport,
   BankParserAdapter,
   BankParserRegistry,
+  FileCounts,
   FileErrorReport,
   ImportRunResult,
   ImportedFileReport,
+  StatementResult,
 } from './import.types.js'
 
 /**
@@ -252,34 +259,31 @@ async function importFile(deps: ImportFileDeps): Promise<AttemptedFileReport> {
   const { client, prisma, location } = deps
   const report: AttemptedFileReport = {
     ...location,
-    status: 'failed',
-    account: null,
-    imported: 0,
-    duplicates: 0,
-    unparsedCount: 0,
-    unparsedRows: [],
+    ...emptyStatementResult(),
     movedToProcessed: false,
   }
 
   try {
     const content = await downloadFileContent(client, location.fileId)
     // The raw copy is kept (and overwritten, so it stays idempotent) because it
-    // is what allows re-parsing a file without downloading it from Drive again.
+    // is what allows re-parsing a file without downloading it from Drive again
+    // -- and, since feature 25, re-IMPORTING it without Drive at all.
     const targetPath = join(deps.rawCopyBaseDir, location.bank, location.year, location.name)
     await mkdir(dirname(targetPath), { recursive: true })
     await writeFile(targetPath, content)
 
-    const statement = await deps.adapter.parse(content)
-    report.unparsedRows = statement.unparsedRows
-    report.unparsedCount = statement.unparsedRows.length
-
-    const resolution = await resolveAccount(prisma, statement, deps.bankSlug)
-    report.account = toAccountReport(resolution)
-
-    const rows = toMovementRows(statement.movements, resolution.account.id)
-    const stored = await persistMovements(prisma, rows)
-    report.imported = stored.imported
-    report.duplicates = stored.duplicates
+    // Everything that is not Drive happens in the shared core, so this way in
+    // and the local one cannot drift apart on what a file means.
+    const stored = await importStatement({
+      prisma,
+      content,
+      adapter: deps.adapter,
+      bankSlug: deps.bankSlug,
+    })
+    Object.assign(report, stored)
+    if (stored.status === 'failed') {
+      return report
+    }
 
     // Only now, with every movement of the file stored, the original moves.
     await moveFileToProcessed(client, location.fileId, {
@@ -288,13 +292,109 @@ async function importFile(deps: ImportFileDeps): Promise<AttemptedFileReport> {
       processedFolderId: await deps.resolveProcessedFolder(),
     })
     report.movedToProcessed = true
-    report.status = 'imported'
     return report
   } catch (error) {
     report.status = 'failed'
     report.error = describeError(error)
     return report
   }
+}
+
+/** The report of a file nothing has happened to yet: failed until proven otherwise. */
+function emptyStatementResult(): StatementResult {
+  return {
+    status: 'failed',
+    account: null,
+    imported: 0,
+    duplicates: 0,
+    unparsedCount: 0,
+    unparsedRows: [],
+  }
+}
+
+/** What one file needs to become rows of its account. No Drive in here. */
+export interface ImportStatementDeps {
+  prisma: AppPrismaClient
+  adapter: BankParserAdapter
+  /** Slug of the bank the file belongs to: its FOLDER says it, never its content. */
+  bankSlug: string
+  content: Buffer
+}
+
+/**
+ * The core of an import with Drive taken out (feature 25): parse, resolve the
+ * account, map and store. Shared by the two ways in -- the pending files of
+ * Drive and the local copies of `var/drive-read/` -- so what a file means is
+ * decided in ONE place and the two cannot drift apart.
+ *
+ * It never throws: a per-file failure comes back as `status: 'failed'` plus its
+ * sanitized error, exactly as it travelled inside the report before. The rows
+ * the parser could not read are reported even when the file fails afterwards.
+ */
+export async function importStatement(deps: ImportStatementDeps): Promise<StatementResult> {
+  const result = emptyStatementResult()
+
+  try {
+    const statement = await deps.adapter.parse(deps.content)
+    result.unparsedRows = statement.unparsedRows
+    result.unparsedCount = statement.unparsedRows.length
+
+    assertTheFileBringsMovements(statement)
+
+    const resolution = await resolveAccount(deps.prisma, statement, deps.bankSlug)
+    result.account = toAccountReport(resolution)
+
+    const rows = toMovementRows(statement.movements, resolution.account.id)
+    const stored = await persistMovements(deps.prisma, rows)
+    result.imported = stored.imported
+    result.duplicates = stored.duplicates
+    result.status = 'imported'
+    return result
+  } catch (error) {
+    result.status = 'failed'
+    result.error = describeError(error)
+    return result
+  }
+}
+
+/**
+ * Where feature 25 cuts the "zero movements" case, which is NOT one case but
+ * three (written out in progress/implementations/reimport-from-local-copy.md):
+ *
+ *  1. No movement line and nothing left unread -> `EMPTY_STATEMENT`. The file is
+ *     reported as failed and does NOT move: this is the silent failure of the
+ *     diagnosis (2026-08-20, section 1.4), the one that left a whole bank out of
+ *     the database while the report said the file had been imported.
+ *  2. No movement line but rows the parser could not read -> `ALL_ROWS_UNPARSED`.
+ *     Also failed and also not moved, with its own code: a full file nobody can
+ *     read is a format that changed, not a month with no activity.
+ *  3. Movement lines that ALL turn out to be duplicates -> nothing wrong here.
+ *     Every row of the file IS in the database, which is what a healthy
+ *     re-import looks like: `imported: 0, duplicates: n`, and the file moves,
+ *     exactly as it did before (ADR-015, decision 3).
+ *
+ * As one rule: a file reaches `procesados/` only when at least one of its rows
+ * is accounted for in the database, whether it was stored now or already was.
+ * The check runs BEFORE the account is resolved, so a file that brings nothing
+ * cannot create an account either.
+ */
+function assertTheFileBringsMovements(statement: ParsedStatement): void {
+  if (statement.movements.length > 0) {
+    return
+  }
+  if (statement.unparsedRows.length > 0) {
+    throw new UnreadableStatementError(
+      `ninguna de las ${statement.unparsedRows.length} líneas del archivo se ha podido ` +
+        'interpretar: no se ha guardado nada y el archivo NO se ha movido a procesados/. ' +
+        'Suele significar que el formato del archivo ha cambiado; el motivo de cada línea ' +
+        'está en unparsedRows.',
+    )
+  }
+  throw new EmptyStatementError(
+    'el archivo se ha leído sin un solo error y no trae ni una línea de movimiento: no ' +
+      'se ha guardado nada y el archivo NO se ha movido a procesados/, así que puedes ' +
+      'reintentarlo. Comprueba que descargaste el extracto del periodo que querías.',
+  )
 }
 
 function toAccountReport(resolution: AccountResolution): AccountReport {
@@ -311,9 +411,10 @@ function toAccountReport(resolution: AccountResolution): AccountReport {
 
 /**
  * Picks the parser of a file by the bank of its FOLDER (never by the content:
- * the folder is what says the bank, ADR-009) and by its extension.
+ * the folder is what says the bank, ADR-009) and by its extension. Exported
+ * since feature 25: the local way in chooses the parser with the same rule.
  */
-function selectAdapter(
+export function selectAdapter(
   parsers: BankParserRegistry,
   bankSlug: string,
   fileName: string,
@@ -329,12 +430,16 @@ function selectAdapter(
   return { adapter }
 }
 
-function totals(files: ImportedFileReport[]) {
-  const attempted = files.filter((file): file is AttemptedFileReport => file.status !== 'skipped')
+/**
+ * The totals of a run. Structural on purpose (feature 25): the report of a
+ * local file has no Drive id, so the two ways in share the arithmetic without
+ * sharing the shape. A skipped file counts zero movements, never `undefined`.
+ */
+export function totals(files: FileCounts[]) {
   return {
-    importedCount: sum(attempted.map((file) => file.imported)),
-    duplicateCount: sum(attempted.map((file) => file.duplicates)),
-    unparsedCount: sum(attempted.map((file) => file.unparsedCount)),
+    importedCount: sum(files.map((file) => file.imported ?? 0)),
+    duplicateCount: sum(files.map((file) => file.duplicates ?? 0)),
+    unparsedCount: sum(files.map((file) => file.unparsedCount ?? 0)),
     failedCount: files.filter((file) => file.status === 'failed').length,
     skippedCount: files.filter((file) => file.status === 'skipped').length,
   }
