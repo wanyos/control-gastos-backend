@@ -992,3 +992,76 @@ cerrada y aprobada.
 - `./init.sh`: **739/739 verde** y **cero features en `in_progress`**.
 - Con esto, **5 de 6 bancos**. Falta **Revolut**: su fichero ya se baja de Drive, pero
   nadie lo parsea todavía.
+
+---
+
+## F26 `savings-account-as-product` — EN CURSO (2026-08-20)
+
+Feature en curso: **26 — `savings-account-as-product`** (SDD, `in_progress`, spec aprobado
+hoy con las 6 decisiones 🔴 tal cual). Un solo implementer para los **cuatro lotes**
+(A, B, C, D) de [`tasks.md`](../specs/savings-account-as-product/tasks.md); no hay otro
+implementer en paralelo.
+
+Plan = las 28 tasks del spec, en orden A → B → C → D:
+
+- **A** (T1-T11): `savings_account` en el enum, modelo `SavingsSnapshot`, migración
+  **aditiva**, `investments.types.ts` + `investments.service.ts`
+  (`persistSavingsSnapshot`, dos upserts en una transacción) y sus tests + guardián.
+- **B** (T12-T14): exportar `parseTradeRepublicProductFile` desde el módulo del banco,
+  **sin base de datos**, con el motivo íntegro del parser.
+- **C** (T15-T24): segundo registro `productParsers` en `src/app.ts`, bifurcación de
+  `importPending` y de `importLocalCopies`, informe `product`/`snapshot`.
+- **D** (T25-T28): `api-contract.md`, ADR-026, `trade-republic-product-files.md`, roadmap.
+
+⚠️ **La migración se escribe pero NO se aplica** contra la base del humano (instrucción
+del leader): se verifica sobre una base de datos temporal aparte. Mientras no se aplique,
+los tests nuevos que tocan `SavingsSnapshot` estarán rojos en `./init.sh`.
+
+Informe: [`implementations/savings-account-as-product.md`](implementations/savings-account-as-product.md).
+
+**Implementación TERMINADA el 2026-08-20**: las **28 tasks** de `tasks.md` en `[x]`,
+informe con el mapeo R→test en
+[`implementations/savings-account-as-product.md`](implementations/savings-account-as-product.md).
+
+⚠️ **`./init.sh` está ROJO a propósito**: la migración
+`20260820181500_savings_account_as_product` **NO se ha aplicado** contra la base del
+humano (instrucción del leader). Los fallos están **confinados a los cuatro archivos que
+dependen de ella** (`investments.model`, `investments.service`, `import.service`,
+`import.local.service`); nada más falla. La suite **completa** se verificó en **verde
+(46 archivos, 816 tests)** contra una base temporal aparte (`gastos_f26`) con las cuatro
+migraciones aplicadas desde cero. El comando a lanzar con el humano delante está en la
+§«La migración NO se ha aplicado» del informe.
+
+La F26 se queda en **`in_progress`**: la cierra el reviewer, no el implementer. Y **C4 bis
+(la prueba real) sigue pendiente**: no se puede hacer hasta aplicar la migración, y el
+archivo de Drive debe llevar ya el `name` corregido (`saving-account`).
+
+**`reviewer`: CHANGES_REQUESTED** ([`reviews/savings-account-as-product.md`](reviews/savings-account-as-product.md))
+con **un solo punto bloqueante, y de documentación**: `docs/data-model.md` —el registro
+único de columnas— no llevaba ni una línea de la feature. Todo lo demás quedó
+**comprobado contra su base real y sin hallazgos**: la migración aditiva, la idempotencia
+(tres importaciones seguidas → 1 producto, mismo id, 2 fotos), el «no deja rastro» (con
+descuadre y con rollback a mitad de transacción), los 15 requirements y los guardianes.
+Devolvió la base idéntica: **4 / 455 / 0 / 0 / 0**.
+
+**Segunda pasada hecha el 2026-08-20 — solo `docs/data-model.md`**, ni una línea de
+código, de test ni de la migración:
+
+- Los **6 puntos** del reviewer: quinto valor del enum, relación inversa
+  `savingsSnapshots`, el `model SavingsSnapshot` entero con sus siete columnas, el
+  diagrama, la fila de la clave natural `(productId, date)` y `openedAt`/`closedAt`
+  tachadas con su 🔄 en «columnas reservadas».
+- **Siete cosas más que encontré al repasar** y que la F26 había vuelto falsas: la
+  cabecera de la Parte 2 («sin importador»), la tabla de partes, la regla 4, «los tres
+  índices» (son cuatro), «los otros tres tipos» (son cuatro), el 📌 del «futuro
+  importador» y la regla de negocio gemela de la del depósito. Más §Patrimonio,
+  §Lo que NO está aquí y la nota de la F15. Detalle en el informe.
+- El bloque Prisma del documento se comparó **campo a campo** contra `schema.prisma`:
+  los dos modelos y el enum salen idénticos.
+
+- `./init.sh`: **816/816 verde**, y su base **igual antes y después** (4 / 455 / 0 / 0 / 0,
+  desglose 204 / 201 / 39 / 11). La suite no deja ni una fila detrás.
+- La F26 sigue en **`in_progress`**: la cierra el reviewer.
+- Sigue pendiente, y **no lo puede hacer un agente**: la **prueba real (C4 bis)** con su
+  archivo ya renombrado a `saving-account`. Y al cerrar, borrar la base temporal
+  `gastos_f26`.

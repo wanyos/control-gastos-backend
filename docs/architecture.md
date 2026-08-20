@@ -746,6 +746,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
      mensual **re-afirma** las condiciones de todos los productos, el futuro
      importador tendrá que hacer **UPSERT también del producto** sobre
      `@@unique([bank, name])`, no un `create`: **dos upserts, no uno**.
+     ✅ **Ese contrato ya tiene ejecutor desde la feature 26** (ADR-026):
+     `persistSavingsSnapshot` en `modules/investments/investments.service.ts` hace
+     exactamente esos dos upserts, dentro de **una** transacción, y es el único
+     escritor de la capa (guardián en `src/architecture.test.ts`). Lo hace hoy para
+     la cuenta remunerada de Trade Republic; el día que entren los productos de
+     MyInvestor reutilizan la misma vía con `Valuation` en lugar de
+     `SavingsSnapshot`.
   7. **Cero SQL crudo:** los tres índices son declarativos, así que Prisma los
      conoce y **no puede haber drift** — a diferencia de la feature 8, que arrastra
      ese riesgo con sus dos índices escritos a mano (parcial y `NULLS NOT
@@ -1984,6 +1991,105 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     escrita en el contrato es pedir el archivo concreto con `{ bank, year, name }` y mirar
     el recuento**, no la llamada sin cuerpo. Arreglarlo de raíz (que la clave de dedup no
     dependa de una posición recalculable) es otra feature, con su migración.
+
+### ADR-026: La cuenta remunerada entra como `InvestmentProductType` nuevo con su propia serie (`SavingsSnapshot`), el importador gana un SEGUNDO registro y `var/parsed/` pasa a ser el ENSAYO
+
+- **Fecha:** 2026-08-20
+- **Estado:** aceptada (implementada en la feature #26; las 6 decisiones 🔴 se
+  aprobaron en la puerta **tal y como venían recomendadas**)
+- **Contexto:** desde la feature 20 el humano escribe a mano un `.json` al mes con
+  la foto de su cuenta remunerada de Trade Republic, y el archivo **moría en un
+  volcado**: `POST /api/parser/trade-republic` lo parseaba, comprobaba el cuadre de
+  los cinco importes y lo escribía en `var/parsed/`. Nada llegaba a la base de
+  datos, y `InvestmentProduct` / `Valuation` seguían **sin un solo escritor** desde
+  la feature 9. Lo que el humano pidió: «después de subir el `.json` de un mes, mi
+  cuenta remunerada está en la base de datos con su saldo y sus intereses», sin
+  perder el cuadre y sin tocar sus 4 cuentas ni sus 455 movimientos.
+- **Decisión:**
+  1. **Quinto valor del enum, `savings_account`**, por migración **aditiva**. *No*
+     se reutiliza `deposit`: un depósito tiene vencimiento e interés pactado de
+     antemano y una cuenta remunerada no tiene ni lo uno ni lo otro, así que
+     reutilizarlo **mentiría** sobre lo que es el producto.
+  2. **Tabla propia `SavingsSnapshot`**, gemela de `Valuation` en oficio (una fila
+     por producto y fecha, recarga por UPSERT, nada se calcula) y distinta en
+     contenido: `openingBalance`, `moneyIn`, `moneyOut`, `interest` y `balance`,
+     los cinco `Decimal(10,2)` **NOT NULL**, con `@@unique([productId, date])`.
+     *Alternativas descartadas:* mapear los cinco sobre las columnas de `Valuation`
+     (perdería **tres de los cinco** y haría imposible re-comprobar el cuadre desde
+     la base, además de contaminar cualquier vista futura de patrimonio sumando
+     `invested` de una cuenta que no invierte) y ensanchar `Valuation` con cinco
+     columnas nullable aflojando `invested`/`marketValue` (debilita dos NOT NULL
+     vivos y deja diez columnas siempre nulas).
+     **Son NOT NULL porque el parser los exige los cinco:** un archivo al que le
+     falte uno **no llega** a la tabla, así que no hay camino que produzca un hueco.
+  3. **Un solo escritor:** `persistSavingsSnapshot` en
+     `modules/investments/investments.service.ts`, con los **dos upserts**
+     —producto sobre `(bank, name)`, foto sobre `(productId, date)`— dentro de
+     **un `prisma.$transaction`**. Ningún otro archivo de `src/` menciona
+     `investmentProduct.` ni `savingsSnapshot.` del cliente Prisma (guardián).
+  4. **La regla «un fondo no tiene foto de ahorro» la vigila el SERVICIO, no un
+     `CHECK`**, exactamente como ADR-012 decisión 9 hizo con «un depósito no tiene
+     valoraciones»: un `CHECK` no puede mirar otra tabla y rompería el cero SQL
+     crudo. En la práctica, un producto que ya existe con **otro tipo** hace que el
+     archivo se **rechace**, no que el producto se convierta en silencio.
+  5. **El importador gana un SEGUNDO registro**, `productParsers`, construido en
+     `src/app.ts` como el de extractos. El orden de consulta es fijo —extractos,
+     después productos— y un guardián comprueba que **ningún banco declara la misma
+     extensión en los dos**, que es lo que hace que el orden no pueda morder nunca.
+     *Alternativas descartadas:* una ruta aparte (dos botones al mes para el humano,
+     y duplicar el recorrido de Drive, el movimiento a `procesados/` y el informe) y
+     un `kind: 'statement' | 'product'` en el mismo registro (obligaría a discriminar
+     una unión en **cada** uso, la misma rama nullable que ADR-013 rechazó con
+     `providesBalance`; dos registros la resuelven **una** vez, donde se elige).
+  6. **Un archivo que un registro no lee, y el otro tampoco, sigue siendo
+     `skipped` con el motivo del registro de EXTRACTOS**, tal cual antes de esta
+     feature: es el contrato que los otros cuatro bancos ya tenían y cambiarlo sería
+     un breaking change silencioso. 📌 Consecuencia conocida: el `.pdf` de Trade
+     Republic sigue diciendo «no hay parser para el banco trade-republic», que es
+     **falso** —parser hay, lo que no hay es parser **de su extracto**—. Defecto
+     conocido, **fuera de alcance** a propósito, necesita su propia feature.
+  7. **La validación entera del parser ocurre ANTES de abrir la transacción**, el
+     cuadre de los cinco importes incluido. Es lo que hace comprobable que un
+     archivo que no cuadra **no deja rastro**: ni producto, ni foto, ni movimiento a
+     `procesados/`, y el motivo íntegro viaja en `error.message` con
+     `movedToProcessed: false`.
+  8. **Idempotencia sin renumeraciones.** Ni `(bank, name)` ni `(productId, date)`
+     llevan un contador, una posición o un autoincremento: el `name` y la `date` los
+     escribe el humano y no los genera nadie. Por eso el aviso de la F25 («una
+     idempotencia que depende de algo que se renumera no es idempotencia», por
+     `Movement.daySequence`) **no aplica aquí**. Mismo mes → sobrescribe; mes
+     siguiente → una fila más.
+  9. **El informe por archivo dice si el producto se creó o se actualizó y si la
+     foto es nueva o se ha pisado.** Sin eso el humano no podría distinguir «se ha
+     guardado» de «se ha vuelto a guardar lo mismo», que es justo lo que le prometen
+     las dos frases anteriores. El `created` se deduce con un `findUnique` **dentro
+     de la misma transacción**, no comparando `createdAt` con `updatedAt`: lo segundo
+     depende de la resolución del reloj.
+  10. **`var/parsed/` sigue existiendo y cambia de oficio:** deja de ser la base de
+      datos falsa y pasa a ser el **ensayo** — ver qué ha entendido el sistema de un
+      archivo **sin escribir nada**. `POST /api/parser/trade-republic` no se toca, no
+      persiste y sigue escribiendo su `products.json` por año. *Alternativa
+      descartada:* borrarlo, que le quitaría la única forma de revisar un archivo
+      antes de que entre.
+  11. **El módulo del banco sigue sin base de datos** (ADR-024 y su guardián siguen
+      verdes): solo **exporta** el paso que ya tenía, `parseTradeRepublicProductFile`
+      (bytes → cuenta, `ValidationError` con el motivo íntegro). Quien escribe es el
+      módulo de inversiones; el banco solo lee su formato.
+- **Consecuencias:**
+  - **La plantilla del humano NO cambia**, IBAN incluido (decisión 🔴 3): un producto
+    no tiene IBAN, y el IBAN solo sirve para enganchar movimientos a una cuenta
+    corriente. Si lo quiere tener escrito, `"_iban"` ya se ignora sin molestar.
+  - **Cambiar el `name` en el archivo crea OTRA cuenta** y deja la serie anterior
+    colgando del nombre viejo. Límite heredado de la clave natural de ADR-012, no se
+    arregla aquí. Por eso el humano corrigió su errata **antes** de la primera
+    importación, cuando no costaba nada: es un dato suyo y **no aparece en ningún
+    fixture ni constante** (ADR-017).
+  - **Los 5 `.json` de MyInvestor siguen fuera**, con «extensión no soportada por el
+    parser de myinvestor». Entran en una feature hermana que solo tiene que añadir un
+    adaptador y un segundo upsert: **la vía se construye una vez y se usa dos**.
+  - **Todavía no hay ninguna consulta** que enseñe esos datos: escribirlos es esta
+    feature, leerlos es la siguiente. Y la cuenta remunerada **sigue sin aparecer en
+    los totales de gasto e ingreso**, igual que el resto de productos de inversión.
 
 ## Qué NO hacer
 

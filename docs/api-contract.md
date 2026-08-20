@@ -221,14 +221,36 @@ Un apunte del extracto. **Solo entra por importación** (ver
 > muta** al identificarlo. Quién rellena `transferId` es una feature posterior;
 > hoy la columna existe y viaja siempre `null`.
 
-### Inversiones — sin endpoints todavía
+### Inversiones — se ESCRIBEN, todavía no se LEEN
 
-La capa de inversiones (`InvestmentProduct` y `Valuation`) **existe en la base de
-datos** desde la feature 9 (`docs/data-model.md` §Parte 2, ADR-012) pero **ninguna
-ruta la sirve**: esa feature fue esquema y migración, igual que la 8 hizo con el
-flujo. No hay modelo ni endpoint que documentar aquí todavía; se añadirán cuando
-una feature abra esa superficie. Mismo patrón que el servicio interno de
-estructura en Drive (ADR-008), que tampoco tiene endpoints.
+La capa de inversiones (`InvestmentProduct`, `Valuation` y, desde la feature 26,
+`SavingsSnapshot`) existe en la base de datos desde la feature 9
+(`docs/data-model.md` §Parte 2, ADR-012). **Desde la feature 26 tiene un escritor**:
+`POST /api/import` guarda las cuentas remuneradas de Trade Republic (ver §Importación,
+«Archivos de producto»). Lo que **sigue sin existir es una ruta que las LEA**: no hay
+`GET` de patrimonio ni de la serie de un producto, y ningún endpoint devuelve todavía
+un `InvestmentProduct` ni un `SavingsSnapshot` como recurso propio. Escribirlos es la
+feature 26; leerlos es la siguiente.
+
+**`SavingsSnapshot`** — la foto mensual de una cuenta remunerada. Gemela de `Valuation`
+en oficio (una fila por producto y fecha, recargar sobrescribe, nada se calcula) y
+distinta en contenido: aquí no hay valor de mercado ni ganancia acumulada, hay un saldo
+que se mueve con lo que entra, lo que sale y los intereses.
+
+| Campo            | Tipo             | Notas                                              |
+| ---------------- | ---------------- | -------------------------------------------------- |
+| `productId`      | int              | El `InvestmentProduct` de tipo `savings_account`.   |
+| `date`           | `YYYY-MM-DD`     | El día del abono de intereses. Identidad de la foto.|
+| `openingBalance` | decimal(10,2)    | Saldo inicial del mes, tal cual se escribió.        |
+| `moneyIn`        | decimal(10,2)    | Lo que entró, **sin** los intereses.                |
+| `moneyOut`       | decimal(10,2)    | Lo que salió.                                       |
+| `interest`       | decimal(10,2)    | Los intereses abonados ese día.                     |
+| `balance`        | decimal(10,2)    | Saldo final justo después del abono.                |
+
+Los cinco son **NOT NULL** y **ninguno se calcula**: el cuadre
+`openingBalance + moneyIn − moneyOut + interest = balance` lo comprueba el parser
+**antes** de escribir, y un archivo que no cuadra no llega a esta tabla.
+`@@unique(productId, date)`: una foto por producto y fecha.
 
 > La columna `Movement.productId` que esa feature añadió **no forma parte de esta
 > respuesta**: `serializeMovement` mapea campo a campo, así que el `Movement` del
@@ -538,20 +560,50 @@ cada `<banco>/<año>/`, en el orden en que Drive los lista (por nombre):
 6. **solo entonces** mueve el original a `<banco>/<año>/procesados/`.
 
 > **Qué bancos lee hoy el importador:** `bankinter` (`.xlsx`), `myinvestor`
-> (`.csv`) y, desde la feature 18, `n26` (`.csv`). El registro vive en
-> `src/app.ts`, el único archivo de `src/` que puede nombrar un banco (ADR-015);
-> mientras un banco no tenga su línea ahí, sus archivos salen como `skipped` (ni
-> se importan ni se mueven), que es justo lo que permite inspeccionarlos.
+> (`.csv`), `n26` (`.csv`) y `openbank` (`.xls`) como **extractos**; y, desde la
+> feature 26, `trade-republic` (`.json`) como **archivo de producto**. Los dos
+> registros viven en `src/app.ts`, el único archivo de `src/` que puede nombrar un
+> banco (ADR-015); mientras un banco no tenga su línea ahí, sus archivos salen como
+> `skipped` (ni se importan ni se mueven), que es justo lo que permite
+> inspeccionarlos.
 
 Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve**
 (sigue pendiente y se puede reintentar) y el resto continúa.
+
+#### Archivos de producto (feature 26)
+
+Un archivo que **ningún parser de extractos** lee se consulta contra un **segundo
+registro**, el de los archivos de producto escritos a mano. Hoy tiene una sola entrada:
+`trade-republic` / `.json` (la cuenta remunerada, ADR-024 y ADR-026). Para esos archivos
+los pasos 4 y 5 son otros:
+
+4'. **upsert del producto** sobre `(bank, name)` — el `bank` lo dice la **carpeta**,
+    nunca el contenido — con `type: "savings_account"`, `currency`, `openedAt` y
+    `closedAt` tal como vienen;
+5'. **upsert de la foto del mes** sobre `(productId, date)` con los **cinco importes tal
+    como están escritos** (nada se calcula).
+
+Los dos guardados van **en una sola transacción**: no puede quedar un producto sin su
+foto. Y toda la validación del parser —**el cuadre de los cinco importes incluido**—
+ocurre **antes** de abrirla, así que un archivo que no cuadra **no deja rastro**: ni
+producto, ni foto, ni movimiento a `procesados/`.
+
+**Idempotencia:** subir **el mismo mes** otra vez (mismo `name`, misma `date`)
+sobrescribe la foto y deja **un** producto y **una** fila; subir el **mes siguiente**
+reutiliza el producto y añade **una fila más**. Ninguna de las dos claves lleva un
+contador ni una posición que se renumere, a diferencia de la de los movimientos.
+
+> ⚠️ **El `name` es la identidad de la cuenta.** Cambiarlo en el archivo crea **otra**
+> cuenta y deja la serie anterior colgando del nombre viejo (límite conocido de ADR-012).
+>
+> **Un archivo de producto no crea ni modifica ninguna `Account` ni ningún `Movement`.**
 
 **Estados por archivo**
 
 | `status`   | Qué significa                                                                 | ¿Se mueve? |
 | ---------- | ----------------------------------------------------------------------------- | ---------- |
-| `imported` | Sus movimientos están guardados (aunque alguna línea no se haya interpretado). | Sí         |
-| `skipped`  | Ningún parser lee ese banco, o su extensión no la lee el parser del banco.     | No         |
+| `imported` | Sus movimientos están guardados (aunque alguna línea no se haya interpretado). En un archivo de **producto**: el producto y la foto del mes están guardados. | Sí         |
+| `skipped`  | **Ninguno de los dos registros** lee ese archivo: ni el de extractos ni el de productos. El `reason` es el del registro de extractos, igual que antes de la feature 26. | No         |
 | `failed`   | Falló la descarga, el parseo, la resolución de cuenta o el guardado, **o el archivo no aportó ni un movimiento** (feature 25). | No         |
 
 > **Un archivo del que no entra ni un movimiento NO se cuenta como importado**
@@ -605,10 +657,34 @@ Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve*
       "status": "skipped",
       "reason": "extensión no soportada por el parser de myinvestor",
       "movedToProcessed": false
+    },
+    {
+      "bank": "trade-republic", "year": "2026", "fileId": "7Tuv...",
+      "name": "cuenta-remunerada-2026-08-31.json",
+      "status": "imported",
+      "product": {
+        "id": 4, "bank": "trade-republic", "name": "<como la llames tú>",
+        "type": "savings_account", "created": true
+      },
+      "snapshot": { "date": "2026-08-31", "created": true },
+      "movedToProcessed": true
     }
   ]
 }
 ```
+
+> **El informe de un archivo de producto tiene su propia forma**, no una versión
+> nullable de la del extracto: trae `product` y `snapshot`, y **no** trae `account`,
+> `imported`, `duplicates`, `unparsedCount` ni `unparsedRows` (un archivo de producto no
+> aporta ni un movimiento, así que esos contadores serían ceros que no dicen nada).
+>
+> - `product.created`: `true` si esta llamada **creó** la cuenta, `false` si la
+>   **actualizó**.
+> - `snapshot.created`: `true` si el mes es **nuevo**, `false` si se ha **pisado** el que
+>   ya había. Sin estos dos no podrías distinguir «se ha guardado» de «se ha vuelto a
+>   guardar lo mismo».
+> - Un archivo de producto **no suma** a `importedCount` ni a `duplicateCount` (esos
+>   cuentan movimientos); si falla, sí suma a `failedCount`.
 
 - **Totales:** `importedCount` movimientos guardados, `duplicateCount` descartados
   por ya existir, `unparsedCount` líneas que ningún parser supo interpretar,
@@ -648,7 +724,7 @@ Un fallo en cualquier paso **aísla** ese archivo: no se importa, **no se mueve*
 | `UNEXPECTED_ENCODING`    | El archivo no llega en la codificación que emite su banco: no la declara, declara otra, **o declara una y sus bytes son de otra** (lo reabriste y lo guardaste, y el editor lo pasó a UTF-8). Se rechaza **entero**, no se importa nada y **no** se mueve a `procesados/`. El motivo te dice cuál de las dos cosas es: si los acentos siguen ahí, vuelve a guardarlo con **Western (Windows-1252)**; si ya salen como `�`, están perdidos y hay que **volver a descargarlo del banco**. |
 | `EMPTY_STATEMENT`        | El archivo se ha leído sin un solo error y **no trae ni una línea de movimiento**. No se guarda nada y **no** se mueve a `procesados/`, así que se puede reintentar. Comprueba que descargaste el extracto del periodo que querías. |
 | `ALL_ROWS_UNPARSED`      | El archivo trae líneas y **ninguna** se ha podido interpretar (formato del banco cambiado). No se guarda nada y **no** se mueve; el motivo de cada línea está en `unparsedRows`. |
-| `VALIDATION_ERROR`       | El archivo no es un extracto reconocible para el parser de su banco.               |
+| `VALIDATION_ERROR`       | El archivo no es un extracto reconocible para el parser de su banco. En un **archivo de producto**: el parser lo ha rechazado y el `message` trae el motivo **íntegro** —descuadre de los cinco importes, marcador `<…>` sin sustituir, campo obligatorio ausente, número escrito como texto, fecha inválida, clave desconocida o `type` que no es `savings_account`—. **No se guarda ni el producto ni la foto** y **no** se mueve a `procesados/`: corrígelo y vuelve a subirlo. |
 | `DRIVE_CONNECTION_ERROR` | Falló la descarga de **ese** archivo.                                              |
 | `INTERNAL_SERVER_ERROR`  | Cualquier otro fallo de ese archivo (mensaje sanitizado).                          |
 
@@ -694,6 +770,14 @@ importó el archivo la primera vez**.
 Por cada copia hace lo mismo que la importación normal **menos los pasos de
 Drive**: elige el parser por el banco de la **carpeta** y la extensión, parsea,
 resuelve la cuenta, guarda en una sola operación — y **no mueve nada**.
+
+> **También los archivos de producto** (feature 26): consulta los **dos** registros en el
+> mismo orden que `POST /api/import`, y un `.json` de `trade-republic` bajo
+> `var/drive-read/trade-republic/<año>/` se persiste por el mismo camino, **sin una sola
+> llamada a Drive**. Es **la** forma de volver a subir un mes cuyo archivo ya llegó a
+> `procesados/`: repetirlo sobrescribe la foto de ese mes y no duplica nada, porque su
+> identidad son el `name` y la `date` que escribes tú, y no se renumeran (a diferencia del
+> aviso de arriba sobre `daySequence`).
 
 **Respuesta 200** — mismo informe que `POST /api/import`, con dos diferencias:
 no hay `fileId` (una copia local se identifica por su ruta) y `movedToProcessed`

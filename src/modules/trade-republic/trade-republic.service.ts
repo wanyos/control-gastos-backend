@@ -114,7 +114,13 @@ export async function parseLocalTradeRepublicCopies(
 }
 
 /**
- * Parses one hand-written account file.
+ * Parses ONE hand-written account file from its raw bytes (feature 26).
+ *
+ * This is the entry the importer wires into its product registry from
+ * `src/app.ts`: bytes in, one account out, an `AppError` carrying the WHOLE
+ * reason when the file is wrong. It is the same step the local walk above uses,
+ * exported and not duplicated, so the dry run of `var/parsed/` and the real
+ * import can never disagree about what a file means.
  *
  * The bytes are decoded with `decodeUtf8Strict` and NEVER with
  * `readFile(…, 'utf8')` (ADR-018): this file is written by the human, so it is
@@ -122,16 +128,26 @@ export async function parseLocalTradeRepublicCopies(
  * every accent in silence while the parse looked perfect.
  *
  * The parser RETURNS the reason instead of throwing, so a badly written file
- * becomes an `AppError` here and lands in `failed[]` through the same isolation
- * a filesystem error uses.
+ * becomes a `ValidationError` here — with every problem of the file accumulated
+ * into a single message, never truncated — and the caller isolates it.
+ *
+ * It STILL touches no database: what it returns is a plain value, and who writes
+ * it is `modules/investments/` (ADR-024 and its guardian stay green).
  */
-async function parseAccountFile(yearDir: string, file: string): Promise<ParsedSavingsAccount> {
-  const content = decodeUtf8Strict(await readFile(join(yearDir, file)))
-  const result = parseTradeRepublicProduct(file, content)
+export function parseTradeRepublicProductFile(
+  fileName: string,
+  content: Buffer,
+): ParsedSavingsAccount {
+  const result = parseTradeRepublicProduct(fileName, decodeUtf8Strict(content))
   if ('reason' in result) {
     throw new ValidationError(result.reason)
   }
   return result
+}
+
+/** The same step, reading the local copy off disk. */
+async function parseAccountFile(yearDir: string, file: string): Promise<ParsedSavingsAccount> {
+  return parseTradeRepublicProductFile(file, await readFile(join(yearDir, file)))
 }
 
 /**

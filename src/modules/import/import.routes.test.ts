@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { bankParsers, productParsers } from '../../app.js'
 import { loadConfig } from '../../config/env.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
@@ -184,5 +185,35 @@ describe('POST /api/import', () => {
 
     expect(created.statusCode).toBe(404)
     expect(deleted.statusCode).toBe(404)
+  })
+})
+
+// ── Feature 26: the two registries of the importer ──────────────────────────
+describe('the statement registry and the product registry (feature 26, R10)', () => {
+  it('never lets a bank declare the same extension in both registries', () => {
+    // This is what makes the fixed order of consultation -- statements first,
+    // products second -- unable to bite: no file can be read by both. If it
+    // ever could, the file would silently take the first branch and its other
+    // meaning would be lost with no message at all.
+    const clashes = bankParsers.flatMap((statementAdapter) =>
+      productParsers
+        .filter((productAdapter) => productAdapter.bank === statementAdapter.bank)
+        .flatMap((productAdapter) =>
+          productAdapter.extensions
+            .filter((extension) => statementAdapter.extensions.includes(extension))
+            .map((extension) => `${statementAdapter.bank}${extension}`),
+        ),
+    )
+
+    expect(clashes).toEqual([])
+  })
+
+  it('declares every extension lowercase and with the dot, in both registries', () => {
+    for (const adapter of [...bankParsers, ...productParsers]) {
+      for (const extension of adapter.extensions) {
+        expect(extension).toBe(extension.toLowerCase())
+        expect(extension.startsWith('.')).toBe(true)
+      }
+    }
   })
 })

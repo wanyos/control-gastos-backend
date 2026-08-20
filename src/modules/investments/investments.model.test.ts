@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { buildApp } from '../../app.js'
 import { InvestmentProductType } from '../../generated/prisma/client.js'
 
-type ProductType = 'fund' | 'etf' | 'managed_portfolio' | 'deposit'
+type ProductType = 'fund' | 'etf' | 'managed_portfolio' | 'deposit' | 'savings_account'
 
 interface ProductInput {
   bank?: string
@@ -20,6 +20,15 @@ interface ProductInput {
   interestRate?: string | null
   expectedGain?: string | null
   maturityDate?: Date | null
+}
+
+interface SavingsSnapshotInput {
+  date?: Date
+  openingBalance?: string
+  moneyIn?: string
+  moneyOut?: string
+  interest?: string
+  balance?: string
 }
 
 interface ValuationInput {
@@ -58,6 +67,9 @@ describe('investments model: InvestmentProduct and Valuation', () => {
     }
     if (createdProductIds.length > 0) {
       await app.prisma.valuation.deleteMany({ where: { productId: { in: createdProductIds } } })
+      await app.prisma.savingsSnapshot.deleteMany({
+        where: { productId: { in: createdProductIds } },
+      })
       await app.prisma.investmentProduct.deleteMany({ where: { id: { in: createdProductIds } } })
       createdProductIds.length = 0
     }
@@ -100,6 +112,20 @@ describe('investments model: InvestmentProduct and Valuation', () => {
         gain: valuation.gain ?? null,
         gainPercent: valuation.gainPercent ?? null,
         uninvestedCash: valuation.uninvestedCash ?? null,
+      },
+    })
+  }
+
+  function createSavingsSnapshot(productId: number, snapshot: SavingsSnapshotInput = {}) {
+    return app.prisma.savingsSnapshot.create({
+      data: {
+        productId,
+        date: snapshot.date ?? day('2026-08-31'),
+        openingBalance: snapshot.openingBalance ?? '4000.00',
+        moneyIn: snapshot.moneyIn ?? '0.00',
+        moneyOut: snapshot.moneyOut ?? '0.00',
+        interest: snapshot.interest ?? '6.40',
+        balance: snapshot.balance ?? '4006.40',
       },
     })
   }
@@ -154,12 +180,15 @@ describe('investments model: InvestmentProduct and Valuation', () => {
       expect(stored.map((product) => product.type).sort()).toEqual([...types].sort())
     })
 
-    it('generates the enum with exactly those four values and no more (R2)', () => {
+    // Feature 26 added the fifth value. The list stays exhaustive on purpose: a
+    // sixth type must come with its spec, not slip in with a migration.
+    it('generates the enum with exactly those five values and no more (R2, F26 R1)', () => {
       expect(Object.keys(InvestmentProductType)).toEqual([
         'fund',
         'etf',
         'managed_portfolio',
         'deposit',
+        'savings_account',
       ])
     })
 
@@ -517,6 +546,124 @@ describe('investments model: InvestmentProduct and Valuation', () => {
     })
   })
 
+  // -- Feature 26: the monthly photo of a remunerated account ---------------
+  //
+  // Everything below is invented (ADR-017): a balance of a few thousand and an
+  // interest of a few euros, built by hand so the five amounts add up.
+  describe('the savings snapshot (feature 26)', () => {
+    it('accepts a product of the fifth type, savings_account (F26 R1)', async () => {
+      const created = await createProduct({
+        type: 'savings_account',
+        name: unique('Cuenta Sintetica Remunerada'),
+        bank: 'trade-republic',
+        openedAt: day('2025-03-10'),
+      })
+
+      const stored = await app.prisma.investmentProduct.findUniqueOrThrow({
+        where: { id: created.id },
+      })
+      expect(stored.type).toBe('savings_account')
+      // A savings account has no deposit part: nothing is agreed in advance.
+      expect(stored.principal).toBeNull()
+      expect(stored.interestRate).toBeNull()
+      expect(stored.maturityDate).toBeNull()
+    })
+
+    it('stores the five amounts with their exact precision (F26 R2)', async () => {
+      const product = await createProduct({ type: 'savings_account' })
+
+      const created = await createSavingsSnapshot(product.id, {
+        date: day('2026-07-31'),
+        openingBalance: '1200.10',
+        moneyIn: '340.55',
+        moneyOut: '90.25',
+        interest: '3.70',
+        balance: '1454.10',
+      })
+      const stored = await app.prisma.savingsSnapshot.findUniqueOrThrow({
+        where: { id: created.id },
+      })
+
+      expect(stored.productId).toBe(product.id)
+      expect(stored.date.toISOString().slice(0, 10)).toBe('2026-07-31')
+      expect(stored.openingBalance.toFixed(2)).toBe('1200.10')
+      expect(stored.moneyIn.toFixed(2)).toBe('340.55')
+      expect(stored.moneyOut.toFixed(2)).toBe('90.25')
+      expect(stored.interest.toFixed(2)).toBe('3.70')
+      expect(stored.balance.toFixed(2)).toBe('1454.10')
+      expect(stored.createdAt).toBeInstanceOf(Date)
+      expect(stored.updatedAt).toBeInstanceOf(Date)
+    })
+
+    it('declares the five amounts NOT NULL (F26 R2)', async () => {
+      const columns = await app.prisma.$queryRaw<
+        Array<{ column_name: string; is_nullable: string }>
+      >`
+        SELECT column_name, is_nullable FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'SavingsSnapshot'
+          AND column_name IN ('openingBalance', 'moneyIn', 'moneyOut', 'interest', 'balance')
+        ORDER BY column_name
+      `
+
+      expect(columns).toHaveLength(5)
+      expect(columns.every((column) => column.is_nullable === 'NO')).toBe(true)
+    })
+
+    it('rejects two photos of the same product and date, not of two products (F26 R2)', async () => {
+      const product = await createProduct({ type: 'savings_account' })
+      const other = await createProduct({ type: 'savings_account' })
+      const date = day('2026-08-31')
+
+      await createSavingsSnapshot(product.id, { date })
+
+      await expect(createSavingsSnapshot(product.id, { date })).rejects.toMatchObject({
+        code: 'P2002',
+      })
+
+      const elsewhere = await createSavingsSnapshot(other.id, { date })
+      expect(elsewhere.date.toISOString().slice(0, 10)).toBe('2026-08-31')
+      expect(await app.prisma.savingsSnapshot.count({ where: { productId: product.id } })).toBe(1)
+    })
+
+    it('keeps the months of one account as a series (F26 R2, R7)', async () => {
+      const product = await createProduct({ type: 'savings_account' })
+
+      await createSavingsSnapshot(product.id, {
+        date: day('2026-08-31'),
+        openingBalance: '4006.40',
+        balance: '4012.90',
+        interest: '6.50',
+      })
+      await createSavingsSnapshot(product.id, { date: day('2026-07-31') })
+
+      const series = await app.prisma.savingsSnapshot.findMany({
+        where: { productId: product.id },
+        orderBy: { date: 'asc' },
+      })
+
+      expect(series.map((photo) => photo.date.toISOString().slice(0, 10))).toEqual([
+        '2026-07-31',
+        '2026-08-31',
+      ])
+      expect(series.map((photo) => photo.balance.toFixed(2))).toEqual(['4006.40', '4012.90'])
+    })
+
+    it('hangs the photo off the product through a real foreign key (F26 R2)', async () => {
+      const product = await createProduct({ type: 'savings_account' })
+      await createSavingsSnapshot(product.id)
+
+      const withSeries = await app.prisma.investmentProduct.findUniqueOrThrow({
+        where: { id: product.id },
+        include: { savingsSnapshots: true },
+      })
+      expect(withSeries.savingsSnapshots).toHaveLength(1)
+
+      await expect(createSavingsSnapshot(product.id + 10_000_000)).rejects.toMatchObject({
+        code: 'P2003',
+      })
+    })
+  })
+
   describe('migration applied to the database', () => {
     it('creates the InvestmentProduct and Valuation tables (R22)', async () => {
       const tables = await app.prisma.$queryRaw<Array<{ table_name: string }>>`
@@ -536,6 +683,77 @@ describe('investments model: InvestmentProduct and Valuation', () => {
 
       expect(columns).toHaveLength(1)
       expect(columns[0]?.is_nullable).toBe('YES')
+    })
+
+    it('creates SavingsSnapshot without touching the flow tables (F26 R1, R2, R14)', async () => {
+      const tables = await app.prisma.$queryRaw<Array<{ table_name: string }>>`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN ('SavingsSnapshot', 'Account', 'Movement', 'Category')
+        ORDER BY table_name
+      `
+
+      expect(tables.map((table) => table.table_name)).toEqual([
+        'Account',
+        'Category',
+        'Movement',
+        'SavingsSnapshot',
+      ])
+
+      // The additive migration adds NO column to the flow model: the shape of
+      // Account is the one feature 26 found.
+      const flowColumns = await app.prisma.$queryRaw<Array<{ column_name: string }>>`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'Account'
+        ORDER BY column_name
+      `
+      expect(flowColumns.map((column) => column.column_name)).toEqual([
+        'alias',
+        'bank',
+        'createdAt',
+        'iban',
+        'id',
+        'initialBalance',
+        'type',
+        'updatedAt',
+      ])
+    })
+
+    it('adds savings_account keeping the four older enum values (F26 R1)', async () => {
+      const values = await app.prisma.$queryRaw<Array<{ enumlabel: string }>>`
+        SELECT enumlabel FROM pg_enum
+        WHERE enumtypid = 'public."InvestmentProductType"'::regtype
+        ORDER BY enumsortorder
+      `
+
+      expect(values.map((value) => value.enumlabel)).toEqual([
+        'fund',
+        'etf',
+        'managed_portfolio',
+        'deposit',
+        'savings_account',
+      ])
+    })
+
+    it('creates the unique index of the savings photo declaratively (F26 R2)', async () => {
+      const indexes = await app.prisma.$queryRaw<Array<{ indexname: string }>>`
+        SELECT indexname FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'SavingsSnapshot'
+        ORDER BY indexname
+      `
+
+      expect(indexes.map((index) => index.indexname)).toEqual([
+        'SavingsSnapshot_pkey',
+        'SavingsSnapshot_productId_date_key',
+      ])
+
+      // No CHECK either: "a fund has no savings snapshot" is a rule of the
+      // SERVICE, like "a deposit has no valuations" (ADR-012 decision 9).
+      const checks = await app.prisma.$queryRaw<Array<{ conname: string }>>`
+        SELECT conname FROM pg_constraint
+        WHERE conrelid = '"SavingsSnapshot"'::regclass AND contype = 'c'
+      `
+      expect(checks).toEqual([])
     })
 
     it('creates the three declarative indexes of this feature (R22, R23)', async () => {

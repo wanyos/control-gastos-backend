@@ -210,20 +210,50 @@ por un archivo que hace bien en estar ahí. **Nadie lo abre.**
 
 ## Dónde acaba lo que escribes
 
+**Desde la feature 26, acaba en la base de datos.** Hasta entonces el `.json` moría en un
+volcado; ahora entra por el botón de siempre y tu cuenta queda guardada como un producto
+más, con **una foto por mes**.
+
 ```
 Drive: notas-banco/Trade Republic/<año>/cuenta-remunerada-<AAAA-MM-DD>.json
    │  (ingesta)
    ▼
 var/drive-read/trade-republic/<año>/…json     ← el origen, gitignoreado
-   │  POST /api/parser/trade-republic
-   ▼
-var/parsed/trade-republic/<año>/products.json ← UN archivo por año, gitignoreado
+   │
+   ├── POST /api/import ──────────► BASE DE DATOS
+   │   (el camino de verdad)        InvestmentProduct + SavingsSnapshot
+   │                                y el original se mueve a procesados/
+   │
+   └── POST /api/parser/trade-republic ─► var/parsed/trade-republic/<año>/products.json
+       (el ENSAYO: no escribe nada en la base)
 ```
 
-El volcado **no es una copia** del origen: es lo que el sistema **ha entendido** —las
-cuentas del año ya validadas, con el banco y el archivo de procedencia, más la lista de
-lo que salió mal y lo que se ignoró—. Revisarlo es la forma de comprobar que lo que
-escribiste y lo que el sistema entendió son lo mismo.
+**Los dos caminos leen el archivo igual** —el mismo decodificado UTF-8, las mismas
+comprobaciones, el mismo cuadre— y se diferencian en qué hacen después.
+
+### `var/parsed/` es el **ensayo**, no el destino
+
+Sigue existiendo y sigue siendo un `products.json` por año, gitignoreado, pero **cambió de
+oficio**: dejó de ser «la base de datos falsa» y pasó a ser el sitio donde mirar **qué ha
+entendido el sistema de tu archivo, sin escribir nada**. Úsalo cuando quieras revisar un
+mes antes de meterlo. El volcado **no es una copia** del origen: es lo interpretado —las
+cuentas del año ya validadas, con el banco y el archivo de procedencia, más la lista de lo
+que salió mal y lo que se ignoró—.
+
+### Qué pasa cuando el archivo entra de verdad
+
+- **Tu cuenta es su `name`.** Se guarda (o se actualiza) sobre la pareja banco + nombre;
+  el banco lo dice la **carpeta**, nunca el contenido.
+- **Cada `date` es una foto.** Subir **el mismo mes otra vez lo sobrescribe**; subir el
+  **mes siguiente añade una fila** y no crea otra cuenta.
+- **Los cinco importes se guardan tal como los escribes.** Nada se calcula ni se redondea.
+- **Un archivo que no cuadra no deja rastro:** ni cuenta, ni foto, ni movimiento a
+  `procesados/`. Se te dice el motivo entero, lo corriges y lo vuelves a subir.
+- **La plantilla NO cambia**: ni un campo nuevo, **IBAN incluido**. Un producto no tiene
+  IBAN; el IBAN solo sirve para enganchar movimientos a una cuenta corriente.
+- ⚠️ **El `.pdf` sigue saliendo con un motivo falso** («no hay parser para el banco
+  trade-republic»): parser hay, lo que no hay es parser **de su extracto**. Es un defecto
+  conocido y tiene su propia feature pendiente.
 
 ---
 

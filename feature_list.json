@@ -1081,6 +1081,75 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 26,
+      "name": "savings-account-as-product",
+      "title": "La cuenta remunerada deja de vivir en un .json y entra en la base de datos como producto",
+      "intent": {
+        "_procedencia": "La pidió el humano el 2026-08-20, al repasar el estado de los bancos: «el tema de los json de myinvestor y trade republic, la idea es que los datos de estos archivos se pasen a la base de datos, es decir todo lo que tengamos en google drive es para después persistir en la base de datos, crear los json a mano es por facilitar la entrada de estos datos». Y sobre el cómo: «no me importa si la metemos como producto de inversión, creo que es su sitio, si fuera preciso incluimos el iban en su json por comodidad, aunque solo se lea una vez, no sé cuál es la mejor forma de hacerlo». El estado de partida, medido ese día: las tablas InvestmentProduct y Valuation existen y están probadas, pero NADIE escribe en ellas fuera de los tests; los .json de productos salen skipped en POST /api/import; el enum InvestmentProductType NO tiene savings_account; y los cinco importes de la cuenta remunerada no se corresponden con las columnas de Valuation (invested, marketValue), que hablan de inversión.",
+        "que_quiero": "Que mi cuenta remunerada de Trade Republic esté en la base de datos como un producto más, y no solo en un .json volcado en var/parsed/. El .json que escribo a mano es la forma de meter el dato, no el sitio donde vive.",
+        "por_que": "Todo lo que dejo en Drive es para acabar en la base de datos: es de donde saldrán las vistas de mi economía. Hoy hay un escalón a medio subir, y var/parsed/ está haciendo de base de datos falsa para mis productos.",
+        "como_se_que_esta_bien": [
+          "Después de subir el .json de un mes, mi cuenta remunerada está en la base de datos con su saldo y sus intereses de ese mes.",
+          "Subo el mes siguiente y no se me crea una cuenta nueva: es la misma, con un mes más.",
+          "Si vuelvo a subir el mismo mes, no se me duplica nada.",
+          "Mis 4 cuentas y mis 455 movimientos de hoy siguen exactamente igual."
+        ],
+        "que_no_quiero": [
+          "No quiero que esto me obligue a escribir más campos cada mes de los que ya escribo, salvo que sirvan para algo de verdad.",
+          "No quiero que se pierda el cuadre de los cinco importes que ya me protege de las erratas.",
+          "No quiero que se toquen mis movimientos ni mis cuentas corrientes."
+        ],
+        "delego_en_agente": [
+          "DECISIÓN PARA EL HUMANO EN LA PUERTA: si esta feature construye SOLO la vía de la cuenta remunerada o si, ya que hay que construir la vía de persistir productos, entran también los 5 .json de productos de MyInvestor, que hoy salen skipped por el mismo motivo y usan las mismas tablas.",
+          "Cómo se representa una cuenta remunerada en un modelo pensado para inversión: si es un InvestmentProductType nuevo (savings_account) con migración, y dónde viven sus cinco importes, sabiendo que Valuation habla de invested y marketValue y que una cuenta remunerada no fluctúa: crece con los intereses. Si hace falta cambiar el modelo, decir qué se cambia y por qué esa forma y no otra.",
+          "DECISIÓN PARA EL HUMANO EN LA PUERTA: si el IBAN entra en la plantilla del .json. Él lo ofrece («si fuera preciso incluimos el iban en su json por comodidad, aunque solo se lea una vez»); la F20 lo dejó fuera a propósito porque entonces no había quien lo leyera. Hay que decir si ahora sirve para algo o si sigue sobrando.",
+          "Por dónde entra: si POST /api/import aprende a persistir productos, si es una ruta aparte, o si el parser de productos que ya existe gana un paso de persistencia. Y qué pasa con var/parsed/: si sigue existiendo, y para qué, cuando el dato ya esté en la base."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "in_progress"
+    },
+    {
+      "id": 27,
+      "name": "tests-dont-touch-real-db",
+      "title": "Los tests dejan de escribir en la base de datos del humano",
+      "intent": {
+        "_procedencia": "Descubierto el 2026-08-20 al comprobar que sus datos seguían intactos tras aplicar la migración de la F26. No lo eran del todo: la base tenía 19 cuentas en vez de 4, 460 movimientos en vez de 455 y 140 productos de inversión, TODOS sintéticos, creados por las pasadas de test de esa misma tarde (16:30-16:35). Sus 4 cuentas y sus 455 movimientos estaban intactos; lo que había era basura AÑADIDA. Se limpió a mano el mismo día, en una transacción y con copia de seguridad previa (var/backups/), tras comprobar uno a uno que ninguna fila borrada era suya. Él pidió la feature en el momento: «hacer la feature del punto 2».",
+        "que_quiero": "Que los tests no escriban nunca en mi base de datos. Y si por lo que sea tienen que usarla, que no me dejen ni una fila detrás.",
+        "por_que": "Hoy es basura inofensiva porque todavía no hay ninguna vista, pero el día que tenga los dashboards, esas cuentas y esos productos falsos me van a salir en los totales de mi economía. Y ya me ha pasado que algo que creía limpio no lo estaba.",
+        "como_se_que_esta_bien": [
+          "Ejecuto la suite entera y mi base de datos tiene después exactamente lo mismo que antes: 4 cuentas, 455 movimientos y ni un producto.",
+          "Si un test deja algo detrás, me entero por la suite, no meses después mirando la base a mano.",
+          "La suite sigue siendo igual de rápida y no me obliga a montar nada raro para trabajar."
+        ],
+        "que_no_quiero": [
+          "No quiero perder los tests que prueban de verdad contra una base de datos: no vale sustituirlos por simulaciones.",
+          "No quiero que arrancar el proyecto cada día se vuelva más complicado.",
+          "No quiero que se borre nada de mi base para dejar la suite limpia: si hay que limpiar, se limpia lo que el test crea, no lo mío."
+        ],
+        "delego_en_agente": [
+          "Si la solución es una base de datos APARTE para los tests (otro contenedor, otro esquema, otra base en el mismo Postgres) o limpiar siempre lo que cada test crea, y por qué esa y no la otra. Hay que decir qué le cuesta a él en el día a día: si tiene que arrancar algo más, si init.sh cambia, y cuánto se alarga la suite.",
+          "Cómo se GARANTIZA que no vuelve a pasar, más allá de la buena voluntad de quien escriba el siguiente test: un guardián que compare el estado de la base antes y después de la suite, un esquema desechable por ejecución, o lo que se proponga. La F14 y la F23 enseñaron que una regla que depende de que alguien se acuerde vuelve a fallar.",
+          "Qué se hace con los tests que HOY escriben en la base (investments.model.test.ts, import.service.test.ts y los que aparezcan): se migran, se aíslan o se reescriben."
+        ]
+      },
+      "acceptance": [
+        "Ejecutar la suite completa deja la base de datos del humano EXACTAMENTE como estaba: 4 cuentas, 455 movimientos, 0 productos de inversión, 0 valoraciones, 0 fotos de cuenta remunerada. Comprobado antes y después, no supuesto",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1): base aparte o limpieza, con el coste para el humano dicho en claro —si tiene que arrancar algo más, si `./init.sh` cambia y cuánto se alarga la suite—",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 2): qué GARANTIZA que no vuelva, sin depender de que el próximo que escriba un test se acuerde. Si es un guardián, tiene que ponerse rojo ante una fila dejada atrás, y hay que demostrarlo con un test que deje una a propósito",
+        "Los tests que hoy prueban contra una base de datos de verdad SIGUEN probando contra una base de datos de verdad: no se sustituyen por simulaciones (deriva de: «no vale sustituirlos por simulaciones»)",
+        "NADA de la base del humano se borra para dejar la suite limpia: lo que se limpia es lo que el test crea (deriva de: «si hay que limpiar, se limpia lo que el test crea, no lo mío»)",
+        "Arrancar el proyecto no se complica: si hace falta un paso más, va en `./init.sh` y en `docs/stack.md`, y se dice cuál es (deriva de: «no quiero que arrancar el proyecto cada día se vuelva más complicado»)",
+        "La suite no se vuelve significativamente más lenta; si el aislamiento cuesta, se dice cuánto en el informe",
+        "Queda documentado en `docs/conventions.md` (y en el ADR que toque) cómo se escribe a partir de ahora un test que necesita base de datos",
+        "Ni un dato real del humano en tests ni en fixtures (ADR-017)",
+        "Cada criterio con al menos un test o una comprobación reproducible, mapeado en `progress/implementations/tests-dont-touch-real-db.md`; `./init.sh` termina en verde"
+      ],
+      "sdd": false,
+      "status": "pending"
     }
   ]
 }

@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,7 +5,7 @@ import { join } from 'node:path'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { buildApp } from '../../app.js'
+import { bankParsers, buildApp, productParsers } from '../../app.js'
 import errorHandlerPlugin from '../../plugins/error-handler.js'
 import {
   buildAccountJson,
@@ -124,14 +123,17 @@ describe('POST /api/parser/trade-republic (R16)', () => {
     await app.close()
   })
 
-  it('is NOT in the parser registry the importer receives (no statement to import)', () => {
-    const appSource = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8')
-    const registry = appSource.slice(
-      appSource.indexOf('const parsers'),
-      appSource.indexOf('// Shared infrastructure'),
-    )
+  it('is NOT in the STATEMENT registry: it has no statement to import (R16)', () => {
+    expect(bankParsers.map((adapter) => adapter.bank)).not.toContain('trade-republic')
+    // And the registry is the real one, not an empty list that would pass by
+    // accident: the other banks are in it.
+    expect(bankParsers.map((adapter) => adapter.bank)).toContain('bankinter')
+  })
 
-    expect(registry).not.toContain('trade-republic')
-    expect(registry).toContain('bankinter')
+  it('IS in the PRODUCT registry, reading only its .json (feature 26, R10)', () => {
+    // Feature 26 gave the importer a second registry. The `.pdf` of this bank
+    // is still read by nobody: only the hand-written `.json` enters.
+    expect(productParsers.map((adapter) => adapter.bank)).toEqual(['trade-republic'])
+    expect(productParsers[0]?.extensions).toEqual(['.json'])
   })
 })

@@ -32,3 +32,6 @@ Thumbs.db
 
 # Artefacto de compilacion incremental de TypeScript: cambia en cada tsc.
 tsconfig.tsbuildinfo
+
+# Copias de seguridad de la base de datos: datos reales, NUNCA se versionan
+var/backups/

@@ -14,9 +14,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { buildApp } from '../../app.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
+import { ValidationError } from '../../errors/app-error.js'
+import type {
+  ProductParserAdapter,
+  SavingsSnapshotInput,
+} from '../investments/investments.types.js'
 import { importLocalCopies, type LocalImportSelection } from './import.local.service.js'
 import type {
   AttemptedLocalFileReport,
+  AttemptedLocalProductFileReport,
   BankParserAdapter,
   LocalImportRunResult,
 } from './import.types.js'
@@ -435,5 +441,208 @@ describe('importLocalCopies', () => {
 
     expect(attempted(result).error?.code).toBe('MISSING_ACCOUNT_DATA')
     expect(await accountsOfTheBank(bank)).toBe(0)
+  })
+})
+
+// ── Feature 26: the product files also come back from the local copy ─────────
+//
+// 🔒 Everything below is invented (ADR-017): unique `zz-local-product-…` bank
+// slugs, generated account names and five amounts built by hand so they add up.
+// Every copy lives in a temporary directory; the human's `var/` is never read.
+
+type ProductFile = Record<string, unknown>
+
+function productFile(overrides: ProductFile = {}): ProductFile {
+  return {
+    type: 'savings_account',
+    name: 'Cuenta Sintetica Remunerada',
+    date: '2026-08-31',
+    openedAt: '2025-03-10',
+    currency: 'EUR',
+    openingBalance: 4000,
+    moneyIn: 0,
+    moneyOut: 0,
+    interest: 6.4,
+    balance: 4006.4,
+    closedAt: null,
+    ...overrides,
+  }
+}
+
+/** A PRODUCT adapter declared HERE: this suite names no bank either. */
+function fakeProductAdapter(bank: string, extensions = ['.json']): ProductParserAdapter {
+  return {
+    bank,
+    extensions,
+    parse(_fileName: string, content: Buffer): SavingsSnapshotInput {
+      const raw = JSON.parse(content.toString('utf8')) as Record<string, number & string>
+      const cents = (value: unknown) => Math.round(Number(value) * 100)
+      const expected =
+        cents(raw.openingBalance) + cents(raw.moneyIn) - cents(raw.moneyOut) + cents(raw.interest)
+      if (Math.abs(cents(raw.balance) - expected) > 1) {
+        throw new ValidationError('los importes no cuadran')
+      }
+      return {
+        bank: 'never-this-one',
+        name: raw.name,
+        type: 'savings_account',
+        currency: raw.currency,
+        openedAt: raw.openedAt,
+        closedAt: raw.closedAt ?? null,
+        date: raw.date,
+        openingBalance: Number(raw.openingBalance),
+        moneyIn: Number(raw.moneyIn),
+        moneyOut: Number(raw.moneyOut),
+        interest: Number(raw.interest),
+        balance: Number(raw.balance),
+      }
+    },
+  }
+}
+
+describe('importLocalCopies: the product files (feature 26, R11)', () => {
+  let app: FastifyInstance
+  let rawCopyBaseDir: string
+  const usedBanks: string[] = []
+  let counter = 0
+
+  function uniqueBank(): string {
+    counter += 1
+    const slug = `zz-local-product-${Date.now()}-${counter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function uniqueAccountName(): string {
+    counter += 1
+    return `Cuenta Sintetica ${Date.now()}-${counter}`
+  }
+
+  async function writeProductCopy(bank: string, year: string, name: string, file: ProductFile) {
+    await mkdir(join(rawCopyBaseDir, bank, year), { recursive: true })
+    await writeFile(join(rawCopyBaseDir, bank, year, name), `${JSON.stringify(file, null, 2)}\n`)
+  }
+
+  function run(productParsers: ProductParserAdapter[], selection: LocalImportSelection = {}) {
+    return importLocalCopies({
+      prisma: app.prisma,
+      rawCopyBaseDir,
+      parsers: [],
+      productParsers,
+      selection,
+    })
+  }
+
+  function productReport(result: LocalImportRunResult, index = 0) {
+    return result.files[index] as AttemptedLocalProductFileReport
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  beforeEach(async () => {
+    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-local-product-'))
+  })
+
+  afterEach(async () => {
+    await rm(rawCopyBaseDir, { recursive: true, force: true })
+    if (usedBanks.length > 0) {
+      const products = await app.prisma.investmentProduct.findMany({
+        where: { bank: { in: usedBanks } },
+      })
+      const ids = products.map((product) => product.id)
+      await app.prisma.savingsSnapshot.deleteMany({ where: { productId: { in: ids } } })
+      await app.prisma.investmentProduct.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('persists the copy without touching Drive and without moving anything (R11)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    await writeProductCopy(bank, '2026', 'cuenta-2026-08-31.json', productFile({ name }))
+
+    const result = await run([fakeProductAdapter(bank)])
+
+    const file = productReport(result)
+    expect(file.status).toBe('imported')
+    expect(file.movedToProcessed).toBe(false)
+    expect(file.product).toMatchObject({ bank, name, created: true })
+    expect(file.snapshot).toEqual({ date: '2026-08-31', created: true })
+    // The copy is still exactly where it was: nothing is moved or deleted.
+    expect(await readdir(join(rawCopyBaseDir, bank, '2026'))).toEqual(['cuenta-2026-08-31.json'])
+  })
+
+  it('does not duplicate anything on a second pass of the same month (R11, R6)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    await writeProductCopy(bank, '2026', 'cuenta.json', productFile({ name }))
+
+    await run([fakeProductAdapter(bank)])
+    const second = await run([fakeProductAdapter(bank)])
+
+    expect(productReport(second).product?.created).toBe(false)
+    expect(productReport(second).snapshot?.created).toBe(false)
+    expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(1)
+    expect(await app.prisma.savingsSnapshot.count({ where: { product: { bank } } })).toBe(1)
+  })
+
+  it('adds one row for the next month and keeps the same account (R11, R7)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    await writeProductCopy(
+      bank,
+      '2026',
+      'cuenta-07.json',
+      productFile({ name, date: '2026-07-31' }),
+    )
+    await writeProductCopy(
+      bank,
+      '2026',
+      'cuenta-08.json',
+      productFile({
+        name,
+        date: '2026-08-31',
+        openingBalance: 4006.4,
+        balance: 4012.9,
+        interest: 6.5,
+      }),
+    )
+
+    const result = await run([fakeProductAdapter(bank)])
+
+    expect(result.files).toHaveLength(2)
+    expect(productReport(result, 0).product?.created).toBe(true)
+    expect(productReport(result, 1).product?.created).toBe(false)
+    expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(1)
+    const photos = await app.prisma.savingsSnapshot.findMany({
+      where: { product: { bank } },
+      orderBy: { date: 'asc' },
+    })
+    expect(photos.map((photo) => photo.date.toISOString().slice(0, 10))).toEqual([
+      '2026-07-31',
+      '2026-08-31',
+    ])
+  })
+
+  it('leaves no trace and moves nothing when the amounts do not add up (R8, R11)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    await writeProductCopy(bank, '2026', 'cuenta.json', productFile({ name, balance: 4106.4 }))
+
+    const result = await run([fakeProductAdapter(bank)])
+
+    const file = productReport(result)
+    expect(file.status).toBe('failed')
+    expect(result.failedCount).toBe(1)
+    expect(file.error?.message).toContain('los importes no cuadran')
+    expect(file.movedToProcessed).toBe(false)
+    expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(0)
   })
 })

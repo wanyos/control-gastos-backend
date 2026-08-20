@@ -4,7 +4,14 @@ import { join } from 'node:path'
 import { LocalCopyNotFoundError, ValidationError } from '../../errors/app-error.js'
 import { normalizeBankName } from '../../lib/drive-structure.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
-import { importStatement, selectAdapter, totals } from './import.service.js'
+import type { ProductParserRegistry } from '../investments/investments.types.js'
+import {
+  importProductFile,
+  importStatement,
+  selectAdapter,
+  selectProductAdapter,
+  totals,
+} from './import.service.js'
 import type { BankParserRegistry, LocalFileReport, LocalImportRunResult } from './import.types.js'
 
 /**
@@ -25,6 +32,11 @@ export interface ImportLocalDeps {
   /** Base directory of the raw copies; `var/drive-read/` in production. */
   rawCopyBaseDir: string
   parsers: BankParserRegistry
+  /**
+   * SECOND registry (feature 26): the parsers of PRODUCT files. Optional, so a
+   * caller that predates feature 26 behaves exactly as it did.
+   */
+  productParsers?: ProductParserRegistry
   selection: LocalImportSelection
 }
 
@@ -65,30 +77,47 @@ const localCopyHint =
  */
 export async function importLocalCopies(deps: ImportLocalDeps): Promise<LocalImportRunResult> {
   const candidates = await findCandidates(deps.rawCopyBaseDir, deps.selection)
+  const productParsers = deps.productParsers ?? []
   const files: LocalFileReport[] = []
 
   for (const candidate of candidates) {
     const adapter = selectAdapter(deps.parsers, candidate.bankSlug, candidate.name)
     const location = { bank: candidate.bank, year: candidate.year, name: candidate.name }
 
-    if ('reason' in adapter) {
-      files.push({
-        ...location,
-        status: 'skipped',
-        reason: adapter.reason,
-        movedToProcessed: false,
+    if (!('reason' in adapter)) {
+      const stored = await importStatement({
+        prisma: deps.prisma,
+        adapter: adapter.adapter,
+        bankSlug: candidate.bankSlug,
+        content: await readFile(candidate.path),
       })
+      files.push({ ...location, ...stored, movedToProcessed: false })
       continue
     }
 
-    const content = await readFile(candidate.path)
-    const stored = await importStatement({
-      prisma: deps.prisma,
-      adapter: adapter.adapter,
-      bankSlug: candidate.bankSlug,
-      content,
+    // Same bifurcation as the Drive way in, and in the same order (feature 26).
+    // This is THE way to upload the same month again once its file already
+    // reached `procesados/`, which is what makes the promise of R6 usable.
+    const productAdapter = selectProductAdapter(productParsers, candidate.bankSlug, candidate.name)
+
+    if (!('reason' in productAdapter)) {
+      const stored = await importProductFile({
+        prisma: deps.prisma,
+        adapter: productAdapter.adapter,
+        bankSlug: candidate.bankSlug,
+        fileName: candidate.name,
+        content: await readFile(candidate.path),
+      })
+      files.push({ ...location, ...stored, movedToProcessed: false })
+      continue
+    }
+
+    files.push({
+      ...location,
+      status: 'skipped',
+      reason: adapter.reason,
+      movedToProcessed: false,
     })
-    files.push({ ...location, ...stored, movedToProcessed: false })
   }
 
   return { ...totals(files), files }

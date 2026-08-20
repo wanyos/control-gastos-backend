@@ -26,16 +26,21 @@ import { normalizeIban } from '../../lib/iban.js'
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { findOrCreateAccountFromMetadata } from '../accounts/accounts.service.js'
+import { persistSavingsSnapshot } from '../investments/investments.service.js'
+import type {
+  ProductParserAdapter,
+  ProductParserRegistry,
+} from '../investments/investments.types.js'
 import { deriveMovementTypeFromAmount } from '../movements/movements.service.js'
 import type {
   AccountReport,
-  AttemptedFileReport,
   BankParserAdapter,
   BankParserRegistry,
   FileCounts,
   FileErrorReport,
   ImportRunResult,
   ImportedFileReport,
+  ProductResult,
   StatementResult,
 } from './import.types.js'
 
@@ -55,6 +60,12 @@ export interface ImportPendingDeps {
   /** Where the raw copy of each downloaded file is written before parsing. */
   rawCopyBaseDir: string
   parsers: BankParserRegistry
+  /**
+   * SECOND registry (feature 26): the parsers of PRODUCT files. It is consulted
+   * only when no statement parser reads the file, and it is optional so every
+   * caller that predates feature 26 keeps behaving exactly as it did.
+   */
+  productParsers?: ProductParserRegistry
 }
 
 /** The account a file's movements belong to, and how it was obtained. */
@@ -185,6 +196,7 @@ export async function persistMovements(
  */
 export async function importPending(deps: ImportPendingDeps): Promise<ImportRunResult> {
   const { client, prisma, rootFolderId, rawCopyBaseDir, parsers } = deps
+  const productParsers = deps.productParsers ?? []
   const files: ImportedFileReport[] = []
 
   for (const bank of await listBankFolders(client, rootFolderId)) {
@@ -204,31 +216,61 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
 
       for (const file of pending) {
         const location = { bank: bank.name, year: year.name, fileId: file.id, name: file.name }
+        const drive = {
+          client,
+          rawCopyBaseDir,
+          location,
+          yearFolderId: year.id,
+          bankFolderId: bank.id,
+          resolveProcessedFolder,
+        }
         const adapter = selectAdapter(parsers, bankSlug, file.name)
 
-        if ('reason' in adapter) {
-          files.push({
-            ...location,
-            status: 'skipped',
-            reason: adapter.reason,
-            movedToProcessed: false,
-          })
+        if (!('reason' in adapter)) {
+          files.push(
+            await importDriveFile({
+              ...drive,
+              empty: emptyStatementResult(),
+              store: (content) =>
+                importStatement({ prisma, content, adapter: adapter.adapter, bankSlug }),
+            }),
+          )
           continue
         }
 
-        files.push(
-          await importFile({
-            client,
-            prisma,
-            rawCopyBaseDir,
-            adapter: adapter.adapter,
-            bankSlug,
-            location,
-            yearFolderId: year.id,
-            bankFolderId: bank.id,
-            resolveProcessedFolder,
-          }),
-        )
+        // No statement parser reads it: it may still be a PRODUCT file, the
+        // second registry of feature 26. The order is fixed — statements first —
+        // and a guardian keeps the two registries from claiming the same
+        // extension for the same bank, so it can never bite.
+        const productAdapter = selectProductAdapter(productParsers, bankSlug, file.name)
+
+        if (!('reason' in productAdapter)) {
+          files.push(
+            await importDriveFile({
+              ...drive,
+              empty: emptyProductResult(),
+              store: (content) =>
+                importProductFile({
+                  prisma,
+                  content,
+                  adapter: productAdapter.adapter,
+                  bankSlug,
+                  fileName: file.name,
+                }),
+            }),
+          )
+          continue
+        }
+
+        // Neither registry reads it. The reason reported is the STATEMENT one,
+        // exactly as before feature 26: it is the contract every other bank
+        // already had, and changing it would be a silent breaking change.
+        files.push({
+          ...location,
+          status: 'skipped',
+          reason: adapter.reason,
+          movedToProcessed: false,
+        })
       }
     }
   }
@@ -243,25 +285,42 @@ interface FileLocation {
   name: string
 }
 
-interface ImportFileDeps {
+/** What every attempted outcome has, whatever kind of file produced it. */
+interface AttemptOutcome {
+  status: 'imported' | 'failed'
+  error?: FileErrorReport
+}
+
+interface DriveFileDeps<T extends AttemptOutcome> {
   client: AppDriveClient
-  prisma: AppPrismaClient
   rawCopyBaseDir: string
-  adapter: BankParserAdapter
-  bankSlug: string
   location: FileLocation
   yearFolderId: string
   bankFolderId: string
   resolveProcessedFolder: () => Promise<string>
+  /** The report of a file nothing has happened to yet: failed until proven otherwise. */
+  empty: T
+  /** Everything that is NOT Drive: parse, and store whatever the file means. */
+  store: (content: Buffer) => Promise<T>
 }
 
-async function importFile(deps: ImportFileDeps): Promise<AttemptedFileReport> {
-  const { client, prisma, location } = deps
-  const report: AttemptedFileReport = {
+/**
+ * The Drive half of importing ONE file: download, keep the raw copy, hand the
+ * bytes to `store`, and move the original to `procesados/` ONLY if that
+ * succeeded. It is generic over what a file means (a statement or, since feature
+ * 26, a product photo) precisely so the rule of ADR-025 -- the move is a
+ * CONSEQUENCE of storing, never the other way round -- lives in ONE place and
+ * cannot drift between the two kinds of file.
+ */
+async function importDriveFile<T extends AttemptOutcome>(
+  deps: DriveFileDeps<T>,
+): Promise<T & FileLocation & { movedToProcessed: boolean }> {
+  const { client, location } = deps
+  const report = {
     ...location,
-    ...emptyStatementResult(),
+    ...deps.empty,
     movedToProcessed: false,
-  }
+  } as T & FileLocation & { movedToProcessed: boolean }
 
   try {
     const content = await downloadFileContent(client, location.fileId)
@@ -274,18 +333,13 @@ async function importFile(deps: ImportFileDeps): Promise<AttemptedFileReport> {
 
     // Everything that is not Drive happens in the shared core, so this way in
     // and the local one cannot drift apart on what a file means.
-    const stored = await importStatement({
-      prisma,
-      content,
-      adapter: deps.adapter,
-      bankSlug: deps.bankSlug,
-    })
+    const stored = await deps.store(content)
     Object.assign(report, stored)
     if (stored.status === 'failed') {
       return report
     }
 
-    // Only now, with every movement of the file stored, the original moves.
+    // Only now, with everything the file carried stored, the original moves.
     await moveFileToProcessed(client, location.fileId, {
       bankFolderId: deps.bankFolderId,
       yearFolderId: deps.yearFolderId,
@@ -309,6 +363,53 @@ function emptyStatementResult(): StatementResult {
     duplicates: 0,
     unparsedCount: 0,
     unparsedRows: [],
+  }
+}
+
+/** The report of a product file nothing has happened to yet. */
+function emptyProductResult(): ProductResult {
+  return { status: 'failed', product: null, snapshot: null }
+}
+
+/** What one PRODUCT file needs to become a product and its photo. No Drive here. */
+export interface ImportProductFileDeps {
+  prisma: AppPrismaClient
+  adapter: ProductParserAdapter
+  /** Slug of the bank the file belongs to: its FOLDER says it, never its content. */
+  bankSlug: string
+  /** Only for the parser's messages: the name never decides a value of the file. */
+  fileName: string
+  content: Buffer
+}
+
+/**
+ * The core of importing one PRODUCT file (feature 26): parse, then persist the
+ * product and the photo of its month in ONE transaction.
+ *
+ * The WHOLE validation of the parser -- the five amounts adding up included --
+ * happens inside `adapter.parse`, before a single row is touched. That is what
+ * makes "a file that does not add up leaves no trace" true and checkable: the
+ * throw happens before `persistSavingsSnapshot` is even called, and what that
+ * function writes is one transaction that rolls back as a whole.
+ *
+ * It never throws: a per-file failure comes back as `status: 'failed'` plus the
+ * WHOLE reason of the parser, so the human can fix the file and upload it again.
+ */
+export async function importProductFile(deps: ImportProductFileDeps): Promise<ProductResult> {
+  const result = emptyProductResult()
+
+  try {
+    const parsed = deps.adapter.parse(deps.fileName, deps.content)
+    // The bank of a file is the one of its FOLDER (ADR-009), never the one its
+    // contents claim: the parser's own slug is overwritten here on purpose.
+    const stored = await persistSavingsSnapshot(deps.prisma, { ...parsed, bank: deps.bankSlug })
+    result.product = stored.product
+    result.snapshot = stored.snapshot
+    result.status = 'imported'
+    return result
+  } catch (error) {
+    result.error = describeError(error)
+    return result
   }
 }
 
@@ -426,6 +527,28 @@ export function selectAdapter(
   const extension = extname(fileName).toLowerCase()
   if (!adapter.extensions.includes(extension)) {
     return { reason: `extensión no soportada por el parser de ${bankSlug}` }
+  }
+  return { adapter }
+}
+
+/**
+ * Picks the PRODUCT parser of a file, with the very same rule as `selectAdapter`
+ * (feature 26): the folder says the bank, the extension says the parser. It is a
+ * separate registry and not a flag on the first one, so the choice between "a
+ * statement" and "a product photo" is made once, here, instead of at every use.
+ */
+export function selectProductAdapter(
+  parsers: ProductParserRegistry,
+  bankSlug: string,
+  fileName: string,
+): { adapter: ProductParserAdapter } | { reason: string } {
+  const adapter = parsers.find((candidate) => candidate.bank === bankSlug)
+  if (!adapter) {
+    return { reason: `no hay parser de productos para el banco ${bankSlug}` }
+  }
+  const extension = extname(fileName).toLowerCase()
+  if (!adapter.extensions.includes(extension)) {
+    return { reason: `extensión no soportada por el parser de productos de ${bankSlug}` }
   }
   return { adapter }
 }

@@ -10,8 +10,17 @@ import { InvalidIbanError, NotUtf8Error } from '../../errors/app-error.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
+import { ValidationError } from '../../errors/app-error.js'
+import type {
+  ProductParserAdapter,
+  SavingsSnapshotInput,
+} from '../investments/investments.types.js'
 import { importPending, toMovementRows } from './import.service.js'
-import type { AttemptedFileReport, BankParserAdapter } from './import.types.js'
+import type {
+  AttemptedFileReport,
+  AttemptedProductFileReport,
+  BankParserAdapter,
+} from './import.types.js'
 
 const folderMime = 'application/vnd.google-apps.folder'
 
@@ -882,5 +891,282 @@ describe('importPending', () => {
     // all it takes: nothing was half-imported (C8).
     expect(file.movedToProcessed).toBe(false)
     expect(update).not.toHaveBeenCalled()
+  })
+})
+
+// ── Feature 26: the SECOND registry, the product files ──────────────────────
+//
+// 🔒 Nothing here is real (ADR-017): the bank slugs are unique `zz-product-…`,
+// the account names are generated and the five amounts are built by hand so
+// they add up. The importer knows no bank and neither does its suite: the
+// product adapter below is declared HERE, in the test.
+
+/** The account file as the human writes it, wrong values included. */
+type ProductFile = Record<string, unknown>
+
+function productFile(overrides: ProductFile = {}): ProductFile {
+  return {
+    type: 'savings_account',
+    name: 'Cuenta Sintetica Remunerada',
+    date: '2026-08-31',
+    openedAt: '2025-03-10',
+    currency: 'EUR',
+    openingBalance: 4000,
+    moneyIn: 0,
+    moneyOut: 0,
+    interest: 6.4,
+    balance: 4006.4,
+    closedAt: null,
+    ...overrides,
+  }
+}
+
+function productBytes(file: ProductFile): Buffer {
+  return Buffer.from(`${JSON.stringify(file, null, 2)}\n`, 'utf8')
+}
+
+/**
+ * A PRODUCT parser adapter declared HERE, like `fakeAdapter` above. It repeats
+ * the ONE rule this feature must not weaken -- the five amounts have to add up,
+ * checked in whole cents -- because that check has to happen BEFORE anything is
+ * written, and that is what these tests exercise.
+ */
+function fakeProductAdapter(bank: string, extensions = ['.json']): ProductParserAdapter {
+  return {
+    bank,
+    extensions,
+    parse(_fileName: string, content: Buffer): SavingsSnapshotInput {
+      const raw = JSON.parse(content.toString('utf8')) as Record<string, number & string>
+      const cents = (value: unknown) => Math.round(Number(value) * 100)
+      const expected =
+        cents(raw.openingBalance) + cents(raw.moneyIn) - cents(raw.moneyOut) + cents(raw.interest)
+      if (Math.abs(cents(raw.balance) - expected) > 1) {
+        throw new ValidationError(
+          `los importes no cuadran: saldo final esperado ${(expected / 100).toFixed(2)}, ` +
+            `escrito ${Number(raw.balance).toFixed(2)}`,
+        )
+      }
+      return {
+        bank: 'never-this-one',
+        name: raw.name,
+        type: 'savings_account',
+        currency: raw.currency,
+        openedAt: raw.openedAt,
+        closedAt: raw.closedAt ?? null,
+        date: raw.date,
+        openingBalance: Number(raw.openingBalance),
+        moneyIn: Number(raw.moneyIn),
+        moneyOut: Number(raw.moneyOut),
+        interest: Number(raw.interest),
+        balance: Number(raw.balance),
+      }
+    },
+  }
+}
+
+describe('importPending: the product files (feature 26)', () => {
+  let app: FastifyInstance
+  let rawCopyBaseDir: string
+  const usedBanks: string[] = []
+  let bankCounter = 0
+
+  function uniqueBank(): string {
+    bankCounter += 1
+    const slug = `zz-product-${Date.now()}-${bankCounter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function uniqueAccountName(): string {
+    bankCounter += 1
+    return `Cuenta Sintetica ${Date.now()}-${bankCounter}`
+  }
+
+  function run(
+    client: AppDriveClient,
+    parsers: BankParserAdapter[],
+    productParsers: ProductParserAdapter[],
+  ) {
+    return importPending({
+      client,
+      prisma: app.prisma,
+      rootFolderId: 'root',
+      rawCopyBaseDir,
+      parsers,
+      productParsers,
+    })
+  }
+
+  function productReport(report: { files: unknown[] }, index = 0): AttemptedProductFileReport {
+    return report.files[index] as AttemptedProductFileReport
+  }
+
+  function productsOfTheBank(bank: string) {
+    return app.prisma.investmentProduct.findMany({ where: { bank } })
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  beforeEach(async () => {
+    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-product-'))
+  })
+
+  afterEach(async () => {
+    await rm(rawCopyBaseDir, { recursive: true, force: true })
+    if (usedBanks.length > 0) {
+      const products = await app.prisma.investmentProduct.findMany({
+        where: { bank: { in: usedBanks } },
+      })
+      const ids = products.map((product) => product.id)
+      await app.prisma.savingsSnapshot.deleteMany({ where: { productId: { in: ids } } })
+      await app.prisma.investmentProduct.deleteMany({ where: { id: { in: ids } } })
+      const accounts = await app.prisma.account.findMany({
+        where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
+      })
+      const accountIds = accounts.map((account) => account.id)
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: accountIds } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: accountIds } } })
+      usedBanks.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('stops reporting the .json as skipped: it persists it and moves it (R10, R12, R13)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const { client, update } = buildDrive(
+      treeWith(bank, [{ id: 'f1', name: 'cuenta-remunerada-2026-08-31.json' }]),
+      { get: vi.fn(async () => ({ data: productBytes(productFile({ name })) })) },
+    )
+
+    const result = await run(client, [], [fakeProductAdapter(bank)])
+
+    const file = productReport(result)
+    expect(file.status).toBe('imported')
+    expect(result.skippedCount).toBe(0)
+    expect(file.product).toMatchObject({ bank, name, type: 'savings_account', created: true })
+    expect(file.snapshot).toEqual({ date: '2026-08-31', created: true })
+    // The move is a CONSEQUENCE of storing: the row is there and only then the
+    // original travels to `procesados/` (ADR-025).
+    expect(file.movedToProcessed).toBe(true)
+    expect(update).toHaveBeenCalledTimes(1)
+
+    const [product] = await productsOfTheBank(bank)
+    expect(product.name).toBe(name)
+    const photos = await app.prisma.savingsSnapshot.findMany({ where: { productId: product.id } })
+    expect(photos).toHaveLength(1)
+    expect(photos[0]?.balance.toFixed(2)).toBe('4006.40')
+    expect(photos[0]?.interest.toFixed(2)).toBe('6.40')
+  })
+
+  it('takes the bank from the FOLDER and never from what the parser claims (R4)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'cuenta.json' }]), {
+      get: vi.fn(async () => ({ data: productBytes(productFile({ name })) })),
+    })
+
+    await run(client, [], [fakeProductAdapter(bank)])
+
+    // The double returns `bank: 'never-this-one'` on purpose.
+    expect(await app.prisma.investmentProduct.count({ where: { bank: 'never-this-one' } })).toBe(0)
+    expect((await productsOfTheBank(bank))[0]?.bank).toBe(bank)
+  })
+
+  it('leaves NO trace when the five amounts do not add up (R8, R9, R12)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'cuenta.json' }]), {
+      // A mistyped digit: 4106.40 where 4006.40 was due.
+      get: vi.fn(async () => ({ data: productBytes(productFile({ name, balance: 4106.4 })) })),
+    })
+
+    const result = await run(client, [], [fakeProductAdapter(bank)])
+
+    const file = productReport(result)
+    expect(file.status).toBe('failed')
+    expect(result.failedCount).toBe(1)
+    expect(file.error?.message).toContain('los importes no cuadran')
+    expect(file.error?.message).toContain('4106.40')
+    expect(file.product).toBeNull()
+    expect(file.snapshot).toBeNull()
+    // Not the product, not the photo, and not the move: the file stays pending
+    // in Drive so it can be fixed and uploaded again.
+    expect(file.movedToProcessed).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+    expect(await productsOfTheBank(bank)).toEqual([])
+    expect(await app.prisma.savingsSnapshot.count({ where: { product: { bank } } })).toBe(0)
+  })
+
+  it('reports created:false on the second pass of the same month (R6, R13)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const drive = () =>
+      buildDrive(treeWith(bank, [{ id: 'f1', name: 'cuenta.json' }]), {
+        get: vi.fn(async () => ({ data: productBytes(productFile({ name, balance: 4006.41 })) })),
+      })
+
+    const first = await run(drive().client, [], [fakeProductAdapter(bank)])
+    const second = await run(drive().client, [], [fakeProductAdapter(bank)])
+
+    expect(productReport(first).product?.created).toBe(true)
+    expect(productReport(first).snapshot?.created).toBe(true)
+    expect(productReport(second).product?.created).toBe(false)
+    expect(productReport(second).snapshot?.created).toBe(false)
+    expect(await productsOfTheBank(bank)).toHaveLength(1)
+    expect(await app.prisma.savingsSnapshot.count({ where: { product: { bank } } })).toBe(1)
+  })
+
+  it('keeps a file no registry reads as skipped, with the statement reason (R14)', async () => {
+    const bank = uniqueBank()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'extracto.pdf' }]))
+
+    const result = await run(client, [], [fakeProductAdapter(bank)])
+
+    const file = result.files[0] as { status: string; reason: string; movedToProcessed: boolean }
+    expect(file.status).toBe('skipped')
+    expect(result.skippedCount).toBe(1)
+    expect(file.reason).toBe(`no hay parser para el banco ${bank}`)
+    expect(file.movedToProcessed).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('imports a statement exactly as before while the product registry is wired (R14)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [fakeAdapter(bank, () => statement(bank, { accountIban: iban }))]
+
+    const result = await run(client, parsers, [fakeProductAdapter(bank)])
+
+    const file = result.files[0] as AttemptedFileReport
+    expect(file.status).toBe('imported')
+    expect(result.importedCount).toBe(1)
+    expect(result.skippedCount).toBe(0)
+    expect(file.account?.iban).toBe(iban)
+    expect(file.movedToProcessed).toBe(true)
+    expect(update).toHaveBeenCalledTimes(1)
+    // And not one investment row came out of a statement.
+    expect(await productsOfTheBank(bank)).toEqual([])
+  })
+
+  it('writes no Account and no Movement when a product file is imported (R14)', async () => {
+    const bank = uniqueBank()
+    const accountsBefore = await app.prisma.account.count()
+    const movementsBefore = await app.prisma.movement.count()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'cuenta.json' }]), {
+      get: vi.fn(async () => ({ data: productBytes(productFile({ name: uniqueAccountName() })) })),
+    })
+
+    await run(client, [], [fakeProductAdapter(bank)])
+
+    expect(await app.prisma.account.count()).toBe(accountsBefore)
+    expect(await app.prisma.movement.count()).toBe(movementsBefore)
   })
 })

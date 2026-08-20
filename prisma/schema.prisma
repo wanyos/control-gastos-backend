@@ -60,6 +60,10 @@ enum InvestmentProductType {
   etf
   managed_portfolio
   deposit
+  // Feature 26: a remunerated account does not fluctuate and nothing is
+  // invested in it; it grows with the interest paid into it, so its monthly
+  // photo is a SavingsSnapshot and never a Valuation (ADR-026).
+  savings_account
 }
 
 // ── Models ────────────────────────────────────────────────
@@ -156,8 +160,9 @@ model InvestmentProduct {
   expectedGain Decimal?  @db.Decimal(10, 2)
   maturityDate DateTime? @db.Date
 
-  valuations Valuation[]
-  movements  Movement[]
+  valuations       Valuation[]
+  savingsSnapshots SavingsSnapshot[]
+  movements        Movement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -190,5 +195,38 @@ model Valuation {
 
   // One snapshot per product and date. Reloading the same file overwrites it
   // (upsert): the last load wins, unlike the flow, where a duplicate is dropped.
+  @@unique([productId, date])
+}
+
+/// The monthly photo of a remunerated account (feature 26, ADR-026). Twin of
+/// `Valuation` in trade -- one row per product and date, reloading UPSERTs,
+/// nothing is ever computed -- and different in contents: there is no market
+/// value and no accumulated gain here, there is a balance that moves with what
+/// came in, what went out and the interest paid.
+///
+/// The five amounts are NOT NULL because the parser demands all five and checks
+/// that they add up: a file missing one never reaches this table.
+model SavingsSnapshot {
+  id        Int               @id @default(autoincrement())
+  product   InvestmentProduct @relation(fields: [productId], references: [id])
+  productId Int
+  date      DateTime          @db.Date
+
+  /// The balance the month started with, exactly as the file writes it.
+  openingBalance Decimal @db.Decimal(10, 2)
+  /// What came IN during the month, WITHOUT the interest.
+  moneyIn        Decimal @db.Decimal(10, 2)
+  /// What went OUT during the month.
+  moneyOut       Decimal @db.Decimal(10, 2)
+  /// The interest paid on `date`.
+  interest       Decimal @db.Decimal(10, 2)
+  /// The closing balance right after the payment.
+  balance        Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One photo per product and date. Reloading the same month overwrites it
+  // (upsert): the last load wins, like Valuation and unlike the flow.
   @@unique([productId, date])
 }

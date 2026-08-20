@@ -173,6 +173,13 @@ describe('architecture invariants', () => {
       // here, so this list only grows: it checks that a file exists, never that
       // it is the only one.
       'modules/investments/investments.model.test.ts',
+      // Feature 26: the layer stops being schema-only. Its service is the SINGLE
+      // writer of InvestmentProduct and SavingsSnapshot (guardian below), and
+      // its types are the contract between a product file and the database --
+      // the twin of `lib/parsed-statement.ts` for statements.
+      'modules/investments/investments.types.ts',
+      'modules/investments/investments.service.ts',
+      'modules/investments/investments.service.test.ts',
     ]
 
     const missing = expected.filter((file) => !existsSync(join(srcDir, file)))
@@ -380,6 +387,30 @@ describe('architecture invariants', () => {
 
     for (const file of files) {
       expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
+  it('writes InvestmentProduct and SavingsSnapshot only from modules/investments (feature 26)', () => {
+    // ADR-026: the bank module reads the file, the investments service writes
+    // it. If a second place ever upserts a product, the two upserts of a
+    // product file stop being one transaction and the promise "a file that does
+    // not add up leaves no trace" is no longer checkable in one place.
+    const writers = sourceFiles(srcDir)
+      .filter((file) => /\.(investmentProduct|savingsSnapshot)\./.test(readFileSync(file, 'utf8')))
+      .map((file) => relative(srcDir, file).replace(/\\/g, '/'))
+      .sort()
+
+    expect(writers).toEqual(['modules/investments/investments.service.ts'])
+  })
+
+  it('keeps the investments service free of Drive and of bank knowledge (feature 26)', () => {
+    const source = readFileSync(join(srcDir, 'modules/investments/investments.service.ts'), 'utf8')
+
+    for (const forbidden of ['drive', 'Drive', 'JSON.parse', 'readFile']) {
+      expect(source).not.toContain(forbidden)
+    }
+    for (const bank of ['bankinter', 'myinvestor', 'n26', 'openbank', 'trade-republic']) {
+      expect(source).not.toContain(bank)
     }
   })
 

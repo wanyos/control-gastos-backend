@@ -1,6 +1,7 @@
 import type { AccountType } from '../../generated/prisma/client.js'
 
 import type { ParsedStatement, UnparsedRow } from '../../lib/parsed-statement.js'
+import type { ProductImportResult } from '../investments/investments.types.js'
 
 /**
  * What the importer needs to know about a bank to read one of its files. The
@@ -63,7 +64,25 @@ export interface AttemptedFileReport extends FileReportBase {
   error?: FileErrorReport
 }
 
-export type ImportedFileReport = SkippedFileReport | AttemptedFileReport
+/**
+ * What a PRODUCT file left in the database (feature 26). Its own shape, not a
+ * nullable branch of the statement one: a product file brings no movement, no
+ * account and no unread row, so every counter of a statement would be a zero
+ * that means nothing. `created` is what tells "it has been stored" apart from
+ * "the same thing has been stored again" (R13).
+ */
+export interface ProductResult {
+  status: 'imported' | 'failed'
+  product: ProductImportResult['product'] | null
+  snapshot: ProductImportResult['snapshot'] | null
+  error?: FileErrorReport
+}
+
+/** A product file the importer did try to import, whether it succeeded or not. */
+export interface AttemptedProductFileReport extends FileReportBase, ProductResult {}
+
+export type ImportedFileReport =
+  SkippedFileReport | AttemptedFileReport | AttemptedProductFileReport
 
 /** Outcome of one import run: the totals plus the report of every file seen. */
 export interface ImportRunResult {
@@ -128,7 +147,11 @@ export interface SkippedLocalFileReport extends LocalFileReportBase {
 /** A local copy the importer did try to import, whether it succeeded or not. */
 export interface AttemptedLocalFileReport extends LocalFileReportBase, StatementResult {}
 
-export type LocalFileReport = SkippedLocalFileReport | AttemptedLocalFileReport
+/** A local product copy the importer did try to import (feature 26). */
+export interface AttemptedLocalProductFileReport extends LocalFileReportBase, ProductResult {}
+
+export type LocalFileReport =
+  SkippedLocalFileReport | AttemptedLocalFileReport | AttemptedLocalProductFileReport
 
 /** Outcome of one local reimport run: the totals plus the report of every copy seen. */
 export interface LocalImportRunResult {

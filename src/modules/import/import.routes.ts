@@ -2,6 +2,7 @@ import { join } from 'node:path'
 
 import type { FastifyInstance } from 'fastify'
 
+import type { ProductParserRegistry } from '../investments/investments.types.js'
 import { importLocalCopies, type LocalImportSelection } from './import.local.service.js'
 import { localImportSchema } from './import.schema.js'
 import { importDb, importPending } from './import.service.js'
@@ -13,6 +14,12 @@ export interface ImportRoutesOptions {
    * so this module knows no bank at all. Empty means every file is skipped.
    */
   parsers?: BankParserRegistry
+  /**
+   * Bank → PRODUCT parser registry (feature 26), injected from the same
+   * composition root. Consulted only for a file no statement parser reads, so
+   * an empty registry leaves the importer behaving exactly as before.
+   */
+  productParsers?: ProductParserRegistry
   /**
    * Base directory for the raw copy of each downloaded file. Injectable so tests
    * can point it at a temporary directory. Defaults to `var/drive-read/` under
@@ -44,6 +51,7 @@ export default async function importRoutes(
   const rootFolderId = fastify.config.driveRootFolderId
   const rawCopyBaseDir = options.rawCopyBaseDir ?? join(process.cwd(), 'var', 'drive-read')
   const parsers = options.parsers ?? []
+  const productParsers = options.productParsers ?? []
 
   fastify.post('/', async () => {
     return importPending({
@@ -52,6 +60,7 @@ export default async function importRoutes(
       rootFolderId,
       rawCopyBaseDir,
       parsers,
+      productParsers,
     })
   })
 
@@ -60,6 +69,6 @@ export default async function importRoutes(
   // not there is a 404 LOCAL_COPY_NOT_FOUND, never an empty 200.
   fastify.post('/local', { schema: localImportSchema }, async (request) => {
     const selection = (request.body ?? {}) as LocalImportSelection
-    return importLocalCopies({ prisma, rawCopyBaseDir, parsers, selection })
+    return importLocalCopies({ prisma, rawCopyBaseDir, parsers, productParsers, selection })
   })
 }
