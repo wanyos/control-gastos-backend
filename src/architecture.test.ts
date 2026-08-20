@@ -60,6 +60,13 @@ describe('architecture invariants', () => {
       // by the three banks and by POST /api/accounts.
       'lib/iban.ts',
       'lib/iban.test.ts',
+      // The throwaway database every test worker runs against (feature 27,
+      // ADR-027). It lives in `lib/` and not at the root of the repo because it
+      // is type-checked and tested like any other module -- and because the two
+      // guardians it holds (a leftover row, a change in HIS database) are the
+      // only thing standing between the suite and his data.
+      'lib/test-db.ts',
+      'lib/test-db.test.ts',
       'plugins/drive.ts',
       'plugins/error-handler.ts',
       'modules/accounts/accounts.routes.ts',

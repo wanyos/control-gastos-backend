@@ -2091,6 +2091,81 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     feature, leerlos es la siguiente. Y la cuenta remunerada **sigue sin aparecer en
     los totales de gasto e ingreso**, igual que el resto de productos de inversión.
 
+### ADR-027: La suite corre contra una base DESECHABLE por worker, clonada de una plantilla migrada, y dos guardianes la ponen roja si toca la base del humano o deja una fila
+
+- **Fecha:** 2026-08-20
+- **Estado:** aceptada (implementada en la feature #27)
+- **Contexto:** hasta hoy `pnpm test` corría contra **la base del humano** (`gastos`,
+  la de `.env`). El 2026-08-20 se comprobó qué había dejado ahí una sola tarde de
+  pasadas de test: **15 cuentas, 5 movimientos y 140 productos de inversión**
+  sintéticos, añadidos a sus 4 cuentas y sus 455 movimientos. Se limpió a mano, con
+  copia previa. Y no era solo suciedad: la review de la F26 ejecutó `./init.sh`
+  **13 veces y falló 4**, siempre con un **500 en `GET /api/movements`**
+  (`movements.test.ts:281`, `import.routes.test.ts:164`, la familia del flake
+  fichado en `movements.test.ts:318`). La causa es la misma raíz: **varios archivos
+  de test escribiendo y borrando a la vez en la misma base**. El listado incluye
+  `account` —una relación obligatoria—, así que si otro archivo borra su cuenta
+  entre la lectura de los movimientos y la de las cuentas, Prisma no puede componer
+  la fila y la petición se cae con un 500. Con más filas en la base, más ancha es la
+  ventana: por eso le pasaba a él y no en una base vacía (reproducido: sembrando 455
+  movimientos en una base de test compartida, 2 rojos en 14 pasadas).
+- **Decisión:**
+  1. **Base aparte, no «limpiar mejor».** Cada worker de vitest corre contra su
+     propia base desechable `gastos_test_<poolId>`, en el **mismo** contenedor de
+     PostgreSQL. Los tests siguen siendo de integración contra un PostgreSQL de
+     verdad (nada se sustituye por simulaciones): lo que cambia es **qué** base, no
+     **contra qué**. *Alternativa descartada:* apretar la limpieza de cada test.
+     La limpieza ya existía y ya funcionaba **cuando la suite iba en verde** —
+     comprobado: una pasada verde no dejaba ni una fila—; falla exactamente el día
+     que un test **se cae a la mitad** y su `afterEach` no llega a correr, que es el
+     día que más basura genera. Una regla que se cae sola cuando peor viene no es
+     una garantía.
+  2. **Una base POR WORKER, no una sola compartida.** Vitest ejecuta los archivos en
+     paralelo pero **uno cada vez dentro de un worker**: una base por worker deja la
+     concurrencia entre archivos en cero sin serializar la suite, y con ella
+     desaparece la carrera del 500. Una sola base de test compartida habría quitado
+     la basura pero **no el flake**.
+  3. **Clonadas de una plantilla migrada, no migradas una a una.**
+     `gastos_test_template` se crea y se migra con `prisma migrate deploy` **solo
+     cuando su historial no coincide** con `prisma/migrations/` (~1,7 s, y solo ese
+     día); las bases de worker salen de `CREATE DATABASE … TEMPLATE`, que cuesta
+     ~50 ms. Una base que ya está limpia y al día **no se vuelve a clonar**.
+  4. **Guardián 1 — la fila que se queda:** después de **cada archivo de test**, un
+     `afterAll` global cuenta las filas de su base y **pone el archivo en rojo**
+     nombrando tabla y cantidad, y la vacía para que el siguiente archivo no herede
+     el estropicio. Demostrado con un test que deja una fila a propósito.
+  5. **Guardián 2 — la base del humano:** el `globalSetup` hace una foto **de solo
+     lectura** de `gastos` antes de la suite y la compara al terminar. Si cambia
+     algo, la pasada termina en **rojo** con la diferencia dicha en claro. La foto
+     lleva los recuentos **y el último valor de cada secuencia**, así que caza
+     incluso el test que inserta y borra después: «no toques mi base» es también
+     eso.
+  6. **Nada escribe en una base que no se llame `gastos_test_*`.** Toda función que
+     escribe pasa antes por `assertTestDatabase`, así que un `.env` equivocado o una
+     línea copiada no pueden truncar `gastos`. **De su base no se borra nunca nada**:
+     el único código que la abre hace `select`.
+  7. **La fontanería vive en [`src/lib/test-db.ts`](../src/lib/test-db.ts)** (tipada
+     por `tsc`, con sus tests) y el pegamento de vitest en la raíz
+     (`vitest.setup.ts`, `vitest.global-setup.ts`), que es quien lee el entorno:
+     `src/config/env.ts` sigue siendo el único archivo de `src/` que toca
+     `process.env`.
+- **Consecuencias:**
+  - **Al humano no le cuesta ningún paso nuevo.** Sigue siendo `docker compose up -d`
+    y `pnpm test` / `./init.sh`; las bases de prueba se crean solas la primera vez.
+    **`init.sh` no cambia.**
+  - **La suite pasa de ~6,1 s a ~7,4 s** (~+1,3 s, de los cuales ~0,4 s son los
+    tests nuevos de esta feature). La primera pasada tras un clon nuevo cuesta ~2 s
+    más, por la plantilla.
+  - **`maxWorkers` queda fijado** en `vitest.config.ts` al mismo número de bases que
+    se preparan (`availableParallelism − 1`, tope 8). Pasar `--maxWorkers` a mano
+    falla con un mensaje que lo explica, en vez de que dos workers compartan base en
+    silencio.
+  - **Los tests siguen limpiando lo que crean** y siguen usando datos únicos: la
+    base desechable es una red, no un permiso para ensuciar. Lo obliga el guardián 1.
+  - **Lo que NO cubre:** si él está importando algo mientras corre la suite, el
+    guardián 2 verá cambiar su base y la pondrá en rojo. El mensaje lo dice como
+    primera hipótesis para que no se busque un bug donde no lo hay.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

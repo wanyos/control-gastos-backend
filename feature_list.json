@@ -1110,7 +1110,7 @@
       },
       "acceptance": [],
       "sdd": true,
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": 27,
@@ -1149,7 +1149,7 @@
         "Cada criterio con al menos un test o una comprobación reproducible, mapeado en `progress/implementations/tests-dont-touch-real-db.md`; `./init.sh` termina en verde"
       ],
       "sdd": false,
-      "status": "pending"
+      "status": "done"
     }
   ]
 }

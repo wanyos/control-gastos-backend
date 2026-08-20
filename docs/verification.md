@@ -33,7 +33,9 @@ pnpm run typecheck   # tsc --noEmit — debe terminar sin errores
 ### Nivel 2 — Test de integración (obligatorio para features de API)
 
 Las features de API se prueban cruzando la capa HTTP + Fastify + Prisma contra
-una base de datos PostgreSQL real. La forma idiomática ya está en uso: levantar
+una base de datos PostgreSQL real — que desde la F27 es la base **desechable** del
+worker (`gastos_test_<n>`), nunca la del humano: cómo se escribe uno está en
+`docs/conventions.md` §Tests con base de datos y el porqué en el ADR-027. La forma idiomática ya está en uso: levantar
 la app con `buildApp()` y ejercerla con **`app.inject()`** (sin abrir puerto
 real). Ejemplos vivos: `src/modules/accounts/accounts.test.ts`,
 `src/modules/categories/categories.test.ts` y
@@ -143,7 +145,10 @@ Qué comprueba hoy en este proyecto (detecta stack `node` + `tsconfig.json`):
 3. Valida `feature_list.json` (estados válidos, máx. 1 `in_progress`, specs
    presentes para features `sdd`).
 4. Ejecuta **`npx tsc --noEmit`** (type check estricto).
-5. Ejecuta **`pnpm test`** (Vitest): la suite completa debe pasar al 100%.
+5. Ejecuta **`pnpm test`** (Vitest): la suite completa debe pasar al 100%. Antes
+   de la suite se preparan solas las bases desechables, y al terminar se comprueba
+   que la base del humano quedó **exactamente** igual (ADR-027). No hay ningún paso
+   manual añadido.
 
 Si `./init.sh` está rojo, **no** marques nada como `done`. Anota el bloqueo
 en `progress/current.md` con estado `blocked` en `feature_list.json`.

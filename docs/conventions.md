@@ -96,8 +96,9 @@ export default async function accountRoutes(fastify: FastifyInstance) {
   `accounts.routes.ts`).
 - **Runner:** **Vitest** (configurado 2026-07-10; ver `docs/stack.md`
   §Testing y `docs/verification.md`).
-- **Integración de API:** con `app.inject()` sobre `buildApp()`, contra la BD
-  real de `docker-compose.yml`.
+- **Integración de API:** con `app.inject()` sobre `buildApp()`, contra una BD
+  PostgreSQL **real** del `docker-compose.yml` — pero **nunca la del humano**: ver
+  §Tests con base de datos, justo debajo.
 - **Nombres de test:** descriptivos, en inglés.
 - **Estructura:** AAA (Arrange-Act-Assert); comprobar el **resultado concreto**,
   no solo "no lanza".
@@ -165,6 +166,40 @@ export default async function accountRoutes(fastify: FastifyInstance) {
     del árbol de trabajo, dejando dicho en cada sitio que las cifras son inventadas
     para que nadie las «corrija» de vuelta. Lo que **no** se toca es el histórico de
     **git** (decisión del humano del 2026-08-12: repositorio privado, sin rewrite).
+
+### Tests con base de datos
+
+> Cómo se escribe, a partir del 2026-08-20 (F27, ADR-027), un test que necesita
+> base de datos. Antes de esta fecha la suite escribía en la base del humano y le
+> dejaba filas dentro; ahora no puede.
+
+- **Sigues probando contra un PostgreSQL de verdad.** No se sustituye por mocks ni
+  por sqlite: lo único que cambió es **qué** base.
+- **No elijas la base ni la nombres.** `vitest.setup.ts` apunta `DATABASE_URL` a la
+  base desechable de **ese worker** (`gastos_test_<poolId>`) antes de que tu archivo
+  se importe. Si obtienes el cliente como siempre —`buildApp()` y `app.prisma`—
+  estás en la base correcta sin hacer nada.
+- **No escribas una cadena de conexión en un test.** Si necesitas una, sale de
+  `process.env.DATABASE_URL`, que ya es la desechable. Todo lo que escribe pasa por
+  `assertTestDatabase` ([`src/lib/test-db.ts`](../src/lib/test-db.ts)) y **revienta**
+  si la base no empieza por `gastos_test_`.
+- **Limpia lo que creas, igual que antes.** La base desechable es una red, no un
+  permiso: un `afterEach`/`afterAll` que borre tus filas. Si tu archivo termina y
+  queda **una sola fila**, la suite pone **ese archivo en rojo** diciendo tabla y
+  cantidad, y vacía la base para no arrastrar el problema al siguiente. No depende de
+  que nadie se acuerde: el `afterAll` está en el setup global, no en tu archivo.
+- **Sigue usando valores únicos** (IBAN sintético con `syntheticIban()`, nombres con
+  sufijo aleatorio). Dentro de un worker los archivos comparten base, uno detrás de
+  otro, y las claves naturales siguen siendo claves naturales.
+- **Un test no abre nunca la base del humano.** El `globalSetup` le hace una foto de
+  **solo lectura** antes y después de la suite; si cambia algo —hasta una secuencia
+  que avanzó por una fila insertada y borrada— la pasada termina en **rojo**.
+- **No pases `--maxWorkers` a mano.** El número lo fija `vitest.config.ts` para que
+  haya exactamente una base preparada por worker; si lo subes, la suite falla con ese
+  mensaje en vez de compartir base en silencio.
+- **Si añades una migración**, no tienes que hacer nada: la plantilla
+  `gastos_test_template` se vuelve a migrar sola en la siguiente pasada (~1,7 s) y
+  las bases de worker se reclonan de ella.
 
 ## Manejo de errores
 

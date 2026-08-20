@@ -3,6 +3,48 @@
 > Este archivo se vacía al cerrar cada sesión y se mueve a `history.md`.
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
+## F27 `tests-dont-touch-real-db` — CERRADA el 2026-08-20
+
+Feature **sin spec** (`sdd: false`): manda su `acceptance` de 10 criterios. Informe con
+las dos decisiones delegadas y el mapeo criterio→test:
+[`implementations/tests-dont-touch-real-db.md`](implementations/tests-dont-touch-real-db.md).
+
+Qué se ha hecho:
+
+1. **Base desechable por worker** (`gastos_test_<n>`, mismo contenedor, clonadas de
+   `gastos_test_template`). Los tests siguen contra un PostgreSQL real; lo que cambia es
+   **qué** base. Decidido frente a «limpiar mejor» porque la limpieza ya funcionaba y
+   falla justo cuando un test se cae a la mitad (ADR-027 §Decisión 1).
+2. **Guardián 1:** un `afterAll` global pone en rojo el archivo que deja una fila,
+   nombrando tabla y cantidad. Demostrado rojo con un archivo que deja una a propósito.
+3. **Guardián 2:** foto de **solo lectura** de su base antes y después de la suite
+   (recuentos **y** secuencias); si cambia algo, la pasada termina en rojo. Demostrado
+   rojo contra una base falsa, nunca contra la suya.
+4. **Su base, comprobada 22 veces:** 4 cuentas / 455 movimientos / 0 productos / 0
+   valoraciones / 0 fotos, y las 6 secuencias en el mismo valor. `diff` → idénticos.
+5. **El flake del 500 reproducido y explicado** (`GET /api/movements` con `include:
+   account` mientras otro archivo borra su cuenta: 7 de 40 en la prueba dirigida) y
+   **desaparecido**: 22 pasadas seguidas en verde.
+6. Documentado: **ADR-027**, `docs/conventions.md` §Tests con base de datos,
+   `docs/stack.md` §Testing y `docs/verification.md`. **`init.sh` no cambia** y arrancar
+   el proyecto no gana ni un paso.
+
+Coste: suite de ~6,1 s a ~7,4 s (~0,4 s son los 15 tests nuevos); primera pasada tras un
+clon ~2 s más.
+
+**`reviewer`: APPROVED**
+([`reviews/tests-dont-touch-real-db.md`](reviews/tests-dont-touch-real-db.md)): **18 de
+18 pasadas verdes** —el flake muerto—, los dos guardianes provocados en rojo con casos
+suyos, ningún test convertido en simulación, **cero pasos nuevos para arrancar**
+(`init.sh` sin diff, arranque en frío verde) y la base del humano intacta. F27 a **`done`**
+en `feature_list.json` y línea añadida en [`history.md`](history.md). `./init.sh` verde de
+punta a punta: **831/831**, y **0 features en `in_progress`**.
+
+> 👤 **Qué cambia para ti:** la suite **deja de escribir en tu base de datos**. Cada
+> worker usa una base desechable que se crea sola, así que no arrancas nada nuevo y
+> `./init.sh` es el de siempre. Y `./init.sh` deja de fallarte **4 de cada 13 veces**:
+> aquel 500 aleatorio en el listado de movimientos era esa misma concurrencia. Cuesta
+> ~1,3 s de suite (~6,1 s → ~7,4 s).
 
 ## F25 `reimport-from-local-copy` — CERRADA el 2026-08-20
 
@@ -995,7 +1037,7 @@ cerrada y aprobada.
 
 ---
 
-## F26 `savings-account-as-product` — EN CURSO (2026-08-20)
+## F26 `savings-account-as-product` — CERRADA el 2026-08-20
 
 Feature en curso: **26 — `savings-account-as-product`** (SDD, `in_progress`, spec aprobado
 hoy con las 6 decisiones 🔴 tal cual). Un solo implementer para los **cuatro lotes**
@@ -1061,7 +1103,44 @@ código, de test ni de la migración:
 
 - `./init.sh`: **816/816 verde**, y su base **igual antes y después** (4 / 455 / 0 / 0 / 0,
   desglose 204 / 201 / 39 / 11). La suite no deja ni una fila detrás.
-- La F26 sigue en **`in_progress`**: la cierra el reviewer.
-- Sigue pendiente, y **no lo puede hacer un agente**: la **prueba real (C4 bis)** con su
-  archivo ya renombrado a `saving-account`. Y al cerrar, borrar la base temporal
-  `gastos_f26`.
+**`reviewer`: APPROVED en segunda pasada**
+([`reviews/savings-account-as-product.md`](reviews/savings-account-as-product.md)), tras
+comprobar que `docs/data-model.md` recoge ya la tabla, el quinto valor del enum, la clave
+natural y las dos columnas que estrenaron escritor.
+
+**C4 bis — la prueba real, hecha y limpia el 2026-08-20** (tercera vez que se aplica):
+[`explorations/prueba-real-cuenta-remunerada-2026-08-20.md`](explorations/prueba-real-cuenta-remunerada-2026-08-20.md).
+Con su archivo ya renombrado: `POST /api/import` → producto **creado**, foto del mes
+**creada**, movido a `procesados/` **después** de guardarse de verdad; comprobado **dentro
+de la base** el tipo `savings_account`, la fecha de apertura, el cierre vacío y **el cuadre
+de los cinco importes sosteniéndose en las columnas guardadas**. Segunda pasada por
+`POST /api/import/local` sobre la misma copia: producto y foto `created: false`,
+`movedToProcessed: false`, y la base con **1 producto y 1 foto**. **La idempotencia se
+cumple sobre datos reales y por la vía que más miedo daba.** Cuentas y movimientos,
+**4 y 455**, intactos.
+
+**Hallazgo de la prueba, anotado y NO abierto como feature:** los contadores de la
+respuesta (`importedCount`) **cuentan movimientos, no productos**, así que un mes que ha
+entrado bien se lee como «0 importados» mientras el archivo dice `imported`. Queda como
+**cabo suelto nº 13** en [`docs/roadmap.md`](../docs/roadmap.md) §Cabos sueltos, marcado
+«candidato, sin abrir».
+
+- ✅ **CERRADA el 2026-08-20:** F26 a **`done`** en `feature_list.json`, línea en
+  [`history.md`](history.md) y
+  [resumen de cierre](summaries/savings-account-as-product.md).
+- Estado de su base al cerrar: **4 cuentas · 455 movimientos · 1 producto de inversión ·
+  0 valoraciones · 1 foto**. El producto y la foto son **suyos y legítimos**, de la prueba
+  real: no se tocan.
+- Pendiente menor de limpieza: borrar la base temporal `gastos_f26` del contenedor
+  (`docker exec gastos-postgres psql -U postgres -c 'DROP DATABASE gastos_f26;'`).
+- Con esto, la capa de inversiones **ya tiene escritor y sigue sin lector**: lo recoge el
+  cabo suelto nº 12.
+
+> ⚠️ **Si ejecutas `./init.sh` ahora mismo, sale ROJO, y NO es por la F26.** Los dos
+> únicos fallos vienen de `src/lib/zz-reviewer-leftover.test.ts`, un archivo **temporal y
+> sin versionar** que el reviewer de la **F27 `tests-dont-touch-real-db`** ha dejado a
+> propósito para probar su guardián (su primera línea dice «TEMPORAL — prueba del
+> reviewer (F27). Se borra al terminar»). Desaparece cuando esa review termine. La F26
+> quedó verde en **816/816** en su última pasada, antes de que ese archivo existiera, y
+> no se ha tocado desde entonces. **No lo borres tú**: es material de la F27, que está en
+> revisión.

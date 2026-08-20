@@ -72,9 +72,22 @@
   - `pnpm run test:watch` → `vitest` (modo watch en desarrollo).
 - **Config:** `vitest.config.ts` — `environment: 'node'`, `.env` cargado vía
   `setupFiles: ['dotenv/config']` (mismo mecanismo que producción),
-  `LOG_LEVEL=silent` para no ensuciar la salida.
+  `LOG_LEVEL=silent` para no ensuciar la salida. Desde la F27 hay además
+  `./vitest.setup.ts` (por archivo de test) y `globalSetup: ['./vitest.global-setup.ts']`
+  (una vez por pasada), y `maxWorkers` queda **fijado**: ver el punto siguiente.
+- **Base de datos de la suite: DESECHABLE y por worker** (2026-08-20, F27; ver
+  ADR-027). `pnpm test` **no** escribe en la base del humano (`gastos`): cada worker
+  de vitest corre contra su propia `gastos_test_<n>`, en el **mismo** contenedor,
+  clonada de una plantilla migrada (`gastos_test_template`). Se crean solas la
+  primera vez, así que **no hay ningún paso nuevo para arrancar el proyecto** y
+  **`init.sh` no cambia**: sigue siendo `docker compose up -d` y `./init.sh`. Coste
+  medido: la suite pasa de ~6,1 s a ~7,4 s, y la primera pasada tras un clon nuevo
+  ~2 s más (crear y migrar la plantilla). Dos guardianes la ponen roja: uno si un
+  archivo de test deja una fila, otro si la base del humano cambia durante la pasada
+  (foto de solo lectura antes/después, recuentos **y** secuencias).
 - **Estilo:** tests de integración con `buildApp()` + `app.inject()` de
   Fastify contra el PostgreSQL real, sin mocks; limpian las filas que crean.
+  Cómo se escribe uno: `docs/conventions.md` §Tests con base de datos.
 - **Ubicación:** junto al archivo bajo test (ej.
   `src/modules/accounts/accounts.test.ts`), según `docs/conventions.md` §Tests.
 
@@ -117,7 +130,7 @@
 
 | Nombre                       | Descripción                              | Obligatoria         | Ejemplo                                                              |
 | ---------------------------- | ---------------------------------------- | ------------------- | ------------------------------------------------------------------- |
-| `DATABASE_URL`               | Cadena de conexión a PostgreSQL.         | **sí**              | `postgresql://postgres:postgres@localhost:5434/gastos?schema=public` |
+| `DATABASE_URL`               | Cadena de conexión a PostgreSQL. La suite **no** la usa tal cual: deriva de ella sus bases desechables `gastos_test_<n>` (ADR-027). | **sí**              | `postgresql://postgres:postgres@localhost:5434/gastos?schema=public` |
 | `PORT`                       | Puerto HTTP del servidor.                | no (def. `3000`)    | `3000`                                                              |
 | `HOST`                       | Interfaz de escucha.                     | no (def. `0.0.0.0`) | `0.0.0.0`                                                          |
 | `LOG_LEVEL`                  | Nivel de log de Fastify.                 | no (def. `info`)    | `info`                                                              |

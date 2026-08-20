@@ -1,11 +1,27 @@
+import { availableParallelism } from 'node:os'
+
 import { defineConfig } from 'vitest/config'
+
+import { testWorkerCount } from './src/lib/test-db.js'
 
 export default defineConfig({
   test: {
     environment: 'node',
     // Prisma 7 does not autoload .env; tests need DATABASE_URL just like
     // src/server.ts does (it imports 'dotenv/config' before building the app).
-    setupFiles: ['dotenv/config'],
+    //
+    // `vitest.setup.ts` comes after on purpose: it REWRITES the DATABASE_URL
+    // that dotenv just loaded so the file can only reach this worker's
+    // throwaway database, never the human's `gastos` (feature 27, ADR-027).
+    setupFiles: ['dotenv/config', './vitest.setup.ts'],
+    // Prepares those databases before the suite and, when it ends, checks his
+    // database is EXACTLY as it was.
+    globalSetup: ['./vitest.global-setup.ts'],
+    // Pinned so it matches the number of databases the global setup prepares:
+    // the setup file picks its own by VITEST_POOL_ID, and a pool id with no
+    // database behind it has nowhere to write. Measured cost of capping at 8
+    // instead of the default (11 here): ~0.2s on a ~6s suite.
+    maxWorkers: testWorkerCount(availableParallelism()),
     // Keep test output clean and make the suite hermetic: these are set before
     // the `dotenv/config` setupFile runs, and dotenv does not override
     // already-set vars, so they win over the real .env. The Drive placeholders
