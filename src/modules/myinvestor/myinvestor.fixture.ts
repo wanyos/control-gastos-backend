@@ -121,11 +121,6 @@ export function myinvestorPreamble(balance = '1500,00'): string[] {
 /** The public example IBAN of the Spanish documentation; nobody's account. */
 export const documentationIban = 'ES9121000418450200051332'
 
-/** The canonical fixture: header on line 1, the sample rows below it. */
-export function myinvestorSampleFixture(): StatementCsvFixture {
-  return { rows: myinvestorSampleRows() }
-}
-
 /**
  * Synthetic product files (feature 13). Same rule as the CSV above and one step
  * stricter: NOTHING here is real. Product names, FIGURES, rates and dates are
