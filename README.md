@@ -38,7 +38,7 @@ El servidor queda escuchando en `http://localhost:3000` (configurable con `PORT`
 | `pnpm run dev`             | Servidor en desarrollo con recarga en caliente (`tsx watch`). |
 | `pnpm run build`           | Genera el cliente de Prisma y compila TypeScript a `dist/`.   |
 | `pnpm start`               | Ejecuta la versión compilada (`dist/server.js`).              |
-| `pnpm test`                | Suite completa con Vitest (requiere PostgreSQL levantado).    |
+| `pnpm test`                | Suite completa con Vitest. Necesita PostgreSQL levantado, pero **no escribe en tu base**: cada worker usa una base desechable `gastos_test_<n>` (F27). |
 | `pnpm run typecheck`       | Comprueba tipos sin emitir archivos.                          |
 | `pnpm run lint`            | oxlint sobre el proyecto (`lint:fix` para autocorregir).      |
 | `pnpm run format:check`    | Prettier en modo comprobación (`format` para escribir).       |
@@ -68,8 +68,17 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `GET`  | `/api/ingestion/pending` | Archivos de banco pendientes en Drive. |
 | `POST` | `/api/ingestion/process` | Descarga los pendientes y guarda una copia local. **No mueve nada.** |
 | `POST` | `/api/import`            | **Importa:** descarga, parsea, guarda los movimientos y solo entonces mueve el archivo a `procesados/`. |
-| `POST` | `/api/parser/bankinter`  | Parsea un extracto `.xlsx` de Bankinter a movimientos (sin BD). |
-| `POST` | `/api/parser/myinvestor` | Parsea un extracto `.csv` de MyInvestor a movimientos (sin BD). |
+| `POST` | `/api/import/local`    | **Reimporta desde la copia local** de `var/drive-read/`, sin cliente de Drive: no descarga, no mueve y no borra nada. Es la vuelta atrás cuando un archivo ya está en `procesados/`. |
+| `POST` | `/api/parser/bankinter`  | Parsea un extracto `.xlsx` de Bankinter a movimientos (**ensayo**: vuelca a `var/parsed/`, sin BD). |
+| `POST` | `/api/parser/myinvestor` | Parsea el extracto `.csv` y los `.json` de producto de MyInvestor (ensayo, sin BD). |
+| `POST` | `/api/parser/n26`        | Parsea un extracto `.csv` de N26 (ensayo, sin BD). |
+| `POST` | `/api/parser/openbank`   | Parsea un extracto `.xls` de Openbank —que por dentro es HTML— (ensayo, sin BD). |
+| `POST` | `/api/parser/trade-republic` | Parsea el `.json` de cuenta remunerada escrito a mano; su `.pdf` se ignora (ensayo, sin BD). |
+
+> **Dos caminos, y conviene no confundirlos.** `POST /api/parser/<banco>` es el
+> **ensayo**: lee el archivo, vuelca a `var/parsed/` lo que ha entendido y **no toca la
+> base de datos**. `POST /api/import` es el camino de verdad: parsea, **guarda** y solo
+> entonces mueve el archivo a `procesados/`.
 
 > ⚠️ **`/api/movements` es de solo lectura.** No hay alta ni borrado de
 > movimientos por API: entran únicamente por importación desde los ficheros del
@@ -100,7 +109,8 @@ su servicio, sus schemas y sus tipos juntos. El detalle y el porqué están en
 ```
 gastos-backend/
 ├── prisma/
-│   ├── schema.prisma        # Modelos de datos (Account, Category, Movement)
+│   ├── schema.prisma        # Modelos: Account, Category, Movement, InvestmentProduct,
+│   │                        #   Valuation, SavingsSnapshot
 │   └── migrations/          # Historial de migraciones
 ├── src/
 │   ├── server.ts            # Punto de entrada: carga .env y arranca el servidor
@@ -116,8 +126,11 @@ gastos-backend/
 │   │   ├── ingestion/       #   Lectura de archivos de banco desde Drive (no mueve)
 │   │   ├── import/          #   Importador: Drive -> parser -> base de datos
 │   │   ├── bankinter/       #   Parser del extracto .xlsx de Bankinter
-│   │   ├── myinvestor/      #   Parser del extracto .csv de MyInvestor
-│   │   ├── investments/     #   Productos de inversión y sus valoraciones (esquema)
+│   │   ├── myinvestor/      #   Parsers de MyInvestor: extracto .csv y .json de producto
+│   │   ├── n26/             #   Parser del extracto .csv de N26
+│   │   ├── openbank/        #   Parser del extracto .xls de Openbank (por dentro, HTML)
+│   │   ├── trade-republic/  #   Parser del .json de cuenta remunerada escrito a mano
+│   │   ├── investments/     #   Productos de inversión: el ÚNICO que escribe en sus tablas
 │   │   └── health/          #   Rutas de estado
 │   └── generated/prisma/    # Cliente de Prisma generado (no se versiona)
 ├── prisma.config.ts         # Configuración del CLI de Prisma (Prisma 7)

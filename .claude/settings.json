@@ -30,21 +30,12 @@
       "Bash(./init.sh)",
       "Bash(./init.sh --fast)",
       "Bash(./init.sh --state)",
-      "Bash(npm test*)",
       "Bash(pnpm test*)",
-      "Bash(yarn test*)",
-      "Bash(npm run*)",
       "Bash(pnpm run*)",
-      "Bash(yarn run*)",
-      "Bash(python3 -m unittest*)",
-      "Bash(python3 -m pytest*)",
-      "Bash(pytest*)",
-      "Bash(dotnet test*)",
-      "Bash(dotnet run*)",
-      "Bash(cargo test*)",
-      "Bash(go test*)",
-      "Bash(mvn test*)",
-      "Bash(gradle test*)"
+      "Bash(npx vitest run*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
     ]
   }
 }

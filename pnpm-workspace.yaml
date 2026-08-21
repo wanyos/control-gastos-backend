@@ -2,17 +2,10 @@ allowBuilds:
   '@prisma/engines': true
   esbuild: true
   prisma: true
-minimumReleaseAgeExclude:
-  - '@prisma/adapter-pg@7.9.0'
-  - '@prisma/client-runtime-utils@7.9.0'
-  - '@prisma/client@7.9.0'
-  - '@prisma/config@7.9.0'
-  - '@prisma/debug@7.9.0'
-  - '@prisma/driver-adapter-utils@7.9.0'
-  - '@prisma/engines@7.9.0'
-  - '@prisma/fetch-engine@7.9.0'
-  - '@prisma/get-platform@7.9.0'
-  - prisma@7.9.0
-  - fastify@5.11.2
-  - tsx@4.23.5
-  - '@googleapis/drive@21.0.0'
+# Aquí vivía `minimumReleaseAgeExclude` con 13 versiones fijadas (prisma 7.9.0 y
+# familia, fastify 5.11.2, tsx 4.23.5, @googleapis/drive 21.0.0). Se quitó el
+# 2026-08-21: `package.json` pide versiones superiores a todas ellas y
+# `minimumReleaseAge` no está configurado en ningún sitio (ni aquí, ni en un
+# .npmrc del repo, ni en el del usuario), así que la lista no excluía de nada.
+# Si algún día se activa esa espera, la lista se escribe entonces y con las
+# versiones de entonces: una lista de excepciones que nadie repasa solo envejece.
