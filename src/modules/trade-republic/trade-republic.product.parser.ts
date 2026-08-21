@@ -61,7 +61,7 @@ export function parseTradeRepublicProduct(
   const source = raw as Record<string, unknown>
   const problems: string[] = []
   const missing: string[] = []
-  const markers: string[] = []
+  const markers: MarkerReport = { whole: [], half: [] }
   const readNumber = (key: string, required: boolean) =>
     readNumberField(source, key, required, problems, missing, markers)
   const readIso = (key: string, required: boolean) =>
@@ -88,9 +88,19 @@ export function parseTradeRepublicProduct(
   }
   // First of the reason, because it is the one that explains all the rest: the
   // template was copied and (part of) it was never filled in (R2).
-  if (markers.length > 0) {
+  // Second of the reason and never merged with the one above: half of a marker
+  // is a DIFFERENT mistake from not having touched the field at all, and the two
+  // are fixed by looking at different things (feature 28).
+  if (markers.half.length > 0) {
     problems.unshift(
-      `campos sin sustituir, siguen con el marcador <…> de la plantilla: ${markers.join(', ')}`,
+      `campos con el marcador <…> de la plantilla A MEDIO SUSTITUIR, te dejaste un ` +
+        `símbolo suelto: ${markers.half.join(', ')}; ` +
+        `un valor no puede empezar por < ni acabar en >`,
+    )
+  }
+  if (markers.whole.length > 0) {
+    problems.unshift(
+      `campos sin sustituir, siguen con el marcador <…> de la plantilla: ${markers.whole.join(', ')}`,
     )
   }
 
@@ -222,11 +232,78 @@ function isMarker(value: unknown): boolean {
   return typeof value === 'string' && /^\s*<.*>\s*$/s.test(value)
 }
 
+/**
+ * The two ways a marker of the template can survive, kept APART on purpose: a
+ * field never touched and a field half rewritten are different mistakes and are
+ * fixed by looking at different things.
+ */
+interface MarkerReport {
+  /** Fields still carrying the whole `<…>` (R2 of feature 20). */
+  whole: string[]
+  /** Fields where only one of the two symbols was erased (feature 28). */
+  half: string[]
+}
+
+/**
+ * A value where the human erased ONE of the two symbols of the marker and left
+ * the other: `"<2026-08-01"`, `"4006.40>"`. It happened on the very first real
+ * file (2026-08-20), in two fields at once, and the `<` of `openedAt` even
+ * survived a correction in which the four typos were pointed out one by one.
+ *
+ * Without this check the value falls into the normal validation and comes back as
+ * «fecha inválida, se espera el formato AAAA-MM-DD»: true, and it sends him to
+ * check the format, which is fine — what is left over is one character he does
+ * not even see.
+ *
+ * WHAT COUNTS, and why (decision of feature 28, delegated by the human):
+ *
+ *  - **Starts with `<` or ends with `>`, and is not a whole marker.** Erasing one
+ *    of the two delimiters ALWAYS leaves the other one at an END of the value,
+ *    so that is where the accident shows.
+ *  - **The symbol in the MIDDLE does NOT count** (`"Ahorro 3 > 2"`). It is not a
+ *    residue of this accident, and the middle is the only place where free text
+ *    can legitimately carry the symbol. Counting it would reject good values with
+ *    no accident behind them.
+ *  - **It applies to `name` too, free text and all.** A name is free text, so the
+ *    human COULD open it with `<` on purpose — and if he does, the file is
+ *    rejected with a message that says exactly what to do (do not open with `<`).
+ *    That is the accepted failure mode: rejecting a bit too much with a reason he
+ *    understands, never swallowing a value. The escape hatch is renaming the
+ *    account; there is none for a placeholder entering as the name of an account.
+ *
+ * The parser NEITHER GUESSES NOR REPAIRS: it does not strip the symbol and read
+ * the rest. The file is rejected exactly as before; only the reason changes.
+ */
+function isHalfErasedMarker(value: unknown): boolean {
+  if (typeof value !== 'string' || isMarker(value)) {
+    return false
+  }
+  const trimmed = value.trim()
+  return trimmed.startsWith('<') || trimmed.endsWith('>')
+}
+
+/**
+ * Files a field under the marker it carries, if any, and answers whether the
+ * caller must stop reading it. The half-erased one shows the received value: the
+ * whole point is that he SEES the character that is left over.
+ */
+function collectMarker(key: string, value: unknown, markers: MarkerReport): boolean {
+  if (isMarker(value)) {
+    markers.whole.push(key)
+    return true
+  }
+  if (isHalfErasedMarker(value)) {
+    markers.half.push(`${key} ${display(value)}`)
+    return true
+  }
+  return false
+}
+
 /** The type decides the shape of the file, so an unknown one is reported with the admitted values. */
 function readType(
   source: Record<string, unknown>,
   problems: string[],
-  markers: string[],
+  markers: MarkerReport,
 ): TradeRepublicProductType | null {
   const value = source.type
   const admitted = `valores admitidos: ${productTypes.join(', ')}`
@@ -234,8 +311,7 @@ function readType(
     problems.push(`type: campo obligatorio ausente; ${admitted}`)
     return null
   }
-  if (isMarker(value)) {
-    markers.push('type')
+  if (collectMarker('type', value, markers)) {
     return null
   }
   if (typeof value !== 'string' || !productTypes.includes(value as TradeRepublicProductType)) {
@@ -250,15 +326,14 @@ function readName(
   source: Record<string, unknown>,
   problems: string[],
   missing: string[],
-  markers: string[],
+  markers: MarkerReport,
 ): string | null {
   const value = source.name
   if (isAbsent(value)) {
     missing.push('name')
     return null
   }
-  if (isMarker(value)) {
-    markers.push('name')
+  if (collectMarker('name', value, markers)) {
     return null
   }
   if (typeof value !== 'string' || value.trim() === '') {
@@ -272,14 +347,13 @@ function readName(
 function readCurrency(
   source: Record<string, unknown>,
   problems: string[],
-  markers: string[],
+  markers: MarkerReport,
 ): string {
   const value = source.currency
   if (isAbsent(value)) {
     return 'EUR'
   }
-  if (isMarker(value)) {
-    markers.push('currency')
+  if (collectMarker('currency', value, markers)) {
     return 'EUR'
   }
   if (typeof value !== 'string' || value.trim() === '') {
@@ -301,7 +375,7 @@ function readNumberField(
   required: boolean,
   problems: string[],
   missing: string[],
-  markers: string[],
+  markers: MarkerReport,
 ): number | null {
   const value = source[key]
   if (isAbsent(value)) {
@@ -310,8 +384,7 @@ function readNumberField(
     }
     return null
   }
-  if (isMarker(value)) {
-    markers.push(key)
+  if (collectMarker(key, value, markers)) {
     return null
   }
   if (typeof value === 'string') {
@@ -332,7 +405,7 @@ function readIsoField(
   required: boolean,
   problems: string[],
   missing: string[],
-  markers: string[],
+  markers: MarkerReport,
 ): string | null {
   const value = source[key]
   if (isAbsent(value)) {
@@ -341,8 +414,7 @@ function readIsoField(
     }
     return null
   }
-  if (isMarker(value)) {
-    markers.push(key)
+  if (collectMarker(key, value, markers)) {
     return null
   }
   const parsed = parseIsoDate(value)

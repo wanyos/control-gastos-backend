@@ -12,6 +12,7 @@ import type { ProductParserRegistry } from './modules/investments/investments.ty
 import ingestionRoutes from './modules/ingestion/ingestion.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
 import myinvestorRoutes from './modules/myinvestor/myinvestor.routes.js'
+import { parseMyinvestorProductFile } from './modules/myinvestor/myinvestor.service.js'
 import { parseMyinvestorStatement } from './modules/myinvestor/myinvestor.statement.parser.js'
 import n26Routes from './modules/n26/n26.routes.js'
 import { parseN26Statement } from './modules/n26/n26.statement.parser.js'
@@ -54,6 +55,12 @@ export const bankParsers: BankParserRegistry = [
  * statement is still read by nobody.
  */
 export const productParsers: ProductParserRegistry = [
+  // MyInvestor is in BOTH registries (feature 29) and that is safe because the
+  // two entries never claim the same extension: its statement is a `.csv` and
+  // its products are `.json`. The guardian that checks it is
+  // `never lets a bank declare the same extension in both registries`, in
+  // `src/modules/import/import.routes.test.ts`.
+  { bank: 'myinvestor', extensions: ['.json'], parse: parseMyinvestorProductFile },
   { bank: 'trade-republic', extensions: ['.json'], parse: parseTradeRepublicProductFile },
 ]
 

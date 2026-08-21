@@ -115,6 +115,49 @@ export interface ParsedProduct {
   depositTerms: ParsedDepositTerms | null
 }
 
+/**
+ * What a MyInvestor product file contributes to the DATABASE (feature 29).
+ *
+ * It is `ParsedProduct` with two differences that matter and one that does not:
+ *
+ *  - It is DISCRIMINATED BY `type`: a fund carries its `valuation` and a deposit
+ *    carries its `depositTerms`, and neither can be `null`. `ParsedProduct` has
+ *    both fields nullable on every type because that is what a half-read file
+ *    looks like while the parser is still accumulating reasons; by the time a
+ *    file is stored, that hole no longer exists and the compiler can say so.
+ *  - It drops `file`, which is provenance of the dump and identifies nothing in
+ *    the database (the name and the date do, R24).
+ *  - `bank` widens to `string`: the importer overwrites it with the slug of the
+ *    FOLDER the file came from, never with what its contents claim (ADR-009).
+ *
+ * It is declared HERE and not imported from `modules/investments/` on purpose: a
+ * bank module never imports another module's types (guardian of
+ * `architecture.test.ts`). The two shapes meet STRUCTURALLY where the registry
+ * is built, in `src/app.ts`, exactly as Trade Republic's does since feature 26.
+ */
+export interface MyinvestorProductCommon {
+  bank: string
+  name: string
+  currency: string
+  openedAt: string
+  closedAt: string | null
+  date: string
+}
+
+/** A fund, an ETF or a managed portfolio: it fluctuates, so it brings a valuation. */
+export interface MyinvestorValuationInput extends MyinvestorProductCommon {
+  type: 'fund' | 'etf' | 'managed_portfolio'
+  valuation: ParsedValuation
+}
+
+/** A deposit: it does not fluctuate, so it brings its four conditions and no photo. */
+export interface MyinvestorDepositInput extends MyinvestorProductCommon {
+  type: 'deposit'
+  depositTerms: ParsedDepositTerms
+}
+
+export type MyinvestorProductInput = MyinvestorValuationInput | MyinvestorDepositInput
+
 /** The dump of every product of one year: one `products.json` per year (R53). */
 export interface MyinvestorProductsResult {
   bank: 'myinvestor'

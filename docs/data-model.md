@@ -9,6 +9,7 @@
 > | [Parte 1 — Flujo](#parte-1--flujo) | cuentas, movimientos, categorías | 8 `data-model` (2026-08-06) | [ADR-011](architecture.md), [`specs/data-model/`](../specs/data-model/design.md) |
 > | [Parte 2 — Inversiones](#parte-2--inversiones) | productos de inversión y su valoración periódica | 9 `investments-data-model` (2026-08-11) | [ADR-012](architecture.md), [`specs/investments-data-model/`](../specs/investments-data-model/design.md) |
 > | ↳ **la cuenta remunerada** | quinto tipo de producto y su **foto mensual propia** (`SavingsSnapshot`) | 26 `savings-account-as-product` (2026-08-20) | [ADR-026](architecture.md), [`specs/savings-account-as-product/`](../specs/savings-account-as-product/design.md) |
+> | ↳ **los otros cuatro tipos** | `Valuation` y las **condiciones del depósito** estrenan escritor; ni una columna nueva | 29 `myinvestor-products-to-db` (2026-08-21) | [ADR-012](architecture.md), [`progress/implementations/myinvestor-products-to-db.md`](../progress/implementations/myinvestor-products-to-db.md) |
 >
 > Las decisiones de producto están en `../../docs/ideas.md` §2 (flujo) y §3
 > (patrimonio e inversiones).
@@ -217,12 +218,21 @@ model Movement {
 | `Movement.productId` | la feature de **enlace de aportaciones**, sobre el parser del fichero de inversiones (regla 5; el `model Movement` real lo lleva desde la F9, ver [Parte 2](#parte-2--inversiones)) |
 | ~~`InvestmentProduct.closedAt`~~ | 🔄 **ya la escribe** `persistSavingsSnapshot` (F26): sale del campo `closedAt` del fichero, tal cual, `null` incluido. Sigue siendo un acto explícito del humano, escrito una sola vez |
 | ~~`InvestmentProduct.openedAt`~~ | 🔄 **ya la escribe** `persistSavingsSnapshot` (F26): sale del campo `openedAt` del fichero, **obligatorio desde la F15** (un archivo sin él es un archivo fallido, nunca un producto con la fecha en blanco). **Cero migración**: la columna ya existía desde la F9 |
+| ~~`InvestmentProduct.principal`, `.interestRate`, `.expectedGain`, `.maturityDate`~~ | 🔄 **ya las escribe** `persistDeposit` (F29), las cuatro de golpe y **solo en un `deposit`**: salen tal cual del `.json` del depósito. En los otros cuatro tipos se escriben explícitamente a `NULL`, nunca se inventan. **Cero migración**: existen desde la F9 |
+| ~~`Valuation` (la tabla entera)~~ | 🔄 **ya la escribe** `persistValuation` (F29): una fila por `(productId, date)` con los cinco números del `.json` de un `fund`, `etf` o `managed_portfolio`. Nació en la F9 sin escritor y lo ha tenido pendiente **veinte features** |
 
-> Las **tres últimas filas** las añadió la feature 9 y se explican en la
+> Las filas de **`Movement.productId`, `InvestmentProduct.closedAt` y
+> `InvestmentProduct.openedAt`** las añadió la feature 9 y se explican en la
 > [Parte 2](#parte-2--inversiones): `Movement.productId` es una columna del flujo,
 > pero quien la escribirá y su regla (la 5) viven allí; las dos de
-> `InvestmentProduct` son de esa parte entera. Viven aquí porque esta tabla es el
-> registro único de columnas sin escritor del proyecto.
+> `InvestmentProduct` son de esa parte entera. Las de **las condiciones del
+> depósito** y **`Valuation`** son también de la feature 9 y de esa misma parte, y
+> las tachó la feature 29. Viven todas aquí porque esta tabla es el registro único
+> de columnas sin escritor del proyecto.
+>
+> 📌 Se nombran una por una **a propósito**: esta tabla crece, y un puntero
+> posicional («las tres últimas») deja de señalar lo que decía en cuanto se añade
+> una fila debajo — que es exactamente lo que pasó al añadir las dos de la F29.
 
 > 🔄 **Cambio del 2026-08-20 (F26).** `InvestmentProduct.openedAt` y
 > `InvestmentProduct.closedAt` **dejan de ser columnas sin escritor**: las dos las
@@ -237,6 +247,16 @@ model Movement {
 > [Reglas de negocio de inversiones](#reglas-de-negocio-de-inversiones-las-vigila-el-servicio-no-la-bd)).
 > `Movement.productId` **sigue sin escritor**: es la única fila de inversiones que
 > queda en esta tabla.
+
+> 🔄 **Cambio del 2026-08-21 (F29).** Las **cuatro columnas del depósito** y la tabla
+> **`Valuation` entera** dejan de ser «definidas, sin escritor»: las escriben
+> `persistDeposit` y `persistValuation`
+> ([`src/modules/investments/investments.service.ts`](../src/modules/investments/investments.service.ts)),
+> hermanos de `persistSavingsSnapshot` y elegidos por el `type` del fichero en
+> `persistProductSnapshot`. **Cero migración y cero campos nuevos que teclear**: esta
+> feature añadió **quién escribe**, no qué se lee. Con esto, la única fila de esta
+> tabla que sigue sin escritor es `Movement.productId`, y ya no queda **ninguna tabla**
+> de inversiones sin uno.
 
 > 🔄 **Cambio del 2026-08-13 (F15).** `InvestmentProduct.openedAt` **ya tiene de dónde
 > salir** (quien la guarda llegó después, con la F26: ver la nota de arriba). Nació en
@@ -405,9 +425,13 @@ centinela `parentId = 0` (ensucia el modelo y complica los `include`).
 > todavía estas tablas. También **aditiva**: no se modificó ni un campo, índice o
 > enum anterior.
 >
-> **Lo que sigue vale para los cinco tipos salvo donde se diga.** Los ficheros de
-> producto de **MyInvestor siguen sin llegar a la base**: la F26 entró solo con Trade
-> Republic y su feature hermana está pendiente.
+> 🔄 **Completada por la feature 29 `myinvestor-products-to-db`** (2026-08-21): los
+> ficheros de producto de **MyInvestor** entran por la misma vía y estrenan los dos
+> escritores que faltaban, `Valuation` (fondo, ETF y cartera gestionada) y las cuatro
+> columnas de condiciones del `deposit`. **Sin migración, sin campos nuevos en los
+> ficheros y sin tocar el parser.** Sigue sin consultas: ninguna ruta LEE estas tablas.
+>
+> **Lo que sigue vale para los cinco tipos salvo donde se diga.**
 >
 > **Todo es aditivo:** la única línea que toca el núcleo del flujo es
 > `Movement.productId`. Ningún campo, índice o enum de la Parte 1 se modificó.
@@ -638,7 +662,7 @@ comercial, no una condición del producto contratado.
 | Tabla | Clave | Por qué basta |
 | --- | --- | --- |
 | `InvestmentProduct` | `@@unique([bank, name])` | El `name` lo escribe el humano en un fichero hecho a mano, luego es **estable por construcción**: no hay un banco que lo renombre a mitad de año. Por eso caen el `isin` y la segunda clave `(bank, name, maturityDate)` para depósitos: dos depósitos los distingues tú al nombrarlos. El `bank` entra para no bloquear un futuro segundo banco con un producto homónimo. |
-| `Valuation` | `@@unique([productId, date])` | Una foto por producto y fecha. Es también el índice que sirve la consulta de patrimonio ("la valoración más reciente con `date <= D`") sin ningún índice adicional. |
+| `Valuation` | `@@unique([productId, date])` | Una foto por producto y fecha. Es también el índice que sirve la consulta de patrimonio ("la valoración más reciente con `date <= D`") sin ningún índice adicional. 🔄 **De esta clave cuelga toda la idempotencia de la F29**, igual que la de `SavingsSnapshot` sostiene la de la F26: las dos mitades —el `name` del producto y la `date` de la foto— **las escribe el humano** y nadie las renumera. |
 | `SavingsSnapshot` | `@@unique([productId, date])` | Lo mismo y por lo mismo: una foto por producto y fecha, con la `date` que **escribe el humano** (el día del abono de intereses). **De esta clave cuelga toda la idempotencia de la F26**, y aguanta porque ni ella ni `(bank, name)` llevan un contador, una posición o un autoincremento que alguien pueda **renumerar** — que es justo lo que le pasó a `Movement.daySequence` en el flujo. |
 
 - **Consecuencia que hay que conocer:** si un día **renombras** un producto en el
@@ -681,9 +705,16 @@ fichero: hay que hacer **UPSERT también del producto**, sobre `(bank, name)`.
 hace exactamente esos dos upserts —producto sobre `(bank, name)`, foto sobre
 `(productId, date)`— **dentro de una sola transacción**, y es el **único** escritor de
 estas tablas en todo `src/` (lo vigila un guardián de `src/architecture.test.ts`). Los
-dos van juntos o no va ninguno: no puede quedar un producto sin su foto. Hoy escribe
-`SavingsSnapshot`; la feature hermana de MyInvestor reutilizará la misma vía cambiando
-la segunda tabla por `Valuation`.
+dos van juntos o no va ninguno: no puede quedar un producto sin su foto.
+
+✅ **Y ya está completo (F29).** `persistProductSnapshot` es **la** entrada de un
+fichero de producto: resuelve el tipo **una sola vez** y reparte a tres escritores
+hermanos —`persistSavingsSnapshot` (F26, intacta), `persistValuation` y
+`persistDeposit`—. El upsert del producto sobre `(bank, name)` y el rechazo de un
+`name` que ya existe **con otro tipo** están en un único sitio (`upsertProduct`), así
+que la regla vale para los **cinco** tipos y no solo para el que la estrenó. El
+guardián de `src/architecture.test.ts` cubre ahora las **tres** tablas: `Valuation`
+también se escribe **solo** desde `modules/investments/`.
 
 ### Reglas de negocio de inversiones (las vigila el servicio, no la BD)
 
@@ -691,7 +722,11 @@ la segunda tabla por `Valuation`.
   contratarlo y no fluctúan, así que no necesita foto periódica. Es una **regla
   del servicio**, igual que las demás reglas de negocio del proyecto, y **la base
   de datos no la impide**: hoy nada bloquea insertar una `Valuation` sobre un
-  producto `deposit` (límite conocido, con test que lo deja escrito). Se decidió
+  producto `deposit` (límite conocido, con test que lo deja escrito). 🔄 **Desde la F29
+  el servicio la cumple de verdad, no solo la documenta:** el fichero de un depósito
+  entra por `persistDeposit`, que hace **un solo upsert** —el del producto, con sus
+  cuatro condiciones— y **ninguna inserción en `Valuation`**; su respuesta trae
+  `snapshot: null` precisamente para no fingir una foto que no existe. Se decidió
   así por tres razones: coherencia con el resto del modelo (la BD impone
   **identidad y unicidad**, el servicio impone **coherencia de dominio**); mantiene
   el **cero SQL crudo**; y, sobre todo, un `CHECK` **no puede consultar otra
@@ -782,9 +817,10 @@ escribe y quién lo lee**:
   es deliberado (ADR-024).
 - ✅ **Importador** — hecho: el flujo desde la F12 (`Movement` y `Account`, con su
   descarte por dedup) y las inversiones desde la F26, con sus **dos upserts**
-  (`InvestmentProduct` + `SavingsSnapshot`). ⏳ **Falta** que los ficheros de producto
-  de **MyInvestor** entren por esa misma vía y escriban `Valuation`: es la feature
-  hermana de la F26.
+  (`InvestmentProduct` + `SavingsSnapshot`). ✅ **Y desde la F29 también los ficheros
+  de producto de MyInvestor**, por esa misma vía: escriben `Valuation` los tres tipos
+  que fluctúan y las **cuatro columnas de condiciones** el depósito, que no escribe
+  foto ninguna. **Ninguna tabla de inversiones queda ya sin escritor.**
 - **Escritor de `Movement.productId`** (enlace de aportaciones) y, con él, la
   **implementación de la regla 5** en `computeTotals`.
 - **Consulta de patrimonio neto y dashboards** (idea #4), con el cálculo que ya

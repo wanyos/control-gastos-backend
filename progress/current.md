@@ -3,6 +3,91 @@
 > Este archivo se vacía al cerrar cada sesión y se mueve a `history.md`.
 > Mientras trabajas, **mantenlo actualizado en tiempo real**, no al final.
 
+## F29 `myinvestor-products-to-db` — CERRADA el 2026-08-21
+
+Feature **sin spec** (`sdd: false`): mandan sus **10 criterios** de `acceptance`. Es la
+**feature hermana** que el humano eligió en la puerta de la F26 (punto 1 de
+[`decisions.md`](../specs/savings-account-as-product/decisions.md)), y reutiliza entera la
+vía que aquella construyó. Informe con el mapeo criterio→test y las tres decisiones
+delegadas: [`implementations/myinvestor-products-to-db.md`](implementations/myinvestor-products-to-db.md).
+
+Qué se ha hecho:
+
+1. **Los cuatro tipos de MyInvestor entran** por `POST /api/import` (`fund`, `etf`,
+   `managed_portfolio`, `deposit`): una línea nueva en `productParsers` de `src/app.ts` y
+   un adaptador en el módulo del banco. **El parser NO se ha tocado** (`git diff` vacío).
+2. **Las tres decisiones delegadas, resueltas por escrito.** (1) Se **reparte**:
+   `persistProductSnapshot` despacha por tipo a `persistSavingsSnapshot` —**intacta**—,
+   `persistValuation` y `persistDeposit`, con el upsert del producto y el rechazo del
+   cambio de tipo en un tronco común (`upsertProduct`). (2) Las condiciones del depósito
+   son **columnas del propio producto** y `persistDeposit` hace **un solo upsert**: no hay
+   código que pueda escribirle una `Valuation`, y su respuesta trae `snapshot: null`.
+   (3) La identidad es `(bank, name)` + `date`, **las dos mitades las escribe el humano**:
+   nada que renumerar, que es el aviso de la F25.
+3. **Cero migración y cero campos nuevos que teclear.** Las tablas y las cuatro columnas
+   del depósito existían desde la F9 **sin escritor**.
+4. **Documentado donde toca**: `docs/data-model.md` (el registro único de columnas: las
+   cuatro del depósito y `Valuation` entera pasan a tachadas), `docs/api-contract.md` y
+   `docs/myinvestor-product-files.md`, que es la que él lee.
+5. **33 tests nuevos**, uno de ellos end-to-end contra el registro REAL de `src/app.ts`;
+   el guardián del escritor único cubre ahora las **tres** tablas.
+
+**`reviewer`: CHANGES_REQUESTED**
+([`reviews/myinvestor-products-to-db.md`](reviews/myinvestor-products-to-db.md)) — el
+código lo dio por bueno verificándolo en base desechable; el rechazo fue por **dos
+punteros rotos, un formato y la prueba real**.
+
+**Segunda pasada hecha el 2026-08-21**, solo puntero y forma: `docs/data-model.md` nombra
+las filas una por una en vez de decir «las tres últimas» (un puntero posicional en una
+tabla que crece se rompe solo), `src/app.ts` apunta al guardián real de las extensiones
+(`import.routes.test.ts`, no `architecture.test.ts`) y `trade-republic.routes.test.ts`
+va formateado. Auditados los demás punteros: no había un tercero roto.
+
+**C4 bis — la prueba real, hecha y limpia el 2026-08-21** (cuarta vez que se aplica):
+[`explorations/prueba-real-myinvestor-productos-2026-08-21.md`](explorations/prueba-real-myinvestor-productos-2026-08-21.md).
+Los **5 archivos** `imported` y creados; comprobado **dentro de la base**: fondo, ETF y
+cartera con **1 valoración** cada uno, los **2 depósitos con 0 valoraciones** y sus
+condiciones puestas. Segunda pasada por la vía de la F25: los cinco `created: false`, la
+base igual (6 productos, 3 valoraciones) y el extracto reportando 11 duplicados. Su
+**cuenta remunerada de la F26 intacta** y sus **4 cuentas y 455 movimientos** también.
+
+**`reviewer`: APPROVED en segunda pasada.** **`done`** en `feature_list.json` y línea
+añadida en [`history.md`](history.md).
+
+**Hallazgo anotado y NO abierto como feature:** por la vía del importador los `.json`
+pasan por `decodeUtf8Strict`, así que uno guardado **con BOM** se rechazaría con «JSON
+inválido». Es **heredado del parser**, que esta feature tenía prohibido tocar; los cinco
+archivos de hoy **no llevan BOM**. Si algún mes uno se reguarda con otro editor, se abre
+su propia feature.
+
+---
+
+## F28 `half-erased-marker-message` — CERRADA el 2026-08-21
+
+Feature **sin spec** (`sdd: false`): mandan sus **10 criterios** de `acceptance`. Sale de
+la prueba real de Trade Republic del 2026-08-20, donde el `<` de `openedAt` **sobrevivió a
+una corrección entera** porque el mensaje mandaba a mirar el formato de una fecha que
+estaba bien. Informe:
+[`implementations/half-erased-marker-message.md`](implementations/half-erased-marker-message.md).
+
+Qué se ha hecho:
+
+1. **El medio marcador se dice por su nombre**, y nombra el campo, con el valor delante.
+2. **Vale para los once campos**, no solo las fechas: un importe con el corchete pegado
+   se reporta igual.
+3. **El símbolo en MEDIO del texto no cuenta** (solo al principio o al final, tras
+   recortar espacios): un `name` suyo puede llevarlo sin falso positivo.
+4. **El mensaje del marcador ENTERO no cambia**, y lo que estaba mal de verdad sigue
+   diciendo lo de siempre, con test de no-regresión. El archivo se **rechaza igual**: no
+   se adivina ni se repara nada.
+5. **No se comparte con MyInvestor a propósito**: la norma es un parser por banco y el
+   marcador es forma del fichero. Decisión escrita, no omitida.
+
+**`reviewer`: APPROVED** ([`reviews/half-erased-marker-message.md`](reviews/half-erased-marker-message.md)).
+**`done`** en `feature_list.json` y línea añadida en [`history.md`](history.md).
+
+---
+
 ## F27 `tests-dont-touch-real-db` — CERRADA el 2026-08-20
 
 Feature **sin spec** (`sdd: false`): manda su `acceptance` de 10 criterios. Informe con

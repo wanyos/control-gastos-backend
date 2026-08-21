@@ -193,6 +193,7 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 | El archivo no está guardado en **UTF-8** | se rechaza entero, con el byte y la línea |
 | El `.json` no es válido | el problema de sintaxis |
 | Un valor sigue siendo el **marcador `<…>`** de la plantilla | **todos** los campos que te falta sustituir |
+| Un valor lleva el marcador **a medio sustituir** (`"<2026-08-01"`, `"4006.40>"`) | que te dejaste un símbolo suelto, con el campo y el valor — **no** que la fecha o el número estén mal |
 | Falta un campo obligatorio | **todos** los que faltan, por su nombre |
 | Un número no es un número (`true`, `[]`, `{}`) | el campo y el valor recibido |
 | Un número viene **como texto** (`"4006.40"`, `"1.234,56"`) | el campo, el valor y *«se espera un número sin comillas»* |
@@ -201,6 +202,16 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 | Una clave desconocida | las claves sobrantes, por su nombre |
 | **Los cinco importes no cuadran** | la desviación con signo, el saldo esperado frente al escrito y los cinco importes |
 | Dos archivos con la misma cuenta y fecha | con qué archivo choca |
+
+> **El símbolo a medio borrar es la errata número uno** al rellenar a mano (pasó en el primer
+> archivo real, en dos campos a la vez). Por eso tiene motivo propio: el de antes decía
+> «fecha inválida, se espera el formato AAAA-MM-DD», que es verdad y te manda a mirar el
+> formato, **que está bien**. Cuenta como marcador a medio sustituir un valor que **empieza
+> por `<` o acaba en `>`**; el símbolo **en medio** de un texto no cuenta y entra sin
+> problema (`"Ahorro 3 > 2"`). La contrapartida: un nombre de cuenta **no puede empezar por
+> `<` ni acabar en `>`** aunque tú quieras — se rechaza y se te dice por qué. Y el parser
+> **no te lo arregla**: no borra el símbolo ni adivina el valor; rechaza el archivo y te lo
+> dice.
 
 ## El `.pdf` del extracto no molesta
 

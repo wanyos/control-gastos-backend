@@ -133,7 +133,12 @@ describe('POST /api/parser/trade-republic (R16)', () => {
   it('IS in the PRODUCT registry, reading only its .json (feature 26, R10)', () => {
     // Feature 26 gave the importer a second registry. The `.pdf` of this bank
     // is still read by nobody: only the hand-written `.json` enters.
-    expect(productParsers.map((adapter) => adapter.bank)).toEqual(['trade-republic'])
-    expect(productParsers[0]?.extensions).toEqual(['.json'])
+    // Written as "is in" and not "is the only one in" since feature 29, which
+    // added MyInvestor to the same registry. What this test protects is THIS
+    // bank's entry: present, and reading `.json` and nothing else.
+    expect(productParsers.map((adapter) => adapter.bank)).toContain('trade-republic')
+    expect(productParsers.find((adapter) => adapter.bank === 'trade-republic')?.extensions).toEqual(
+      ['.json'],
+    )
   })
 })

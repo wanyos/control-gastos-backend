@@ -1150,6 +1150,85 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 28,
+      "name": "half-erased-marker-message",
+      "title": "Un marcador de la plantilla a medio borrar se dice por su nombre, no como «fecha inválida»",
+      "intent": {
+        "_procedencia": "Sale de la prueba real de Trade Republic del 2026-08-20 (progress/explorations/prueba-real-trade-republic-2026-08-20.md, §Candidato). Al rellenar su primer archivo, el humano dejó el «<» inicial en dos fechas (\"<2026-08-01\"). El parser las rechazó —bien— pero como «fecha inválida, se espera el formato AAAA-MM-DD», que es verdad y no ayuda. Se le señalaron las cuatro erratas una por una en una tabla y aun así el «<» de openedAt SOBREVIVIÓ a la corrección: hizo falta una segunda vuelta entera por un carácter. Él pidió la feature el 2026-08-21: «arreglemos lo de la plantilla con el parser».",
+        "que_quiero": "Que si me dejo a medias el corchete de la plantilla al rellenar un campo, el error me diga eso mismo: que me he dejado el marcador sin sustituir del todo. No que la fecha está mal escrita, que me manda a mirar el formato cuando el formato está bien.",
+        "por_que": "Es la errata número uno al rellenar a mano, y me ha pasado dos veces seguidas en el mismo archivo. El mensaje actual me hace mirar el sitio equivocado: me pongo a comprobar si la fecha está en el formato correcto, y lo está — lo que sobra es un carácter que ni veo.",
+        "como_se_que_esta_bien": [
+          "Si dejo un corchete de la plantilla en un campo, el error me dice que es un marcador a medio sustituir y me nombra el campo.",
+          "Un valor que de verdad está mal escrito (una fecha inventada, un número con letras) me sigue diciendo lo que dice hoy: esto no cambia.",
+          "Vale para todos los campos, no solo para las fechas: si me dejo el corchete en un importe, también me lo dice."
+        ],
+        "que_no_quiero": [
+          "No quiero que el parser me adivine el valor ni me lo arregle solo quitando el corchete: que lo rechace y me lo diga.",
+          "No quiero perder el mensaje que ya existe para un marcador entero (con los dos símbolos), que funciona.",
+          "No quiero que esto afecte a los parsers de los otros bancos ni a lo que ya entra bien."
+        ],
+        "delego_en_agente": [
+          "Qué cuenta exactamente como «marcador a medio sustituir» sin generar falsos positivos: un valor que empieza por el símbolo de apertura o acaba en el de cierre es el caso claro, pero hay que decir si el símbolo en medio del texto cuenta y por qué, y qué pasa con un nombre de cuenta que legítimamente lo llevara.",
+          "Si el mensaje sustituye al de «valor inválido» o se suma a él, y cómo se ordena junto a los demás problemas que el archivo reporta de golpe.",
+          "Si esto vive solo en el parser de Trade Republic o en un sitio común, sabiendo que la plantilla de MyInvestor usa los mismos marcadores y que sus productos entran en la F29."
+        ]
+      },
+      "acceptance": [
+        "Un valor que EMPIEZA por el símbolo de apertura o ACABA en el de cierre pero no es un marcador entero se reporta como MARCADOR A MEDIO SUSTITUIR, nombrando el campo, y NO como «fecha inválida» ni como «se espera un número». El caso exacto del 2026-08-20 tiene test",
+        "Vale para CUALQUIER campo, no solo las fechas: un importe con el corchete pegado se reporta igual (deriva de: «si me dejo el corchete en un importe, también me lo dice»)",
+        "El mensaje del MARCADOR ENTERO no se pierde ni cambia: sigue nombrando todos los campos sin sustituir (R2 de la F20, y el accidente del 2026-08-15 que lo motivó)",
+        "Un valor DE VERDAD mal escrito —una fecha que no existe, un número con letras, un texto donde va un número— sigue diciendo exactamente lo que dice hoy: hay test de no-regresión",
+        "El parser NO adivina ni repara: el archivo se rechaza igual, solo cambia el motivo (deriva de: «que lo rechace y me lo diga»)",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1): qué cuenta como marcador a medio sustituir sin falsos positivos, incluido el símbolo en medio del texto y un campo de texto libre (como el name) que legítimamente lo lleve",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 3): si vive en el parser de Trade Republic o en un sitio común. La plantilla de MyInvestor usa los mismos marcadores y sus productos entran en la F29: hay que decir si se comparte ahora, se comparte después, o no se comparte y por qué",
+        "Los parsers de los otros bancos NO cambian de comportamiento",
+        "La documentación que él lee lo recoge donde toque (docs/trade-republic-product-files.md, tabla de «qué pasa cuando un archivo está mal»)",
+        "Cada criterio con al menos un test, con fixtures sintéticos, mapeado en progress/implementations/half-erased-marker-message.md; ./init.sh termina en verde"
+      ],
+      "sdd": false,
+      "status": "done"
+    },
+    {
+      "id": 29,
+      "name": "myinvestor-products-to-db",
+      "title": "Los 5 productos de MyInvestor entran en la base de datos, como ya entra la cuenta remunerada",
+      "intent": {
+        "_procedencia": "Es la FEATURE HERMANA que el humano eligió en la puerta de aprobación de la F26, el 2026-08-20 (punto 1 de specs/savings-account-as-product/decisions.md): entonces decidió que entrara solo Trade Republic y que MyInvestor fuera después, reutilizando todo lo construido. La pidió el 2026-08-21: «si abre la feature para myinvestor». Estado medido ese día: sus 5 .json siguen saliendo skipped en POST /api/import con el motivo «extensión no soportada por el parser de myinvestor», y sus productos no están en la base.",
+        "que_quiero": "Que mis 5 productos de MyInvestor —mis fondos, mi ETF, mi cartera y mis depósitos— entren en la base de datos igual que ha entrado mi cuenta remunerada, subiendo los .json como cada mes.",
+        "por_que": "Es el otro medio de lo mismo: todo lo que dejo en Drive es para acabar en la base. Hoy mis productos de MyInvestor viven solo en un volcado, que es la base de datos falsa que quedamos en quitar.",
+        "como_se_que_esta_bien": [
+          "Subo mis 5 .json y después están en la base de datos, cada uno con su tipo.",
+          "Subo el mes siguiente y no se me duplican los productos: son los mismos, con una valoración más.",
+          "Si vuelvo a subir el mismo mes, no se duplica nada.",
+          "Mi cuenta remunerada de Trade Republic y sus meses siguen exactamente igual, y mis 4 cuentas y mis 455 movimientos también."
+        ],
+        "que_no_quiero": [
+          "No quiero escribir más campos en mis .json de los que ya escribo.",
+          "No quiero que se toque el parser de MyInvestor, que lleva funcionando desde el principio.",
+          "No quiero que un archivo malo me meta medio producto: o entra entero o no entra."
+        ],
+        "delego_en_agente": [
+          "Cómo se escribe el gemelo del escritor de la F26: hoy persistSavingsSnapshot RECHAZA cualquier tipo que no sea savings_account. Hay que decir si se generaliza, si se escribe al lado, o si se reparte, sin romper lo que la F26 dejó probado.",
+          "Dónde viven las condiciones del depósito (principal, tipo de interés, ganancia esperada, vencimiento), que son columnas del propio producto, y cómo se respeta la regla ya decidida de que un depósito NO tiene valoraciones porque no fluctúa (ADR-012).",
+          "Qué identifica una valoración y cómo se garantiza que subir el mismo mes dos veces no duplique, con el aviso de la F25 delante: una identidad que dependa de algo que se renumera no es idempotencia."
+        ]
+      },
+      "acceptance": [
+        "Los 5 .json de productos de MyInvestor dejan de salir skipped en POST /api/import y ENTRAN en la base de datos, cada uno con su tipo (fund, etf, managed_portfolio, deposit)",
+        "Los productos que FLUCTÚAN (fondo, ETF, cartera gestionada) guardan UNA VALORACIÓN POR FECHA; un DEPÓSITO NO guarda valoraciones y sus condiciones (principal, tipo de interés, ganancia esperada, vencimiento) van en el propio producto, como ya manda el ADR-012",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1): cómo convive el escritor nuevo con persistSavingsSnapshot, que hoy rechaza expresamente cualquier tipo que no sea savings_account. Lo que la F26 dejó probado NO se rompe",
+        "IDEMPOTENCIA: subir el mismo mes dos veces no duplica; el mes siguiente añade una valoración y NO crea un producto nuevo. La identidad se apoya en lo que escribe el humano —el nombre del producto y la fecha—, nunca en algo que se renumere (aviso de la F25). Test de las dos pasadas",
+        "O ENTRA ENTERO O NO ENTRA: el producto y su valoración se guardan en una sola transacción, y un archivo malo no deja medio producto detrás ni se mueve a procesados/ (misma regla que la F26, ADR-025)",
+        "El PARSER DE MYINVESTOR NO SE TOCA: esta feature añade quién escribe, no cómo se lee",
+        "El humano NO escribe ni un campo nuevo en sus .json",
+        "Los datos de hoy no se tocan: 4 cuentas, 455 movimientos, y su cuenta remunerada con su foto siguen igual, y esta feature no obliga a reimportar nada",
+        "Queda documentado en docs/api-contract.md y en docs/data-model.md —el registro único de columnas— lo que esta feature estrene o cambie de estado (una columna que gana escritor deja de figurar como columna sin escritor: eso ya rechazó la F26 en su primera revisión)",
+        "Ni un dato real del humano en tests ni en fixtures (ADR-017); cada criterio con al menos un test mapeado en progress/implementations/myinvestor-products-to-db.md; ./init.sh termina en verde"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

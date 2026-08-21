@@ -187,6 +187,10 @@ describe('architecture invariants', () => {
       'modules/investments/investments.types.ts',
       'modules/investments/investments.service.ts',
       'modules/investments/investments.service.test.ts',
+      // Feature 29: the end-to-end of the product files of MyInvestor entering
+      // the database through the REAL registry of app.ts. It lives in the bank
+      // module because it is that bank's entry, not a second importer.
+      'modules/myinvestor/myinvestor.import.test.ts',
     ]
 
     const missing = expected.filter((file) => !existsSync(join(srcDir, file)))
@@ -397,13 +401,22 @@ describe('architecture invariants', () => {
     }
   })
 
-  it('writes InvestmentProduct and SavingsSnapshot only from modules/investments (feature 26)', () => {
+  it('writes the three investment tables only from modules/investments (features 26, 29)', () => {
     // ADR-026: the bank module reads the file, the investments service writes
     // it. If a second place ever upserts a product, the two upserts of a
     // product file stop being one transaction and the promise "a file that does
     // not add up leaves no trace" is no longer checkable in one place.
+    //
+    // `Valuation` joined the list in feature 29, when it stopped being a table
+    // nobody wrote. It is matched through its client (`tx.` / `prisma.`) and not
+    // by the bare word: `input.valuation.` is a legitimate field access in a
+    // parser that has never seen a database.
     const writers = sourceFiles(srcDir)
-      .filter((file) => /\.(investmentProduct|savingsSnapshot)\./.test(readFileSync(file, 'utf8')))
+      .filter((file) =>
+        /\.(investmentProduct|savingsSnapshot)\.|(?:tx|prisma)\.valuation\./.test(
+          readFileSync(file, 'utf8'),
+        ),
+      )
       .map((file) => relative(srcDir, file).replace(/\\/g, '/'))
       .sort()
 

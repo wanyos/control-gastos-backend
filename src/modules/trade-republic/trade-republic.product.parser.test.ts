@@ -107,6 +107,135 @@ describe('the template copied without filling it in (R2)', () => {
   })
 })
 
+describe('a marker of the template HALF erased (feature 28)', () => {
+  it('reports the exact case of 2026-08-20 as a half-erased marker, not as an invalid date', () => {
+    // Both dates keep the opening `<` of the template, and the `<` of openedAt
+    // even survived a correction where the typos were pointed out one by one.
+    const reason = reasonOf(
+      parse(buildSavingsAccount({ date: '<2026-08-31', openedAt: '<2025-03-10' })),
+    )
+
+    expect(reason).toContain('A MEDIO SUSTITUIR')
+    expect(reason).toContain('date "<2026-08-31"')
+    expect(reason).toContain('openedAt "<2025-03-10"')
+    expect(reason).not.toContain('fecha inválida')
+    expect(reason).not.toContain('AAAA-MM-DD')
+  })
+
+  it('catches the closing symbol left behind, not only the opening one', () => {
+    const reason = reasonOf(parse(buildSavingsAccount({ date: '2026-08-31>' })))
+
+    expect(reason).toContain('A MEDIO SUSTITUIR')
+    expect(reason).toContain('date "2026-08-31>"')
+    expect(reason).not.toContain('fecha inválida')
+  })
+
+  it('works on ANY field, not only dates: an amount with the bracket stuck to it', () => {
+    const reason = reasonOf(parse(buildSavingsAccount({ balance: '<4006.40', moneyIn: '0>' })))
+
+    expect(reason).toContain('balance "<4006.40"')
+    expect(reason).toContain('moneyIn "0>"')
+    expect(reason).not.toContain('se espera un número')
+  })
+
+  it('works on the text fields too: type, name and currency', () => {
+    const reason = reasonOf(
+      parse(
+        buildSavingsAccount({
+          type: '<savings_account',
+          name: 'Cuenta Remunerada>',
+          currency: '<EUR',
+        }),
+      ),
+    )
+
+    expect(reason).toContain('type "<savings_account"')
+    expect(reason).toContain('name "Cuenta Remunerada>"')
+    expect(reason).toContain('currency "<EUR"')
+    expect(reason).not.toContain('valor no admitido')
+    expect(reason).not.toContain('se espera un texto no vacío')
+  })
+
+  it('says what to do: the value must not open with < nor end with >', () => {
+    const reason = reasonOf(parse(buildSavingsAccount({ date: '<2026-08-31' })))
+
+    expect(reason).toContain('un valor no puede empezar por < ni acabar en >')
+  })
+
+  it('NEITHER guesses NOR repairs: the file is rejected, no product comes out', () => {
+    const result = parse(buildSavingsAccount({ date: '<2026-08-31' }))
+
+    expect('reason' in result).toBe(true)
+    expect(result).not.toHaveProperty('date')
+  })
+
+  it('does not pile the arithmetic check on top: the amounts were never read', () => {
+    const reason = reasonOf(parse(buildSavingsAccount({ balance: '<4006.40' })))
+
+    expect(reason).not.toContain('no cuadran')
+  })
+
+  it('does NOT count the symbol in the MIDDLE of a free text: that name enters', () => {
+    // The middle is the only place free text can legitimately carry the symbol,
+    // and erasing one delimiter always leaves the other one at an END.
+    expect(parse(buildSavingsAccount({ name: 'Ahorro 3 > 2 sintetica' }))).toMatchObject({
+      name: 'Ahorro 3 > 2 sintetica',
+    })
+    expect(parse(buildSavingsAccount({ name: 'Ahorro a < plazo sintetica' }))).toMatchObject({
+      name: 'Ahorro a < plazo sintetica',
+    })
+  })
+
+  it('rejects a free-text name that OPENS with the symbol, on purpose (accepted trade-off)', () => {
+    // Rejecting a bit too much with a reason he understands beats swallowing a
+    // value: he renames the account, and there is no escape hatch for a
+    // placeholder entering as the name of an account.
+    const reason = reasonOf(parse(buildSavingsAccount({ name: '<Ahorro sintetico' })))
+
+    expect(reason).toContain('A MEDIO SUSTITUIR')
+    expect(reason).toContain('name "<Ahorro sintetico"')
+  })
+
+  it('keeps the WHOLE-marker message intact and apart, even in the same file', () => {
+    const reason = reasonOf(
+      parse(buildSavingsAccount({ name: '<cómo llamas tú a esta cuenta>', date: '<2026-08-31' })),
+    )
+
+    expect(reason).toContain(
+      'campos sin sustituir, siguen con el marcador <…> de la plantilla: name',
+    )
+    expect(reason).toContain('A MEDIO SUSTITUIR')
+    expect(reason).toContain('date "<2026-08-31"')
+    // The whole marker goes FIRST: it explains all the rest.
+    expect(reason.indexOf('campos sin sustituir')).toBeLessThan(reason.indexOf('A MEDIO'))
+  })
+})
+
+describe('NON-REGRESSION: a value really badly written says exactly what it said before', () => {
+  it('an impossible date, a number with letters and text where a number goes', () => {
+    expect(reasonOf(parse(buildSavingsAccount({ openedAt: '2026-02-31' })))).toContain(
+      'openedAt: fecha inválida, se espera el formato AAAA-MM-DD, recibido "2026-02-31"',
+    )
+    expect(reasonOf(parse(buildSavingsAccount({ balance: '4006,40 euros' })))).toContain(
+      'balance: se espera un número sin comillas, recibido "4006,40 euros"',
+    )
+    expect(reasonOf(parse(buildSavingsAccount({ moneyIn: true })))).toContain(
+      'moneyIn: se espera un número, recibido true',
+    )
+  })
+
+  it('and none of them is called a half-erased marker', () => {
+    for (const account of [
+      buildSavingsAccount({ date: '31/08/2026' }),
+      buildSavingsAccount({ type: 'fund' }),
+      buildSavingsAccount({ name: '   ' }),
+      buildSavingsAccount({ balance: '4006.40' }),
+    ]) {
+      expect(reasonOf(parse(account))).not.toContain('A MEDIO')
+    }
+  })
+})
+
 describe('missing mandatory fields (R8)', () => {
   it('names ALL the ones missing, not the first', () => {
     const account = buildSavingsAccount()

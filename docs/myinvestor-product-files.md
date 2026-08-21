@@ -2,8 +2,14 @@
 
 > **Qué es esto:** la **fuente de verdad del formato** de los archivos `.json` que
 > escribes a mano, uno por producto de inversión, y dejas en la carpeta de MyInvestor
-> de Drive. Lo lee el parser de la feature 13 (`src/modules/myinvestor/`), sin base de
-> datos y sin mover nada en Drive.
+> de Drive. Lo lee el parser de la feature 13 (`src/modules/myinvestor/`).
+>
+> 🔄 **Desde la feature 29 (2026-08-21) estos archivos ENTRAN en la base de datos.**
+> Antes se leían y se dejaban en un volcado; ahora `POST /api/import` guarda cada
+> producto con su tipo y su foto. **No tienes que escribir ni un campo nuevo**: el
+> formato de este documento es exactamente el mismo. Lo que cambia es a dónde va.
+> Sigue habiendo un camino que solo lee y no guarda nada, `POST /api/parser/myinvestor`
+> (ver §Dónde acaba lo que escribes).
 >
 > ⚠️ **Este documento NO es la plantilla que copias cada mes.** Tu plantilla vive en
 > **Drive, en una carpeta HERMANA de `notas-banco/`** (nunca dentro: todo lo que cuelga
@@ -271,3 +277,28 @@ estructura interpretada (`valuation` y `depositTerms` separados, más el banco y
 archivo de procedencia), las fechas ya validadas, todos los productos del año juntos y
 la lista de lo que salió mal—. Revisarlo es la forma de comprobar que lo que escribiste
 y lo que el sistema entendió son lo mismo.
+
+### Y desde la feature 29, en la base de datos
+
+```
+Drive: notas-banco/MyInvestor/<año>/<producto>.json
+   │  POST /api/import
+   ▼
+InvestmentProduct  (uno por producto, identificado por su "name")
+   └── Valuation   (una fila por "date")   ← fondo, ETF y cartera gestionada
+```
+
+- **Tu depósito no tiene filas de valoración**, y es a propósito: un depósito no
+  fluctúa. Sus cuatro condiciones (`principal`, `interestRate`, `expectedGain`,
+  `maturityDate`) se guardan **en el producto**, y volver a subirlo las reescribe.
+- **El `name` es la identidad del producto.** Si lo cambias en el archivo se crea
+  **otro** producto y la serie anterior se queda colgando del nombre viejo. Escríbelo
+  igual todos los meses. Y si reutilizas un `name` que ya existe **con otro tipo**, el
+  archivo se **rechaza** en vez de convertirte el producto en silencio.
+- **Subir el mismo mes dos veces no duplica nada**: la fecha del archivo es la
+  identidad de la foto y se sobrescribe. El mes siguiente añade una fila más.
+- **O entra entero o no entra:** un archivo con una errata no deja medio producto
+  detrás, no se guarda nada y **no** se mueve a `procesados/`; lo corriges y lo vuelves
+  a subir.
+- `POST /api/parser/myinvestor` **sigue sin guardar nada**: es el ensayo, para mirar
+  qué ha entendido el sistema antes de que entre.

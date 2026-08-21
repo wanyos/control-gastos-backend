@@ -9,8 +9,18 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { buildApp } from '../../app.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
-import { persistSavingsSnapshot } from './investments.service.js'
-import type { SavingsSnapshotInput } from './investments.types.js'
+import {
+  persistDeposit,
+  persistProductSnapshot,
+  persistSavingsSnapshot,
+  persistValuation,
+} from './investments.service.js'
+import type {
+  DepositInput,
+  ProductFileInput,
+  SavingsSnapshotInput,
+  ValuationInput,
+} from './investments.types.js'
 
 const bank = 'trade-republic-test-bank'
 
@@ -153,7 +163,8 @@ describe('persistSavingsSnapshot: the two upserts of a product file', () => {
 
     expect(second.product.id).toBe(first.product.id)
     expect(second.product.created).toBe(false)
-    expect(second.snapshot.created).toBe(false)
+    expect(second.snapshot).not.toBeNull()
+    expect(second.snapshot?.created).toBe(false)
     expect(await app.prisma.investmentProduct.count({ where: { bank, name: value.name } })).toBe(1)
     const photos = await app.prisma.savingsSnapshot.findMany({
       where: { productId: first.product.id },
@@ -265,5 +276,359 @@ describe('persistSavingsSnapshot: the two upserts of a product file', () => {
       await app.prisma.movement.deleteMany({ where: { accountId: account.id } })
       await app.prisma.account.delete({ where: { id: account.id } })
     }
+  })
+})
+
+// ── Feature 29: the twins of the writer, for the other four types ───────────
+//
+// 🔒 Every value here is invented (ADR-017): unique generated product names, a
+// bank slug of its own, and amounts built by hand.
+
+describe('persistValuation: a product that fluctuates (feature 29)', () => {
+  let app: FastifyInstance
+  const createdProductIds: number[] = []
+  let counter = 0
+
+  const bank29 = 'zz-myinvestor-test-bank'
+
+  function uniqueName(): string {
+    counter += 1
+    return `Producto Sintetico ${Date.now()}-${counter}-${Math.floor(Math.random() * 1_000_000)}`
+  }
+
+  function fund(overrides: Partial<ValuationInput> = {}): ValuationInput {
+    return {
+      bank: bank29,
+      name: uniqueName(),
+      type: 'fund',
+      currency: 'EUR',
+      openedAt: '2025-01-15',
+      closedAt: null,
+      date: '2026-08-31',
+      valuation: {
+        invested: 800,
+        marketValue: 947.25,
+        gain: 147.25,
+        gainPercent: 18.4063,
+        uninvestedCash: null,
+      },
+      ...overrides,
+    }
+  }
+
+  function deposit(overrides: Partial<DepositInput> = {}): DepositInput {
+    return {
+      bank: bank29,
+      name: uniqueName(),
+      type: 'deposit',
+      currency: 'EUR',
+      openedAt: '2026-01-15',
+      closedAt: null,
+      date: '2026-08-31',
+      depositTerms: {
+        principal: 1200,
+        interestRate: 1.5,
+        expectedGain: 4.5,
+        maturityDate: '2027-04-15',
+      },
+      ...overrides,
+    }
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    if (createdProductIds.length > 0) {
+      await app.prisma.valuation.deleteMany({ where: { productId: { in: createdProductIds } } })
+      await app.prisma.savingsSnapshot.deleteMany({
+        where: { productId: { in: createdProductIds } },
+      })
+      await app.prisma.investmentProduct.deleteMany({ where: { id: { in: createdProductIds } } })
+      createdProductIds.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  async function persist(value: ProductFileInput) {
+    const result = await persistProductSnapshot(app.prisma, value)
+    createdProductIds.push(result.product.id)
+    return result
+  }
+
+  it('creates the product with its type, currency and dates (C1)', async () => {
+    const value = fund({ type: 'etf', closedAt: '2026-09-30' })
+
+    const result = await persist(value)
+
+    const stored = await app.prisma.investmentProduct.findUniqueOrThrow({
+      where: { id: result.product.id },
+    })
+    expect(stored.bank).toBe(bank29)
+    expect(stored.name).toBe(value.name)
+    expect(stored.type).toBe('etf')
+    expect(stored.currency).toBe('EUR')
+    expect(stored.openedAt?.toISOString().slice(0, 10)).toBe('2025-01-15')
+    expect(stored.closedAt?.toISOString().slice(0, 10)).toBe('2026-09-30')
+    expect(result.product.created).toBe(true)
+  })
+
+  it('stores the three types that fluctuate, each with its own row (C1)', async () => {
+    for (const type of ['fund', 'etf', 'managed_portfolio'] as const) {
+      const result = await persist(fund({ type }))
+
+      const stored = await app.prisma.investmentProduct.findUniqueOrThrow({
+        where: { id: result.product.id },
+      })
+      expect(stored.type).toBe(type)
+      expect(await app.prisma.valuation.count({ where: { productId: stored.id } })).toBe(1)
+    }
+  })
+
+  it('stores the five numbers as written, computing nothing (C1)', async () => {
+    // On purpose, `gain` does NOT match `marketValue - invested`: what the file
+    // says is what is stored, and no column is recomputed here.
+    const value = fund({
+      valuation: {
+        invested: 800,
+        marketValue: 947.25,
+        gain: 100,
+        gainPercent: 12.5,
+        uninvestedCash: 12.05,
+      },
+    })
+
+    const result = await persist(value)
+
+    const row = await app.prisma.valuation.findFirstOrThrow({
+      where: { productId: result.product.id },
+    })
+    expect(row.invested.toFixed(2)).toBe('800.00')
+    expect(row.marketValue.toFixed(2)).toBe('947.25')
+    expect(row.gain?.toFixed(2)).toBe('100.00')
+    expect(row.gainPercent?.toFixed(4)).toBe('12.5000')
+    expect(row.uninvestedCash?.toFixed(2)).toBe('12.05')
+  })
+
+  it('leaves the cash column NULL when the file carries none (C1)', async () => {
+    const result = await persist(fund())
+
+    const row = await app.prisma.valuation.findFirstOrThrow({
+      where: { productId: result.product.id },
+    })
+    expect(row.uninvestedCash).toBeNull()
+  })
+
+  it('writes no SavingsSnapshot for a product that fluctuates (C2)', async () => {
+    const result = await persist(fund())
+
+    expect(
+      await app.prisma.savingsSnapshot.count({ where: { productId: result.product.id } }),
+    ).toBe(0)
+    expect(await app.prisma.valuation.count({ where: { productId: result.product.id } })).toBe(1)
+  })
+
+  it('leaves one product and one row when the same date is loaded twice (C4)', async () => {
+    const value = fund()
+
+    const first = await persist(value)
+    const second = await persist({
+      ...value,
+      valuation: { ...value.valuation, marketValue: 950.1 },
+    })
+
+    expect(second.product.id).toBe(first.product.id)
+    expect(second.product.created).toBe(false)
+    expect(second.snapshot).not.toBeNull()
+    expect(second.snapshot?.created).toBe(false)
+    expect(
+      await app.prisma.investmentProduct.count({ where: { bank: bank29, name: value.name } }),
+    ).toBe(1)
+    const rows = await app.prisma.valuation.findMany({ where: { productId: first.product.id } })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.marketValue.toFixed(2)).toBe('950.10')
+  })
+
+  it('reuses the product and adds a row for the next date (C4)', async () => {
+    const value = fund({ date: '2026-07-31' })
+
+    const first = await persist(value)
+    const second = await persist({ ...value, date: '2026-08-31' })
+
+    expect(second.product.id).toBe(first.product.id)
+    expect(second.product.created).toBe(false)
+    expect(second.snapshot?.created).toBe(true)
+    expect(
+      await app.prisma.investmentProduct.count({ where: { bank: bank29, name: value.name } }),
+    ).toBe(1)
+    const rows = await app.prisma.valuation.findMany({
+      where: { productId: first.product.id },
+      orderBy: { date: 'asc' },
+    })
+    expect(rows.map((row) => row.date.toISOString().slice(0, 10))).toEqual([
+      '2026-07-31',
+      '2026-08-31',
+    ])
+  })
+
+  it('refuses to hang a row on a product of another type (C2)', async () => {
+    const name = uniqueName()
+    const other = await app.prisma.investmentProduct.create({
+      data: { bank: bank29, name, type: 'savings_account' },
+    })
+    createdProductIds.push(other.id)
+
+    await expect(persistValuation(app.prisma, fund({ name }))).rejects.toThrow(/'savings_account'/)
+
+    const stored = await app.prisma.investmentProduct.findUniqueOrThrow({
+      where: { id: other.id },
+    })
+    expect(stored.type).toBe('savings_account')
+    expect(await app.prisma.valuation.count({ where: { productId: other.id } })).toBe(0)
+  })
+
+  it('rejects an input whose type has no Valuation, before touching anything (C3)', async () => {
+    const value = { ...fund(), type: 'deposit' } as unknown as ValuationInput
+
+    await expect(persistValuation(app.prisma, value)).rejects.toThrow(/Valuation/)
+
+    expect(
+      await app.prisma.investmentProduct.count({ where: { bank: bank29, name: value.name } }),
+    ).toBe(0)
+  })
+
+  it('leaves neither product nor row when the write is rejected (C5)', async () => {
+    // A date the database cannot store: the product has already been upserted
+    // when it blows up, so this is what proves the two writes are one.
+    const value = fund({ date: 'not-a-date' })
+
+    await expect(persistValuation(app.prisma, value)).rejects.toThrow()
+
+    expect(
+      await app.prisma.investmentProduct.count({ where: { bank: bank29, name: value.name } }),
+    ).toBe(0)
+  })
+
+  it('stores the four conditions of a deposit on the product itself (C2)', async () => {
+    const value = deposit()
+
+    const result = await persist(value)
+
+    const stored = await app.prisma.investmentProduct.findUniqueOrThrow({
+      where: { id: result.product.id },
+    })
+    expect(stored.type).toBe('deposit')
+    expect(stored.principal?.toFixed(2)).toBe('1200.00')
+    expect(stored.interestRate?.toFixed(4)).toBe('1.5000')
+    expect(stored.expectedGain?.toFixed(2)).toBe('4.50')
+    expect(stored.maturityDate?.toISOString().slice(0, 10)).toBe('2027-04-15')
+  })
+
+  it('gives a deposit no Valuation and no SavingsSnapshot at all (C2)', async () => {
+    const result = await persist(deposit())
+
+    expect(await app.prisma.valuation.count({ where: { productId: result.product.id } })).toBe(0)
+    expect(
+      await app.prisma.savingsSnapshot.count({ where: { productId: result.product.id } }),
+    ).toBe(0)
+    // And it says so instead of reporting a photo that does not exist.
+    expect(result.snapshot).toBeNull()
+  })
+
+  it('does not duplicate a deposit loaded twice (C4)', async () => {
+    const value = deposit()
+
+    const first = await persist(value)
+    const second = await persist({
+      ...value,
+      depositTerms: { ...value.depositTerms, expectedGain: 4.75 },
+    })
+
+    expect(second.product.id).toBe(first.product.id)
+    expect(second.product.created).toBe(false)
+    expect(
+      await app.prisma.investmentProduct.count({ where: { bank: bank29, name: value.name } }),
+    ).toBe(1)
+    const stored = await app.prisma.investmentProduct.findUniqueOrThrow({
+      where: { id: first.product.id },
+    })
+    expect(stored.expectedGain?.toFixed(2)).toBe('4.75')
+  })
+
+  it('leaves the four deposit columns NULL on a product that fluctuates (C2)', async () => {
+    const result = await persist(fund())
+
+    const stored = await app.prisma.investmentProduct.findUniqueOrThrow({
+      where: { id: result.product.id },
+    })
+    expect(stored.principal).toBeNull()
+    expect(stored.interestRate).toBeNull()
+    expect(stored.expectedGain).toBeNull()
+    expect(stored.maturityDate).toBeNull()
+  })
+
+  it('rejects a deposit input whose type is not deposit (C3)', async () => {
+    const value = { ...deposit(), type: 'fund' } as unknown as DepositInput
+
+    await expect(persistDeposit(app.prisma, value)).rejects.toThrow(/deposit/)
+
+    expect(
+      await app.prisma.investmentProduct.count({ where: { bank: bank29, name: value.name } }),
+    ).toBe(0)
+  })
+
+  it('sends each type to its own writer and leaves the F26 one untouched (C3)', async () => {
+    // The dispatcher is the ONLY thing that reads `type` to choose a writer.
+    // `persistSavingsSnapshot` still refuses anything else, exactly as F26 left
+    // it: that is what "nothing already proved is re-proved" means here.
+    const savings: SavingsSnapshotInput = {
+      bank: bank29,
+      name: uniqueName(),
+      type: 'savings_account',
+      currency: 'EUR',
+      openedAt: '2025-03-10',
+      closedAt: null,
+      date: '2026-08-31',
+      openingBalance: 4000,
+      moneyIn: 0,
+      moneyOut: 0,
+      interest: 6.4,
+      balance: 4006.4,
+    }
+
+    const viaSavings = await persist(savings)
+    const viaValuation = await persist(fund())
+    const viaDeposit = await persist(deposit())
+
+    expect(
+      await app.prisma.savingsSnapshot.count({ where: { productId: viaSavings.product.id } }),
+    ).toBe(1)
+    expect(await app.prisma.valuation.count({ where: { productId: viaSavings.product.id } })).toBe(
+      0,
+    )
+    expect(
+      await app.prisma.valuation.count({ where: { productId: viaValuation.product.id } }),
+    ).toBe(1)
+    expect(viaDeposit.snapshot).toBeNull()
+
+    await expect(
+      persistSavingsSnapshot(app.prisma, { ...savings, type: 'fund' } as never),
+    ).rejects.toThrow(/savings_account/)
+  })
+
+  it('touches neither Account nor Movement (C8)', async () => {
+    const accountsBefore = await app.prisma.account.count()
+    const movementsBefore = await app.prisma.movement.count()
+
+    await persist(fund())
+    await persist(deposit())
+
+    expect(await app.prisma.account.count()).toBe(accountsBefore)
+    expect(await app.prisma.movement.count()).toBe(movementsBefore)
   })
 })

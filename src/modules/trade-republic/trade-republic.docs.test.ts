@@ -77,6 +77,19 @@ describe('docs/trade-republic-product-files.md — the arithmetic check (R17)', 
   })
 })
 
+describe('docs/trade-republic-product-files.md — the half-erased marker (feature 28)', () => {
+  it('has its own row in the table of «qué pasa cuando un archivo está mal»', () => {
+    expect(productFiles).toContain('a medio sustituir')
+    expect(productFiles).toContain('te dejaste un símbolo suelto')
+  })
+
+  it('says what counts, what does not, and that nothing gets repaired', () => {
+    expect(productFiles).toContain('empieza\n> por `<` o acaba en `>`')
+    expect(productFiles).toContain('el símbolo **en medio** de un texto no cuenta')
+    expect(productFiles).toContain('no te lo arregla')
+  })
+})
+
 describe('docs/trade-republic-product-files.md — what it does NOT repeat (R3)', () => {
   it('links to the MyInvestor document instead of copying its writing rules', () => {
     expect(productFiles).toContain('myinvestor-product-files.md')

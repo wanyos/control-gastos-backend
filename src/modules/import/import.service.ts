@@ -26,7 +26,7 @@ import { normalizeIban } from '../../lib/iban.js'
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { findOrCreateAccountFromMetadata } from '../accounts/accounts.service.js'
-import { persistSavingsSnapshot } from '../investments/investments.service.js'
+import { persistProductSnapshot } from '../investments/investments.service.js'
 import type {
   ProductParserAdapter,
   ProductParserRegistry,
@@ -386,10 +386,15 @@ export interface ImportProductFileDeps {
  * The core of importing one PRODUCT file (feature 26): parse, then persist the
  * product and the photo of its month in ONE transaction.
  *
+ * Since feature 29 it carries FOUR more kinds of product without one line of its
+ * own changing: which writer a file needs is decided by `persistProductSnapshot`
+ * from the `type` the file declares, so this function still knows only "parse,
+ * store, report".
+ *
  * The WHOLE validation of the parser -- the five amounts adding up included --
  * happens inside `adapter.parse`, before a single row is touched. That is what
  * makes "a file that does not add up leaves no trace" true and checkable: the
- * throw happens before `persistSavingsSnapshot` is even called, and what that
+ * throw happens before `persistProductSnapshot` is even called, and what that
  * function writes is one transaction that rolls back as a whole.
  *
  * It never throws: a per-file failure comes back as `status: 'failed'` plus the
@@ -402,7 +407,7 @@ export async function importProductFile(deps: ImportProductFileDeps): Promise<Pr
     const parsed = deps.adapter.parse(deps.fileName, deps.content)
     // The bank of a file is the one of its FOLDER (ADR-009), never the one its
     // contents claim: the parser's own slug is overwritten here on purpose.
-    const stored = await persistSavingsSnapshot(deps.prisma, { ...parsed, bank: deps.bankSlug })
+    const stored = await persistProductSnapshot(deps.prisma, { ...parsed, bank: deps.bankSlug })
     result.product = stored.product
     result.snapshot = stored.snapshot
     result.status = 'imported'
