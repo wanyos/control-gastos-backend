@@ -155,7 +155,9 @@ describe('parseMyinvestorProduct — opening a product (feature 15)', () => {
   })
 
   it('keeps the exact opening date written, in both shapes of product (F15-C1)', () => {
-    expect(parsedOk(parse(buildProductFund({ openedAt: '2024-02-29' }))).openedAt).toBe('2024-02-29')
+    expect(parsedOk(parse(buildProductFund({ openedAt: '2024-02-29' }))).openedAt).toBe(
+      '2024-02-29',
+    )
     expect(parsedOk(parse(buildProductDeposit({ openedAt: '2026-01-02' }))).openedAt).toBe(
       '2026-01-02',
     )
