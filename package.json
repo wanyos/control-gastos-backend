@@ -19,7 +19,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
   },
-  "packageManager": "pnpm@11.21.0",
+  "packageManager": "pnpm@11.22.0",
   "engines": {
     "node": ">=20"
   },
@@ -36,18 +36,18 @@
     "@prisma/client": "^7.9.1",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
-    "fastify": "^5.11.3",
+    "fastify": "^5.12.1",
     "fastify-plugin": "^6.0.0",
     "pg": "^8.23.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "@types/pg": "^8.21.0",
-    "oxlint": "^1.78.0",
+    "@types/pg": "^8.23.1",
+    "oxlint": "^1.79.0",
     "prettier": "^3.9.6",
     "prisma": "^7.9.1",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
