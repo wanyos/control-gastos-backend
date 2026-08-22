@@ -7,7 +7,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { mandatoryKeys, tradeRepublicTemplate } from './trade-republic.fixture.js'
+import { tradeRepublicTemplate } from './trade-republic.fixture.js'
 
 const repoRoot = new URL('../../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
@@ -117,38 +117,5 @@ describe('it is written down that this is provisional (R4)', () => {
 
   it('docs/conventions.md admits a bank may enter by hand-written file only', () => {
     expect(doc('conventions.md')).toContain('solo por archivo escrito a mano')
-  })
-})
-
-// A THIRD copy of the template (the copyable `.json` file) is a third thing that
-// can drift. The document already promises the human it cannot ("es byte a byte el
-// bloque de abajo —un test lo comprueba"), so that promise has to be kept here.
-describe('docs/plantillas/trade-republic-cuenta-remunerada.json — the copyable file (R1)', () => {
-  const copyable = doc(join('plantillas', 'trade-republic-cuenta-remunerada.json'))
-
-  it('is byte for byte the json block of the document', () => {
-    // No `.trim()` on purpose: a diverging trailing newline is exactly the kind of
-    // drift this test is for, and the ```json block already ends at the closing
-    // fence, so both strings finish with `}\n`.
-    expect(copyable).toBe(jsonBlocks(productFiles)[0])
-  })
-
-  it('is byte for byte the template the parser test copies verbatim', () => {
-    expect(copyable).toBe(tradeRepublicTemplate)
-  })
-
-  it('carries NO copyable value: every value is a <…> marker', () => {
-    // Worse here than in a doc block: a real value leaked into a `.json` file gets
-    // copied without being read.
-    const parsed = JSON.parse(copyable) as Record<string, unknown>
-
-    expect(Object.keys(parsed)).toEqual([...mandatoryKeys, 'closedAt'])
-
-    for (const [key, value] of Object.entries(parsed)) {
-      expect(
-        typeof value === 'string' && /^<.*>$/s.test(value),
-        `${key} is not a <…> marker: ${JSON.stringify(value)}`,
-      ).toBe(true)
-    }
   })
 })

@@ -5,15 +5,11 @@
 > dejas en la carpeta de Trade Republic de Drive. Lo lee el parser de la feature 20
 > (`src/modules/trade-republic/`), **sin base de datos** y sin mover nada en Drive.
 >
-> ⚠️ **Este documento NO es la plantilla que copias cada mes**, pero sí hay un archivo
-> copiable: [`plantillas/trade-republic-cuenta-remunerada.json`](plantillas/trade-republic-cuenta-remunerada.json).
-> Es **byte a byte** el bloque de abajo —un test lo comprueba, así que no puede
-> desviarse— y está para que copies un `.json` en vez de un trozo de markdown.
->
-> Tu plantilla de trabajo vive en **Drive, en una carpeta HERMANA de `notas-banco/`**
-> (nunca dentro: todo lo que cuelga de `notas-banco/` se toma por un banco). Esa copia
-> la creas y la mantienes tú; **nadie comprueba que la de Drive coincida con esta**.
-> Cuando el formato cambie, se cambia **aquí** y tú actualizas la de Drive.
+> ⚠️ **Este documento NO es la plantilla que copias cada mes.** Tu plantilla de trabajo
+> vive en **Drive, en una carpeta HERMANA de `notas-banco/`** (nunca dentro: todo lo que
+> cuelga de `notas-banco/` se toma por un banco). Esa copia la creas y la mantienes tú;
+> **nadie comprueba que la de Drive coincida con esta**. Cuando el formato cambie, se
+> cambia **aquí** y tú actualizas la de Drive.
 >
 > Decisiones que lo fijan: `specs/trade-republic-product-file/decisions.md` y
 > `docs/architecture.md` §ADR-024.
