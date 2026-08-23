@@ -14,6 +14,24 @@
 > **Estado de partida:** 876 tests en 48 archivos, 29 features cerradas, 71
 > archivos de producción en `src/` (sin `generated/`).
 
+## Qué se decidió (2026-08-23) — leer esto antes que el resto
+
+Este informe es la **foto del 2026-08-22**. Lo que se decidió después, con el
+humano, y que **acota lo que sigue vivo**:
+
+| Hallazgo | Decisión |
+|---|---|
+| **G1** — el marcador sin sustituir entra como nombre de producto | ✅ **CERRADO por la F30** (2026-08-23). Y el alcance era **menor** que el que este informe le puso: al medirlo campo por campo, solo **`name` y `currency`** estaban expuestos —los otros once ya rechazaban por su propia validación—, así que no eran «cuatro huecos» sino **dos campos**. Ver [resumen](../summaries/myinvestor-template-marker-guard.md) y [veredicto](../reviews/myinvestor-template-marker-guard.md) |
+| **G2, G3, G4** y los 9 🟠 y 5 ⚪ | 🕗 **No se abren.** El humano los revisó y los considera **menores**: «el resto de indicaciones igual, creo que son cosas menores». No están descartados —quedan aquí con su evidencia y su `archivo:línea`— pero **no son trabajo pendiente**: se retoman solo si alguno molesta de verdad |
+
+> ⚠️ **Sobre la clasificación de este informe.** Llamó «graves» a cuatro cosas, y
+> en el caso de G1 el humano discutió esa etiqueta con razón: parte de la
+> gravedad venía de contar como huecos separados cuatro guardias que en la
+> práctica se reducían a **un campo de texto libre**. La evidencia medida era
+> buena; **la escala estaba subida**. Léase lo que sigue con ese descuento.
+
+---
+
 ## Resumen
 
 | | Cuántos |

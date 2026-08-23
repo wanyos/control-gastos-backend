@@ -1,5 +1,15 @@
 # Auditoría de la suite de tests: ¿son muchos? ¿son útiles todos?
 
+> **Decidido el 2026-08-23:** no se borra ni un test. El humano leyó el informe y
+> los 14 que sobran (1,6 %) y los ~16 «a decidir» **se quedan**: «creo que son
+> cosas menores». Esto no es trabajo pendiente, es el registro de dónde está la
+> poca grasa que hay, por si algún día molesta. El veredicto que importa sigue en
+> pie: **876 tests eran una cifra sana**.
+>
+> Los dos hallazgos que NO eran grasa sino lo contrario —el test que dice «todos
+> los bancos» con una lista escrita a mano que dejó fuera a Openbank, y las seis
+> clases de error sin test propio— también quedan aquí, sin abrir.
+
 > Exploración del 2026-08-22. **No se ha borrado ni editado ni un test.** La
 > suite se ejecutó tres veces (bases desechables de la F27; el `globalSetup`
 > confirmó en las tres que la base del humano quedó exactamente igual).
