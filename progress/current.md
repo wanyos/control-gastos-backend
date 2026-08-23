@@ -20,7 +20,7 @@
 
 ## Feature en curso
 
-_Ninguna._
+_Ninguna._ Última cerrada: **F30 `myinvestor-template-marker-guard`** (2026-08-23, aprobada) — [veredicto](reviews/myinvestor-template-marker-guard.md) · [resumen](summaries/myinvestor-template-marker-guard.md). Esta línea se **sustituye** en el siguiente cierre; aquí no se acumula nada.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:

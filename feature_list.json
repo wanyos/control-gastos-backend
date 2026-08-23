@@ -1229,6 +1229,45 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 30,
+      "name": "myinvestor-template-marker-guard",
+      "title": "Un marcador de la plantilla sin sustituir deja de entrar como nombre de producto de MyInvestor",
+      "intent": {
+        "_procedencia": "Sale de la auditoría de cobertura del 2026-08-22 (progress/explorations/auditoria-tests-huecos-2026-08-22.md, G1), comprobada con una sonda y no deducida: un .json de producto de MyInvestor con el marcador de la plantilla en el nombre ENTRA EN VERDE. El humano discutió el alcance y tenía razón en encogerlo: casi toda la plantilla ya está protegida por accidente —un marcador en un importe falla por no ser un número, y en el tipo de producto por no estar en la lista—, así que el único sitio por el que entra de verdad es el NOMBRE, que admite texto libre. Aprobó el arreglo el 2026-08-23: «si me parece bien, hagamos entonces lo recomendado». Trade Republic ya lo rechaza desde la F20, y la F28 amplió allí la regla al marcador a medio borrar.",
+        "que_quiero": "Que si subo un .json de producto de MyInvestor con un campo sin rellenar —con el marcador de la plantilla todavía puesto— se rechace y se me diga qué campo, en vez de entrar en silencio.",
+        "por_que": "El nombre es la identidad del producto: uno que entra con el nombre a medio rellenar se queda en la base, y el mes siguiente, ya con el nombre bien, se me crea OTRO producto en vez de continuar el mismo. Y no es teórico: el 2026-08-15 subí un archivo con los valores del ejemplo y sobrevivió a una revisión humana, porque eran valores legales, solo que falsos.",
+        "como_se_que_esta_bien": [
+          "Si subo un .json de producto con el marcador de la plantilla en el nombre, se rechaza y el motivo me dice el campo.",
+          "Mis 5 productos de MyInvestor siguen entrando exactamente igual que hoy.",
+          "Los productos que ya están en la base no se tocan ni hay que reimportar nada."
+        ],
+        "que_no_quiero": [
+          "No quiero escribir ni un campo más en mis .json.",
+          "No quiero que el parser adivine ni arregle: que rechace y me lo diga.",
+          "No quiero que esto cambie el parser de ningún otro banco."
+        ],
+        "delego_en_agente": [
+          "Si la comprobación se comparte con Trade Republic o se escribe en el parser de MyInvestor. OJO: la F28 decidió NO compartirla y dejó escrita la condición exacta para reabrirlo — «se comparte cuando haya dos usuarios reales y la F29 esté cerrada, y solo si entonces sigue haciendo falta». Las dos condiciones se cumplen hoy, así que la decisión hay que TOMARLA, no heredarla, y justificarla por escrito en cualquiera de los dos sentidos.",
+          "Si la regla cubre solo el marcador entero o también el marcador a medio borrar (un símbolo suelto), que es lo que la F28 añadió en Trade Republic. Hay que decir por qué, sin abrir falsos positivos en un campo de texto libre como el nombre.",
+          "Qué campos de la plantilla de MyInvestor quedan expuestos de verdad, comprobado y no supuesto: la auditoría dice que los importes y el tipo ya fallan por su propia validación. Si aparece algún otro campo de texto libre, entra en el alcance."
+        ]
+      },
+      "acceptance": [
+        "Un .json de producto de MyInvestor cuyo NOMBRE sigue siendo el marcador de la plantilla se RECHAZA, con un motivo que nombra el campo. Test con el caso exacto que la auditoría reprodujo",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 3): qué campos de esa plantilla están expuestos de verdad. Los importes y el tipo ya fallan por su propia validación —hay que COMPROBARLO, no suponerlo— y todo campo de texto libre que aparezca entra en el alcance",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1): compartir la comprobación con Trade Republic o escribirla aparte. La F28 dejó la condición escrita y hoy se cumple: la decisión se toma ahora y se justifica, en el sentido que sea",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 2): si la regla cubre también el marcador A MEDIO BORRAR, como en Trade Republic desde la F28, sin generar falsos positivos en un campo de texto libre",
+        "Los 5 productos reales del humano SIGUEN ENTRANDO igual que hoy: hay test de no-regresión con fixtures sintéticas de los cuatro tipos (fund, etf, managed_portfolio, deposit)",
+        "Lo que ya está guardado NO se toca y no hay que reimportar nada",
+        "El humano no escribe ni un campo nuevo, y el parser NO adivina ni repara: rechaza y lo dice",
+        "Ningún otro banco cambia de comportamiento",
+        "docs/myinvestor-product-files.md recoge el caso en su tabla de «qué pasa cuando un archivo está mal», si la tiene, o donde le corresponda",
+        "Ni un dato real del humano en tests ni en fixtures (ADR-017); cada criterio con al menos un test mapeado en progress/implementations/myinvestor-template-marker-guard.md; ./init.sh termina en verde"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

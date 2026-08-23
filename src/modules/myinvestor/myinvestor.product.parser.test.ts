@@ -418,3 +418,126 @@ describe('parseMyinvestorProduct — a badly written file (R40-R45, R48, R77)', 
     expect(reason).toContain('sobra')
   })
 })
+
+/**
+ * Feature 30 — a marker `<…>` of the template must not enter as the name of a
+ * product. The hole was MEASURED with a probe on 2026-08-22, not deduced:
+ * `progress/explorations/auditoria-tests-huecos-2026-08-22.md` §G1.
+ */
+describe('parseMyinvestorProduct — markers of the template (feature 30)', () => {
+  /** The exact value of `docs/myinvestor-product-files.md` §Plantilla A. */
+  const nameMarker = '<nombre del producto, tal y como lo llamas siempre>'
+
+  it('rejects the exact case of the audit: the template marker as the name (F30-1)', () => {
+    const reason = failureReason(parse(buildProductFund({ name: nameMarker })))
+
+    expect(reason).toContain('campos sin sustituir')
+    expect(reason).toContain('marcador')
+    expect(reason).toContain('name')
+  })
+
+  it('names the field in the reason, and does not repair the value (F30-1)', () => {
+    const result = parse(buildProductFund({ name: nameMarker }))
+
+    expect(result).toEqual({ reason: expect.stringContaining('name') })
+    // Nothing is guessed: the parser returns a reason, never a product with the
+    // marker stripped down to «nombre del producto».
+    expect(result).not.toHaveProperty('name')
+  })
+
+  it('rejects the marker on a deposit too, both templates carry it (F30-1)', () => {
+    const reason = failureReason(parse(buildProductDeposit({ name: '<nombre del depósito>' })))
+
+    expect(reason).toContain('campos sin sustituir')
+    expect(reason).toContain('name')
+  })
+
+  it('rejects a HALF-ERASED marker on the name, with its own reason (F30-4)', () => {
+    const reason = failureReason(parse(buildProductFund({ name: '<nombre del producto' })))
+
+    expect(reason).toContain('A MEDIO SUSTITUIR')
+    expect(reason).toContain('name')
+    // He must SEE the character that is left over.
+    expect(reason).toContain('"<nombre del producto"')
+  })
+
+  it('rejects a half-erased marker that kept the closing symbol (F30-4)', () => {
+    const reason = failureReason(parse(buildProductFund({ name: 'nombre del producto>' })))
+
+    expect(reason).toContain('A MEDIO SUSTITUIR')
+    expect(reason).toContain('name')
+  })
+
+  it('keeps the two marker reasons APART: they are different mistakes (F30-4)', () => {
+    const reason = failureReason(parse(buildProductFund({ name: nameMarker, currency: '<EUR' })))
+
+    expect(reason).toContain('campos sin sustituir, siguen con el marcador')
+    expect(reason).toContain('A MEDIO SUSTITUIR')
+    expect(reason.indexOf('campos sin sustituir')).toBeLessThan(reason.indexOf('A MEDIO'))
+  })
+
+  it('covers `currency`, the OTHER free-text field measured as exposed (F30-2)', () => {
+    const reason = failureReason(parse(buildProductFund({ currency: '<EUR>' })))
+
+    expect(reason).toContain('campos sin sustituir')
+    expect(reason).toContain('currency')
+  })
+
+  it('does NOT flag the symbol in the MIDDLE of a free-text value (F30-4)', () => {
+    const product = parsedOk(parse(buildProductPortfolio({ name: 'Cartera 3 > 2 Sintetica' })))
+
+    expect(product.name).toBe('Cartera 3 > 2 Sintetica')
+  })
+
+  /**
+   * The eleven other keys were measured to reject on their own validation, whole
+   * marker and half marker alike. This test freezes that measurement: if one of
+   * them ever stops rejecting, the hole of §G1 is back on another field.
+   */
+  it('leaves the reasons of the other fields exactly as they were (F30-2)', () => {
+    expect(failureReason(parse(buildProductFund({ type: '<fund | etf>' })))).toContain(
+      'type: valor no admitido',
+    )
+    expect(failureReason(parse(buildProductFund({ date: '<AAAA-MM-DD>' })))).toContain(
+      'date: fecha inválida, se espera el formato AAAA-MM-DD',
+    )
+    expect(failureReason(parse(buildProductFund({ openedAt: '<AAAA-MM-DD' })))).toContain(
+      'openedAt: fecha inválida, se espera el formato AAAA-MM-DD',
+    )
+    expect(failureReason(parse(buildProductFund({ marketValue: '<lo que vale hoy>' })))).toContain(
+      'marketValue: se espera un número sin comillas',
+    )
+    expect(failureReason(parse(buildProductFund({ uninvestedCash: '<efectivo>' })))).toContain(
+      'uninvestedCash: se espera un número sin comillas',
+    )
+    expect(failureReason(parse(buildProductDeposit({ principal: '<el capital>' })))).toContain(
+      'principal: se espera un número sin comillas',
+    )
+    expect(failureReason(parse(buildProductDeposit({ maturityDate: '<AAAA-MM-DD>' })))).toContain(
+      'maturityDate: fecha inválida',
+    )
+  })
+
+  it('his five real products keep entering: the four types, untouched (F30-5)', () => {
+    const files: ProductFile[] = [
+      buildProductFund({ type: 'fund', name: 'Fondo Sintetico Global' }),
+      buildProductFund({ type: 'fund', name: 'Fondo Sintetico Indexado' }),
+      buildProductFund({ type: 'etf', name: 'ETF Sintetico' }),
+      buildProductPortfolio(),
+      buildProductDeposit(),
+    ]
+
+    for (const file of files) {
+      const product = parsedOk(parse(file))
+
+      expect(product.name).toBe(file.name)
+      expect(product.currency).toBe('EUR')
+    }
+  })
+
+  it('a name with a legitimate `<` in the middle still enters (F30-5)', () => {
+    const product = parsedOk(parse(buildProductFund({ name: 'Fondo A<B Sintetico' })))
+
+    expect(product.name).toBe('Fondo A<B Sintetico')
+  })
+})

@@ -541,3 +541,44 @@ describe('parseMyinvestorProductFile: the adapter of the product registry (featu
     expect(() => parseMyinvestorProductFile('fondo.json', broken)).toThrow()
   })
 })
+
+// ── Feature 30: the marker of the template never reaches the database ────────
+//
+// The adapter is the door the IMPORTER goes through (`src/app.ts` registry), so
+// this is where it is proved that the rejection of the parser stops the write:
+// it throws with the reason, `importDriveFile` fails the file and it is neither
+// stored nor moved to `procesados/` (ADR-025).
+describe('parseMyinvestorProductFile: a marker of the template (feature 30)', () => {
+  function bytes(file: Record<string, unknown>): Buffer {
+    return Buffer.from(buildProductJson(file), 'utf8')
+  }
+
+  it('throws instead of creating a product named after the placeholder (F30-1)', () => {
+    const file = buildProductFund({
+      name: '<nombre del producto, tal y como lo llamas siempre>',
+    })
+
+    expect(() => parseMyinvestorProductFile('fondo.json', bytes(file))).toThrow(
+      /campos sin sustituir.*name/s,
+    )
+  })
+
+  it('throws on a half-erased marker too, naming the field (F30-4)', () => {
+    const file = buildProductDeposit({ name: '<nombre del depósito' })
+
+    expect(() => parseMyinvestorProductFile('deposito.json', bytes(file))).toThrow(
+      /A MEDIO SUSTITUIR.*name/s,
+    )
+  })
+
+  it('keeps letting the four types through, untouched (F30-5)', () => {
+    for (const file of [
+      buildProductFund(),
+      buildProductFund({ type: 'etf', name: 'ETF Sintetico' }),
+      buildProductPortfolio(),
+      buildProductDeposit(),
+    ]) {
+      expect(() => parseMyinvestorProductFile('producto.json', bytes(file))).not.toThrow()
+    }
+  })
+})

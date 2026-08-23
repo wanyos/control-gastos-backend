@@ -72,9 +72,26 @@ en otro formato se rechaza diciendo el formato esperado. Aplica a `date`, `opene
 > así que el producto entró con el nombre equivocado sin una sola queja, y sobrevivió
 > a una revisión humana. Con marcadores, un campo sin editar canta a la vista.
 >
-> Un `<…>` que llegue sin sustituir se rechaza como cualquier otro valor inválido
-> (`type` no admitido, fecha no `AAAA-MM-DD`, número como texto). No hace falta código
-> nuevo para eso: la propia forma del marcador ya es inválida en los cuatro sitios.
+> Un `<…>` que llegue sin sustituir **se rechaza siempre, y el motivo te dice el campo**.
+>
+> 🔄 **Corrección del 2026-08-23 (feature 30).** Aquí ponía que no hacía falta código
+> nuevo porque «la propia forma del marcador ya es inválida en los cuatro sitios». Se
+> comprobó campo por campo y **era falso en los dos campos de texto libre**: en `type`,
+> en las fechas y en los importes sí falla solo, pero un marcador en el **`name`** —y en
+> `currency`— es un texto perfectamente válido, así que **entraba en verde**, con el
+> marcador como nombre del producto. Y desde la feature 29 el `name` es la identidad del
+> producto en la base de datos: el mes siguiente, ya con el nombre bueno, se habría
+> creado **otro** producto y la serie quedaría partida en dos. Ahora hay una
+> comprobación propia, la misma que Trade Republic tiene desde la feature 20.
+>
+> **También te avisa del marcador a medio borrar** (`"<nombre del producto"`, sin el `>`
+> final): es la errata número uno al rellenar a mano. Cuenta como marcador a medio
+> sustituir un valor que **empieza por `<` o acaba en `>`**; el símbolo **en mitad** del
+> texto no cuenta, así que un producto llamado `Cartera 3 > 2` entra sin problema. Lo
+> que no puedes es **abrir** un nombre con `<` ni **cerrarlo** con `>`.
+>
+> El parser **no adivina ni repara**: no te quita el símbolo para leer el resto. Rechaza
+> el archivo y te dice qué campo mirar.
 
 ## Plantilla A — `fund`, `etf` y `managed_portfolio`
 
@@ -258,6 +275,8 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 | El `type` no es uno de los cuatro | el valor recibido y **los cuatro admitidos** |
 | Una fecha en otro formato | el campo y `AAAA-MM-DD` |
 | Una clave desconocida (o de otro tipo de producto) | las claves sobrantes, por su nombre |
+| Un campo se quedó con el marcador `<…>` de la plantilla | *«campos sin sustituir, siguen con el marcador …»* y **cuáles** |
+| Un campo se quedó con **medio** marcador (`"<nombre del producto"`) | *«A MEDIO SUSTITUIR, te dejaste un símbolo suelto»*, el campo y el valor recibido |
 | Dos archivos con el mismo producto y fecha | con qué archivo choca |
 
 ## Dónde acaba lo que escribes

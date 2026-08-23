@@ -325,6 +325,21 @@ class NotFoundError extends AppError {
   código `NOT_UTF8`) con el byte, la línea y la instrucción de volver a guardarlo en
   UTF-8. Nunca se **adivina** una codificación: la de cada banco se **declara** en
   su parser (ADR-022), que no es lo mismo.
+- **Los marcadores `<…>` de una plantilla escrita a mano se comprueban en cada banco,
+  copiando el patrón y no el módulo** (decidido 2026-08-23, F30). Los dos bancos que
+  entran por `.json` escrito a mano —Trade Republic (F20/F28) y MyInvestor (F30)— tienen
+  **cada uno** su `isMarker` + `isHalfErasedMarker`, en su parser, y **no hay un
+  `lib/template-marker.ts`**. La condición que la F28 dejó escrita para reabrirlo (dos
+  usuarios reales y la F29 cerrada) se cumplió y la decisión **se volvió a tomar**: se
+  mantiene separada porque el marcador es la convención de una **plantilla**, que cada
+  documento de banco publica por su cuenta, y sobre todo porque **la política diverge** —
+  Trade Republic lo comprueba en **todos** los campos; MyInvestor solo en los dos de
+  **texto libre** (`name` y `currency`), medidos uno a uno, porque los otros once ya se
+  rechazan por su propia validación—. Lo compartible sería un predicado de dos líneas;
+  lo que lleva el riesgo (a qué campos se aplica) seguiría siendo de cada banco. Es el
+  mismo criterio que «el banco siguiente que traiga CSV entrecomillado copia el patrón,
+  no el módulo». **Quien dé de alta un tercer banco con plantilla a mano copia el patrón
+  otra vez**, y mide qué campos suyos quedan expuestos antes de decidir dónde ponerlo.
 - **El IBAN de la cuenta va en el fichero, una sola vez** (decidido 2026-08-12).
   Si el banco no lo exporta, lo escribe el humano como línea de preámbulo
   `iban;<IBAN>` **encima** de la cabecera; el parser la lee **solo si está

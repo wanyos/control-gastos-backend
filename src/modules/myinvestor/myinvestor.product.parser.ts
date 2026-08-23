@@ -66,15 +66,16 @@ export function parseMyinvestorProduct(
   const source = raw as Record<string, unknown>
   const problems: string[] = []
   const missing: string[] = []
+  const markers: MarkerReport = { whole: [], half: [] }
   const readNumber = (key: string, required: boolean) =>
     readNumberField(source, key, required, problems, missing)
   const readIso = (key: string, required: boolean) =>
     readIsoField(source, key, required, problems, missing)
 
   const type = readType(source, problems)
-  const name = readName(source, problems, missing)
+  const name = readName(source, problems, missing, markers)
   const date = readIso('date', true)
-  const currency = readCurrency(source, problems)
+  const currency = readCurrency(source, problems, markers)
   // Required on the four types (R-F15): its absence lands in `missing` and is
   // reported by name inside the SINGLE reason of the file, like any other one.
   const openedAt = readIso('openedAt', true)
@@ -110,6 +111,23 @@ export function parseMyinvestorProduct(
   reportUnknownKeys(source, type, problems)
   if (missing.length > 0) {
     problems.unshift(`faltan campos obligatorios: ${missing.join(', ')}`)
+  }
+  // Second of the reason and never merged with the one below: half of a marker
+  // is a DIFFERENT mistake from not having touched the field at all, and the two
+  // are fixed by looking at different things (feature 30, copied from 28).
+  if (markers.half.length > 0) {
+    problems.unshift(
+      `campos con el marcador <…> de la plantilla A MEDIO SUSTITUIR, te dejaste un ` +
+        `símbolo suelto: ${markers.half.join(', ')}; ` +
+        `un valor no puede empezar por < ni acabar en >`,
+    )
+  }
+  // First of the reason, because it is the one that explains all the rest: the
+  // template was copied and (part of) it was never filled in.
+  if (markers.whole.length > 0) {
+    problems.unshift(
+      `campos sin sustituir, siguen con el marcador <…> de la plantilla: ${markers.whole.join(', ')}`,
+    )
   }
 
   const shape = type === 'deposit' ? depositTerms : valuation
@@ -161,10 +179,14 @@ function readName(
   source: Record<string, unknown>,
   problems: string[],
   missing: string[],
+  markers: MarkerReport,
 ): string | null {
   const value = source.name
   if (isAbsent(value)) {
     missing.push('name')
+    return null
+  }
+  if (collectMarker('name', value, markers)) {
     return null
   }
   if (typeof value !== 'string' || value.trim() === '') {
@@ -175,9 +197,16 @@ function readName(
 }
 
 /** Optional and never written by the human: `EUR` is assumed. */
-function readCurrency(source: Record<string, unknown>, problems: string[]): string {
+function readCurrency(
+  source: Record<string, unknown>,
+  problems: string[],
+  markers: MarkerReport,
+): string {
   const value = source.currency
   if (isAbsent(value)) {
+    return 'EUR'
+  }
+  if (collectMarker('currency', value, markers)) {
     return 'EUR'
   }
   if (typeof value !== 'string' || value.trim() === '') {
@@ -269,6 +298,116 @@ function reportUnknownKeys(
       `claves no admitidas para el tipo '${type ?? 'desconocido'}': ${unknown.join(', ')}`,
     )
   }
+}
+
+/**
+ * A value that is still the `<…>` of the template (feature 30).
+ *
+ * The document of this format used to claim that no new code was needed because
+ * «the very shape of the marker is already invalid in the four places». A probe
+ * of 2026-08-22 (`progress/explorations/auditoria-tests-huecos-2026-08-22.md`
+ * §G1) MEASURED that claim field by field, and it is true for eleven of the
+ * thirteen keys and FALSE for the two that hold free text:
+ *
+ *  - `type` → rejected, not one of the four admitted values.
+ *  - `date`, `openedAt`, `closedAt`, `maturityDate` → rejected, not `AAAA-MM-DD`.
+ *  - `invested`, `marketValue`, `gain`, `gainPercent`, `uninvestedCash`,
+ *    `principal`, `interestRate`, `expectedGain` → rejected, a number written
+ *    as text is never interpreted (R77).
+ *  - **`name` and `currency` → ACCEPTED.** A marker is a perfectly valid
+ *    non-empty string, so the template copied unfilled entered IN GREEN with the
+ *    placeholder AS THE NAME OF THE PRODUCT — and since feature 29 the name is
+ *    the natural key that identifies the product in the database, so next month,
+ *    already with the good name, a SECOND product would be created and the series
+ *    would be split in two.
+ *
+ * That is why the check lives on those two fields and NOT on the other eleven:
+ * they already reject on their own validation, with their own reason, and
+ * rewriting those reasons is not this feature.
+ *
+ * WHY IT IS COPIED FROM TRADE REPUBLIC AND NOT SHARED WITH IT (decision of
+ * feature 30, delegated by the human; feature 28 left the condition written and
+ * today it is met — two real users and feature 29 closed — so the decision is
+ * TAKEN here, not inherited):
+ *
+ *  - `docs/conventions.md` §Parsers de banco says «un parser por banco, sin
+ *    genéricos», and what IS shared is what is not format (the output shape, the
+ *    encoding). The `<…>` marker is the convention of a TEMPLATE, which each bank
+ *    document publishes on its own: today the two coincide, and nothing keeps them
+ *    coinciding.
+ *  - **The policies diverge, and that is the new fact.** Trade Republic runs the
+ *    check on EVERY field; here it runs on the two that are exposed. What could be
+ *    shared is a two-line predicate, while the part that carries the risk — which
+ *    fields it applies to — stays per bank anyway.
+ *  - The same convention already resolved this exact shape of problem: «el banco
+ *    siguiente que traiga CSV entrecomillado copia el patrón, no el módulo». And
+ *    `src/lib/` is the open door for sharing parsing code between banks that the
+ *    audit flags as C5; a marker helper in there would be the first tenant that
+ *    the convention forbids.
+ */
+function isMarker(value: unknown): boolean {
+  return typeof value === 'string' && /^\s*<.*>\s*$/s.test(value)
+}
+
+/**
+ * The two ways a marker of the template can survive, kept APART on purpose: a
+ * field never touched and a field half rewritten are different mistakes and are
+ * fixed by looking at different things.
+ */
+interface MarkerReport {
+  /** Fields still carrying the whole `<…>`. */
+  whole: string[]
+  /** Fields where only one of the two symbols was erased. */
+  half: string[]
+}
+
+/**
+ * A value where ONE of the two symbols of the marker was erased and the other was
+ * left behind: `"<nombre del producto"`. It is covered here for the same reason
+ * Trade Republic covers it since feature 28 — it happened twice in the very first
+ * real file written by hand, and the audit probe showed that on `name` it enters
+ * in green exactly like the whole marker, which is the same silent damage.
+ *
+ * WHAT COUNTS, and why it does not open false positives on free text:
+ *
+ *  - **Starts with `<` or ends with `>`, and is not a whole marker.** Erasing one
+ *    delimiter ALWAYS leaves the other at an END of the value.
+ *  - **The symbol in the MIDDLE does NOT count** (`"Cartera 3 > 2"`, `"Fondo <A>
+ *    global"` is a whole-marker miss, not this one). The middle is the only place
+ *    where a product name can legitimately carry the symbol, and a residue of this
+ *    accident never lands there.
+ *  - **A name that legitimately opened with `<` is rejected with a reason that
+ *    says what to do.** That is the accepted trade-off: rejecting a little too
+ *    much with a message he understands, never swallowing a placeholder as the
+ *    identity of a product. Renaming the product is an escape hatch; a split
+ *    series months later is not.
+ *
+ * The parser NEITHER GUESSES NOR REPAIRS: it does not strip the symbol and read
+ * the rest. The file is rejected; only the reason exists where there was none.
+ */
+function isHalfErasedMarker(value: unknown): boolean {
+  if (typeof value !== 'string' || isMarker(value)) {
+    return false
+  }
+  const trimmed = value.trim()
+  return trimmed.startsWith('<') || trimmed.endsWith('>')
+}
+
+/**
+ * Files a field under the marker it carries, if any, and answers whether the
+ * caller must stop reading it. The half-erased one shows the received value: the
+ * whole point is that he SEES the character that is left over.
+ */
+function collectMarker(key: string, value: unknown, markers: MarkerReport): boolean {
+  if (isMarker(value)) {
+    markers.whole.push(key)
+    return true
+  }
+  if (isHalfErasedMarker(value)) {
+    markers.half.push(`${key} ${display(value)}`)
+    return true
+  }
+  return false
 }
 
 /** An absent field and a field set to `null` mean the same: not reported (R32). */
