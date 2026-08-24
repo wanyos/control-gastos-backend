@@ -150,7 +150,7 @@ la salida**, no el código que lee el formato.
 | N26 | `.csv` de la cuenta (comas, con comillas) | ✅ **F18 `n26-statement`** (2026-08-18, ADR-020) — sin spec. El humano pone el IBAN y el saldo en el preámbulo con `;`, como en MyInvestor. Primer **lector de CSV entrecomillado** del repo (vive dentro del módulo) y **concepto compuesto** porque N26 no exporta ninguna columna de concepto |
 | Openbank | «`.xls`» de la cuenta, que **es HTML en cp1252** | ✅ **F19 `openbank-statement`** (2026-08-19, ADR-022) — **con spec**. Se lee tal cual, sin conversión manual: lector de HTML propio **sin dependencias nuevas** y **cp1252 declarado por el parser** (la regla «siempre UTF-8» queda acotada a lo que escribe el humano). Trae el **saldo de la cuenta** en su propio preámbulo; el IBAN lo escribe el humano una vez, en un **comentario HTML** de la primera línea. El saldo por movimiento existe y **no se guarda** |
 | Revolut | `.csv` de la cuenta (comas) | 🅿️ **aparcado**, y el humano lo confirmó el **2026-08-20** («de momento lo dejamos para más adelante») al repasar el estado de los bancos: hoy sin movimientos ni saldo. Sus carpetas siguen en Drive y su `.csv` se baja en cada ingesta, pero nadie lo parsea; se retoma con un archivo con datos |
-| Trade Republic | `.json` de cuenta remunerada escrito a mano (su `.pdf` se ignora) | ✅ **F20 `trade-republic-product-file`** (2026-08-19, ADR-024) — **con spec**. **No se parsea el PDF** y no hay parser de lo que emite el banco: entra como `.json` que el humano rellena cada mes, con **cuadre aritmético que rechaza** el mes que no cuadra. Formato en [`trade-republic-product-files.md`](./trade-republic-product-files.md). **Desde la F26 (2026-08-20, ADR-026) su `.json` ya no muere en un volcado: entra por `POST /api/import` y se guarda como producto con una foto por mes.** 🔴 **Provisional**: el día que esa cuenta tenga movimientos de verdad se escribe el parser del PDF ([diagnóstico](../progress/explorations/inventario-bancos-2026-08-17.md)) |
+| Trade Republic | `.json` de cuenta remunerada escrito a mano (su `.pdf` se ignora) | ✅ **F20 `trade-republic-product-file`** (2026-08-19, ADR-024) — **con spec**. **No se parsea el PDF** y no hay parser de lo que emite el banco: entra como `.json` que el humano rellena cada mes, con **cuadre aritmético que rechaza** el mes que no cuadra. Formato en [`trade-republic-product-files.md`](./trade-republic-product-files.md). **Desde la F26 (2026-08-20, ADR-026) su `.json` ya no muere en un volcado: entra por `POST /api/import` y se guarda como producto con una foto por mes.** 🔴 **Provisional**: el día que esa cuenta tenga movimientos de verdad se escribe el parser del PDF ([diagnóstico](../progress/explorations/inventario-bancos-2026-08-17.md)). ⚠️ **El diagnóstico ya no es cierto** (2026-08-24): el extracto desde la apertura **sí sobrevive a la extracción de texto** y trae el saldo corriente por línea, y esa cuenta **sí tuvo movimientos** además de los intereses. Se usó una sola vez, a mano, para generar los 25 `.json` del histórico; **no se añadió parser** y la decisión del ADR-024 sigue en pie. Ver [`historico-cuentas-2026-08-24.md`](../progress/explorations/historico-cuentas-2026-08-24.md) |
 
 **F11 `parsed-movement-contract`** ✅ (2026-08-11) — la pieza que faltaba, ya
 puesta. El contrato vive en
@@ -329,7 +329,7 @@ tiene etapa, es que se va a perder.
 | 3 | Todo lo importado nace `pending_review` y **nada lo pasa a `confirmed`** | **E6** |
 | ~~4~~ | ~~`src/modules/ingesta/` y `/api/ingesta/*` están en español~~ | ✅ **cerrado por la F12** (2026-08-12): `src/modules/ingestion/` y `/api/ingestion/*`; las rutas viejas responden 404 |
 | 10 | `daySequence` numera solo las filas parseadas: reimportar un fichero tras arreglar su parser puede renumerar ese día y dejar duplicados **visibles** | sin dueño |
-| 5 | El histórico del Excel de años (idea #5 ❄️): **aplazado, no descartado** (2026-08-13). Inclinación del humano a importarlo «para no empezar de vacío»; se decide más adelante | sin dueño, aplazado |
+| ~~5~~ | ~~El histórico del Excel de años~~ | ✅ **descartado (2026-08-22, reafirmado el 2026-08-23)**, ver `../../docs/ideas.md` §6. El vacío se llena con extractos de los bancos de varios años atrás, no con el Excel: una sola fuente, sin solape ni duplicados incasables |
 | 6 | La base de datos no tiene copia de seguridad; el crudo de Drive te salva los movimientos, **no** las categorías, alias ni `initialBalance` | sin dueño |
 
 > **Sobre el 6:** volver a parsear desde Drive te reconstruye lo importado, pero
@@ -356,9 +356,15 @@ tiene etapa, es que se va a perder.
   Cómo se escribe: [`docs/dar-de-alta-un-banco.md`](dar-de-alta-un-banco.md).
 - ~~**Cuenta corriente de MyInvestor: alta a mano.**~~ ✅ **ya no hace falta**
   (F12): con esa línea, la cuenta se crea sola al importar.
-- **`initialBalance` de esa cuenta: correcto a la primera.** Tampoco trae saldo
-  por movimiento, así que es **el único ancla**; si lo pones mal, todo el saldo
-  queda desplazado por igual.
+- ~~**`initialBalance` de esa cuenta: correcto a la primera.**~~ ✅ **deja de ser un
+  deber** (2026-08-24, decisión tuya): el histórico se usa como **serie**, no como saldo
+  absoluto, así que lo que tiene que cuadrar es el **total de hoy** y la **variación
+  entre dos fechas**. Las cuatro cuentas siguen con `initialBalance` a `0` y su saldo
+  calculado queda desplazado por lo que hubiera antes del primer movimiento importado;
+  ese desplazamiento es **constante por cuenta** y por eso no toca la variación. El
+  total de hoy se ancla en el saldo del preámbulo de cada extracto, no en el de
+  apertura. Ver
+  [`historico-cuentas-2026-08-24.md`](../progress/explorations/historico-cuentas-2026-08-24.md).
 - **Inventario por banco:** entrar en cada web y anotar si da CSV/PDF. **Es lo
   que bloquea la E4 entera:** sin él no se sabe ni cuántas features son.
 - Los dos anteriores salen de

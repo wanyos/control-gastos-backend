@@ -155,7 +155,7 @@ cero problemas**: los dos que quedan son silenciosos, y ese es justo el peor tip
 ```json
 "type": "fund",                    ← debería ser "etf"
 "name": "<el nombre de ejemplo de la plantilla>",   ← es el ejemplo de la documentación, no el ETF de oro
-"invested": 1111.11, "marketValue": 2222.22, "gainPercent": 33.33   ← estos sí son suyos
+"invested": 1111.11, "marketValue": 2222.22, "gainPercent": 77.77   ← estos sí son suyos
 ```
 
 Editó los números y se dejó las dos primeras líneas del ejemplo de
