@@ -138,9 +138,13 @@ parser y volcado) y no lo cuadra contra la suma de los movimientos.
 
 ## Notas para el futuro
 
-- Cuando llegue la persistencia, `accountBalance` es el candidato natural para cuadrar
-  el saldo de la cuenta de MyInvestor **sin** sumar movimientos (hoy `initialBalance`
-  es el único ancla, ADR-011). Es decisión de producto y feature aparte.
+- ✅ ~~Cuando llegue la persistencia, `accountBalance` es el candidato natural para
+  cuadrar el saldo de la cuenta de MyInvestor **sin** sumar movimientos (hoy
+  `initialBalance` es el único ancla, ADR-011). Es decisión de producto y feature
+  aparte.~~ → **esa feature aparte se hizo: F31 `real-account-balance`** (2026-08-25,
+  ADR-028). `accountBalance` se guarda al importar en `Account.balanceAnchor` con su
+  fecha, y el saldo es ese importe más el neto de lo **estrictamente posterior**.
+  `initialBalance` ya no es el ancla de esta cuenta.
 - Si algún mes se te olvida borrar la fila del final, saldrá en `unparsedRows` con el
   motivo genérico `fecha de operación inválida ('Saldo')`. Es correcto así: un motivo
   específico obligaría al parser a saber algo de esa fila, que es justo lo que pediste

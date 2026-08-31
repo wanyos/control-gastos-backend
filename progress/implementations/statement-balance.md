@@ -146,10 +146,14 @@ tocado.
    `prettier --check`**, y ya no pasaba antes de esta feature (no está entre los
    archivos modificados). Un `pnpm format` lo arregla, pero es ruido ajeno a la F16 y
    ensuciaría su diff.
-2. **El saldo no se persiste todavía.** Cuando llegue la persistencia de inversiones o
-   la del flujo, `Account` tiene `initialBalance` como único ancla para MyInvestor
-   (ADR-011): `accountBalance` es el candidato natural a cuadrar esa cuenta **sin**
-   sumar movimientos, pero eso es una decisión de producto y una feature aparte.
+2. ⛔ ~~**El saldo no se persiste todavía.** Cuando llegue la persistencia de
+   inversiones o la del flujo, `Account` tiene `initialBalance` como único ancla para
+   MyInvestor (ADR-011): `accountBalance` es el candidato natural a cuadrar esa cuenta
+   **sin** sumar movimientos, pero eso es una decisión de producto y una feature
+   aparte.~~ → **esa feature aparte se hizo: F31 `real-account-balance`** (2026-08-25,
+   ADR-028). `accountBalance` se persiste en `Account.balanceAnchor` (+ fecha) la
+   primera vez que se importa un archivo de esa cuenta, y el saldo sale de ahí más el
+   neto de lo estrictamente posterior.
 3. **La fila `Saldo` del final ya solo produce ruido.** El humano la borra a mano y así
    se decidió (una sola forma de escribirlo). Si algún mes se le olvida borrarla,
    aparecerá en `unparsedRows` con el motivo genérico «fecha de operación inválida

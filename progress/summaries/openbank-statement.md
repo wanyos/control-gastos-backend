@@ -90,7 +90,7 @@ ya reconoce estos ficheros.
 | Un fichero que no es un extracto de Openbank | [parser.test.ts:101](../../src/modules/openbank/openbank.statement.parser.test.ts#L101) |
 | Entra el histórico entero, incluidos 200 apuntes y años atrás | [parser.test.ts:122](../../src/modules/openbank/openbank.statement.parser.test.ts#L122) |
 | Fechas ISO e importes con signo y céntimos | [parser.test.ts:175](../../src/modules/openbank/openbank.statement.parser.test.ts#L175) |
-| El saldo por movimiento se lee y **no** se guarda; divisa vacía | [parser.test.ts:192](../../src/modules/openbank/openbank.statement.parser.test.ts#L192) |
+| ⛔ ~~El saldo por movimiento se lee y **no** se guarda~~ → **desde la F31 sí se guarda**; divisa vacía | [parser.test.ts:192](../../src/modules/openbank/openbank.statement.parser.test.ts#L192) |
 | El saldo de la cuenta, del propio fichero (y qué pasa si falta o no se entiende) | [parser.test.ts:219](../../src/modules/openbank/openbank.statement.parser.test.ts#L219) |
 | El IBAN del comentario, y que **nunca** se deriva del número de cuenta | [parser.test.ts:254](../../src/modules/openbank/openbank.statement.parser.test.ts#L254) |
 | El preámbulo no ensucia `unparsedRows` | [parser.test.ts:320](../../src/modules/openbank/openbank.statement.parser.test.ts#L320) |
@@ -125,8 +125,13 @@ ya reconoce estos ficheros.
   se cumple; ni del CCC ni de un concepto con forma de IBAN. Verificado en
   [parser.test.ts:274](../../src/modules/openbank/openbank.statement.parser.test.ts#L274).
 - ✅ «No quiero que se empiece a guardar el saldo tras cada movimiento» → se
-  cumple: se lee para validar la fila y se tira. Verificado en
+  cumplió **en la F19**: se leía para validar la fila y se tiraba. Verificado en
+  aquel momento en
   [parser.test.ts:193](../../src/modules/openbank/openbank.statement.parser.test.ts#L193).
+  ⛔ **Esa petición la revertiste tú mismo en la F31 `real-account-balance`**
+  (2026-08-25, ADR-028): sin ese saldo no había forma de saber el dinero real de
+  esta cuenta sin releer el fichero, así que la quinta columna pasó a guardarse en
+  `Movement.balanceAfter` y hoy es el ancla de su saldo.
 - ✅ «No quiero que esto cambie los parsers de Bankinter, MyInvestor ni N26» → se
   cumple: ni una línea suya cambia, con regresión explícita de la guardia de
   MyInvestor en [utf8.test.ts:111](../../src/lib/utf8.test.ts#L111).
@@ -153,9 +158,14 @@ ya reconoce estos ficheros.
 
 - **No se persiste nada en la base de datos**: esta feature parsea y vuelca JSON,
   como las de los otros tres bancos.
-- **El saldo tras cada movimiento existe en este fichero y no se guarda.** Openbank
-  es el único de los seis bancos que lo da; queda anotado para el día que lo
-  decidas (informe §4).
+- ⛔ ~~**El saldo tras cada movimiento existe en este fichero y no se guarda.**
+  Openbank es el único de los seis bancos que lo da; queda anotado para el día que
+  lo decidas (informe §4).~~ → **ese día llegó: la F31 `real-account-balance`
+  (2026-08-25, ADR-028) revierte este punto y solo este.** La quinta columna se
+  guarda en `Movement.balanceAfter` y el saldo de la cuenta se calcula desde el
+  ancla más el neto de lo posterior. El resto de la F19 sigue intacto, ADR-013
+  incluido (decía que el dato que el fichero **no trae** es `null`, y este fichero
+  sí lo trae). 🔴 No restaures el `null` del parser.
 - **No se ha probado contra tu fichero real todavía**: hace falta que escribas el
   comentario del IBAN una vez y luego lanzar `POST /api/parser/openbank` y
   `POST /api/import`. Es el mismo paso que se dio con N26.

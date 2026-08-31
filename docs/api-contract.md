@@ -47,6 +47,9 @@ Códigos estables:
 
 | `code`                  | HTTP | Cuándo                                                     |
 | ----------------------- | ---- | ---------------------------------------------------------- |
+| `BAD_REQUEST`           | 400  | La petición está mal formada **antes** de llegar al esquema de la ruta: cuerpo vacío con `Content-Type: application/json`, JSON mal escrito, `Content-Length` que no cuadra con lo enviado. Es culpa de quien llama, no una avería: hasta la feature 35 (2026-08-30) todos estos casos salían como `500 INTERNAL_SERVER_ERROR`. |
+| `PAYLOAD_TOO_LARGE`     | 413  | El cuerpo de la petición supera el límite del servidor. Desde la feature 35 (2026-08-30). |
+| `UNSUPPORTED_MEDIA_TYPE`| 415  | El `Content-Type` enviado no lo sabe leer ningún parser del servidor (la API habla `application/json`). Desde la feature 35 (2026-08-30). |
 | `VALIDATION_ERROR`      | 400  | El body o los params no cumplen el esquema de la ruta, o la operación es incoherente (p. ej. subcategoría de una subcategoría). |
 | `NOT_FOUND`             | 404  | El recurso pedido no existe, o la ruta no existe.          |
 | `CONFLICT`              | 409  | El recurso ya existe: `iban` de cuenta duplicado, o categoría raíz duplicada `(kind, name)`. |
@@ -58,6 +61,38 @@ Códigos estables:
 | `DRIVE_CONNECTION_ERROR`| 503  | No se puede hablar con Google Drive (token caducado, API deshabilitada, scope insuficiente…). |
 | `UNKNOWN_BANK`          | 404  | El banco (con formato válido) no está registrado en Drive. **Reservado** (interno; ningún endpoint lo devuelve todavía). |
 
+> **Nota (errores de quien llama, feature "client-errors-are-not-500",
+> 2026-08-30):** la API distingue **tres familias** por el rango del código HTTP,
+> y el frontend puede decidir mirando solo eso:
+>
+> | Rango | Qué significa para el frontend |
+> | ----- | ------------------------------ |
+> | `2xx` | Fue bien. |
+> | `4xx` | **Corrige la petición y vuelve a intentarlo.** La culpa es de quien llama y reintentar lo mismo dará el mismo resultado. |
+> | `5xx` | **El backend falló.** La petición puede estar bien; reintentar tiene sentido. |
+>
+> Códigos HTTP que puede devolver la API hoy: **200** y **201** (camino feliz),
+> **400** (`VALIDATION_ERROR` o `BAD_REQUEST`), **404** (`NOT_FOUND`), **409**
+> (`CONFLICT`), **413** (`PAYLOAD_TOO_LARGE`), **415**
+> (`UNSUPPORTED_MEDIA_TYPE`), **422** (los códigos de contenido inutilizable:
+> `NOT_UTF8`, `INVALID_IBAN`, `UNEXPECTED_ENCODING`, `MISSING_ACCOUNT_DATA`),
+> **500** (`INTERNAL_SERVER_ERROR`) y **503** (`DRIVE_CONNECTION_ERROR`, y el
+> cuerpo propio de readiness de `/health*`).
+>
+> Cómo se decide, para que no haya sorpresas: un error que **el propio servidor
+> HTTP ya clasificó como 4xx** conserva su código de estado; **todo lo demás sale
+> como 500 con cuerpo genérico**. No hay una lista de casos escrita a mano, así
+> que un error de petición que hoy no esté en la tabla saldrá igualmente con su
+> 4xx y no como una avería del servidor. El `code` del cuerpo se deriva del
+> **estado HTTP** (400 → `BAD_REQUEST`, 413 → `PAYLOAD_TOO_LARGE`, 415 →
+> `UNSUPPORTED_MEDIA_TYPE`) y **nunca** es un identificador interno del framework:
+> el vocabulario de `code` es el de esta tabla y solo cambia con una feature.
+> El `message` de estos casos es una frase fija del servidor HTTP, verificada una
+> a una para que no cuente nada de dentro; si alguna llevara un valor interpolado,
+> el cuerpo recibe el texto estándar del estado (`Bad Request`) y el detalle
+> completo se queda **solo en el log**. Como siempre: programa contra `statusCode`
+> y `code`, nunca contra `message`.
+>
 > **Nota (`MISSING_ACCOUNT_DATA`, feature "import", 2026-08-12):** es el **único**
 > código estable que **no** viaja como cuerpo de error HTTP. La importación reporta
 > por fichero dentro de un 200 (un fichero roto no invalida los demás), así que este
@@ -165,8 +200,10 @@ de los movimientos que reporta el banco (retiradas de cajero).
 | `bank`           | string                      | Nombre del banco (p. ej. `"bankinter"`).                        |
 | `alias`          | string                      | Alias legible. Si no se envía, se deriva de `bank` + últimos 4 del IBAN. |
 | `type`           | `"checking"` \| `"savings"` | Tipo de cuenta. Def. `"checking"`. **No existe `cash`**.         |
-| `initialBalance` | string (decimal)            | Punto de partida del saldo. Solo se usa en el caso excepcional de una cuenta cuyos movimientos no traen saldo (ver `balance`). |
-| `balance`        | string (decimal)            | **Calculado por petición** (no se almacena): es el `balanceAfter` del movimiento **más reciente** de la cuenta (orden `bookingDate DESC, daySequence DESC`), es decir **el saldo que da el propio extracto**. Solo si ningún movimiento de la cuenta trae saldo, se calcula como `initialBalance` + ingresos − gastos. |
+| `initialBalance` | string (decimal)            | Punto de partida del saldo. **Desde la feature 31 solo actúa en una cuenta sin ancla y sin un solo saldo por movimiento** (una cuenta creada a mano que nunca vio un extracto). En cuanto la cuenta tiene ancla, no interviene en `balance`. |
+| `balance`        | string (decimal)            | **Calculado por petición** (no se almacena). Desde la feature 31 hay **una sola fórmula**: el importe del **punto de anclaje efectivo** más el neto de los movimientos **estrictamente posteriores** a él (`(bookingDate, daySequence)` mayor). El punto de anclaje efectivo es el más reciente entre el ancla guardada de la cuenta (`balanceAnchor`) y el movimiento más reciente que trae `balanceAfter`; en empate exacto gana el ancla, que sale del preámbulo del extracto. Sin ancla y sin ningún `balanceAfter`, y solo entonces, se calcula como `initialBalance` + ingresos − gastos. |
+| `balanceAnchor`     | string (decimal) \| null | Importe del ancla de la cuenta, tal cual lo escribió el archivo. `null` = **la cuenta todavía no está anclada** (nunca `"0.00"`, que es un ancla real). No se recalcula ni se reescribe: un extracto nuevo no lo pisa. |
+| `balanceAnchorDate` | string (`YYYY-MM-DD`) \| null | Fecha del movimiento al que corresponde el ancla. `null` con la cuenta sin anclar. Va **siempre** en pareja con `balanceAnchor`: o los dos con valor o los dos a `null` (lo garantiza un `CHECK` en la base). |
 | `createdAt`      | string (ISO)                | Fecha de creación del registro.                                  |
 | `updatedAt`      | string (ISO)                | Fecha de última modificación.                                    |
 
@@ -198,7 +235,7 @@ Un apunte del extracto. **Solo entra por importación** (ver
 | `valueDate`     | string (`YYYY-MM-DD`)                                       | Fecha valor.                                                     |
 | `amount`        | string (decimal)                                            | Importe **positivo**.                                            |
 | `description`   | string                                                      | Descripción tal cual la da el banco.                             |
-| `balanceAfter`  | string (decimal) \| null                                    | Saldo **tras** el movimiento, según el extracto. El más reciente es el `balance` de la cuenta. |
+| `balanceAfter`  | string (decimal) \| null                                    | Saldo **tras** el movimiento, según el extracto; `null` cuando el archivo no lo trae. El más reciente es **candidato a punto de anclaje** de la cuenta, no el `balance` sin más: lo posterior a él se suma encima (ver `balance` en `Account`). Lo traen Bankinter y —desde la feature 31— Openbank. |
 | `currency`      | string                                                      | Divisa. Def. `"EUR"` (no hay conversión multi-divisa).           |
 | `note`          | string \| null                                              | Anotación manual. Hoy siempre `null`.                            |
 | `accountId`     | number                                                      | Id de la cuenta.                                                 |
@@ -276,14 +313,19 @@ Lista todas las cuentas, con su `balance` resuelto en la propia petición.
     "type": "checking",
     "initialBalance": "0.00",
     "balance": "9954.63",
+    "balanceAnchor": "9954.63",
+    "balanceAnchorDate": "2026-07-31",
     "createdAt": "2026-08-06T18:30:00.000Z",
     "updatedAt": "2026-08-06T18:30:00.000Z"
   }
 ]
 ```
 
-> `balance` **no es una suma de movimientos**: es el `balanceAfter` del último
-> movimiento del extracto (ver el modelo `Account`).
+> `balance` **no es una suma desde cero**: arranca del punto de anclaje —el ancla
+> de la cuenta o el saldo del último movimiento del extracto, el que sea más
+> reciente— y le suma **solo lo posterior** a ese punto (ver el modelo `Account`).
+> Por eso un movimiento importado después de la fecha del extracto **sí** mueve el
+> saldo, y uno anterior al ancla **no**: el ancla ya lo contenía.
 
 ---
 
@@ -644,6 +686,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   "unparsedCount": 1,
   "failedCount": 1,
   "skippedCount": 1,
+  "balanceMismatchCount": 1,
   "files": [
     {
       "bank": "bankinter", "year": "2026", "fileId": "1AbC...", "name": "movs.xlsx",
@@ -651,18 +694,34 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
       "account": {
         "id": 3, "iban": "ES21012800...", "bank": "bankinter",
         "alias": "bankinter ···0236", "type": "checking",
-        "created": true, "appliedDefaults": { "alias": true, "type": true }
+        "created": true, "appliedDefaults": { "alias": true, "type": true },
+        "balanceAnchor": "1500.00"
       },
       "imported": 39,
       "duplicates": 2,
+      "anchored": true,
+      "balancesFilled": 0,
       "unparsedCount": 1,
       "unparsedRows": [{ "row": 42, "reason": "importe no interpretable" }],
+      "balanceMismatches": [
+        {
+          "accountId": 3,
+          "accountAlias": "bankinter ···0236",
+          "date": "2026-07-21",
+          "computed": "-40.00",
+          "fromFile": "-20.00",
+          "difference": "-20.00",
+          "check": "per-line"
+        }
+      ],
       "movedToProcessed": true
     },
     {
       "bank": "myinvestor", "year": "2026", "fileId": "9XyZ...", "name": "extracto.csv",
       "status": "failed", "account": null, "imported": 0, "duplicates": 0,
-      "unparsedCount": 0, "unparsedRows": [], "movedToProcessed": false,
+      "anchored": false, "balancesFilled": 0,
+      "unparsedCount": 0, "unparsedRows": [], "balanceMismatches": [],
+      "movedToProcessed": false,
       "error": {
         "code": "MISSING_ACCOUNT_DATA",
         "message": "No iban in the file and no account registered for bank myinvestor: add a line \"iban;<IBAN>\" at the top of one of its files, once."
@@ -705,8 +764,9 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 
 > **El informe de un archivo de producto tiene su propia forma**, no una versión
 > nullable de la del extracto: trae `product` y `snapshot`, y **no** trae `account`,
-> `imported`, `duplicates`, `unparsedCount` ni `unparsedRows` (un archivo de producto no
-> aporta ni un movimiento, así que esos contadores serían ceros que no dicen nada).
+> `imported`, `duplicates`, `anchored`, `balancesFilled`, `unparsedCount` ni
+> `unparsedRows` (un archivo de producto no aporta ni un movimiento ni una cuenta,
+> así que esos contadores serían ceros que no dicen nada).
 >
 > - `product.created`: `true` si esta llamada **creó** la cuenta, `false` si la
 >   **actualizó**.
@@ -723,7 +783,9 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 
 - **Totales:** `importedCount` movimientos guardados, `duplicateCount` descartados
   por ya existir, `unparsedCount` líneas que ningún parser supo interpretar,
-  `failedCount` y `skippedCount` archivos.
+  `failedCount` y `skippedCount` archivos, y `balanceMismatchCount` descuadres de
+  toda la ejecución (feature 32). **No hay total de run para `anchored`
+  ni para `balancesFilled`**: los dos son por archivo y ahí se leen.
 - `imported` / `duplicates`: movimientos **guardados** y **descartados por
   duplicado** de ese archivo. Reimportar el mismo archivo no duplica nada: sale
   `imported: 0` y `duplicates: n`. Dos líneas idénticas del mismo día **no** son
@@ -735,6 +797,65 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   llamada con el IBAN del archivo, y `appliedDefaults` dice qué valores se
   rellenaron solos (`alias` derivado de banco + últimos 4 del IBAN, `type`
   `"checking"`). **Nunca se crea una cuenta sin IBAN.**
+- `account.balanceAnchor` (feature 31): el ancla que la cuenta tiene **DESPUÉS de
+  este archivo**, como string decimal, o `null` si sigue sin anclar. 🔴 **No es el
+  ancla que este archivo ofrecía**: un extracto que llega a una cuenta **ya
+  anclada** reporta la que se quedó, no la que traía, porque el ancla no se
+  reescribe nunca (es la regla que impide que un extracto nuevo pise el saldo de
+  partida). Leerlo al revés hace creer que ha cambiado algo que no se ha tocado.
+- `anchored` (feature 31): `true` solo cuando **este archivo** es el que ancló la
+  cuenta. `false` cubre a propósito los dos casos que aquí no se distinguen —el
+  archivo no traía saldo, o la cuenta ya estaba anclada y se conservó la suya—;
+  para saber en cuál estás, mira `account.balanceAnchor`.
+- `balancesFilled` (feature 31): cuántas filas **ya guardadas** tenían su saldo por
+  línea vacío y este archivo se lo ha rellenado. **Nunca** pisa uno ya guardado, y
+  esas filas **no** son movimientos nuevos: siguen contando como `duplicates` y no
+  como `imported`. Es lo que arregla los movimientos que entraron cuando el parser
+  de su banco todavía tiraba el saldo, sin borrar filas ni volver a subir nada.
+- `balanceMismatches` (feature 32): los **descuadres** que ese archivo ha producido.
+  **Siempre es un array**, `[]` cuando no hubo ninguno: nunca llega `undefined`, para
+  que «no se ha encontrado nada» y «no se ha comprobado nada» no se lean igual. Al
+  importar, la app suma por su cuenta y compara el resultado contra lo que dice el
+  archivo; si la diferencia **no es exactamente `0,00`**, lo escribe aquí. Un descuadre
+  **no** hace fallar el archivo (sale `imported` igual), **no** cambia ningún saldo y
+  **no** se guarda en ninguna parte: se cuenta en esta respuesta y ya.
+
+  | Campo | Qué es |
+  | --- | --- |
+  | `accountId` / `accountAlias` | La cuenta del descuadre. |
+  | `date` | `YYYY-MM-DD` del punto comparado. |
+  | `computed` | El número que sale del cálculo de la app, string decimal. |
+  | `fromFile` | El número que trae el archivo, string decimal. |
+  | `difference` | `computed − fromFile`, con su signo. Nunca es `"0.00"`. |
+  | `check` | Cuál de las **dos** comprobaciones lo produjo: `"per-line"` o `"statement-balance"`. |
+
+  Las dos comprobaciones no son la misma y por eso `check` viaja:
+
+  | `check` | Qué compara | Cuándo se hace |
+  | --- | --- | --- |
+  | `"per-line"` | Dentro del archivo: la diferencia entre los saldos de dos líneas consecutivas contra el importe de la línea más reciente del par. En el ejemplo de arriba el saldo baja 40,00 y la línea dice 20,00. | Cuando **las dos** líneas de un par traen saldo por línea. Un hueco se salta en silencio: no es un descuadre. |
+  | `"statement-balance"` | El saldo del **preámbulo** del archivo contra el ancla guardada de la cuenta más el neto de lo posterior a ella. | Cuando el archivo trae saldo de preámbulo **y** la cuenta ya estaba anclada **antes** de este archivo. El archivo que ancla la cuenta no se compara contra sí mismo. |
+
+  Un archivo puede disparar **las dos** si trae las dos cosas. Donde no hay dos números
+  que comparar (archivo sin saldos, o primer archivo de una cuenta) no se dice nada:
+  esa vez no hay comprobación, que no es lo mismo que estar bien.
+- `balanceMismatchCount` (feature 32): cuántos descuadres ha habido en **toda la
+  ejecución**, sumando los de todos los archivos. Un `0` cierra el tema de un vistazo
+  sin leerse archivo por archivo.
+
+> 🔴 **`GET /api/accounts` NO cambia.** El descuadre se ve **solo aquí**, en el informe
+> de la importación. Ni `GET /api/accounts` ni `GET /api/accounts/:id` ganan campo
+> alguno, y su `balance` sigue significando exactamente lo mismo que escribió la
+> feature 31: donde manda el archivo, sigue mandando el archivo. Un descuadre **no**
+> mueve ese saldo, **no** toca el ancla y **no** añade ninguna columna a la base de
+> datos. Los descuadres solo existen mientras dura la respuesta de la importación:
+> si quieres volver a verlos, se vuelve a importar (o se lanza
+> `POST /api/import/local`, que no toca Drive).
+- **En un archivo `failed` no se ancla ni se rellena nada**: `anchored` es `false`,
+  `balancesFilled` es `0` y `account.balanceAnchor` puede venir `null` aunque la
+  cuenta sí esté anclada, porque el ancla se lee **después** de guardar los
+  movimientos. Un archivo que falla deja la cuenta **exactamente como la
+  encontró**.
 - `error`: `code` estable + `message` **sanitizado** (nunca tokens ni secretos ni
   rutas absolutas de la máquina).
 - Un fallo por archivo **NO** cambia el código HTTP: la respuesta es 200 con el
@@ -826,6 +947,7 @@ es **siempre `false`**.
   "unparsedCount": 0,
   "failedCount": 0,
   "skippedCount": 0,
+  "balanceMismatchCount": 0,
   "files": [
     {
       "bank": "MiBanco", "year": "2026", "name": "movs.xlsx",
@@ -833,12 +955,16 @@ es **siempre `false`**.
       "account": {
         "id": 3, "iban": "ES9820385778983000760236", "bank": "mibanco",
         "alias": "mibanco ···0236", "type": "checking",
-        "created": false, "appliedDefaults": { "alias": false, "type": false }
+        "created": false, "appliedDefaults": { "alias": false, "type": false },
+        "balanceAnchor": "1500.00"
       },
       "imported": 0,
       "duplicates": 39,
+      "anchored": false,
+      "balancesFilled": 12,
       "unparsedCount": 0,
       "unparsedRows": [],
+      "balanceMismatches": [],
       "movedToProcessed": false
     }
   ]
@@ -853,6 +979,19 @@ es **siempre `false`**.
 - **Los estados por archivo son los mismos** (`imported` / `skipped` / `failed`),
   con la misma regla de cero movimientos, y un fallo por archivo **no** cambia el
   código HTTP.
+- **Los descuadres salen exactamente igual que por Drive** (feature 32, R11):
+  `balanceMismatches` en cada archivo —siempre un array, `[]` cuando no hubo
+  ninguno— y `balanceMismatchCount` en la raíz, con los mismos campos y los mismos
+  dos valores de `check` (`"per-line"` y `"statement-balance"`) descritos en
+  `POST /api/import`. No es una copia: las dos vías comparten el mismo importador,
+  así que **esta es la forma de mirar los descuadres sin tocar Drive**. Aquí
+  tampoco cambia `GET /api/accounts`.
+- **Esta es la vía que repara lo que ya está dentro** (feature 31). Como pasa por
+  el mismo importador, una reimportación local **ancla** las cuentas cuyos archivos
+  traen saldo y **rellena** los saldos por línea que falten, sin crear un solo
+  movimiento nuevo: por eso el ejemplo de arriba sale con `imported: 0`,
+  `duplicates: 39` y `balancesFilled: 12`. No hay script de migración de datos ni
+  hace falta volver a subir nada a Drive.
 
 **Errores**
 | Código HTTP | `code`                  | Cuándo                                                                 |
@@ -940,14 +1079,21 @@ Divisa`; un banco que no reporte saldo (o IBAN) deja esos campos en `null`.
 
 | Campo del resultado | Qué es | Quién lo trae hoy |
 | --- | --- | --- |
-| `accountBalance` (nivel **extracto**) | Saldo **de la cuenta** en la fecha del extracto. Un solo valor por archivo | MyInvestor y N26, de la línea de preámbulo `saldo;<importe>` que escribe el humano. Bankinter: `null` |
-| `balance` (dentro de cada **movimiento**) | Saldo **tras esa línea**. Uno por movimiento | Bankinter, de su columna `Saldo`. MyInvestor y N26: `null` siempre (ADR-013) |
+| `accountBalance` (nivel **extracto**) | Saldo **de la cuenta** en la fecha del extracto. Un solo valor por archivo | MyInvestor y N26, de la línea de preámbulo `saldo;<importe>` que escribe el humano; **Openbank, de la fila `Saldo:` de su propio preámbulo**. Bankinter: `null` |
+| `balance` (dentro de cada **movimiento**) | Saldo **tras esa línea**. Uno por movimiento | Bankinter, de su columna `Saldo`, y **Openbank, de su quinta columna** (desde la feature 31, que revierte la decisión de la F19 de leerlo y tirarlo; ver ADR-028). MyInvestor, N26 y Trade Republic: `null` siempre, porque el archivo no lo trae (ADR-013) |
 
 Son **dos datos distintos y no comparten campo ni nombre**: sumarlos o usar uno
 como sustituto del otro es un error. `accountBalance` es `number | null`, con
-`null` = «el archivo no trae esa línea» (nunca `0`, que es un saldo real), se
+`null` = «el archivo no trae esa línea» (nunca `0`, que es un saldo real) y se
 emite **tal cual está escrito** —no se calcula, no se acumula desde los importes y
-no se cuadra contra ellos— y **no se persiste**: esta feature es parser y volcado.
+no se cuadra contra ellos—.
+
+> ⏩ **«…y no se persiste: esta feature es parser y volcado» dejó de ser cierto con
+> la feature 31** (2026-08-25). El importador guarda ese `accountBalance` **una
+> sola vez por cuenta**, como `Account.balanceAnchor` + `balanceAnchorDate` (el
+> ancla), y a partir de ahí el `balance` de la cuenta se calcula desde él. Un
+> extracto posterior **no** lo reescribe. Sigue sin cuadrarse contra los importes:
+> comparar el saldo calculado con el del archivo es otra feature (ver ADR-028).
 
 ### `POST /api/parser/bankinter`
 
@@ -1007,10 +1153,13 @@ Sin cuerpo de petición.
 > descartó `providesBalance`):
 >
 > - `balance` en **todos** los movimientos: el extracto no trae columna de saldo, y
->   el parser **no lo calcula ni lo acumula**. Consecuencia para la importación: el
->   saldo de esta cuenta se obtiene sumando desde `Account.initialBalance` (la rama
->   que ADR-011 describía como excepcional), así que `initialBalance` es su **único
->   ancla**.
+>   el parser **no lo calcula ni lo acumula**. Consecuencia para la importación:
+>   ~~el saldo de esta cuenta se obtiene sumando desde `Account.initialBalance`, así
+>   que `initialBalance` es su único ancla~~ → **actualizado por la feature 31
+>   (2026-08-25)**: el ancla de esta cuenta sale del `accountBalance` del preámbulo
+>   (la línea `saldo;<importe>` que escribe el humano) y se guarda en
+>   `Account.balanceAnchor` con su fecha; el saldo se calcula desde ahí.
+>   `initialBalance` solo actúa si esa línea no se escribió nunca (ver ADR-028).
 > - ~~`accountIban` en el resultado~~ → **actualizado por la feature 12
 >   (2026-08-12)**: el banco sigue sin aportarlo, pero **el humano lo escribe a
 >   mano, una sola vez**, como línea de preámbulo `iban;ES30…` **encima** de la fila
@@ -1389,13 +1538,16 @@ Sin cuerpo de petición.
 > no se entiende → `unparsedRows` con su nº de fila y su motivo. Es el mismo campo
 > de la feature 16, **no** el saldo por movimiento.
 
-> 📌 **El saldo TRAS CADA MOVIMIENTO existe en este fichero y NO se guarda.**
+> 📌 **El saldo TRAS CADA MOVIMIENTO existe en este fichero y SÍ se guarda**
+> (⛔ ~~«se lee y se descarta»~~ — **revertido por la feature 31**, 2026-08-25).
 > Openbank es el **único** de los seis bancos que lo reporta (quinta columna de
 > cada fila). Se **lee** —una fila cuya quinta celda no es un importe no es una
-> fila de esta tabla— y se **descarta**: `balance` sigue siendo `null` en todos
-> los movimientos, igual que en los demás bancos, y el **ADR-013 no se toca**
-> (decisión del humano del 2026-08-17). Queda anotado aquí y en
-> `progress/implementations/openbank-statement.md` para el día que se decida.
+> fila de esta tabla— y desde la F31 se **emite** en `balance`, como en Bankinter.
+> Lo que se revierte es la decisión de producto de la F19 (del 2026-08-17) de
+> tirarlo; **el ADR-013 sigue en pie** —un dato que el fichero no trae es `null`, y
+> este fichero SÍ lo trae— y el porqué está en el **ADR-028**. 🔴 Si vas a
+> «restaurar» el `null` porque algún texto viejo diga que se descarta: no lo hagas,
+> es la columna de la que sale el ancla de este banco.
 
 > 📌 **La divisa de cada movimiento sale vacía** (`""`). El fichero **no tiene
 > columna de divisa**: la única que aparece es la que acompaña al saldo del

@@ -140,9 +140,12 @@ Lo que en el spec estaba marcado como `(delegado)` o `(añadido)` y tú aprobast
 - **(añadido) El resultado dice explícitamente «aquí no hay IBAN».** Tu extracto no lo
   trae. Consecuencia práctica, que sigue en pie: el alta automática de cuenta necesita
   IBAN + banco, así que **la cuenta corriente de MyInvestor tendrás que darla de alta a
-  mano** por `POST /api/accounts`, y su `initialBalance` será el **único ancla** de su
-  saldo (no hay saldo en el archivo del que partir). Está escrito en el ADR-014 y en
-  `docs/api-contract.md`.
+  mano** por `POST /api/accounts`, y ⛔ ~~su `initialBalance` será el **único ancla** de
+  su saldo (no hay saldo en el archivo del que partir)~~ → **corregido por la F31
+  `real-account-balance`** (2026-08-25, ADR-028): el ancla sale de la línea
+  `saldo;<importe>` del preámbulo que escribes desde la F16, se guarda en
+  `Account.balanceAnchor` con su fecha, y `initialBalance` solo actúa si esa línea no se
+  escribió nunca. Está escrito en el ADR-014 y en `docs/api-contract.md`.
 - **(añadido) La lista de «ignorados».** Los archivos que este parser no maneja (tus
   `.txt` con notas copiadas de la web, y **de momento también los `.json` de producto)
   salen en una lista aparte, visibles pero sin contar como error. Se ve en
@@ -186,6 +189,10 @@ Lo que en el spec estaba marcado como `(delegado)` o `(añadido)` y tú aprobast
 - Si alguna línea del extracto llegara con un `;` **dentro** de un campo, se reportaría
   como «número de columnas inesperado» en vez de parsearse. Es visible, no silencioso, y
   está anotado en el ADR-014 para reevaluarlo si aparece de verdad.
-- Sin saldo en el archivo, el saldo de esta cuenta se tendrá que reconstruir sumando
+- ⛔ ~~Sin saldo en el archivo, el saldo de esta cuenta se tendrá que reconstruir sumando
   desde `initialBalance` cuando llegue la importación. Es la rama que el ADR-011
-  describía como excepcional y que aquí pasa a ser la normal para este banco.
+  describía como excepcional y que aquí pasa a ser la normal para este banco.~~ →
+  **caducado dos veces**: la F16 (2026-08-16) hizo que el archivo **sí** traiga saldo, en
+  el preámbulo, y la **F31** (2026-08-25, ADR-028) lo guarda como ancla al importar. El
+  saldo de esta cuenta ya no se reconstruye desde `initialBalance`: se calcula desde el
+  ancla más el neto de lo posterior.

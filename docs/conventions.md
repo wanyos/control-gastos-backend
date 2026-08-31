@@ -158,6 +158,22 @@ export default async function accountRoutes(fastify: FastifyInstance) {
     cinco importes del mensaje del descuadre se vigilan igual. Si escribes un parser
     nuevo, **entrecomilla el valor que devuelvas en un motivo**: no es cosmética, es la
     mitad de esta regla. Detalle y porqué en el ADR-017.
+  - **Y en `var/parsed/` hay además NOMBRES DE ARCHIVO, que pueden ser convención
+    nuestra** (F34, 2026-08-26). El volcado de un parser de producto guarda en `file` el
+    nombre del fichero que parseó, y ese nombre es el que **nosotros** le decimos que use
+    en la página del banco. El guardián lo leía como una frase de su extracto: 52 avisos
+    falsos de **un solo trigrama**, señalando textos nuestros con datos sintéticos, y
+    **cada parseo real suyo lo reproducía**. Desde la F34 se exime un valor solo si
+    cumple **las dos** condiciones: está bajo una clave que sabemos que guarda un nombre
+    de archivo (hoy `file`) **y** encaja **entero** con un patrón que publica nuestra
+    propia documentación. Los patrones **se leen de los `docs/`** (la línea que recomienda
+    cómo nombrar el archivo, con el patrón entre comillas invertidas), así que **no hay
+    lista de excepciones que ampliar** y un banco nuevo entra solo por documentarse. Un
+    patrón con un hueco que **no es una fecha** se descarta entero, porque lo que cabe en
+    ese hueco es suyo: por eso MyInvestor —cuyo patrón lleva el nombre del producto—
+    **sigue vigilado igual**. Si escribes la página de un banco nuevo, **recomienda el
+    nombre del archivo con la fecha como único hueco**: no es cosmética, es lo que
+    distingue tu convención de un dato suyo. Detalle y porqué en el ADR-017.
   - **Sus mensajes no llevan tu dato**: dicen `archivo:línea` y el tipo de coincidencia,
     nunca el valor. Si al leer un fallo te falta saber qué cifra es, búscala en la línea
     que te señala; el guardián no la transcribe a propósito.
@@ -200,6 +216,38 @@ export default async function accountRoutes(fastify: FastifyInstance) {
 - **Si añades una migración**, no tienes que hacer nada: la plantilla
   `gastos_test_template` se vuelve a migrar sola en la siguiente pasada (~1,7 s) y
   las bases de worker se reclonan de ella.
+
+### Tests que tocan `var/`
+
+> Cómo se escribe, a partir del 2026-08-25 (F33, ADR-029), un test que ejercita una
+> ruta o un servicio que lee o escribe archivos.
+
+- **Un test no toca `var/`. Nunca.** Ahí viven las descargas de los bancos y los
+  volcados del parser, y es lo único del proyecto que **no tiene copia en git**.
+- **Si el código que pruebas tiene `sourceBaseDir` / `dumpBaseDir`, INYÉCTALOS**,
+  con un `mkdtemp` que borras en el `afterEach`. Un valor por defecto que apunta a
+  `var/` no es una comodidad: es el bug de la F33.
+- **Para comprobar que una ruta está registrada en la app real, se usa
+  `app.hasRoute({ method, url })`, no un `inject`.** La garantía es la misma —es
+  `buildApp()`, no una app de mentira— y no ejecuta el handler, que es lo que
+  acababa parseando los archivos del humano. Los cinco bancos lo hacen así.
+- **No depende de que te acuerdes:** `vitest.global-setup.ts` fotografía `var/`
+  antes y después de la suite y la pone **roja** si un archivo cambió de contenido
+  o **solo de fecha**, nombrando la ruta y nunca su contenido
+  ([`src/lib/test-var.ts`](../src/lib/test-var.ts), ADR-029). «Roja» quiere decir
+  **código de salida ≠ 0 y `./init.sh` en `[FAIL]`**, aunque los ~950 tests estén
+  verdes: lo comprueba de punta a punta
+  [`src/lib/test-guard.e2e.test.ts`](../src/lib/test-guard.e2e.test.ts).
+- **Si escribes otro guardián que se ejecute al final de la suite, no lo hagas con
+  un `throw`.** En el *teardown* de `globalSetup` un `throw` se reporta como `error
+  during close` y **`vitest run` sale con 0**: el aviso se imprime y no para nada.
+  Se usa [`failRun`](../src/lib/test-guard.ts), que escribe al descriptor 2 y fija
+  el código de salida. Lo aprendimos en la review de la F33, y con él se arregló
+  también el guardián de base de datos de la F27, que llevaba desde su primer día
+  sin poder tumbar una pasada.
+- **Vigila escrituras, no lecturas.** Un test que lea `var/` no cambia una fecha y
+  esta red no lo ve; lo que impide que un dato suyo acabe versionado sigue siendo
+  el guardián del ADR-017.
 
 ## Manejo de errores
 

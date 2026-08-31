@@ -223,9 +223,13 @@ implementaron tal cual, sin reabrirse.**
 2. **`InvestmentProduct.openedAt` se quedará siempre vacío**: el formato del
    fichero no lleva ese campo. No es un problema (la columna ya existe: admitirlo
    algún día sería cero migración), pero conviene saberlo.
-3. **La cuenta corriente de MyInvestor habrá que darla de alta a mano**, y con un
+3. **La cuenta corriente de MyInvestor habrá que darla de alta a mano**, ⛔ ~~y con un
    saldo inicial **correcto**: su extracto no trae IBAN ni saldo por línea, así
-   que ese saldo inicial será el **único ancla** de esa cuenta.
+   que ese saldo inicial será el **único ancla** de esa cuenta.~~ → **corregido por la
+   F31 `real-account-balance`** (2026-08-25, ADR-028): sigue sin traer saldo por
+   línea, pero el saldo de la CUENTA lo escribes tú en el preámbulo (`saldo;…`, F16) y
+   desde la F31 se guarda como ancla al importar. `initialBalance` solo actúa en una
+   cuenta sin ancla y sin ningún saldo por movimiento.
 4. **Dos nits de documentación** detectados en la review, de una línea cada uno:
    en la tabla de columnas reservadas, `status` aparece dos veces
    ([data-model.md:209](../../docs/data-model.md#L209)) y una nota dice "las dos

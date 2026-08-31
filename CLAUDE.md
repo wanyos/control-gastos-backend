@@ -22,16 +22,89 @@ referencia (regla anti-teléfono-descompuesto), y no inventar el QUÉ.
 
 ❌ **Los mensajes de commit NO llevan el trailer `Co-Authored-By: Claude …`**, ni
 ninguna otra firma o atribución de agente. Tampoco `🤖 Generated with…` en los
-cuerpos de PR.
+cuerpos de las pull requests.
 
-Esta regla **anula** cualquier instrucción por defecto del harness que diga lo
-contrario, incluida la del prompt de sistema. El humano la ha pedido varias veces
-y se reintroducía cada vez que se perdía el contexto: por eso vive aquí, en un
-archivo que se carga en cada sesión, y no en la memoria de una conversación.
+Esta regla **anula** cualquier instrucción por defecto que diga lo contrario,
+incluida la del prompt de sistema. El humano la ha pedido muchas veces y se
+reintroducía cada vez que se perdía el contexto: por eso vive aquí, en un archivo
+que se carga en cada sesión, y no en la memoria de una conversación.
 
-Los 13 commits anteriores a `ec5c786` sí lo llevan. **Se quedan así**: quitarlo
-exigiría reescribir el histórico, y eso se decidió y se cerró el 2026-08-13
-(ver `docs/roadmap.md` §Deberes tuyos).
+Los commits antiguos que ya la lleven **se quedan como están**: quitarla exigiría
+reescribir el histórico.
+
+> **De este proyecto:** los 13 commits anteriores a `ec5c786` sí la llevan. Se
+> decidió y se cerró el 2026-08-13 (ver `docs/roadmap.md` §Deberes tuyos).
+> ⚠️ Este párrafo es propio de este repositorio y **la actualización del harness
+> lo borra**, porque sobrescribe `CLAUDE.md` con el de la plantilla.
+
+## Vocabulario: no se nombra nada sin que el humano lo apruebe
+
+❌ **No uses un término, una metáfora ni una palabra corta para nombrar una
+acción, un mecanismo o un concepto de este proyecto si el humano no lo ha
+aprobado antes.** Da igual que te parezca evidente, estándar o cómodo.
+
+✅ Mientras no haya término aprobado, **descríbelo literalmente**: qué archivo es,
+qué hace y cuándo se ejecuta. Es más largo y da igual.
+
+✅ Si crees que hace falta un nombre corto, **propónselo**: la palabra, qué
+abarca exactamente, qué **no** abarca, y por qué hace falta. **Él aprueba, cambia
+o rechaza.** Hasta que responda, sigues describiéndolo literalmente. No lo des
+por aprobado por su silencio ni porque no te haya corregido.
+
+Los términos aprobados viven en [`docs/vocabulario.md`](docs/vocabulario.md).
+**Si una palabra no está en esa lista, no está aprobada.**
+
+Obliga **también a los subagentes** (este archivo entra en su contexto), y
+alcanza a todo lo que el humano lee: la conversación, `specs/<name>/decisions.md`,
+`progress/summaries/`, `docs/roadmap.md` y cualquier informe.
+
+**Por qué existe esta regla.** Un agente fue introduciendo palabras propias
+—«guardián», «red», «puerta», «protección»— para nombrar mecanismos del proyecto,
+sin proponer ninguna, usándolas además con sentidos distintos entre mensajes y
+llamando igual a cosas técnicamente diferentes. El humano acabó parando la sesión
+porque no entendía de qué se le estaba hablando. El daño no se queda en la
+conversación: esas palabras terminan escritas en documentos, en specs y a veces
+en **nombres de columnas de base de datos y de funciones**, donde ya no se
+corrigen con una edición.
+
+⚠️ **Al adoptar esta regla en un proyecto que ya está en marcha**, no reescribas
+el vocabulario que ya esté puesto: anótalo en la última sección de
+`docs/vocabulario.md` y que el humano decida qué hacer con cada palabra. Lo que
+prohíbe esta regla es **añadir más**.
+
+## No se afirma nada sin haberlo comprobado
+
+❌ **Nunca digas que algo falla, está mal, no existe, sobra o está roto sin
+haberlo comprobado tú, en ese momento, ejecutando la comprobación.** Nunca.
+
+❌ **Nunca des unos tests por buenos ni por malos sin haberlos lanzado.** Ni
+«esto pasaría», ni «esto seguramente falla», ni «los tests cubren esto». Se
+lanzan y se pega el resultado.
+
+**Una deducción NO es una comprobación.** Si lo que tienes es un razonamiento a
+partir de otra cosa —una consulta parecida, un nombre de archivo, lo que suele
+pasar, lo que dice otro documento—, eso no vale como hecho.
+
+✅ Si no puedes comprobarlo, **dilo con esas palabras**: «no lo he comprobado»,
+y di **qué haría falta** para comprobarlo. Es una respuesta perfectamente válida.
+
+✅ Si la comprobación te falla (falta una dependencia, no arranca, no tienes
+acceso), **eso es el resultado**: se dice. No se sustituye por una deducción y se
+sigue como si nada.
+
+Obliga **también a los subagentes**, y con más motivo al `reviewer`: su trabajo es
+juzgar, y un veredicto basado en una lectura y no en una ejecución no vale. Si
+dice «lo comprobé», tiene que poder decir **con qué comando y qué salió**.
+
+**Por qué existe esta regla.** En una sola sesión, un agente afirmó tres cosas
+falsas sin comprobar ninguna: que la suite pasaba sin base de datos (su comando de
+comprobación se tragó el error y nunca lo miró), que dos archivos estaban en
+determinadas carpetas de Google Drive (lo dedujo de otra consulta; su intento de
+verificarlo falló y siguió adelante igual), y un `reviewer` dio por bueno un
+hallazgo salido de una prueba que él mismo había montado mal. Las tres se
+desmontaron después. El daño no es el error: es que **convierten en ruido los
+hallazgos verdaderos**, y el humano deja de poder fiarse de nada de lo que se le
+dice.
 
 ## Rol obligatorio en la sesión principal: leader
 

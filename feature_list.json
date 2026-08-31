@@ -1268,6 +1268,220 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 31,
+      "name": "real-account-balance",
+      "title": "Cada cuenta corriente sabe cuánto dinero tiene dentro, no solo cuánto ha variado",
+      "intent": {
+        "_procedencia": "Decidida en el workspace el 2026-08-25 y traspasada al backend en progress/explorations/handoff-backend-saldo-real.md, que trae la evidencia medida contra la base ese día y los avisos técnicos. Contexto de producto en docs/ideas.md §4 (workspace) → «Refinamiento de Patrimonio (2026-08-25)». Estado de partida medido ese día: las 4 cuentas corrientes tienen initialBalance = 0, así que ninguna sabe su saldo real; el dato NO falta —los parsers de N26, Openbank y MyInvestor ya leen accountBalance del preámbulo del extracto y llega intacto al volcado de var/parsed/— pero el importador lo tira: accountBalance no aparece ni una vez en src/modules/import/import.service.ts. Bankinter no trae ancla de preámbulo pero sí saldo por línea, y sus movimientos tienen balanceAfter al completo; N26, Openbank y MyInvestor no tienen ni un balanceAfter guardado.",
+        "_corte": "CORTE DECIDIDO POR EL HUMANO EL 2026-08-25. La feature original (F31, «el saldo real de cada cuenta») no cabía en un spec revisable: 18-19 requirements y 8 puntos en el bloque de decisiones, cuando el techo del harness son ~15 y 6. El spec-author paró antes de redactar y propuso el corte; el humano lo aprobó. La frontera, en una línea: F31 PRODUCE el número, F32 lo VIGILA. Todo lo que sirve para que la cuenta diga un saldo real es F31; todo lo que solo sirve para detectar que ese saldo no cuadra es F32. F32 depende de F31 y no al revés. El análisis completo del corte está en progress/spec_real-account-balance.md. Esta es la mitad que PRODUCE el número. El testigo que avisa de descuadres es la F32 balance-reconciliation.",
+        "que_quiero": "Que cada cuenta sepa cuánto dinero tiene dentro de verdad, no solo cuánto ha variado. El saldo de partida se lee UNA sola vez del extracto —igual que el IBAN, que escribí a mano una vez y no volveré a escribir nunca— y a partir de ahí quiero un mecanismo que CALCULE el saldo al día sumando y restando los movimientos que van entrando. Ese cálculo existe siempre, en todas las cuentas; lo que cambia es qué papel juega: en una cuenta cuyo extracto NO trae el saldo (o solo lo trajo una vez, al principio), el cálculo ES el saldo, es lo que lo mantiene en el tiempo; en una cuenta cuyo extracto SÍ trae el saldo, MANDA SIEMPRE EL DEL ARCHIVO. Y el saldo por movimiento de Openbank, que hoy el parser lee y tira a propósito, quiero que se guarde.",
+        "por_que": "«¿Cuánto tengo?» es la pregunta que más me fastidia no poder contestar, y hoy la app no puede: las cuatro cuentas arrancan de cero. El dato ya está en los archivos y se está tirando. Y lo quiero así —leído una vez, mantenido con los movimientos— porque un saldo que hay que ir refrescando a mano caduca al día siguiente y nadie se acuerda.",
+        "como_se_que_esta_bien": [
+          "Cuando pida las cuentas, cada una me dice un saldo real que se parece al de la web de su banco, no una variación desde cero.",
+          "Cuando importo un extracto de una cuenta que TODAVÍA no tiene saldo de partida, la cuenta queda anclada a partir del saldo del archivo.",
+          "Cuando importo otro extracto de una cuenta que YA tiene saldo de partida, el saldo de partida NO se reescribe.",
+          "Cuando entran movimientos nuevos, el saldo sube o baja solo, sin que yo escriba nada en ninguna parte.",
+          "Cuando la cuenta es de las que traen el saldo en sus archivos, el saldo que veo es EL DEL ARCHIVO, no el calculado.",
+          "Cuando importo un extracto de Openbank, sus movimientos quedan con su saldo por línea guardado, como ya pasa con los de Bankinter.",
+          "Cuando el saldo del archivo es 0, se trata como un saldo real, no como «no viene».",
+          "Cuando el extracto de N26 o MyInvestor NO trae la línea del saldo escrita a mano, el archivo se importa igual y no pasa nada: simplemente esa vez no hay ancla.",
+          "Mis 4 cuentas y los ~1.520 movimientos que ya están dentro acaban con su saldo bien, sin que yo tenga que volver a subir nada a Drive."
+        ],
+        "que_no_quiero": [
+          "No quiero teclear saldos en la base de datos ni en ningún formulario. El dato entra por el archivo.",
+          "No quiero que un extracto nuevo pise el saldo de partida ya establecido.",
+          "No quiero tocar todavía la vista de Patrimonio ni los productos de inversión. Esto es solo el saldo de las cuentas corrientes.",
+          "No quiero enriquecer nada (categorías, traspasos, formas de pago): sigue siendo tarea aparte.",
+          "FUERA DE ALCANCE POR EL CORTE: comparar el saldo calculado contra el del archivo y avisarme de descuadres. Eso es la F32; aquí el cálculo se construye, pero todavía no vigila nada."
+        ],
+        "delego_en_agente": [
+          "DECISIÓN PARA EL HUMANO EN LA PUERTA: cómo se distingue «saldo de partida ya establecido» de «vale 0». Hoy la columna vale 0 en las cuatro cuentas y 0 es un saldo posible. Hay que proponer cómo se marca que una cuenta ya está anclada y enseñárselo.",
+          "DECISIÓN PARA EL HUMANO EN LA PUERTA: qué se guarda exactamente, si el saldo de partida ya despejado o el ancla tal cual viene (saldo + fecha) con el resto calculado al leer. Al humano le importa el resultado, no la columna, pero avisa de algo que sí le preocupa: si se guarda el saldo despejado y DESPUÉS se importan movimientos MÁS ANTIGUOS que el ancla, ¿queda mal? Hay que resolverlo y decirle cómo.",
+          "Cómo se ancla Bankinter, que no trae saldo de preámbulo pero sí saldo en cada línea. El agente decide de dónde saca su saldo de partida.",
+          "Cómo se rellenan las 4 cuentas y los ~1.520 movimientos que ya están dentro sin que el humano tenga que volver a subir nada a Drive. La F25 reimport-from-local-copy ya permite reprocesar desde var/, y las anclas están en var/parsed/; Openbank además necesita reimportar sus movimientos para rellenar balanceAfter.",
+          "Si el ancla vive en la columna initialBalance que ya existe o en uno o varios campos nuevos, y qué migración hace falta.",
+          "Qué añade exactamente /api/accounts al contrato que lee el frontend."
+        ],
+        "_avisos_tecnicos": [
+          "PROCEDENCIA: esto no lo dijo el humano; sale de mirar el código al preparar el traspaso (progress/explorations/handoff-backend-saldo-real.md §Avisos técnicos). Se copia aquí porque ese archivo se borra al cerrar la feature.",
+          "La REGLA DE PRECEDENCIA de computeAccountBalance (src/modules/movements/movements.service.ts) NO SE TOCA: hoy el saldo PREFIERE el balanceAfter más reciente y solo suma desde initialBalance cuando no hay ninguno, y eso es exactamente lo decidido —manda el archivo donde lo hay—. (Una versión anterior de este aviso decía lo contrario, que la suma pasaba a ser la verdad; era una lectura equivocada de la decisión y se rectificó el 2026-08-25.) Lo que la feature añade encima es otra cosa: hoy el camino de la suma es un FALLBACK que nadie mira y que arranca de 0, y debe pasar a ser un CÁLCULO DE PRIMERA CLASE que se ejecuta SIEMPRE, en todas las cuentas y arrancando del ancla, porque es lo que sostiene a N26 y MyInvestor y lo que hará de testigo en Bankinter y Openbank cuando llegue la F32. La preferencia se queda; el fallback deja de serlo.",
+          "EL ANCLA HACE FALTA TAMBIÉN en las cuentas que traen saldo: sin ella el calculado arrancaría de 0 y la F32 no tendría dos números que comparar. Para Bankinter y Openbank el ancla sale de su propio balanceAfter, no de un preámbulo.",
+          "REVERSIÓN EXPLÍCITA de una decisión anterior: el saldo por movimiento de Openbank se descarta A PROPÓSITO desde la F19, y está documentado en src/modules/openbank/openbank.types.ts, en el parser y en progress/implementations/openbank-statement.md, con ADR-013 detrás. La feature debe revertirlo Y ACTUALIZAR esos textos, no dejarlos contradiciendo al código: este proyecto ya perdió una sesión entera por documentación desfasada.",
+          "EL ORDEN DE IMPORTACIÓN PUEDE ENVENENAR EL DESPEJE: «saldo de partida = ancla − neto hasta la fecha del ancla» solo es correcto si los movimientos anteriores a esa fecha ya están dentro. Guardar el ancla como hecho (saldo + fecha) y derivar al leer es inmune al orden; guardar el resultado despejado no lo es. Es la duda que el humano marcó en delego_en_agente.",
+          "QUE MANDE EL ARCHIVO NO SIGNIFICA QUE EL ARCHIVO SEA LO ÚLTIMO: si entran movimientos posteriores al último que trae saldo (un extracto parcial, o un banco que va con retraso), el saldo de la cuenta es el del archivo MÁS lo que haya venido después, no el del archivo a secas. Hoy pasa de verdad: Bankinter está congelado a finales de julio de 2026 y N26 llega a finales de agosto.",
+          "CONTRATO DE API: cambia lo que devuelve /api/accounts (balance). docs/api-contract.md es la fuente de verdad que lee el frontend y hay que actualizarlo. El frontend NO se toca en esta sesión (regla de oro del workspace). El estado de conciliación NO entra aquí: es de la F32.",
+          "La línea «saldo;» de N26 y MyInvestor deja de ser opcional... una sola vez: basta con que aparezca en UN extracto de cada una para anclarlas. Merece una línea en docs/dar-de-alta-un-banco.md."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "done"
+    },
+    {
+      "id": 32,
+      "name": "balance-reconciliation",
+      "title": "La app compara su propio saldo contra el que trae el archivo y avisa si no cuadran",
+      "intent": {
+        "_procedencia": "Decidida en el workspace el 2026-08-25 y traspasada al backend en progress/explorations/handoff-backend-saldo-real.md, que trae la evidencia medida contra la base ese día y los avisos técnicos. Contexto de producto en docs/ideas.md §4 (workspace) → «Refinamiento de Patrimonio (2026-08-25)». Estado de partida medido ese día: las 4 cuentas corrientes tienen initialBalance = 0, así que ninguna sabe su saldo real; el dato NO falta —los parsers de N26, Openbank y MyInvestor ya leen accountBalance del preámbulo del extracto y llega intacto al volcado de var/parsed/— pero el importador lo tira: accountBalance no aparece ni una vez en src/modules/import/import.service.ts. Bankinter no trae ancla de preámbulo pero sí saldo por línea, y sus movimientos tienen balanceAfter al completo; N26, Openbank y MyInvestor no tienen ni un balanceAfter guardado.",
+        "_corte": "CORTE DECIDIDO POR EL HUMANO EL 2026-08-25. La feature original (F31, «el saldo real de cada cuenta») no cabía en un spec revisable: 18-19 requirements y 8 puntos en el bloque de decisiones, cuando el techo del harness son ~15 y 6. El spec-author paró antes de redactar y propuso el corte; el humano lo aprobó. La frontera, en una línea: F31 PRODUCE el número, F32 lo VIGILA. Todo lo que sirve para que la cuenta diga un saldo real es F31; todo lo que solo sirve para detectar que ese saldo no cuadra es F32. F32 depende de F31 y no al revés. El análisis completo del corte está en progress/spec_real-account-balance.md. Esta es la mitad que VIGILA. Depende de la F31 real-account-balance: sin el ancla no hay dos números que comparar, y sin el balanceAfter de Openbank no se puede conciliar línea a línea. No se arranca hasta que la F31 esté cerrada.",
+        "que_quiero": "En las cuentas cuyo extracto SÍ trae el saldo, quiero que la app compare su propio cálculo contra el saldo del archivo. El cálculo se hace igual que en las demás cuentas, pero aquí sirve para contrastarlo con lo que dice el apunte. Si hay descuadre, que me avise: eso no debería ocurrir nunca.",
+        "por_que": "Porque el saldo que voy a mirar todos los días se sostiene sobre una cadena de sumas y restas, y quiero saber si algún día esa cadena deja de cuadrar con lo que dice el banco. Un descuadre silencioso es peor que no tener el dato: me lo creería.",
+        "como_se_que_esta_bien": [
+          "Cuando la cuenta es de las que traen el saldo en sus archivos, el calculado se sigue haciendo, pero para comparar.",
+          "Cuando el saldo calculado y el saldo que trae el archivo NO coinciden, la importación me lo dice claramente, con la cuenta, la fecha, los dos números y la diferencia. No falla el import: importa y avisa. Y el que se queda como saldo de la cuenta sigue siendo el del archivo.",
+          "Cuando el extracto de N26 o MyInvestor NO trae la línea del saldo escrita a mano, el archivo se importa igual y no pasa nada: simplemente esa vez no hay comprobación."
+        ],
+        "que_no_quiero": [
+          "No quiero que una desviación tumbe la importación: el resto de archivos debe entrar igual.",
+          "No quiero que el aviso cambie el saldo que veo: donde manda el archivo, sigue mandando el archivo.",
+          "No quiero tocar todavía la vista de Patrimonio ni los productos de inversión.",
+          "No quiero enriquecer nada (categorías, traspasos, formas de pago): sigue siendo tarea aparte."
+        ],
+        "delego_en_agente": [
+          "DECISIÓN PARA EL HUMANO EN LA PUERTA: dónde aparece el aviso de desviación para que él lo vea de verdad: en el resultado de la importación, en el endpoint de cuentas, o en los dos.",
+          "DECISIÓN PARA EL HUMANO EN LA PUERTA: con qué tolerancia se comparan dos importes antes de cantar desviación."
+        ],
+        "_avisos_tecnicos": [
+          "PROCEDENCIA: esto no lo dijo el humano; sale de mirar el código al preparar el traspaso (progress/explorations/handoff-backend-saldo-real.md §Avisos técnicos). Se copia aquí porque ese archivo se borra al cerrar la feature.",
+          "SE CONCILIA DE DOS FORMAS, según lo que traiga el banco. Línea a línea donde hay saldo por movimiento (Bankinter hoy, Openbank tras la F31): es la comprobación fuerte, ya probada a mano contra los datos reales el 2026-08-25 sin una sola línea desviada, y NO necesita el ancla, porque compara la diferencia entre dos saldos consecutivos contra el importe del movimiento. Y contra el ancla del preámbulo donde no hay saldo por línea (N26, MyInvestor), que sí es una comparación de números absolutos y por tanto sí necesita el ancla que establece la F31. Dos archivos independientes de Openbank, anclados por separado, dieron el mismo saldo de partida al céntimo.",
+          "EL RIESGO DE QUE ESTA FEATURE LLEGUE LA SEGUNDA ESTÁ MEDIDO, no supuesto: la conciliación se probó a mano contra los datos reales el 2026-08-25 y salió limpia en las dos modalidades. El testigo llega tarde a algo que hoy no está fallando.",
+          "CONTRATO DE API: si el estado de conciliación acaba viéndose en /api/accounts, hay que actualizar docs/api-contract.md, que es la fuente de verdad que lee el frontend. El frontend NO se toca en esa sesión (regla de oro del workspace)."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "done"
+    },
+    {
+      "id": 33,
+      "name": "tests-dont-touch-real-var",
+      "title": "La suite deja de escribir en la carpeta de datos reales del humano",
+      "intent": {
+        "_procedencia": "DECIDIDA POR EL HUMANO EL 2026-08-25, al final de la F31: se le presentaron tres salidas (feature aparte, arreglo mínimo sin registro, o anotarlo como cabo suelto) y eligió feature aparte, hecha ANTES de cerrar la F31. La intención de abajo la redactó el leader a partir de esa decisión y del diagnóstico; el humano no la escribió con sus palabras, así que si algo no se corresponde con lo que quiere, manda él. Cómo se encontró: al pasar ./init.sh antes de llamar al reviewer de la F31, la suite daba DOS fallos donde al empezar la sesión daba UNO. El segundo no era preexistente: lo causaba la propia suite.",
+        "_diagnostico": "PROCEDENCIA: esto no lo dijo el humano, lo vio el leader mirando el código el 2026-08-25. El test «is registered in the real app, under the same prefix as the other banks» de src/modules/trade-republic/trade-republic.routes.test.ts:113 llama a buildApp() SIN inyectar sourceBaseDir ni dumpBaseDir. Los demás tests de ese mismo archivo sí los inyectan (buildTestApp, líneas 31-40). Al no inyectarlos, trade-republic.routes.ts:39 cae en su valor por defecto —el var/ real del proyecto— y el POST a /api/parser/trade-republic PARSEA los archivos reales del humano y ESCRIBE un volcado real en var/parsed/trade-republic/2026/products.json. Comprobado: la marca de tiempo de ese archivo coincide con la ejecución de la suite. El comentario del propio test explica por qué nadie lo vio: «the real app points at var/, which does not exist on a fresh machine». En una máquina limpia es inofensivo; en la del humano no. Efecto en cadena: ese volcado alimenta el material de comparación del guardián de ADR-017 (src/no-real-data.test.ts), que a partir de la SEGUNDA ejecución empieza a señalar convenciones de nombre de archivo en tests cuyos datos son sintéticos. Los offenders NO son dinero del humano —el producto de esas fixtures se llama literalmente «Cuenta Sintetica Remunerada»—: lo que coincide es el patrón cuenta-remunerada-<fecha>.json. Es decir: la suite se envenena a sí misma y deja el repositorio en rojo sin que nadie haya escrito nada mal.",
+        "que_quiero": "Que pasar los tests no toque nada mío. Ni mis archivos descargados, ni los volcados que produce el parser, ni nada que viva en var/. Un test que se ejecuta no debería dejar rastro en mis datos, y menos sin que yo me entere.",
+        "por_que": "Porque var/ es donde vive lo que baja del banco y lo que el parser escribe sobre ello, y es de lo único que no hay copia en git. Si la suite escribe ahí, un día me sobrescribe algo y no me entero. Y porque ya pasó lo de al lado con la base de datos, en la F27, y se decidió entonces que los tests no tocan lo real.",
+        "como_se_que_esta_bien": [
+          "Cuando paso la suite dos veces seguidas, la segunda da el mismo resultado que la primera. Hoy no: la primera deja un archivo que hace fallar a la segunda.",
+          "Cuando paso la suite, ningún archivo de var/ cambia de fecha ni de contenido.",
+          "Cuando paso ./init.sh, el guardián de datos reales está en verde y no señala tests cuyos datos son inventados.",
+          "Y sigo teniendo la garantía que ese test daba: que la ruta de Trade Republic está registrada en la aplicación de verdad, no solo en una aplicación de mentira montada en el test."
+        ],
+        "que_no_quiero": [
+          "No quiero que la solución sea borrar el test ni aflojar el guardián de datos reales. Los dos están haciendo su trabajo.",
+          "No quiero que se toque nada de la F31, que está en revisión, ni el parser de Trade Republic.",
+          "No quiero perder lo que ese test comprueba: que la ruta existe en la app real."
+        ],
+        "delego_en_agente": [
+          "Si basta con inyectarle directorios de prueba a ese test, como ya hacen sus compañeros del mismo archivo, o si además hay que impedir que vuelva a pasar —por ejemplo, que el guardián falle si algún test puede escribir en var/, igual que la F14 hizo con los datos reales y la F27 con la base—. El humano ha dicho que quiere que quede registrado, no solo parcheado: decidir si eso incluye una red que lo cace la próxima vez, y justificarlo.",
+          "Si hay MÁS tests con el mismo agujero. El mismo patrón (un valor por defecto que apunta a var/ y un test que llama a buildApp() sin inyectar) existe al menos en bankinter.routes.ts:34, myinvestor.routes.ts:35 e ingestion.routes.ts:32. Hay que MIRARLO, no suponerlo: si sus tests inyectan, no hay nada que hacer ahí.",
+          "Qué se hace con var/parsed/trade-republic/2026/products.json, que ya está escrito. Si es un volcado que el humano tendría igualmente al usar la app, se queda; si solo existe porque lo escribió la suite, hay que decir si se borra y quién lo decide. NO borrar nada de var/ sin preguntarle.",
+          "Si arreglado el test, el guardián de ADR-017 vuelve a verde por sí solo o sigue señalando las convenciones de nombre de archivo. Si sigue señalándolas, ESO es un problema distinto y hay que decirlo, no taparlo: significaría que el patrón de nombres de las fixtures se parece demasiado al de los archivos reales."
+        ]
+      },
+      "acceptance": [
+        "Ningún archivo de var/ cambia de contenido ni de fecha de modificación al pasar la suite completa. Con test que lo compruebe, no solo con una comprobación a mano",
+        "Dos ejecuciones seguidas de ./init.sh dan el mismo resultado: la primera no deja nada que haga fallar a la segunda",
+        "El test de src/modules/trade-republic/trade-republic.routes.test.ts:113 SIGUE comprobando que la ruta está registrada en la aplicación real. No se borra ni se degrada a una app de mentira",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 1): si además del arreglo se añade una red que impida que vuelva a pasar, en la línea de lo que hicieron la F14 y la F27. El humano pidió registro, no parche",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 2): si bankinter.routes.ts, myinvestor.routes.ts e ingestion.routes.ts tienen el mismo agujero. Comprobado leyendo sus tests, no supuesto. Los que lo tengan entran en el alcance",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (delego_en_agente nº 4): si con el test arreglado el guardián de ADR-017 vuelve a verde solo. Si NO vuelve, se dice por qué y no se toca el guardián para taparlo",
+        "Nada de var/ se borra sin preguntar al humano",
+        "La F31 no se toca: ni su código, ni su spec, ni sus tests",
+        "Ni un dato real del humano en tests ni en fixtures (ADR-017); ./init.sh termina en verde"
+      ],
+      "sdd": false,
+      "status": "done"
+    },
+    {
+      "id": 34,
+      "name": "guardian-knows-our-own-filenames",
+      "title": "El guardián de datos reales deja de confundir una convención nuestra con un dato del humano",
+      "intent": {
+        "_procedencia": "DECIDIDA POR EL HUMANO EL 2026-08-26, al cerrar la F33: se le presentaron las dos salidas que el implementer de la F33 dejó escritas —(a) renombrar la convención sintética en ~19 sitios versionados, incluida la plantilla que él rellena, o (b) enseñar al guardián a distinguirla— y eligió (b), con el argumento de que el problema está en el detector y no en el nombre. La intención de abajo la redactó el leader a partir de esa decisión y del diagnóstico de la F33; el humano no la escribió con sus palabras, así que si algo no se corresponde con lo que quiere, manda él. El análisis completo está en progress/implementations/tests-dont-touch-real-var.md §Las cuatro decisiones · 4.",
+        "_diagnostico": "PROCEDENCIA: lo midió el implementer de la F33 el 2026-08-25, y NO lo tapó: paró y lo dejó escrito, que era la orden. Los 52 avisos del guardián de frases de src/no-real-data.test.ts salen de UN SOLO trigrama, y ese trigrama entra por los NOMBRES DE ARCHIVO guardados dentro del volcado de var/parsed/. Ese nombre no es un dato del humano: es la convención que el propio proyecto publica en la plantilla que él rellena. Es decir, el guardián señala textos NUESTROS con datos SINTÉTICOS (el producto de esas fixtures se llama literalmente «Cuenta Sintetica Remunerada») creyendo que son frases de su extracto. El guardián ya tiene desde la F24 un mecanismo para esto —resta de las frases del humano el vocabulario que nuestro propio código demuestra que escribimos nosotros— pero ese mecanismo no cubre los nombres de archivo que viajan DENTRO del volcado. Alcance real del fallo, y es lo que lo hace urgente: no es un residuo de la F33; pasa igual si el volcado lo genera el humano usando la aplicación, así que HOY CUALQUIER PARSEO REAL DE TRADE REPUBLIC LE DEJA LA SUITE EN ROJO.",
+        "que_quiero": "Que el guardián de datos reales deje de darme la alarma por algo que hemos escrito nosotros. Que siga cazando cualquier dato mío que se cuele en el repositorio —eso no se toca— pero que sepa que un nombre de archivo con la forma que el propio proyecto me dice que use no es un dato mío.",
+        "por_que": "Porque hoy, cada vez que uso la aplicación de verdad para parsear mis archivos, la suite se me pone roja sin que yo haya hecho nada mal. Una alarma que salta cuando no pasa nada es una alarma que acabo ignorando, y el día que salte de verdad no la voy a mirar. Y este guardián concreto es el que ha destapado los problemas de esta semana: me interesa que siga siendo creíble.",
+        "como_se_que_esta_bien": [
+          "Cuando parseo mis archivos de verdad y luego paso la suite, está en verde.",
+          "Cuando alguien cuela un dato mío de verdad en un test o en un documento, el guardián lo sigue cazando y me dice archivo y línea, exactamente como hasta hoy.",
+          "No tengo que renombrar nada ni cambiar la forma en que escribo mis archivos.",
+          "Cuando el guardián deja pasar algo, se puede ver por qué lo dejó pasar: no es una lista de excepciones a mano que crezca sola."
+        ],
+        "que_no_quiero": [
+          "No quiero que la solución sea aflojar el guardián en general, ni bajarle la sensibilidad, ni apagar la comprobación de frases.",
+          "No quiero una lista de excepciones escritas a mano que haya que ir ampliando cada vez que salte.",
+          "No quiero renombrar la convención de mis archivos: eso era la otra salida y la descarté.",
+          "No quiero que se toque nada de la F31 ni de la F33."
+        ],
+        "delego_en_agente": [
+          "Cómo se le enseña exactamente: si la exención se define por la FORMA del valor (un nombre de archivo con el patrón que publicamos) o por su PROCEDENCIA (viene de un campo del volcado que sabemos que es un nombre de archivo). La segunda es más estrecha y por tanto más segura; hay que decir cuál se elige y por qué.",
+          "Si esto encaja en el mecanismo que la F24 ya construyó —restar el vocabulario que nuestro propio código demuestra que escribimos nosotros— o si es una pieza aparte. Reaprovechar lo que existe es preferible a añadir un camino nuevo, pero solo si de verdad encaja.",
+          "Cómo se demuestra que el guardián NO se ha aflojado. Esto es lo más importante de la feature: hace falta al menos un test que meta un dato real de mentira y compruebe que lo sigue cazando. Sin esa prueba, esta feature es indistinguible de apagar la alarma.",
+          "Si el mismo falso positivo puede darse con otros bancos, no solo con Trade Republic: los volcados de var/parsed/ de los demás también llevan nombres de archivo dentro."
+        ]
+      },
+      "acceptance": [
+        "Con el volcado real de var/parsed/ presente, ./init.sh termina EN VERDE. Es el criterio que desbloquea el cierre de la F31 y de la F33",
+        "PRUEBA DE QUE NO SE HA AFLOJADO (delego_en_agente nº 3, y es el criterio central): hay al menos un test que introduce un dato real simulado y comprueba que el guardián lo SIGUE cazando con archivo y línea. Si esta prueba no existe, la feature no se aprueba",
+        "La exención cubre SOLO nombres de archivo con el patrón que el propio proyecto publica. Ni una frase más: no se baja la sensibilidad general ni se apaga la comprobación de frases",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (nº 1): exención por FORMA del valor o por PROCEDENCIA del campo. Se elige una y se justifica; la de procedencia es más estrecha",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (nº 2): si encaja en el mecanismo que la F24 ya construyó o es pieza aparte. Reaprovechar es preferible, pero solo si encaja de verdad",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (nº 4): si el mismo falso positivo puede darse con los volcados de otros bancos. Comprobado, no supuesto",
+        "NO hay una lista de excepciones escrita a mano que haya que ampliar cada vez que salte",
+        "El humano no renombra nada ni cambia cómo escribe sus archivos",
+        "Ni la F31 ni la F33 se tocan",
+        "Ni un dato real del humano en tests ni en fixtures (ADR-017); cada criterio con al menos un test mapeado en progress/implementations/guardian-knows-our-own-filenames.md"
+      ],
+      "sdd": false,
+      "status": "done"
+    },
+    {
+      "id": 35,
+      "name": "client-errors-are-not-500",
+      "title": "Un error de quien llama deja de reportarse como avería del servidor",
+      "intent": {
+        "_procedencia": "DECIDIDA POR EL HUMANO EL 2026-08-30, al repasar los tres cabos que salieron de la prueba real de la F31: «hagamos el punto 3 creando la feature para el arreglo». La intención de abajo la redactó el leader a partir de esa decisión y del diagnóstico; el humano no la escribió con sus palabras, así que si algo no se corresponde con lo que quiere, manda él. Cómo se encontró: al lanzar POST /api/import/local durante la prueba real, el leader mandó la petición con cabecera JSON y cuerpo vacío y recibió un 500. Al mirar el log, el error de dentro era FST_ERR_CTP_EMPTY_JSON_BODY, que es un error del que llama, no del servidor.",
+        "_diagnostico": "PROCEDENCIA: lo vio el leader leyendo el código el 2026-08-30, y es MÁS ANCHO que el caso que lo destapó. src/plugins/error-handler.ts respeta el código de estado en solo dos ramas: los AppError nuestros, que traen su statusCode, y los fallos de validación de esquema de Fastify/AJV, que se reconocen por su array validation y salen como 400. TODO lo demás cae en la rama final y sale como 500 INTERNAL_SERVER_ERROR, incluidos los FastifyError que YA TRAEN su propio statusCode correcto. Casos reales que hoy salen como 500 siendo culpa de quien llama: cuerpo vacío con content-type JSON (FST_ERR_CTP_EMPTY_JSON_BODY, 400), JSON mal formado (FST_ERR_CTP_INVALID_JSON_BODY, 400), tipo de contenido no soportado (FST_ERR_CTP_INVALID_MEDIA_TYPE, 415) y cuerpo demasiado grande (FST_ERR_CTP_BODY_TOO_LARGE, 413). Por qué importa más de lo que parece: el frontend es el consumidor de esta API y el contrato es lo único que va a tener; un 400 le dice «corrige la petición» y un 500 le dice «el backend está roto, no lo intentes». Hoy no puede distinguirlos.",
+        "que_quiero": "Que cuando la culpa sea de quien llama, la respuesta lo diga. Si mando una petición mal formada, quiero un error que me diga que la he mandado mal, no uno que diga que el servidor se ha averiado.",
+        "por_que": "Porque el frontend va a comer esta API y solo tiene el contrato para saber qué hacer. Si todo son errores del servidor, no puede distinguir entre «arregla tu petición» y «el backend está caído», y va a tomar la decisión equivocada en los dos casos. Y a mí me pasa igual cuando pruebo a mano: un 500 me manda a mirar el log del servidor cuando el problema estaba en lo que yo había escrito.",
+        "como_se_que_esta_bien": [
+          "Cuando mando una petición con el cuerpo vacío y cabecera de JSON, me responde un error que dice que la petición está mal, no que el servidor se ha averiado.",
+          "Lo mismo con un JSON mal escrito, con un tipo de contenido que no toca y con un cuerpo demasiado grande.",
+          "Los errores que ya funcionaban bien siguen igual: los nuestros y los de validación del esquema.",
+          "Cuando el fallo SÍ es del servidor, sigue saliendo como error del servidor y sin contar por dentro qué ha pasado.",
+          "Ninguna ruta cambia lo que devuelve cuando todo va bien."
+        ],
+        "que_no_quiero": [
+          "No quiero que el mensaje de error cuente por dentro cómo está hecho el backend: ni rutas de archivos, ni trazas, ni nombres de tablas.",
+          "No quiero una lista escrita a mano de códigos de error de Fastify que haya que ir ampliando cada vez que aparezca uno nuevo.",
+          "No quiero que se toque el comportamiento de los errores nuestros ni el de validación, que ya están bien.",
+          "No quiero que esto cambie ninguna ruta ni ningún contrato de respuesta correcta."
+        ],
+        "delego_en_agente": [
+          "Cómo se distingue un error del que llama de uno del servidor sin escribir una lista a mano. Lo natural es respetar el statusCode que el propio FastifyError ya trae cuando está en el rango de errores del cliente, pero hay que decidirlo y justificarlo, y decir qué se hace con un error que trae un statusCode de servidor o que no trae ninguno.",
+          "Qué código y qué mensaje se le da a cada caso en el cuerpo de la respuesta, sabiendo que el campo code es lo que el frontend va a mirar. Si se reutiliza el code que trae Fastify o se traduce a uno nuestro, y por qué.",
+          "Si el mensaje de un error de Fastify puede filtrar detalles internos. Hay que COMPROBARLO caso por caso, no suponerlo: si alguno los filtra, ese no se propaga tal cual.",
+          "Si hay otros sitios del backend con el mismo problema —un error de quien llama que acaba saliendo como 500—, aparte del manejador central."
+        ]
+      },
+      "acceptance": [
+        "Un cuerpo vacío con content-type JSON devuelve 400, no 500. Es el caso exacto que lo destapó y tiene test",
+        "Un JSON mal formado devuelve 400; un content-type no soportado, 415; un cuerpo demasiado grande, 413. Cada uno con su test",
+        "NO REGRESIÓN: los AppError nuestros siguen devolviendo su propio statusCode y su code, y los fallos de validación de esquema siguen devolviendo 400 VALIDATION_ERROR. Con test",
+        "NO REGRESIÓN: un error inesperado de verdad sigue devolviendo 500 con cuerpo genérico, SIN filtrar el detalle interno, y sigue registrándose entero en el log. Con test",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (nº 1): cómo se distingue el error del cliente sin lista escrita a mano, y qué se hace con un error que trae statusCode de servidor o ninguno",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (nº 2): qué code y qué mensaje recibe cada caso, sabiendo que code es lo que mira el frontend",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (nº 3): si el mensaje de algún error de Fastify filtra detalle interno. COMPROBADO caso por caso, no supuesto; el que lo filtre no se propaga tal cual",
+        "DECISIÓN DELEGADA AL IMPLEMENTER, a resolver POR ESCRITO (nº 4): si hay otros sitios con el mismo problema aparte del manejador central",
+        "docs/api-contract.md recoge qué códigos de estado puede devolver la API y en qué caso: es la fuente de verdad que lee el frontend, y este cambio es visible para él",
+        "Ninguna ruta cambia lo que devuelve en el camino feliz",
+        "Ni un dato real del humano en tests ni en fixtures (ADR-017); cada criterio con al menos un test mapeado en progress/implementations/client-errors-are-not-500.md; ./init.sh termina en verde"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

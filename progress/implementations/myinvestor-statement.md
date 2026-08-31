@@ -169,8 +169,12 @@ de Bankinter y `specs/investments-data-model/`.
    dónde vive un fixture merece una línea en `docs/conventions.md`. No se ha tocado.
 5. **Consecuencia operativa que el humano ya aprobó** (no es trabajo de esta
    feature): sin IBAN, la cuenta corriente de MyInvestor hay que **darla de alta a
-   mano** por `POST /api/accounts`, y su `initialBalance` pasa a ser el **único
-   ancla** de su saldo. Está escrito en el ADR-014 y en `docs/api-contract.md`.
+   mano** por `POST /api/accounts`, y ⛔ ~~su `initialBalance` pasa a ser el **único
+   ancla** de su saldo~~ → **revertido por la F31 `real-account-balance`**
+   (2026-08-25, ADR-028): el ancla sale del `accountBalance` del preámbulo (F16) y
+   vive en `Account.balanceAnchor`; `initialBalance` solo actúa en una cuenta sin
+   ancla y sin ningún saldo por movimiento. Está escrito en el ADR-014 y en
+   `docs/api-contract.md`.
 
 ## Estado final en `feature_list.json`
 

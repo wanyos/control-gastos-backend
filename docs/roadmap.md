@@ -4,7 +4,7 @@
 > **qué viene después** y **por qué en ese orden**. Es el mapa del recorrido
 > completo, no el detalle de ninguna parada.
 >
-> **Última revisión:** 2026-08-13.
+> **Última revisión:** 2026-08-30.
 
 ## Este documento frente a los otros cuatro
 
@@ -42,10 +42,17 @@ F10 se **partió en dos** porque 70 requirements escondían dos features.
 la F14 dejó un guardián en la suite que falla señalando archivo y línea si
 reaparece uno.
 
-⚠️ **No hay siguiente paso decidido.** Las **15 features están `done`** y no
-queda ninguna abierta, ningún `intent` en borrador ni ninguna decisión esperando
-tu visto bueno. Antes de que un agente pueda arrancar algo, **la elección es
-tuya** y son dos caminos distintos:
+**Y desde el 2026-08-26, cada cuenta corriente sabe cuánto dinero tiene dentro**,
+no solo cuánto ha variado (F31): se ancla con el saldo que trae el extracto una
+sola vez y a partir de ahí se mantiene con los movimientos. Donde el archivo trae
+saldo, sigue mandando el archivo. Y desde el **2026-08-30**, al importar un
+archivo la app **compara sus propias sumas contra lo que dice el archivo** y
+escribe los descuadres en el informe de esa importación, con la cuenta, la fecha,
+los dos números y la diferencia (F32). Tolerancia cero, y un descuadre no tumba
+la importación ni cambia ningún saldo.
+
+⚠️ **No hay siguiente paso decidido.** Las **35 features están `done`** y no
+queda ninguna abierta. La elección vuelve a ser tuya entre estos dos caminos:
 
 - **Seguir con bancos (E4).** ✅ **Desbloqueado el 2026-08-17**: el inventario está
   relleno y son **6 bancos, 2 parsers por escribir** (Revolut, Trade
@@ -65,14 +72,14 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 
 | # | Etapa | Estado | Features |
 |---|---|---|---|
-| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2, F14 |
+| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2, F14, **F33**, **F34** |
 | E1 | **El remoto** — hablar con Google Drive y organizarlo | ✅ | F3, F4 |
 | E2 | **Traer los ficheros** — detectar pendientes y descargarlos | ✅ (deuda saldada por la F12) | F5 |
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
 | E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 **5 de 6 bancos**, **contrato ✅** · inventario ✅ (2026-08-17); solo queda **Revolut**, aparcado sin datos (Trade Republic entró por `.json` escrito a mano, sin parser de PDF: provisional) | F6, F7, F11, F10, F13, **F18**, **F19**, **F20** |
 | E5 | **La importación** — del fichero parseado a la base de datos | ✅ | **F12** |
 | E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | ⬜ **candidata a siguiente** | *sin features* |
-| E7 | **Consultar** — filtros, saldos, totales, patrimonio | ⬜ | *sin features* |
+| E7 | **Consultar** — filtros, saldos, totales, patrimonio | 🟡 **empezada**: el saldo real por cuenta ✅ (F31) y su comprobación al importar ✅ (F32); faltan filtros, totales y patrimonio | **F31**, **F32** |
 | E8 | **Ver** — el frontend | ⬜ | otro proyecto |
 | E9 | **Que esto viva en algún sitio** — despliegue y acceso | ⬜ | *sin etapa hasta hoy* |
 
@@ -148,7 +155,7 @@ la salida**, no el código que lee el formato.
 | MyInvestor · extracto | CSV de la cuenta corriente | ✅ **F10 `myinvestor-statement`** (2026-08-11) — primer parser nacido ya contra el contrato. **F17** (2026-08-15) rechaza el fichero que no venga en UTF-8 y **F16** (2026-08-16) lee el **saldo de la cuenta** de una segunda línea de preámbulo `saldo;…` |
 | MyInvestor · productos | un JSON por producto de inversión | ✅ **F13 `myinvestor-products`** (2026-08-12, ADR-016) — misma ruta `POST /api/parser/myinvestor`, encaminado por extensión; **no toca base de datos**. **F15** (2026-08-13) le añadió `openedAt` **obligatorio en los cuatro tipos**. 🔴 **Sus 5 `.json` SIGUEN sin llegar a la base de datos** tras la F26, que entró solo con Trade Republic: entran en una feature hermana que reutiliza la misma vía de persistencia (ADR-026) |
 | N26 | `.csv` de la cuenta (comas, con comillas) | ✅ **F18 `n26-statement`** (2026-08-18, ADR-020) — sin spec. El humano pone el IBAN y el saldo en el preámbulo con `;`, como en MyInvestor. Primer **lector de CSV entrecomillado** del repo (vive dentro del módulo) y **concepto compuesto** porque N26 no exporta ninguna columna de concepto |
-| Openbank | «`.xls`» de la cuenta, que **es HTML en cp1252** | ✅ **F19 `openbank-statement`** (2026-08-19, ADR-022) — **con spec**. Se lee tal cual, sin conversión manual: lector de HTML propio **sin dependencias nuevas** y **cp1252 declarado por el parser** (la regla «siempre UTF-8» queda acotada a lo que escribe el humano). Trae el **saldo de la cuenta** en su propio preámbulo; el IBAN lo escribe el humano una vez, en un **comentario HTML** de la primera línea. El saldo por movimiento existe y **no se guarda** |
+| Openbank | «`.xls`» de la cuenta, que **es HTML en cp1252** | ✅ **F19 `openbank-statement`** (2026-08-19, ADR-022) — **con spec**. Se lee tal cual, sin conversión manual: lector de HTML propio **sin dependencias nuevas** y **cp1252 declarado por el parser** (la regla «siempre UTF-8» queda acotada a lo que escribe el humano). Trae el **saldo de la cuenta** en su propio preámbulo; el IBAN lo escribe el humano una vez, en un **comentario HTML** de la primera línea. ~~El saldo por movimiento existe y **no se guarda**~~ → ⛔ **revertido por la F31 `real-account-balance`** (2026-08-25, ADR-028): la quinta columna de cada fila **sí se guarda** desde entonces, en `Movement.balanceAfter`, porque es el **ancla** del saldo real de esta cuenta y tirarla obligaba a releer el fichero para saber cuánto hay. 🔴 No «restaures» el `null` del parser porque este texto dijera lo contrario hasta hoy |
 | Revolut | `.csv` de la cuenta (comas) | 🅿️ **aparcado**, y el humano lo confirmó el **2026-08-20** («de momento lo dejamos para más adelante») al repasar el estado de los bancos: hoy sin movimientos ni saldo. Sus carpetas siguen en Drive y su `.csv` se baja en cada ingesta, pero nadie lo parsea; se retoma con un archivo con datos |
 | Trade Republic | `.json` de cuenta remunerada escrito a mano (su `.pdf` se ignora) | ✅ **F20 `trade-republic-product-file`** (2026-08-19, ADR-024) — **con spec**. **No se parsea el PDF** y no hay parser de lo que emite el banco: entra como `.json` que el humano rellena cada mes, con **cuadre aritmético que rechaza** el mes que no cuadra. Formato en [`trade-republic-product-files.md`](./trade-republic-product-files.md). **Desde la F26 (2026-08-20, ADR-026) su `.json` ya no muere en un volcado: entra por `POST /api/import` y se guarda como producto con una foto por mes.** 🔴 **Provisional**: el día que esa cuenta tenga movimientos de verdad se escribe el parser del PDF ([diagnóstico](../progress/explorations/inventario-bancos-2026-08-17.md)). ⚠️ **El diagnóstico ya no es cierto** (2026-08-24): el extracto desde la apertura **sí sobrevive a la extracción de texto** y trae el saldo corriente por línea, y esa cuenta **sí tuvo movimientos** además de los intereses. Se usó una sola vez, a mano, para generar los 25 `.json` del histórico; **no se añadió parser** y la decisión del ADR-024 sigue en pie. Ver [`historico-cuentas-2026-08-24.md`](../progress/explorations/historico-cuentas-2026-08-24.md) |
 
@@ -227,7 +234,14 @@ Hoy existen `GET /api/accounts`, `/api/categories` y `/api/movements`, y son
 para probar, no para un dashboard con años de movimientos. Falta:
 
 - Filtros por fecha, cuenta, categoría, forma de pago y texto del concepto.
-- Saldo por cuenta (del `balanceAfter` del movimiento más reciente).
+- ~~Saldo por cuenta (del `balanceAfter` del movimiento más reciente).~~
+  ✅ **hecho por la F31** (2026-08-26). Y la descripción de arriba se quedó corta:
+  el saldo **no** es el `balanceAfter` más reciente a secas, sino el importe del
+  punto de anclaje **más el neto de lo estrictamente posterior** — porque un
+  extracto puede ir con retraso y el archivo no siempre es lo último. Donde el
+  archivo trae saldo por línea, ese sigue mandando: la precedencia **no** se
+  invirtió. ✅ Y desde la **F32** (2026-08-30) la importación **comprueba** que ese
+  número cuadra y escribe los descuadres en su informe.
 - Totales del mes **excluyendo los movimientos con `transferId`**.
 - Patrimonio en una fecha (`marketValue + uninvestedCash` por producto).
 
@@ -329,6 +343,10 @@ tiene etapa, es que se va a perder.
 | 3 | Todo lo importado nace `pending_review` y **nada lo pasa a `confirmed`** | **E6** |
 | ~~4~~ | ~~`src/modules/ingesta/` y `/api/ingesta/*` están en español~~ | ✅ **cerrado por la F12** (2026-08-12): `src/modules/ingestion/` y `/api/ingestion/*`; las rutas viejas responden 404 |
 | 10 | `daySequence` numera solo las filas parseadas: reimportar un fichero tras arreglar su parser puede renumerar ese día y dejar duplicados **visibles** | sin dueño |
+| 15 | **`bankinter.routes.test.ts` es el único banco que NO comprueba que su ruta esté registrada en la app real.** No es un agujero de datos —no invoca nada—, pero sí de cobertura: si alguien quitara su línea de `src/app.ts`, ningún test lo diría. Una línea con `hasRoute` lo cierra. Encontrado en la **F33** (2026-08-26) al arreglar el test hermano de Trade Republic | **sin abrir, una línea** |
+| 16 | **El valor por defecto que apunta a `var/` vive en seis módulos de rutas.** Mientras exista, un test que olvide inyectar directorios cae en los datos reales del humano — que es exactamente lo que pasó y originó la F33. La red que puso la F33 lo **caza**, pero no lo **impide**. Pasar esos valores por defecto a inyectarse desde `src/app.ts` haría que un test no pudiera caer en `var/` ni queriendo. Es un cambio de firma en seis módulos | **sin abrir** |
+| 18 | **`./init.sh` no ejecuta `format:check`**, así que una regresión de formato pasa la puerta de calidad en verde. Encontrado por el reviewer de la **F35** (2026-08-30): dos líneas se pasaron del límite de 100 columnas, `prettier --check` fallaba y `./init.sh` decía «entorno listo». Es un estándar vivo y documentado (`docs/conventions.md:48-53`) que **nadie hace cumplir**: o entra en `init.sh` junto al lint y los tests, o deja de ser una regla y hay que decirlo. **Y ya hay código en `HEAD` que la incumple**: `scripts/bankinter-pdf-a-xlsx.mjs` entró así en el commit `1121868` y nadie se enteró, que es la prueba de que el hueco no es teórico | **sin abrir, pequeño** |
+| 17 | **Los contadores de `POST /api/import` no distinguen anclaje ni relleno en el total del run.** La F31 añadió `anchored` y `balancesFilled` por archivo, pero `ImportRunResult` no los agrega, así que no hay total de la pasada. Documentado a propósito en `docs/api-contract.md` para que nadie lo busque. Misma familia que el cabo 13 | **con el cabo 13** |
 | ~~5~~ | ~~El histórico del Excel de años~~ | ✅ **descartado (2026-08-22, reafirmado el 2026-08-23)**, ver `../../docs/ideas.md` §6. El vacío se llena con extractos de los bancos de varios años atrás, no con el Excel: una sola fuente, sin solape ni duplicados incasables |
 | 6 | La base de datos no tiene copia de seguridad; el crudo de Drive te salva los movimientos, **no** las categorías, alias ni `initialBalance` | sin dueño |
 
@@ -359,11 +377,15 @@ tiene etapa, es que se va a perder.
 - ~~**`initialBalance` de esa cuenta: correcto a la primera.**~~ ✅ **deja de ser un
   deber** (2026-08-24, decisión tuya): el histórico se usa como **serie**, no como saldo
   absoluto, así que lo que tiene que cuadrar es el **total de hoy** y la **variación
-  entre dos fechas**. Las cuatro cuentas siguen con `initialBalance` a `0` y su saldo
-  calculado queda desplazado por lo que hubiera antes del primer movimiento importado;
-  ese desplazamiento es **constante por cuenta** y por eso no toca la variación. El
-  total de hoy se ancla en el saldo del preámbulo de cada extracto, no en el de
-  apertura. Ver
+  entre dos fechas**. Las cuatro cuentas siguen con `initialBalance` a `0`.
+  ⛔ ~~su saldo calculado queda desplazado por lo que hubiera antes del primer
+  movimiento importado; ese desplazamiento es **constante por cuenta** y por eso no
+  toca la variación~~ → **ya no hay desplazamiento** desde la **F31
+  `real-account-balance`** (2026-08-25, ADR-028): el total de hoy se ancla, ahora de
+  verdad y en la base de datos (`Account.balanceAnchor`), en el saldo del preámbulo
+  de cada extracto —o en el saldo de la línea más reciente si el archivo no trae
+  preámbulo—, no en el de apertura, y `initialBalance` ya no interviene en una
+  cuenta anclada. Ver
   [`historico-cuentas-2026-08-24.md`](../progress/explorations/historico-cuentas-2026-08-24.md).
 - **Inventario por banco:** entrar en cada web y anotar si da CSV/PDF. **Es lo
   que bloquea la E4 entera:** sin él no se sabe ni cuántas features son.

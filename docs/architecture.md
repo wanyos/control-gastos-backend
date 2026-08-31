@@ -616,6 +616,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
      `balanceAfter` del movimiento más reciente (`bookingDate DESC, daySequence
      DESC`). La suma desde `initialBalance` queda como **caso excepcional** (un
      banco sin saldo corrido, o una cuenta sin nada importado).
+     ⛔ **Revisada por el ADR-028** (2026-08-25, F31): la precedencia del archivo
+     **no cambia** —donde el banco da saldo, ese número sigue mandando—, pero la
+     fórmula ya no tiene dos ramas: es el importe del **punto de anclaje efectivo**
+     más el neto de lo **estrictamente posterior**, así que un movimiento posterior
+     al extracto sí mueve el saldo. La suma desde `initialBalance` deja de ser un
+     *fallback* y queda solo para la cuenta **sin ancla y sin un solo
+     `balanceAfter`**.
   4. **Columna `daySequence`** (posición dentro del `bookingDate`, `1` = el
      primero del día): fija el orden intradía y **entra en la clave del índice de
      dedup**. Se guarda la posición del día, no el número de línea del fichero,
@@ -807,8 +814,12 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
       cuenta y la rama "sumar desde `initialBalance`" que ADR-011 decisión 3
       describió como **caso excepcional** pasa a ser el **camino normal** —
       `computeAccountBalance` ya lo soporta sin tocar código, pero
-      **`Account.initialBalance` deja de ser decorativo: es el único ancla del
-      saldo de esa cuenta**; y (b) tampoco trae **IBAN**, así que
+      ~~**`Account.initialBalance` deja de ser decorativo: es el único ancla del
+      saldo de esa cuenta**~~ ⛔ **corregido por el ADR-028** (2026-08-25, F31): el
+      ancla de esa cuenta sale del `accountBalance` del preámbulo —la línea
+      `saldo;<importe>` que escribe el humano desde la F16— y se guarda en
+      `Account.balanceAnchor` con su fecha; `initialBalance` solo actúa si esa línea
+      no se escribió nunca; y (b) tampoco trae **IBAN**, así que
       `findOrCreateAccountFromMetadata` devolverá `MISSING_ACCOUNT_DATA` (422) y
       esa cuenta habrá que darla de alta **a mano** — que es exactamente el camino
       previsto por ADR-011 decisión 9 y ADR-005 para este caso.
@@ -1022,10 +1033,15 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
      para "no viene en el fichero". **Sin campo `providesBalance`** (ADR-013 lo
      descartó: duplicaría el mismo hecho). **El parser no inventa ni calcula el
      saldo**, ni siquiera en una variable local. Consecuencia para la importación:
-     la rama de ADR-011 que suma desde `Account.initialBalance` —pensada como
-     excepcional— es el **camino normal** de esta cuenta, y la cuenta habrá que
-     **crearla a mano** (sin IBAN, `findOrCreateAccountFromMetadata` devuelve
-     `MISSING_ACCOUNT_DATA`).
+     ~~la rama de ADR-011 que suma desde `Account.initialBalance` —pensada como
+     excepcional— es el **camino normal** de esta cuenta~~ ⛔ **corregido por el
+     ADR-028** (2026-08-25, F31): el ancla de esta cuenta sale del `accountBalance`
+     de su preámbulo (F16) y se guarda en `Account.balanceAnchor`; el saldo se
+     calcula desde ahí más lo posterior, y `initialBalance` solo interviene si esa
+     línea no se escribió nunca. Que el **parser** siga sin dar saldo por línea no
+     cambia: sigue emitiendo `balance: null` y sigue sin inventarlo. Y la cuenta
+     habrá que **crearla a mano** (sin IBAN, `findOrCreateAccountFromMetadata`
+     devuelve `MISSING_ACCOUNT_DATA`).
   4. **Una única regla de números para todo el banco**
      ([`parseAmountText`](../src/modules/myinvestor/myinvestor.format.ts#L28)): con
      coma → decimal español; sin coma y con puntos cada tres dígitos → miles; en
@@ -1248,6 +1264,14 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 > tragaba eso como «una frase suya copiada en los docs» (270 avisos falsos en una
 > ejecución). Cómo se separan ahora las dos cosas, en §Consecuencias.
 
+> **Revisado el 2026-08-26 por la feature 34 `guardian-knows-our-own-filenames`:** el
+> volcado guarda además el **nombre del archivo** que parseó, y ese nombre puede ser la
+> **convención que nosotros publicamos** en la página del banco. El guardián la leía como
+> una frase suya y devolvía 52 avisos falsos salidos de **un solo trigrama**, así que
+> cualquier parseo real de Trade Republic dejaba la suite en rojo. La exención —por
+> procedencia **y** por forma, con los patrones leídos de los propios `docs/`— y la
+> prueba de que no se ha aflojado, en §Consecuencias.
+
 - **Fecha:** 2026-08-12.
 - **Estado:** aceptada (feature 14 `no-real-data`).
 - **Contexto:** dos features seguidas versionaron datos financieros reales del dueño
@@ -1391,6 +1415,50 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
       frase «trade republic trade», y con eso se señalaba a todo documento que nombrase
       al banco dos veces. Una frase suya vive **dentro de un valor**; la costura entre
       dos valores es nuestro JSON, no su extracto.
+  - **En el volcado hay también NOMBRES DE ARCHIVO, y el nombre puede ser una
+    convención NUESTRA** (feature 34, 2026-08-26; lo midió la F33 y no lo tapó). Cada
+    entrada del volcado de un parser de producto guarda el **nombre del fichero** que
+    parseó, en el campo `file`. Para Trade Republic ese nombre es la **convención que
+    este proyecto publica** en `docs/trade-republic-product-files.md` y que el humano
+    copia al nombrar sus archivos: `cuenta-remunerada-<fecha>.json`. La capa de frases lo
+    leía como «una frase de su extracto», y como esas mismas palabras están en nuestros
+    propios textos (el contrato de API, tres tests con datos **sintéticos**, la bitácora)
+    devolvía **52 avisos falsos salidos de un único trigrama**. No era residuo de la F33:
+    **cada parseo real que él hace vuelve a escribir ese nombre**, así que usar la
+    aplicación de verdad le dejaba la suite en rojo. Cómo se separa, y por qué así:
+    - **No sirve el mecanismo de la F24**, y esto es lo que la hace pieza aparte: aquel
+      solo da por nuestra una frase que esté **literal en el código de producción**, y
+      excluye tests y fixtures a propósito. La palabra de esta convención vive en la
+      **documentación** y en la plantilla, nunca en un literal de mensaje de `src/`, así
+      que `ownSourceVocabulary` responde —con razón— «esto no es mío». Hacía falta una
+      prueba de otro tipo, y se lee de otro sitio.
+    - **Por PROCEDENCIA y por FORMA, las dos.** Procedencia: solo un valor bajo una clave
+      que sabemos que guarda un nombre de archivo (`fileNameKeys`, hoy `file`). Forma:
+      además, el valor tiene que **encajar entero y anclado** con un patrón que
+      **publica nuestra propia documentación**. La misma forma de dos condiciones
+      independientes que la F24. El mismo texto puesto en `name` —que es donde cae un
+      producto suyo— se compara exactamente como antes.
+    - **Los patrones se LEEN de los `docs/`, no se escriben en el guardián**: la línea
+      «Convención recomendada …» de cada página, con el patrón entre comillas invertidas.
+      No hay lista de excepciones a mano que ampliar cada vez que salte, y un banco nuevo
+      que publique su convención entra solo.
+    - **Un patrón con un hueco que NO es una fecha se descarta entero**, porque todo lo
+      que admite un hueco es **suyo**. Es lo que mantiene vigilado a MyInvestor: su
+      convención publicada es `<producto>-<fecha>.json` y `<producto>` es el nombre que
+      él le da a su fondo. **Comprobado, no supuesto:** de los nombres que hay hoy en
+      `var/parsed/`, MyInvestor exime **0 de 5** y Trade Republic 24 de 26 (los otros dos
+      no siguen la convención y **siguen vigilados**). Un valor eximido es, por
+      construcción, **texto publicado por nosotros más una fecha**: no cabe nada suyo
+      dentro.
+    - **La capa de importes no se toca** (otra vez): sigue leyendo el texto **crudo** de
+      la captura, nombres de archivo incluidos.
+    - **Lo que se deja pasar queda registrado** con la página que lo autoriza
+      (`letThrough`), para que «por qué lo dejó pasar» tenga respuesta sin abrir una
+      lista. Y hay **un test central** que mete un dato suyo simulado dentro de un nombre
+      de archivo y exige que se siga cazando con archivo y línea: sin él, esta decisión
+      sería indistinguible de apagar la alarma. Dos mutaciones lo fijan —ensanchar la
+      exención a todo `file`, o quitar la mitad de procedencia— y las dos ponen la suite
+      roja.
   - **El mensaje de fallo nunca lleva el valor.** Decía «el importe `X` está en
     `var/`», y ese mensaje se imprime, se pega en informes y se versiona: un guardián
     escribiendo el dato del humano para quejarse de que se escribe el dato del humano.
@@ -2165,6 +2233,235 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - **Lo que NO cubre:** si él está importando algo mientras corre la suite, el
     guardián 2 verá cambiar su base y la pondrá en rojo. El mensaje lo dice como
     primera hipótesis para que no se busque un bug donde no lo hay.
+
+### ADR-028: El saldo real de una cuenta sale de un ANCLA guardada como hecho (importe + fecha) más lo posterior a ella; el archivo sigue mandando y la F19 se revierte sin derogar el ADR-013
+
+- **Fecha:** 2026-08-25
+- **Estado:** aceptada (implementada en la feature #31 `real-account-balance`, SDD)
+- **Contexto:** el `balance` de una cuenta tenía **dos caminos** (ADR-011): el
+  `balanceAfter` del movimiento más reciente, y —solo si ningún movimiento traía
+  saldo— una suma desde `initialBalance`. Las dos ramas fallaban en producción por
+  motivos distintos y a la vez:
+  - En una cuenta cuyo extracto trae saldo por línea, el saldo quedaba **congelado
+    en la fecha del extracto**: un movimiento importado después, de una fecha
+    posterior, no lo movía. Comprobado el 2026-08-25 sobre la base del humano: una
+    cuenta parada a finales de julio y otra que llegaba a finales de agosto, cada
+    una diciendo un número de un día distinto.
+  - En una cuenta cuyo extracto **no** trae saldo por línea (MyInvestor, N26), el
+    saldo era una **variación desde cero**, no un saldo: `initialBalance` valía `0`
+    y nadie lo había puesto nunca. El dato existía —el humano escribe la línea
+    `saldo;<importe>` en el preámbulo desde la feature 16— pero el importador lo
+    **tiraba**.
+  - Y Openbank, el único banco que reporta el saldo tras cada línea, lo **leía y lo
+    descartaba** por la decisión de producto de la F19 (2026-08-17).
+- **Decisión:**
+  1. **El ancla se guarda como HECHO: importe + fecha, no un saldo de partida
+     despejado.** Tres columnas nullable nuevas en `Account` —`balanceAnchor`,
+     `balanceAnchorDate` y `balanceAnchorDaySequence`— con un `CHECK` que obliga a
+     que importe y fecha sean ambos `NULL` o ambos no `NULL`. El importador las
+     escribe **una sola vez por cuenta**, del `accountBalance` del preámbulo o, si
+     el archivo no lo trae, del saldo de su línea más reciente; un extracto
+     posterior **no** las reescribe (la condición viaja en el `WHERE`, no en un
+     `if`). *Alternativa descartada:* guardar en `initialBalance` el saldo de
+     partida ya **despejado** (ancla − neto hasta su fecha). Es más fácil de leer,
+     pero solo es correcto si todos los movimientos anteriores al ancla ya están
+     dentro: importar después un mes antiguo lo estropea **en silencio**, que es
+     exactamente lo que el humano marcó como su preocupación. Con el ancla fechada
+     eso no puede pasar, porque un movimiento anterior al ancla ya estaba contenido
+     en su importe. *Alternativa descartada 2:* un booleano `isAnchored` junto a
+     `initialBalance` — distingue «anclada» de «vale 0», pero no da la fecha, así
+     que no resuelve el orden de importación.
+  2. **Una sola fórmula, y la precedencia del archivo NO cambia:**
+
+     ```
+     balance = importe(punto de anclaje efectivo) + neto(movimientos posteriores)
+     ```
+
+     El **punto de anclaje efectivo** es el más reciente, por
+     `(bookingDate, daySequence)`, entre el ancla guardada y el movimiento más
+     reciente que trae `balanceAfter`; en **empate exacto gana el ancla**, porque
+     sale del preámbulo, que es el saldo de la CUENTA y manda sobre el de una
+     línea. Donde el archivo trae saldo, el número que se ve **sigue siendo el del
+     archivo**: ese movimiento normalmente *es* el punto de anclaje. Lo que
+     desaparece es que la suma fuera un ***fallback***: ahora corre siempre, desde
+     el ancla en vez de desde cero, así que lo posterior al extracto **sí** mueve
+     el saldo y lo anterior al ancla **no**. Ejemplo (importes inventados): ancla
+     de `5.000,00 €` a 31-07 y dos movimientos posteriores, `+300,50` y `−100,25`
+     → `5.200,25 €`; un gasto de `200,00` del 30-07 no cambia nada. Sin ancla y sin
+     un solo `balanceAfter` —una cuenta creada a mano que nunca vio un extracto— se
+     suma sobre `initialBalance`, **exactamente como antes**: ese es hoy el único
+     papel de `initialBalance`.
+  3. **La comparación de recencia es UNA (`isAfter`).** El punto de anclaje y el
+     filtro de «lo posterior» no pueden juzgar distinto, así que `byMostRecent` se
+     reescribió encima de ella y la consulta SQL solo hace un prefiltro grueso
+     (`bookingDate >= la del punto`): el corte exacto lo hace siempre el dominio.
+  4. **De la F19 se revierte UNA cosa y solo una: que el saldo por línea de
+     Openbank se leyera y se tirara.** El parser ya lo parseaba para validar la
+     forma de la fila; ahora lo emite en `balance`. **El ADR-013 NO se deroga**, ni
+     entero ni en parte: lo que dice es «el dato que el fichero **no trae** es
+     `null`», y este fichero **sí lo trae**, así que guardarlo lo *cumple* mejor de
+     lo que lo cumplía tirarlo. Lo derogado es la decisión de producto del humano
+     del 2026-08-17 («que no se guarde por ahora»), y el motivo del cambio es este
+     ADR: esa columna **es el ancla** de ese banco, y sin ella el saldo de esas
+     cuentas no se puede derivar sin volver a leer el archivo. Qué filas se aceptan
+     y cuáles van a `unparsedRows` **no cambia**.
+- **Consecuencias:**
+  - **`GET /api/accounts` y `GET /api/accounts/:id` ganan dos campos**,
+    `balanceAnchor` y `balanceAnchorDate` (`null` los dos en una cuenta sin
+    anclar), y la definición de `balance` en `docs/api-contract.md` se reescribe.
+    El frontend **no se toca en esta sesión** (regla de oro del workspace).
+  - **El saldo se sigue calculando por petición y NO se almacena.** Un saldo
+    guardado es un saldo que se queda viejo; lo que se almacena es el **ancla**,
+    que es un hecho del pasado y no caduca.
+  - **`attachBalances` resuelve el lote con DOS consultas**, no una por cuenta: las
+    cuentas con su línea más reciente y un `findMany` con un `OR` de ventanas por
+    cuenta.
+  - **Las cuentas que ya están dentro se arreglan solas**, sin script de migración
+    de datos ni volver a subir nada a Drive: la reimportación local de la F25
+    (ADR-025) pasa por el importador, así que ancla las cuentas y rellena los
+    `balanceAfter` que faltan. Rellenar **nunca** sobrescribe uno ya guardado.
+  - **Lo que este ADR NO decide:** comparar el saldo calculado contra el que dice
+    el archivo y avisar de la desviación. Es otra feature (`balance-reconciliation`);
+    aquí solo se **produce** el número. El ancla se establece igual en los bancos
+    que traen saldo por línea precisamente para que esa feature tenga dos números
+    que comparar.
+  - **Un archivo sin saldo no es un error** y una cuenta sin anclar no es un estado
+    inválido: es una cuenta que todavía no ha visto un archivo con saldo. Ninguna
+    excepción nueva.
+
+
+### ADR-029: La suite fotografía `var/` antes y después, y cualquier cambio la pone roja
+
+- **Fecha:** 2026-08-25
+- **Estado:** aceptada (implementada en la feature #33 `tests-dont-touch-real-var`)
+- **Contexto:** un test comprobaba que la ruta de Trade Republic está registrada en
+  la app real **invocándola** (`buildApp()` sin inyectar `sourceBaseDir` /
+  `dumpBaseDir`). Esos parámetros caen por defecto en `var/`, así que **cada pasada
+  de la suite parseaba los archivos reales del humano y reescribía**
+  `var/parsed/trade-republic/2026/products.json`. El comentario del propio test
+  explicaba por qué nadie lo vio: «`var/` no existe en una máquina limpia». En la
+  suya sí existe. Y `var/` es lo único del proyecto **sin copia en git**.
+- **Decisión:** la misma que el ADR-027 tomó con la base de datos, aplicada a los
+  archivos: `vitest.global-setup.ts` hace una **foto de solo lectura de `var/`**
+  antes de la suite y otra al terminar, y si algún archivo cambió de contenido, de
+  tamaño o **solo de fecha de modificación**, la pasada termina en **rojo** con la
+  ruta y qué se movió. La lógica vive en
+  [`src/lib/test-var.ts`](../src/lib/test-var.ts), con sus tests.
+- **Cómo se pone roja de verdad, que es media decisión** (corregido el 2026-08-26,
+  en la review de la F33): **un `throw` en el *teardown* de `globalSetup` NO sirve**.
+  Vitest lo reporta como `error during close` y **`vitest run` sigue saliendo con
+  código 0**, así que [`init.sh:343`](../init.sh) —que decide con `if eval
+  "$TEST_CMD"`— imprimía «Todos los tests pasan» con la carpeta del humano tocada.
+  La pasada se tumba **fijando el código de salida**
+  ([`failRun`](../src/lib/test-guard.ts)), y el informe se escribe al **descriptor
+  2**, no por `console`, por el mismo motivo que el guardián del ADR-017: vitest
+  intercepta la consola y con el reporter por defecto un `console.warn` no se
+  imprime. Medido extremo a extremo, no deducido: con un archivo probe en `var/`
+  reescrito con los mismos bytes, `./init.sh` sale con **1** y dice `[FAIL]` aunque
+  los 955 tests estén verdes.
+- **El guardián de la base de datos del ADR-027 tenía el mismo fallo desde el día
+  que se escribió**, porque comparte ese *teardown*: **se ha arreglado aquí**, en la
+  F33, en vez de anotarlo para otro día. Los tres avisos (base cambiada, filas
+  dejadas atrás, `var/` tocado) pasan ahora por el mismo `failRun`, y se
+  **acumulan**: el primero ya no tapa a los otros dos.
+- **Y hay un test que lo demuestra**, no solo el mecanismo en aislamiento:
+  [`src/lib/test-guard.e2e.test.ts`](../src/lib/test-guard.e2e.test.ts) escribe un
+  proyecto vitest de usar y tirar que cablea **el código real** del guardián sobre
+  una carpeta inventada, lo ejecuta en un proceso hijo y comprueba el **código de
+  salida** en los dos sentidos: ≠ 0 cuando se tocó un archivo (con todos sus tests
+  en verde) y 0 cuando no se tocó nada.
+- **Por qué una red y no solo el arreglo del test:** la F14 y la F27 ya enseñaron
+  que una regla que depende de que el próximo se acuerde vuelve a fallar. El mismo
+  patrón (un valor por defecto que apunta a `var/` + un `buildApp()` sin inyectar)
+  está disponible en los cinco módulos de banco y en el de ingesta: el arreglo
+  cierra el caso de hoy, la foto cierra la clase entera.
+- **Por qué la fecha cuenta como diferencia:** un volcado reescrito byte a byte
+  sigue siendo una escritura donde no toca, y el día que ese volcado cambie de
+  verdad la fecha es el único rastro de quién lo hizo.
+- **Sus mensajes no llevan ni un dato suyo** (misma regla que el ADR-017): dicen la
+  ruta y qué se movió, nunca lo que el archivo dice.
+- **Lo que NO cubre, dicho a las claras:** vigila **escrituras**, no lecturas. Un
+  test que *lea* `var/` y afirme algo sobre sus datos no cambia una fecha y esta
+  red no lo ve; de eso sigue encargándose el guardián del ADR-017, que prohíbe que
+  un dato suyo acabe versionado. Y una máquina sin `var/` obtiene una foto vacía:
+  ahí no hay nada que proteger.
+
+
+### ADR-030: La importación comprueba sus propias sumas contra el archivo con tolerancia CERO, en dos comprobaciones que no pueden reutilizar `computeAccountBalance`, y el descuadre no se guarda en ninguna parte
+
+- **Fecha:** 2026-08-30
+- **Estado:** aceptada (implementada en la feature #32 `balance-reconciliation`, SDD)
+- **Contexto:** el ADR-028 dejó a cada cuenta diciendo un saldo real, pero ese
+  número se sostiene sobre una cadena de sumas y restas. Un descuadre silencioso en
+  esa cadena es **peor que no tener el dato**, porque se lo cree uno. La feature 31
+  **produce** el número; esta lo **vigila**. Lo vigilado es lo que el propio archivo
+  afirma, que llega por dos vías distintas y no intercambiables: el `accountBalance`
+  del **preámbulo** (un dato por archivo, N26, MyInvestor y Openbank) y el
+  `balanceAfter` **por línea** (un dato por movimiento, Bankinter y Openbank).
+- **Decisión:**
+  1. **Dos comprobaciones, elegidas por lo que el archivo TRAE, nunca por el banco**
+     (ADR-015: el único archivo de `src/` que nombra un banco es `src/app.ts`). Viven
+     en [`src/modules/import/import.balance.service.ts`](../src/modules/import/import.balance.service.ts)
+     y viajan etiquetadas en el campo `check` del informe:
+     - `per-line` — dentro del archivo, la diferencia entre los saldos de dos líneas
+       consecutivas contra el importe de la línea más reciente del par. Pura: ni base
+       de datos, ni reloj, ni ancla.
+     - `statement-balance` — el `accountBalance` del archivo contra el **ancla
+       guardada** más el neto de lo posterior a ella y no posterior al movimiento más
+       reciente del archivo.
+     Un archivo que trae las dos cosas dispara **las dos**, y son distintas: la
+     primera comprueba la cadena corta dentro del archivo, la segunda la cadena larga
+     desde el ancla.
+  2. **La tolerancia es CERO**: hay descuadre en cuanto la diferencia no es
+     exactamente `0,00`. No hay ninguna constante de tolerancia en el código y no debe
+     aparecer.
+  3. **El descuadre NO se persiste.** No hay migración, no hay columna nueva y
+     `GET /api/accounts` no cambia de forma. Viaja en el informe de la importación
+     (`balanceMismatches` por archivo, `balanceMismatchCount` de la ejecución) y
+     desaparece con la respuesta.
+  4. **Un descuadre no tumba nada.** El archivo sale `imported`, se guarda todo, el
+     ancla no se toca, el saldo no se mueve y la ejecución sigue con el archivo
+     siguiente.
+- **Por qué la comprobación del preámbulo NO puede reutilizar `computeAccountBalance`,
+  que es lo que más caro sale «simplificar»:** esa función resuelve su punto de
+  partida con `resolveAnchorPoint`, que **prefiere el saldo por línea más reciente**
+  cuando es posterior al ancla. En Bankinter y Openbank ese saldo por línea sale del
+  archivo que se está importando, así que la comparación sería *el archivo contra sí
+  mismo* y daría **cero siempre**: la comprobación parecería funcionar sin comprobar
+  nada. La comprobación suma **desde el ancla guardada**, ignorando a propósito los
+  saldos por línea, y eso es justo lo que hace que compruebe algo. Las dos usan el
+  mismo `netOf` y el mismo `isAfter` —exportados, no copiados— para que la regla de
+  signos y la de recencia existan **una sola vez**.
+- **La misma trampa, en el orden de las líneas del importador:** el ancla que recibe
+  la comprobación se lee **ANTES** de `anchorAccountIfMissing`
+  ([`import.service.ts`](../src/modules/import/import.service.ts), `readStoredAnchor`).
+  Leerla después devuelve el ancla que **este mismo archivo** acaba de escribir, y la
+  comprobación vuelve a comparar el archivo contra sí mismo y a no encontrar nunca
+  nada. **Ninguna aserción de caja negra distingue los dos órdenes** —comprobado
+  invirtiendo el orden y ejecutando la suite: los 53 tests restantes del archivo
+  siguen verdes—, así que el orden lo fija un test explícito que graba las llamadas a
+  `prisma.account` y exige que la lectura del ancla ocurra antes del anclaje y
+  devuelva `null` (`hands the preamble check the anchor from BEFORE this file
+  anchored the account`, en `import.service.test.ts`).
+- **Por qué tolerancia cero y no ±0,01:** los importes viven como `Decimal(10,2)` y se
+  comparan con `Prisma.Decimal`, así que no hay error de coma flotante que absorber. Un
+  margen de un céntimo taparía **justo** el error que un fallo de redondeo produce, que
+  es el que interesa ver. La comprobación a mano del 2026-08-25 contra los datos reales
+  salió limpia al céntimo en las dos modalidades.
+- **Por qué el descuadre no se guarda:** el `accountBalance` de un archivo concreto no
+  está almacenado en ninguna parte, así que el dato **no se puede recalcular al leer**.
+  Una columna en `Account` se quedaría vieja en cuanto entrara otro archivo, y un aviso
+  viejo que dice «hay descuadre» es peor que no tenerlo. Es también la razón de que el
+  aviso viva solo donde se produce: la importación.
+- **Dónde no llega, dicho a las claras:** la comprobación mira **el archivo que se está
+  importando**, no todo el histórico de la cuenta, así que **no cruza la frontera entre
+  dos archivos**: si el último movimiento de un extracto y el primero del siguiente no
+  encajan, `per-line` no lo ve, y `statement-balance` solo lo vería donde el saldo del
+  preámbulo existe. Donde no hay dos números que comparar —una línea sin saldo en medio,
+  o el primer archivo de una cuenta, que es el que la ancla— **no se dice nada**: esa vez
+  no hay comprobación, que no es lo mismo que estar bien. Y detectar no es corregir: qué
+  hacer con un descuadre real es una decisión del humano el día que salga el primero.
+
 
 ## Qué NO hacer
 

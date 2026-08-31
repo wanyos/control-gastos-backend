@@ -115,24 +115,40 @@ escribe **una sola vez**, para crear la cuenta; los ficheros siguientes se
 importan contra la cuenta que ya existe. Lo que sí queda dicho en el runbook, en
 🔴: **no volver a guardar el fichero con Excel.**
 
-### 4. 📌 El fichero SÍ trae el saldo tras cada movimiento, y a propósito NO se guarda
+### 4. ⛔ REVERTIDA POR LA F31 — el saldo tras cada movimiento ya NO se descarta
+
+> **Esta decisión de la F19 está revertida.** Lo que sigue se conserva tal cual
+> se escribió porque explica **por qué** se tiró el dato en su día; lo que vale
+> **hoy** es lo que dice el recuadro del final de la sección: el saldo por línea
+> **se guarda**. Si vuelves a leer esto y te dan ganas de «restaurar» el `null`,
+> no lo hagas: la F31 lo quitó a propósito.
 
 **Que quede constancia, para que la decisión futura no haya que redescubrirla:**
 la **quinta celda de cada fila de movimiento es el saldo posterior a ese
 movimiento**, y Openbank es el **único de los seis bancos** que lo reporta. Este
 parser **lo lee** —una fila cuya quinta celda no es un importe no es una fila de
-esta tabla— y lo **descarta**: `balance` sale `null` en **todos** los
-movimientos, igual que en Bankinter, MyInvestor y N26, y **el ADR-013 no se toca
-en esta feature**. Es decisión del humano del 2026-08-17, ratificada en la puerta
-del 2026-08-19. Está anotado también en `docs/api-contract.md` §Parser de
+esta tabla— y ~~lo **descarta**: `balance` sale `null` en **todos** los
+movimientos~~, igual que en Bankinter, MyInvestor y N26, y **el ADR-013 no se
+toca en esta feature**. Es decisión del humano del 2026-08-17, ratificada en la
+puerta del 2026-08-19. Está anotado también en `docs/api-contract.md` §Parser de
 Openbank y en el comentario de cabecera del parser
 ([:75](../../src/modules/openbank/openbank.statement.parser.ts#L75)). El día que
 se decida guardarlo, el dato está ahí y solo hay que dejar de tirarlo.
 
-Coste explícito de leerlo aunque se tire: una fila con fecha, concepto e importe
-perfectos pero con la quinta celda ilegible **se reporta** en `unparsedRows` en
-vez de entrar. Se eligió a conciencia (R8 dice «se lee para validar la forma de
-la fila»): reportar es recuperable, aceptar una fila que ya no sabemos qué es, no.
+Coste explícito de leerlo: una fila con fecha, concepto e importe perfectos pero
+con la quinta celda ilegible **se reporta** en `unparsedRows` en vez de entrar.
+Se eligió a conciencia (R8 dice «se lee para validar la forma de la fila»):
+reportar es recuperable, aceptar una fila que ya no sabemos qué es, no. **Esa
+mitad NO cambia con la F31**: sigue reportándose igual.
+
+**⏩ Estado actual (F31 `real-account-balance`, lote A, 2026-08-25).** «El día
+que se decida guardarlo» llegó: `parseMovementRow` devuelve el importe de la
+quinta celda en `balance`, y ya no `null`. El motivo es que el saldo de una
+cuenta se calcula desde un **ancla** (importe + fecha tomados del archivo), y
+esta columna es el ancla de este banco; tirándola, el saldo real no se podía
+derivar sin volver a leer el fichero. Requisito: `specs/real-account-balance/`
+§R11. **La F31 NO deroga el ADR-013 desde aquí** — eso lo hace ella misma en
+`docs/architecture.md`; lo que cambia en este módulo es solo el valor del campo.
 
 ### 5. La divisa de cada movimiento queda vacía (criterio confirmado nº 6)
 
@@ -177,7 +193,7 @@ propio ADR. **No cambia ninguna decisión.**
 | **R5** un movimiento por fila, histórico entero, sin dedup | [`parser.test.ts:122`](../../src/modules/openbank/openbank.statement.parser.test.ts#L122) (3 tests, incluido el de **200 movimientos de tres años**) · [`openbank.html.test.ts:14`](../../src/modules/openbank/openbank.html.test.ts#L14) |
 | **R6** fechas `DD/MM/AAAA` → ISO | [`openbank.format.test.ts:5`](../../src/modules/openbank/openbank.format.test.ts#L5) (5 tests) · [`parser.test.ts:176`](../../src/modules/openbank/openbank.statement.parser.test.ts#L176) |
 | **R7** importe con signo, punto de miles y coma decimal | [`openbank.format.test.ts:35`](../../src/modules/openbank/openbank.format.test.ts#L35) (7 tests) · [`parser.test.ts:183`](../../src/modules/openbank/openbank.statement.parser.test.ts#L183) |
-| **R8** `balance: null` y `currency: ''` en todos | [`parser.test.ts:192`](../../src/modules/openbank/openbank.statement.parser.test.ts#L192) (3 tests, incluido el de la quinta celda ilegible) |
+| **R8** ~~`balance: null`~~ (**revertido por la F31**: `balance` trae el saldo de la quinta celda) y `currency: ''` en todos | [`parser.test.ts:192`](../../src/modules/openbank/openbank.statement.parser.test.ts#L192) (3 tests, incluido el de la quinta celda ilegible) |
 | **R9** `accountBalance` de la fila `Saldo:`, divisa descartada | [`parser.test.ts:215`](../../src/modules/openbank/openbank.statement.parser.test.ts#L215) (4 tests) · [`openbank.format.test.ts:35`](../../src/modules/openbank/openbank.format.test.ts#L35) («discards the currency…») |
 | **R10** `Saldo:` ilegible → `unparsedRows` con nº de fila | [`parser.test.ts:231`](../../src/modules/openbank/openbank.statement.parser.test.ts#L231) |
 | **R11** IBAN del comentario, nunca derivado del CCC | [`parser.test.ts:254`](../../src/modules/openbank/openbank.statement.parser.test.ts#L254) (7 tests) · [`openbank.html.test.ts:94`](../../src/modules/openbank/openbank.html.test.ts#L94) (4 tests) |
@@ -195,7 +211,7 @@ propio ADR. **No cambia ninguna decisión.**
 | 3 | Entra el histórico entero, 2024 y 2025 incluidos | [`parser.test.ts:139`](../../src/modules/openbank/openbank.statement.parser.test.ts#L139) y [`:149`](../../src/modules/openbank/openbank.statement.parser.test.ts#L149) |
 | 4 | Fechas y números españoles, en **su** módulo | [`openbank.format.test.ts`](../../src/modules/openbank/openbank.format.test.ts) (12 tests) + el guardián de imports impide traerse los de MyInvestor |
 | 5 | El saldo de la cuenta sale del preámbulo del fichero; aquí él no escribe `saldo;…` | [`parser.test.ts:215`](../../src/modules/openbank/openbank.statement.parser.test.ts#L215) · [`service.test.ts:24`](../../src/modules/openbank/openbank.service.test.ts#L24) (`accountBalance` en el resumen) |
-| 6 | El saldo tras cada movimiento se lee y **no** se guarda; el informe deja constancia | [`parser.test.ts:192`](../../src/modules/openbank/openbank.statement.parser.test.ts#L192) + **§Decisiones nº 4** de este informe |
+| 6 | El saldo tras cada movimiento se lee y **no** se guarda; el informe deja constancia — **⛔ criterio revertido por la F31**, que sí lo guarda (ver §Decisiones nº 4) | [`parser.test.ts:192`](../../src/modules/openbank/openbank.statement.parser.test.ts#L192) + **§Decisiones nº 4** de este informe |
 | 7 | El IBAN no se deriva del CCC | [`parser.test.ts:274`](../../src/modules/openbank/openbank.statement.parser.test.ts#L274) (comprueba además que el CCC del preámbulo **no aparece** en el resultado) |
 | 8 | **Delegada:** dónde escribe el IBAN → runbook | `docs/dar-de-alta-un-banco.md` §nueva + **§Decisiones nº 3** · tests: [`parser.test.ts:254`](../../src/modules/openbank/openbank.statement.parser.test.ts#L254), [`html.test.ts:94`](../../src/modules/openbank/openbank.html.test.ts#L94) |
 | 9 | **Delegada:** alcance de la regla de codificación → `docs/` + ADR, sin debilitar MyInvestor | **ADR-022** + `conventions.md` + runbook · tests: [`utf8.test.ts:111`](../../src/lib/utf8.test.ts#L111) (regresión), [`cp1252.test.ts:111`](../../src/lib/cp1252.test.ts#L111), [`parser.test.ts:52`](../../src/modules/openbank/openbank.statement.parser.test.ts#L52) (`JSON.stringify(result)` sin un solo `U+FFFD`) |
@@ -265,9 +281,11 @@ propio ADR. **No cambia ninguna decisión.**
    informe solo cubre fixtures sintéticos. Igual que en N26, conviene una pasada
    real de `POST /api/parser/openbank` y luego `POST /api/import` antes de dar la
    E4 por rodada — y **antes** hace falta que él escriba el comentario del IBAN.
-4. **El saldo por movimiento y el saldo de la cuenta siguen sin persistirse.** Con
-   Openbank dentro, el proyecto ya tiene los dos datos para la cuenta con más
-   movimiento; sigue siendo decisión del humano y del ADR-013.
+4. ~~**El saldo por movimiento y el saldo de la cuenta siguen sin persistirse.**~~
+   **Resuelto a medias por la F31 `real-account-balance`:** el saldo **por
+   movimiento** ya se emite en `balance` (lote A de esa feature). El
+   `accountBalance` del preámbulo lo consume el importador en el lote D de la
+   misma feature. Cabo suelto cerrado; no volver a abrirlo aquí.
 5. **`readHtmlComments` solo mira antes de `<table>`**, que es lo que pide R11. Si
    algún día otro banco HTML necesitara leer comentarios en otro sitio, se copia el
    patrón, no el módulo.
