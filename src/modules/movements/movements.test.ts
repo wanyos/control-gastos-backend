@@ -10,13 +10,23 @@ import {
   MovementStatus,
   MovementType,
   PaymentMethod,
+  Prisma,
 } from '../../generated/prisma/client.js'
 import {
   computeAccountBalance,
   computeTotals,
   deriveMovementTypeFromAmount,
+  isAfter,
+  netOf,
+  readAnchor,
+  resolveAnchorPoint,
 } from './movements.service.js'
-import type { BalanceMovement, SerializedMovement, TotalsMovement } from './movements.types.js'
+import type {
+  BalanceAnchor,
+  BalanceMovement,
+  SerializedMovement,
+  TotalsMovement,
+} from './movements.types.js'
 
 function balanceMovement(overrides: Partial<BalanceMovement> = {}): BalanceMovement {
   return {
@@ -98,7 +108,31 @@ describe('computeAccountBalance', () => {
     expect(computeAccountBalance('0', movements).toFixed(2)).toBe('100.00')
   })
 
-  it('ignores movements without balanceAfter when the statement provides one', () => {
+  // Feature 31 split this case in two. Until then it claimed that a movement
+  // without a per-line balance NEVER moved the result; that is only true of a
+  // movement OLDER than the anchor point. A newer one does move it: the
+  // statement is what the account is anchored to, not the last word (R9, R10).
+  it('ignores a movement without balanceAfter that is older than the statement one', () => {
+    const statement = balanceMovement({
+      type: 'expense',
+      amount: '50.00',
+      balanceAfter: '1000.00',
+      bookingDate: new Date('2026-07-20T00:00:00.000Z'),
+      daySequence: 1,
+    })
+    const olderWithoutBalance = balanceMovement({
+      type: 'expense',
+      amount: '20.00',
+      balanceAfter: null,
+      bookingDate: new Date('2026-07-10T00:00:00.000Z'),
+      daySequence: null,
+    })
+
+    expect(computeAccountBalance('0', [statement]).toFixed(2)).toBe('1000.00')
+    expect(computeAccountBalance('0', [statement, olderWithoutBalance]).toFixed(2)).toBe('1000.00')
+  })
+
+  it('adds a movement without balanceAfter that is newer than the statement one', () => {
     const statement = balanceMovement({
       type: 'expense',
       amount: '50.00',
@@ -106,16 +140,52 @@ describe('computeAccountBalance', () => {
       bookingDate: new Date('2026-07-10T00:00:00.000Z'),
       daySequence: 1,
     })
-    const withoutBalance = balanceMovement({
+    const newerExpense = balanceMovement({
       type: 'expense',
       amount: '20.00',
       balanceAfter: null,
       bookingDate: new Date('2026-07-20T00:00:00.000Z'),
       daySequence: null,
     })
+    const newerIncome = balanceMovement({
+      type: 'income',
+      amount: '5.50',
+      balanceAfter: null,
+      bookingDate: new Date('2026-07-21T00:00:00.000Z'),
+      daySequence: 1,
+    })
 
-    expect(computeAccountBalance('0', [statement]).toFixed(2)).toBe('1000.00')
-    expect(computeAccountBalance('0', [statement, withoutBalance]).toFixed(2)).toBe('1000.00')
+    expect(computeAccountBalance('0', [statement, newerExpense]).toFixed(2)).toBe('980.00')
+    expect(computeAccountBalance('0', [statement, newerExpense, newerIncome]).toFixed(2)).toBe(
+      '985.50',
+    )
+  })
+
+  it('adds a same-day movement only when its daySequence is higher', () => {
+    const statement = balanceMovement({
+      type: 'expense',
+      amount: '50.00',
+      balanceAfter: '1000.00',
+      bookingDate: new Date('2026-07-20T00:00:00.000Z'),
+      daySequence: 2,
+    })
+    const sameDayBefore = balanceMovement({
+      type: 'expense',
+      amount: '30.00',
+      balanceAfter: null,
+      bookingDate: new Date('2026-07-20T00:00:00.000Z'),
+      daySequence: 1,
+    })
+    const sameDayAfter = balanceMovement({
+      type: 'expense',
+      amount: '30.00',
+      balanceAfter: null,
+      bookingDate: new Date('2026-07-20T00:00:00.000Z'),
+      daySequence: 3,
+    })
+
+    expect(computeAccountBalance('0', [statement, sameDayBefore]).toFixed(2)).toBe('1000.00')
+    expect(computeAccountBalance('0', [statement, sameDayAfter]).toFixed(2)).toBe('970.00')
   })
 
   it('falls back to initialBalance + income - expense when no movement carries a balance', () => {
@@ -150,6 +220,228 @@ describe('computeAccountBalance', () => {
 
     expect(computeAccountBalance('0', [sourceLeg]).toFixed(2)).toBe('1500.00')
     expect(computeAccountBalance('0', [targetLeg]).toFixed(2)).toBe('2500.00')
+  })
+})
+
+describe('isAfter', () => {
+  const point = { bookingDate: new Date('2026-07-20T00:00:00.000Z'), daySequence: 2 }
+
+  it('orders by bookingDate first', () => {
+    expect(
+      isAfter({ bookingDate: new Date('2026-07-21T00:00:00.000Z'), daySequence: 1 }, point),
+    ).toBe(true)
+    expect(
+      isAfter({ bookingDate: new Date('2026-07-19T00:00:00.000Z'), daySequence: 9 }, point),
+    ).toBe(false)
+  })
+
+  it('breaks a same-day tie with daySequence and is never true for an equal point', () => {
+    expect(isAfter({ ...point, daySequence: 3 }, point)).toBe(true)
+    expect(isAfter({ ...point, daySequence: 1 }, point)).toBe(false)
+    expect(isAfter(point, point)).toBe(false)
+  })
+
+  it('reads a missing daySequence as zero', () => {
+    expect(isAfter({ ...point, daySequence: null }, { ...point, daySequence: 1 })).toBe(false)
+    expect(isAfter({ ...point, daySequence: 1 }, { ...point, daySequence: null })).toBe(true)
+  })
+})
+
+describe('readAnchor', () => {
+  it('reads the three columns of an anchored account', () => {
+    const anchor = readAnchor({
+      balanceAnchor: '2410.75',
+      balanceAnchorDate: new Date('2026-07-31T00:00:00.000Z'),
+      balanceAnchorDaySequence: 4,
+    })
+
+    expect(anchor?.amount).toBe('2410.75')
+    expect(anchor?.bookingDate.toISOString().slice(0, 10)).toBe('2026-07-31')
+    expect(anchor?.daySequence).toBe(4)
+  })
+
+  it('returns null for an account that was never anchored', () => {
+    expect(
+      readAnchor({ balanceAnchor: null, balanceAnchorDate: null, balanceAnchorDaySequence: null }),
+    ).toBeNull()
+  })
+
+  it('keeps an anchor whose amount is zero: zero is a real balance (R4)', () => {
+    const anchor = readAnchor({
+      balanceAnchor: '0.00',
+      balanceAnchorDate: new Date('2026-07-31T00:00:00.000Z'),
+      balanceAnchorDaySequence: null,
+    })
+
+    expect(anchor).not.toBeNull()
+    expect(anchor?.daySequence).toBeNull()
+  })
+})
+
+describe('resolveAnchorPoint', () => {
+  const storedAnchor: BalanceAnchor = {
+    amount: '500.00',
+    bookingDate: new Date('2026-07-10T00:00:00.000Z'),
+    daySequence: 1,
+  }
+
+  it('takes the per-line balance when it is the more recent of the two (R7)', () => {
+    const withBalance = balanceMovement({
+      balanceAfter: '640.00',
+      bookingDate: new Date('2026-07-25T00:00:00.000Z'),
+      daySequence: 2,
+    })
+
+    expect(resolveAnchorPoint(storedAnchor, [withBalance])?.amount).toBe('640.00')
+  })
+
+  it('keeps the stored anchor when no movement carries a per-line balance', () => {
+    const point = resolveAnchorPoint(storedAnchor, [balanceMovement({ balanceAfter: null })])
+
+    expect(point?.amount).toBe('500.00')
+  })
+
+  it('keeps the stored anchor when it is the more recent of the two', () => {
+    const older = balanceMovement({
+      balanceAfter: '120.00',
+      bookingDate: new Date('2026-07-01T00:00:00.000Z'),
+      daySequence: 1,
+    })
+
+    expect(resolveAnchorPoint(storedAnchor, [older])?.amount).toBe('500.00')
+  })
+
+  it('prefers the stored anchor on an exact tie: the header outranks a line', () => {
+    const samepoint = balanceMovement({
+      balanceAfter: '120.00',
+      bookingDate: storedAnchor.bookingDate,
+      daySequence: storedAnchor.daySequence,
+    })
+
+    expect(resolveAnchorPoint(storedAnchor, [samepoint])?.amount).toBe('500.00')
+  })
+
+  it('returns null when there is neither an anchor nor a per-line balance (R8)', () => {
+    expect(resolveAnchorPoint(null, [balanceMovement({ balanceAfter: null })])).toBeNull()
+  })
+})
+
+describe('computeAccountBalance with an anchor', () => {
+  const anchor: BalanceAnchor = {
+    amount: '1200.00',
+    bookingDate: new Date('2026-07-15T00:00:00.000Z'),
+    daySequence: 2,
+  }
+
+  it('sums only what came after the anchor, ignoring initialBalance (R6)', () => {
+    const movements = [
+      balanceMovement({
+        type: 'expense',
+        amount: '200.00',
+        bookingDate: new Date('2026-07-20T00:00:00.000Z'),
+        daySequence: 1,
+      }),
+      balanceMovement({
+        type: 'income',
+        amount: '75.25',
+        bookingDate: new Date('2026-07-22T00:00:00.000Z'),
+        daySequence: 1,
+      }),
+    ]
+
+    expect(computeAccountBalance('999999.99', movements, anchor).toFixed(2)).toBe('1075.25')
+  })
+
+  it('does not move the balance with a movement older than the anchor (R9)', () => {
+    const older = balanceMovement({
+      type: 'expense',
+      amount: '300.00',
+      bookingDate: new Date('2026-07-01T00:00:00.000Z'),
+      daySequence: 1,
+    })
+
+    expect(computeAccountBalance('0', [older], anchor).toFixed(2)).toBe('1200.00')
+  })
+
+  it('returns the anchor amount for an account with no movements after it', () => {
+    expect(computeAccountBalance('0', [], anchor).toFixed(2)).toBe('1200.00')
+  })
+
+  it('treats an anchor of zero as a real balance, not as "no anchor" (R4)', () => {
+    const zeroAnchor: BalanceAnchor = { ...anchor, amount: '0.00' }
+    const newer = balanceMovement({
+      type: 'income',
+      amount: '40.00',
+      bookingDate: new Date('2026-07-18T00:00:00.000Z'),
+      daySequence: 1,
+    })
+
+    expect(computeAccountBalance('850.00', [], zeroAnchor).toFixed(2)).toBe('0.00')
+    expect(computeAccountBalance('850.00', [newer], zeroAnchor).toFixed(2)).toBe('40.00')
+  })
+
+  it('lets the statement balance win when it is newer, and still adds what came after it (R7, R10)', () => {
+    const fromStatement = balanceMovement({
+      type: 'expense',
+      amount: '10.00',
+      balanceAfter: '2000.00',
+      bookingDate: new Date('2026-07-28T00:00:00.000Z'),
+      daySequence: 1,
+    })
+    const afterTheStatement = balanceMovement({
+      type: 'expense',
+      amount: '30.00',
+      balanceAfter: null,
+      bookingDate: new Date('2026-08-02T00:00:00.000Z'),
+      daySequence: 1,
+    })
+
+    expect(computeAccountBalance('0', [fromStatement], anchor).toFixed(2)).toBe('2000.00')
+    expect(computeAccountBalance('0', [fromStatement, afterTheStatement], anchor).toFixed(2)).toBe(
+      '1970.00',
+    )
+  })
+
+  it('behaves exactly as before when the anchor is undefined or null (R8)', () => {
+    const movements = [
+      balanceMovement({ type: 'income', amount: '150.25', balanceAfter: null }),
+      balanceMovement({ type: 'expense', amount: '40.25', balanceAfter: null }),
+    ]
+
+    expect(computeAccountBalance('100.00', movements).toFixed(2)).toBe('210.00')
+    expect(computeAccountBalance('100.00', movements, null).toFixed(2)).toBe('210.00')
+  })
+})
+
+describe('netOf (exported for the reconciliation checks, feature 32)', () => {
+  it('adds an income, subtracts an expense and leaves a neutral alone', () => {
+    const movements = [
+      balanceMovement({ type: 'income', amount: '200.00' }),
+      balanceMovement({ type: 'expense', amount: '50.00' }),
+      balanceMovement({ type: 'neutral', amount: '0.00' }),
+    ]
+
+    expect(netOf(movements, new Prisma.Decimal('1000.00')).toFixed(2)).toBe('1150.00')
+  })
+
+  it('returns the starting amount untouched for an empty set', () => {
+    expect(netOf([], new Prisma.Decimal('1000.00')).toFixed(2)).toBe('1000.00')
+  })
+
+  it('is the SAME sum the balance formula uses: one rule, one place', () => {
+    const movements = [
+      balanceMovement({ type: 'income', amount: '200.00' }),
+      balanceMovement({ type: 'expense', amount: '50.00' }),
+    ]
+    const anchor: BalanceAnchor = {
+      amount: '1000.00',
+      bookingDate: new Date('2026-06-30T00:00:00.000Z'),
+      daySequence: 1,
+    }
+
+    expect(computeAccountBalance('0.00', movements, anchor).toFixed(2)).toBe(
+      netOf(movements, new Prisma.Decimal('1000.00')).toFixed(2),
+    )
   })
 })
 

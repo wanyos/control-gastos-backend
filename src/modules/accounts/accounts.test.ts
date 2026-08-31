@@ -77,6 +77,21 @@ describe('account routes and service', () => {
     })
   }
 
+  /** Anchors an account the way the importer will (feature 31, R1/R2). */
+  async function anchorAccount(
+    accountId: number,
+    anchor: { amount: string; date: string; daySequence: number | null },
+  ) {
+    return app.prisma.account.update({
+      where: { id: accountId },
+      data: {
+        balanceAnchor: anchor.amount,
+        balanceAnchorDate: new Date(`${anchor.date}T00:00:00.000Z`),
+        balanceAnchorDaySequence: anchor.daySequence,
+      },
+    })
+  }
+
   it('AccountType offers checking and savings only: there is no cash account (R1)', () => {
     expect(Object.keys(AccountType)).toEqual(['checking', 'savings'])
     expect(Object.keys(AccountType)).not.toContain('cash')
@@ -218,6 +233,176 @@ describe('account routes and service', () => {
     const missing = await app.inject({ method: 'GET', url: '/api/accounts/99999999' })
     expect(missing.statusCode).toBe(404)
     expect(missing.json()).toMatchObject({ code: 'NOT_FOUND', message: 'Account not found' })
+  })
+
+  // ── Feature 31 `real-account-balance` ────────────────────────────────────
+  //
+  // The balance stops having two paths (the most recent `balanceAfter`, or a
+  // sum as *fallback*) and has ONE: the amount of the effective anchor point
+  // plus the net of everything strictly after it. What the file says still
+  // wins where the file says something; what it no longer does is freeze the
+  // balance on the day the statement ended.
+
+  it('GET /api/accounts exposes the anchor of an anchored account and sums what came after it (R6, R10, R14)', async () => {
+    const created = await createAccount({
+      iban: uniqueIban(),
+      bank: 'bankinter',
+      initialBalance: 100,
+    })
+    await anchorAccount(created.id, { amount: '5000.00', date: '2026-07-31', daySequence: 3 })
+
+    // Older than the anchor: the anchor amount already contained it (R9).
+    await seedMovement(created.id, {
+      type: 'expense',
+      amount: '200.00',
+      description: 'Older than the anchor',
+      bookingDate: '2026-07-31',
+      daySequence: 1,
+    })
+    await seedMovement(created.id, {
+      type: 'income',
+      amount: '300.50',
+      description: 'After the anchor',
+      bookingDate: '2026-08-05',
+      daySequence: 1,
+    })
+    await seedMovement(created.id, {
+      type: 'expense',
+      amount: '100.25',
+      description: 'After the anchor too',
+      bookingDate: '2026-08-06',
+      daySequence: 1,
+    })
+
+    const response = await app.inject({ method: 'GET', url: '/api/accounts' })
+
+    expect(response.statusCode).toBe(200)
+    const account = response
+      .json<SerializedAccount[]>()
+      .find((candidate) => candidate.id === created.id)
+    expect(account?.balanceAnchor).toBe('5000.00')
+    expect(account?.balanceAnchorDate).toBe('2026-07-31')
+    // 5000.00 + 300.50 - 100.25; the 200.00 of the anchor day does NOT count.
+    expect(account?.balance).toBe('5200.25')
+    // `initialBalance` no longer takes part once the account is anchored.
+    expect(account?.initialBalance).toBe('100.00')
+  })
+
+  it('GET /api/accounts reports a null anchor on an account that was never anchored (R14)', async () => {
+    const created = await createAccount({
+      iban: uniqueIban(),
+      bank: 'bankinter',
+      initialBalance: 100,
+    })
+    await seedMovement(created.id, {
+      type: 'income',
+      amount: '25.00',
+      description: 'Cash deposit',
+      bookingDate: '2026-07-10',
+      daySequence: null,
+      origin: 'manual',
+    })
+
+    const response = await app.inject({ method: 'GET', url: '/api/accounts' })
+
+    const account = response
+      .json<SerializedAccount[]>()
+      .find((candidate) => candidate.id === created.id)
+    expect(account?.balanceAnchor).toBeNull()
+    expect(account?.balanceAnchorDate).toBeNull()
+    // Without anchor and without a single per-line balance: exactly as before.
+    expect(account?.balance).toBe('125.00')
+  })
+
+  it('GET /api/accounts moves the balance with movements newer than the last line that carries one (R7, R10)', async () => {
+    const created = await createAccount({
+      iban: uniqueIban(),
+      bank: 'bankinter',
+      initialBalance: 0,
+    })
+
+    await seedMovement(created.id, {
+      type: 'expense',
+      amount: '75.00',
+      description: 'Last line of the statement',
+      bookingDate: '2026-07-31',
+      daySequence: 2,
+      balanceAfter: '3000.00',
+    })
+    await seedMovement(created.id, {
+      type: 'income',
+      amount: '10.00',
+      description: 'Older, with its own balance',
+      bookingDate: '2026-07-20',
+      daySequence: 1,
+      balanceAfter: '2500.00',
+    })
+    // Newer than the statement and WITHOUT a per-line balance: before feature
+    // 31 this one did not move the balance at all.
+    await seedMovement(created.id, {
+      type: 'expense',
+      amount: '50.00',
+      description: 'Newer than the statement',
+      bookingDate: '2026-08-02',
+      daySequence: 1,
+    })
+
+    const response = await app.inject({ method: 'GET', url: '/api/accounts' })
+
+    const account = response
+      .json<SerializedAccount[]>()
+      .find((candidate) => candidate.id === created.id)
+    expect(account?.balance).toBe('2950.00')
+    expect(account?.balanceAnchor).toBeNull()
+  })
+
+  it('GET /api/accounts/:id starts from the stored anchor when it is newer than the statement line (R7, R14)', async () => {
+    const created = await createAccount({
+      iban: uniqueIban(),
+      bank: 'bankinter',
+      initialBalance: 0,
+    })
+    await anchorAccount(created.id, { amount: '4000.00', date: '2026-08-01', daySequence: 1 })
+
+    await seedMovement(created.id, {
+      type: 'income',
+      amount: '15.00',
+      description: 'Line of an older statement',
+      bookingDate: '2026-07-20',
+      daySequence: 1,
+      balanceAfter: '9000.00',
+    })
+    // Between the per-line balance and the anchor: the anchor already has it.
+    await seedMovement(created.id, {
+      type: 'expense',
+      amount: '600.00',
+      description: 'Between the line and the anchor',
+      bookingDate: '2026-07-25',
+      daySequence: 1,
+    })
+    await seedMovement(created.id, {
+      type: 'income',
+      amount: '55.55',
+      description: 'After the anchor',
+      bookingDate: '2026-08-03',
+      daySequence: 1,
+    })
+
+    const response = await app.inject({ method: 'GET', url: `/api/accounts/${created.id}` })
+
+    expect(response.statusCode).toBe(200)
+    const account = response.json<SerializedAccount>()
+    expect(account.balanceAnchor).toBe('4000.00')
+    expect(account.balanceAnchorDate).toBe('2026-08-01')
+    expect(account.balance).toBe('4055.55')
+  })
+
+  it('POST /api/accounts returns a brand new account without anchor (R14)', async () => {
+    const account = await createAccount({ iban: uniqueIban(), bank: 'bankinter' })
+
+    expect(account.balanceAnchor).toBeNull()
+    expect(account.balanceAnchorDate).toBeNull()
+    expect(account.balance).toBe('0.00')
   })
 
   it('POST /api/accounts with a duplicated iban returns 409 CONFLICT (R10)', async () => {

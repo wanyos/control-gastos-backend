@@ -26,6 +26,10 @@ export interface SerializedAccount {
   type: AccountType
   initialBalance: string
   balance: string
+  /** Anchor amount as a decimal string, `null` when the account is not anchored. */
+  balanceAnchor: string | null
+  /** `YYYY-MM-DD` of the movement the anchor belongs to, `null` without anchor. */
+  balanceAnchorDate: string | null
   createdAt: string
   updatedAt: string
 }

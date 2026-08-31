@@ -31,7 +31,13 @@ import type {
   ProductParserAdapter,
   ProductParserRegistry,
 } from '../investments/investments.types.js'
-import { deriveMovementTypeFromAmount } from '../movements/movements.service.js'
+import {
+  deriveMovementTypeFromAmount,
+  isAfter,
+  readAnchor,
+} from '../movements/movements.service.js'
+import type { BalanceAnchor, RecencyPoint } from '../movements/movements.types.js'
+import { findPerLineMismatches, findStatementBalanceMismatch } from './import.balance.service.js'
 import type {
   AccountReport,
   BankParserAdapter,
@@ -174,12 +180,155 @@ export async function resolveAccount(
 export async function persistMovements(
   prisma: AppPrismaClient,
   rows: Prisma.MovementCreateManyInput[],
-): Promise<{ imported: number; duplicates: number }> {
+): Promise<{ imported: number; duplicates: number; balancesFilled: number }> {
   if (rows.length === 0) {
-    return { imported: 0, duplicates: 0 }
+    return { imported: 0, duplicates: 0, balancesFilled: 0 }
   }
   const { count } = await prisma.movement.createMany({ data: rows, skipDuplicates: true })
-  return { imported: count, duplicates: rows.length - count }
+  const duplicates = rows.length - count
+  // Only the rows the database refused are candidates for the backfill: with no
+  // duplicate at all, every row of the file was just written with the balance it
+  // carried, so there is nothing to fill and not one query is made (R12).
+  const balancesFilled = duplicates === 0 ? 0 : await backfillMissingBalances(prisma, rows)
+  return { imported: count, duplicates, balancesFilled }
+}
+
+/**
+ * Fills the `balanceAfter` of the rows that ALREADY exist with it at NULL, with
+ * the balance the file brings for them (R12).
+ *
+ * It NEVER overwrites a stored one: the `balanceAfter: null` condition travels
+ * in the WHERE, not in a previous `if`, so a row whose balance is already there
+ * is not even read, let alone written (R13). Discrepancies between the file and
+ * the database are NOT reconciled here: that is feature 32.
+ *
+ * A row is identified by the very same columns the partial unique index
+ * `Movement_imported_dedup_key` uses to deduplicate, so "the same row" means the
+ * same thing in the two places. Rows the file brings with no balance are skipped
+ * outright: there is nothing to fill them with.
+ */
+export async function backfillMissingBalances(
+  prisma: AppPrismaClient,
+  rows: Prisma.MovementCreateManyInput[],
+): Promise<number> {
+  const withBalance = rows.filter(
+    (row) => row.balanceAfter !== null && row.balanceAfter !== undefined,
+  )
+  if (withBalance.length === 0) {
+    return 0
+  }
+
+  let filled = 0
+  for (const row of withBalance) {
+    const { count } = await prisma.movement.updateMany({
+      where: {
+        accountId: row.accountId,
+        bookingDate: row.bookingDate,
+        type: row.type,
+        amount: row.amount,
+        description: row.description,
+        daySequence: row.daySequence ?? null,
+        origin: 'imported',
+        balanceAfter: null,
+      },
+      data: { balanceAfter: row.balanceAfter },
+    })
+    filled += count
+  }
+  return filled
+}
+
+/**
+ * The anchor ONE file offers, or `null` when it offers none (R1, R2, R4, R5).
+ * Pure: no database, no clock. The order of the branches is the whole decision:
+ *
+ *  1. The preamble balance (`accountBalance`) wins, because it is the balance of
+ *     the ACCOUNT and outranks the one of a single line. Its date is the one of
+ *     the MOST RECENT movement of the file: the human writes that line meaning
+ *     "the balance after the last movement of this file", confirmed 2026-08-25.
+ *  2. Otherwise, the per-line balance of the most recent line that carries one,
+ *     with its own date. It is how a bank that writes no preamble but a
+ *     balance on every line gets anchored (R2).
+ *  3. Otherwise `null`: the file is imported all the same (R5).
+ *
+ * The comparison is `!== null`, never truthiness: a preamble of `0` is a REAL
+ * balance and must anchor (R4). An `if (statement.accountBalance)` is the bug.
+ */
+export function deriveAnchorFromStatement(statement: ParsedStatement): BalanceAnchor | null {
+  const mostRecent = mostRecentMovement(statement.movements)
+  if (mostRecent === null) {
+    return null
+  }
+
+  if (statement.accountBalance !== null) {
+    return toAnchor(statement.accountBalance, mostRecent)
+  }
+
+  const withBalance = mostRecentMovement(
+    statement.movements.filter((movement) => movement.balance !== null),
+  )
+  if (withBalance === null || withBalance.balance === null) {
+    return null
+  }
+  return toAnchor(withBalance.balance, withBalance)
+}
+
+/** The most recent movement of a file by `(bookingDate, daySequence)`. */
+function mostRecentMovement(movements: ParsedMovement[]): ParsedMovement | null {
+  let best: ParsedMovement | null = null
+  for (const movement of movements) {
+    if (best === null || isAfter(toRecencyPoint(movement), toRecencyPoint(best))) {
+      best = movement
+    }
+  }
+  return best
+}
+
+/**
+ * The recency of a parsed movement, in the shape the SINGLE comparator of
+ * `movements.service` understands: the order must not be able to diverge between
+ * the importer and the balance formula.
+ */
+function toRecencyPoint(movement: ParsedMovement): RecencyPoint {
+  return { bookingDate: toDateOnly(movement.bookingDate), daySequence: movement.daySequence }
+}
+
+/** The amount travels as a STRING, so no floating point reaches a Decimal(10,2). */
+function toAnchor(amount: number, at: ParsedMovement): BalanceAnchor {
+  return {
+    amount: amount.toFixed(2),
+    bookingDate: toDateOnly(at.bookingDate),
+    daySequence: at.daySequence,
+  }
+}
+
+/**
+ * Anchors the account ONLY if it was not anchored yet (R3). Returns whether this
+ * call is the one that anchored it.
+ *
+ * The `balanceAnchor: null` condition travels in the WHERE, not in a previous
+ * `if`: an `if` would be a race, and two imports running at once could each read
+ * "unanchored" and write a different amount. The WHERE cannot, with no
+ * transaction needed.
+ *
+ * The amount and the date are written in the SAME statement because the database
+ * demands it (`CHECK Account_balance_anchor_pair`): anchoring in two steps is
+ * rejected. `balanceAnchorDaySequence` may stay null on its own.
+ */
+export async function anchorAccountIfMissing(
+  prisma: AppPrismaClient,
+  accountId: number,
+  anchor: BalanceAnchor,
+): Promise<boolean> {
+  const { count } = await prisma.account.updateMany({
+    where: { id: accountId, balanceAnchor: null },
+    data: {
+      balanceAnchor: anchor.amount,
+      balanceAnchorDate: anchor.bookingDate,
+      balanceAnchorDaySequence: anchor.daySequence,
+    },
+  })
+  return count > 0
 }
 
 /**
@@ -363,6 +512,9 @@ function emptyStatementResult(): StatementResult {
     duplicates: 0,
     unparsedCount: 0,
     unparsedRows: [],
+    anchored: false,
+    balancesFilled: 0,
+    balanceMismatches: [],
   }
 }
 
@@ -448,12 +600,46 @@ export async function importStatement(deps: ImportStatementDeps): Promise<Statem
     assertTheFileBringsMovements(statement)
 
     const resolution = await resolveAccount(deps.prisma, statement, deps.bankSlug)
-    result.account = toAccountReport(resolution)
+    const account = toAccountReport(resolution)
+    result.account = account
 
     const rows = toMovementRows(statement.movements, resolution.account.id)
     const stored = await persistMovements(deps.prisma, rows)
     result.imported = stored.imported
     result.duplicates = stored.duplicates
+    result.balancesFilled = stored.balancesFilled
+
+    // 🔴 READ BEFORE ANCHORING (feature 32, R4), and this line order is the whole
+    // check: it is the ONLY thing that tells "the account was already anchored"
+    // from "this very file has just anchored it". Move it below
+    // `anchorAccountIfMissing` and the preamble check compares the file against
+    // itself, always finds nothing, and the feature is dead while looking alive.
+    const storedAnchor = await readStoredAnchor(deps.prisma, resolution.account.id)
+
+    // AFTER storing and BEFORE calling the file imported (feature 31): the date
+    // of the anchor comes from the movements of this very file, and a file that
+    // fails must leave the account exactly as it found it.
+    const anchor = deriveAnchorFromStatement(statement)
+    if (anchor !== null) {
+      result.anchored = await anchorAccountIfMissing(deps.prisma, resolution.account.id, anchor)
+    }
+    account.balanceAnchor = await readAccountAnchor(deps.prisma, resolution.account.id)
+
+    // The two checks of feature 32. They change NOTHING -- not the anchor, not a
+    // balance, not a row -- and a descuadre does not fail the file (R7, R8): what
+    // they find only travels in the report of this file.
+    const perLine = findPerLineMismatches(statement, resolution.account)
+    const statementBalance = await findStatementBalanceMismatch({
+      prisma: deps.prisma,
+      statement,
+      account: resolution.account,
+      anchor: storedAnchor,
+    })
+    result.balanceMismatches = [
+      ...perLine,
+      ...(statementBalance === null ? [] : [statementBalance]),
+    ]
+
     result.status = 'imported'
     return result
   } catch (error) {
@@ -512,7 +698,46 @@ function toAccountReport(resolution: AccountResolution): AccountReport {
     type: resolution.account.type,
     created: resolution.created,
     appliedDefaults: resolution.appliedDefaults,
+    // Filled in once the anchoring has been attempted: a freshly resolved
+    // account does not know yet whether this file is the one that anchors it.
+    balanceAnchor: null,
   }
+}
+
+/**
+ * The anchor the account holds right now, as a decimal string. Read AFTER the
+ * anchoring attempt so the report says what is true of the account, not what
+ * this file wished: an already anchored account reports the anchor it kept (R3).
+ */
+async function readAccountAnchor(
+  prisma: AppPrismaClient,
+  accountId: number,
+): Promise<string | null> {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    select: { balanceAnchor: true },
+  })
+  return account?.balanceAnchor?.toFixed(2) ?? null
+}
+
+/**
+ * The anchor the account holds BEFORE this file tries to anchor it (feature 32,
+ * R4), in the shape the checks understand -- amount plus the point in history it
+ * belongs to -- built by the SINGLE reader of those three columns, `readAnchor`.
+ *
+ * It is NOT `readAccountAnchor`: that one is read AFTER the anchoring, returns
+ * only the amount, and is what the report says the account ended up with. This
+ * one is read BEFORE and is what makes the preamble check check anything at all.
+ */
+async function readStoredAnchor(
+  prisma: AppPrismaClient,
+  accountId: number,
+): Promise<BalanceAnchor | null> {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    select: { balanceAnchor: true, balanceAnchorDate: true, balanceAnchorDaySequence: true },
+  })
+  return account === null ? null : readAnchor(account)
 }
 
 /**
@@ -570,6 +795,9 @@ export function totals(files: FileCounts[]) {
     unparsedCount: sum(files.map((file) => file.unparsedCount ?? 0)),
     failedCount: files.filter((file) => file.status === 'failed').length,
     skippedCount: files.filter((file) => file.status === 'skipped').length,
+    // Feature 32, R10 and R11: the local way in gains it without one line of its
+    // own, because it already shares `importStatement` and this very function.
+    balanceMismatchCount: sum(files.map((file) => file.balanceMismatches?.length ?? 0)),
   }
 }
 

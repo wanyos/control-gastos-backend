@@ -290,8 +290,30 @@ Fecha de operación;Fecha de valor;Concepto;Importe;Divisa
 
 Este saldo es **el de la cuenta**, no el saldo tras cada movimiento (`balance`),
 que MyInvestor no reporta y sigue vacío en todas las líneas. Son dos datos
-distintos y se guardan aparte a propósito. Por ahora **solo se parsea y se
-vuelca**: todavía no se persiste en la base de datos.
+distintos y se guardan aparte a propósito. ~~Por ahora solo se parsea y se
+vuelca: todavía no se persiste en la base de datos.~~ → **actualizado por la
+feature 31** (2026-08-25), que sí lo persiste; ver justo aquí debajo.
+
+### 🔴 Con escribirla UNA VEZ por cuenta basta — y es el saldo al ÚLTIMO MOVIMIENTO del archivo
+
+> Añadido el 2026-08-25 con la feature 31 (`real-account-balance`), que es la que
+> empieza a guardar este dato. Es la suposición sobre la que se apoya todo el
+> cálculo del saldo, así que conviene tenerla escrita.
+
+- **Es el saldo al ÚLTIMO MOVIMIENTO de ESE archivo**, no el saldo del día en que
+  te sentaste a escribir la línea. El backend le pone como fecha la del movimiento
+  más reciente del propio archivo, porque el preámbulo no trae ninguna: si tú
+  escribes el saldo de hoy en un extracto que termina hace dos semanas, el número
+  queda anclado en una fecha que no le corresponde y todo lo de esas dos semanas
+  se suma encima **por segunda vez**. (Confirmado por el humano el 2026-08-25.)
+- **Basta con escribirla UNA VEZ por cuenta, no todos los meses.** El backend la
+  usa para **anclar** la cuenta: guarda ese importe con su fecha y, a partir de
+  ahí, el saldo se calcula solo sumando lo que va entrando. Un extracto posterior
+  que traiga la línea **no reescribe** el ancla, así que ni ayuda ni molesta.
+- **Si algún mes te la saltas, no pasa nada** (ya estaba dicho arriba) y ahora
+  además da igual: la cuenta ya está anclada.
+- El detalle de cómo se calcula el saldo a partir de este dato está en
+  `docs/architecture.md` → **ADR-028**.
 
 ## Lo que escribes TÚ se guarda en UTF-8; lo que emite el banco, como lo emita
 
@@ -427,6 +449,33 @@ El decodificador vive en [`src/lib/cp1252.ts`](../src/lib/cp1252.ts)
 (`decodeCp1252Strict`), al lado del de UTF-8 y por el mismo motivo: la
 codificación no es un formato. Lo que **sigue igual** es todo lo demás: nadie
 adivina la codificación, no hay cascada de intentos y nunca se repara un fichero.
+
+### 🔴 Cuando sustituyes un fichero roto, el viejo se borra EN ESE MOMENTO
+
+Regla del humano, escrita el **2026-08-30** después de tropezar con ella.
+
+Si vuelves a bajar un fichero del banco porque el anterior estaba roto, o si
+generas un histórico que sustituye a varios sueltos, **el fichero viejo se borra
+en los dos sitios a la vez**:
+
+- en **Drive**, esté donde esté — también dentro de `procesados/`, que es donde
+  acaba un fichero que llegó a importarse antes de romperse;
+- en **`var/drive-read/`**, que es la copia local desde la que trabajan el
+  ensayo y la reimportación.
+
+Y **se dice en voz alta al hacerlo**, no se deja para luego.
+
+**Por qué es una regla y no una manía.** Un fichero roto que se queda sale como
+`failed` en **cada** importación, para siempre, y no aporta nada: sus movimientos
+ya entraron por el fichero bueno. A las pocas semanas nadie recuerda qué hace ahí
+ni por qué está roto, y hay que reconstruirlo a mano. Peor todavía: acostumbra a
+ver rojos que «son normales», y ese es el día en que un fallo de verdad pasa
+desapercibido.
+
+**Ya pasó** (2026-08-30): dos ficheros —uno de N26 y uno de Openbank— sobrevivieron
+a una limpieza en la que se generaron sus sustitutos. Los dos se habían roto por
+lo mismo, abrirlos y volver a guardarlos con Excel, y los dos llevaban semanas
+saliendo como `failed` sin que faltara un solo movimiento en la base.
 
 ## Reglas del nombre de banco (las aplica `normalizeBankName`)
 

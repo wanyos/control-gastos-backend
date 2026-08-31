@@ -37,13 +37,24 @@ import { join } from 'node:path'
  * guardian of feature 14 reads them as copied data (it happened for real with
  * the previous bank). They are the FORMAT of the bank, not a datum of the
  * human.
+ *
+ * THE FIFTH COLUMN IS NO LONGER THROWN AWAY. The comment on `Saldo` used to say
+ * «read and not stored», which was the feature 19 decision: the parser read the
+ * fifth cell only to validate the shape of the row and returned `balance: null`.
+ * Feature 31 `real-account-balance` REVERTS that decision — the balance of an
+ * account is computed from an anchor and this column IS the anchor for this
+ * bank, so dropping it made the real balance underivable without re-reading the
+ * file — and that is why the invented balances of `openbankSampleRows()` went
+ * from decoration to values the tests assert on. 🔴 Do NOT «restore» the `null`:
+ * that was the feature 19 behaviour and it was reverted on purpose (requirement
+ * R11 of `specs/real-account-balance/`). Deroging ADR-013 is NOT done from here.
  */
 export const openbankHeaders = [
-  'Fecha Operación', // 1 · fecha contable
-  'Fecha Valor', // 2 · fecha de valor, a veces distinta de la anterior
-  'Concepto', // 3 · el concepto, entero y sin trocear
-  'Importe', // 4 · el importe con su signo delante
-  'Saldo', // 5 · el saldo TRAS el movimiento, que se lee y no se guarda
+  'Fecha Operación', // 1 · booking date
+  'Fecha Valor', // 2 · value date, sometimes different from the previous one
+  'Concepto', // 3 · the concept, whole and never split
+  'Importe', // 4 · the amount, with its sign in front
+  'Saldo', // 5 · balance AFTER the movement; feature 19 dropped it, feature 31 keeps it
 ]
 
 /** A row of the preamble: a label and its value, as the bank prints them. */

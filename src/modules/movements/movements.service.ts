@@ -5,8 +5,11 @@ import type { MovementType } from '../../generated/prisma/client.js'
 
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import type {
+  AnchorColumns,
+  BalanceAnchor,
   BalanceMovement,
   DecimalLike,
+  RecencyPoint,
   MovementTotals,
   MovementWithRelations,
   SerializedMovement,
@@ -36,40 +39,102 @@ export function deriveMovementTypeFromAmount(amount: number): MovementType {
   return 'neutral'
 }
 
+/**
+ * Is `a` strictly more recent than `b`? `(bookingDate, daySequence)`, with a
+ * missing `daySequence` read as `0`. THE only recency comparison of the module:
+ * the anchor point and the filter of what comes after it must not be able to
+ * diverge (feature 31, R7).
+ */
+export function isAfter(a: RecencyPoint, b: RecencyPoint): boolean {
+  const dateDiff = a.bookingDate.getTime() - b.bookingDate.getTime()
+  if (dateDiff !== 0) return dateDiff > 0
+  return (a.daySequence ?? 0) > (b.daySequence ?? 0)
+}
+
 /** Most recent first: `bookingDate DESC, daySequence DESC` (R3b). */
 function byMostRecent(a: BalanceMovement, b: BalanceMovement): number {
-  const dateDiff = b.bookingDate.getTime() - a.bookingDate.getTime()
-  if (dateDiff !== 0) return dateDiff
-  return (b.daySequence ?? 0) - (a.daySequence ?? 0)
+  if (isAfter(a, b)) return -1
+  if (isAfter(b, a)) return 1
+  return 0
+}
+
+/** The anchor stored on an account, or `null` when it was never anchored. */
+export function readAnchor(account: AnchorColumns): BalanceAnchor | null {
+  if (account.balanceAnchor === null || account.balanceAnchorDate === null) return null
+  return {
+    amount: account.balanceAnchor,
+    bookingDate: account.balanceAnchorDate,
+    daySequence: account.balanceAnchorDaySequence,
+  }
 }
 
 /**
- * The balance of an account is READ from the statement, not recomputed: banks
- * already print the running balance on every line, so the balance is the
- * `balanceAfter` of the most recent movement that carries one.
- *
- * Summing from `initialBalance` is only the fallback for an account whose
- * movements bring no `balanceAfter` at all (a bank without a running balance,
- * or an account with nothing imported yet). No branch looks at `transferId`:
- * a transfer leg is a real charge/credit already contained in `balanceAfter`.
+ * The point the balance is summed from: the most recent between the stored
+ * anchor and the most recent movement carrying a per-line balance (R7). On a
+ * tie the stored anchor wins, because it comes from the statement header, which
+ * outranks the balance of a single line.
  */
-export function computeAccountBalance(
-  initialBalance: DecimalLike,
+export function resolveAnchorPoint(
+  anchor: BalanceAnchor | null,
   movements: BalanceMovement[],
-): Prisma.Decimal {
-  const fromStatement = movements
+): BalanceAnchor | null {
+  const mostRecentWithBalance = movements
     .filter((movement) => movement.balanceAfter !== null)
     .sort(byMostRecent)[0]
 
-  if (fromStatement?.balanceAfter != null) {
-    return toDecimal(fromStatement.balanceAfter)
+  if (mostRecentWithBalance?.balanceAfter == null) return anchor
+
+  const fromStatement: BalanceAnchor = {
+    amount: mostRecentWithBalance.balanceAfter,
+    bookingDate: mostRecentWithBalance.bookingDate,
+    daySequence: mostRecentWithBalance.daySequence,
   }
 
+  if (anchor === null) return fromStatement
+  return isAfter(fromStatement, anchor) ? fromStatement : anchor
+}
+
+/**
+ * The net of a set of movements over a starting amount: an `income` adds, an
+ * `expense` subtracts and a `neutral` moves nothing. Exported (feature 32) so
+ * the balance formula and the reconciliation checks share THE one sum: two
+ * copies of this rule is how a `neutral` ends up counted on one side only.
+ */
+export function netOf(movements: BalanceMovement[], from: Prisma.Decimal): Prisma.Decimal {
   return movements.reduce((balance, movement) => {
     if (movement.type === 'income') return balance.plus(toDecimal(movement.amount))
     if (movement.type === 'expense') return balance.minus(toDecimal(movement.amount))
     return balance
-  }, toDecimal(initialBalance))
+  }, from)
+}
+
+/**
+ * The balance of an account is the amount of its effective anchor point plus
+ * the net of everything strictly after it (R6):
+ *
+ *     balance = amount(anchor point) + net(movements after the anchor point)
+ *
+ * The precedence rule does NOT change: where the statement brings a balance it
+ * still wins, because that line usually IS the anchor point. What is gone is
+ * summing as a *fallback*: the sum now always runs, from the anchor instead of
+ * from zero, so movements newer than the statement move the balance too (R10)
+ * while older ones do not — the anchor already contained them (R9).
+ *
+ * Without any anchor and without a single per-line balance, it sums everything
+ * over `initialBalance`, exactly as before (R8). No branch looks at
+ * `transferId`: a transfer leg is a real charge/credit.
+ */
+export function computeAccountBalance(
+  initialBalance: DecimalLike,
+  movements: BalanceMovement[],
+  anchor?: BalanceAnchor | null,
+): Prisma.Decimal {
+  const point = resolveAnchorPoint(anchor ?? null, movements)
+
+  if (point === null) return netOf(movements, toDecimal(initialBalance))
+
+  const after = movements.filter((movement) => isAfter(movement, point))
+  return netOf(after, toDecimal(point.amount))
 }
 
 /**

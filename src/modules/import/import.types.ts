@@ -2,6 +2,7 @@ import type { AccountType } from '../../generated/prisma/client.js'
 
 import type { ParsedStatement, UnparsedRow } from '../../lib/parsed-statement.js'
 import type { ProductImportResult } from '../investments/investments.types.js'
+import type { BalanceMismatch } from './import.balance.service.js'
 
 /**
  * What the importer needs to know about a bank to read one of its files. The
@@ -29,6 +30,14 @@ export interface AccountReport {
   created: boolean
   /** Which values were defaulted, so the report says with what data it was created. */
   appliedDefaults: { alias: boolean; type: boolean }
+  /**
+   * The anchor the account holds AFTER this file (feature 31, R1..R3), as a
+   * decimal string, or `null` when the account is still unanchored. It is not
+   * necessarily the anchor this file offered: a file that arrives at an already
+   * anchored account reports the anchor that was already there, because R3
+   * forbids overwriting it.
+   */
+  balanceAnchor: string | null
 }
 
 /** The stable error code plus a sanitized message (never a token or a secret). */
@@ -58,9 +67,15 @@ export interface AttemptedFileReport extends FileReportBase {
   account: AccountReport | null
   imported: number
   duplicates: number
+  /** `true` when THIS file anchored the account (feature 31, R1, R2). */
+  anchored: boolean
+  /** Rows already stored whose missing per-line balance this file filled (R12). */
+  balancesFilled: number
   /** How many rows the parser could not interpret, and which ones (R2, R11). */
   unparsedCount: number
   unparsedRows: UnparsedRow[]
+  /** What the two checks of feature 32 found in THIS file; `[]` when nothing. */
+  balanceMismatches: BalanceMismatch[]
   error?: FileErrorReport
 }
 
@@ -91,6 +106,8 @@ export interface ImportRunResult {
   unparsedCount: number
   failedCount: number
   skippedCount: number
+  /** Descuadres found in the WHOLE run, so a zero closes the matter at a glance. */
+  balanceMismatchCount: number
   files: ImportedFileReport[]
 }
 
@@ -105,6 +122,12 @@ export interface FileCounts {
   imported?: number
   duplicates?: number
   unparsedCount?: number
+  /**
+   * Optional on purpose (feature 32): a skipped file and a product file carry
+   * none, and `totals()` must count them as zero without them pretending to be
+   * statements.
+   */
+  balanceMismatches?: BalanceMismatch[]
 }
 
 /**
@@ -117,8 +140,27 @@ export interface StatementResult {
   account: AccountReport | null
   imported: number
   duplicates: number
+  /**
+   * `true` when THIS file is the one that anchored the account (feature 31).
+   * `false` covers the two cases that must not be told apart here: the file
+   * brought no balance, or the account was already anchored and R3 kept it.
+   */
+  anchored: boolean
+  /**
+   * How many rows already in the database got their missing per-line balance
+   * filled by this file (feature 31, R12). Never counts a row whose balance was
+   * already stored: those are left alone (R13).
+   */
+  balancesFilled: number
   unparsedCount: number
   unparsedRows: UnparsedRow[]
+  /**
+   * The descuadres the two checks of feature 32 found in THIS file (R6). ALWAYS
+   * an array, `[]` when there was none: an `undefined` would make "nothing was
+   * found" and "nothing was checked" look the same to whoever reads the report,
+   * and they are not the same thing.
+   */
+  balanceMismatches: BalanceMismatch[]
   error?: FileErrorReport
 }
 
@@ -160,5 +202,7 @@ export interface LocalImportRunResult {
   unparsedCount: number
   failedCount: number
   skippedCount: number
+  /** Same counter and same meaning as the Drive way in (feature 32, R11). */
+  balanceMismatchCount: number
   files: LocalFileReport[]
 }

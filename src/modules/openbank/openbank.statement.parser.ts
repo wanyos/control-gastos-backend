@@ -28,7 +28,7 @@ const headerLabels = [
   'fecha valor', // fecha de valor
   'concepto', // el concepto entero
   'importe', // el importe con su signo
-  'saldo', // el saldo TRAS el movimiento, que se lee y no se guarda
+  'saldo', // el saldo TRAS el movimiento, que desde la F31 sí se guarda
 ]
 
 /** How many content cells a movement row of this bank has. */
@@ -72,15 +72,23 @@ const commentsBefore = '<table'
  * table. Same doctrine as the other banks: labelled, above the bank's own data,
  * and never inferred from the SHAPE of anything inside the table.
  *
- * WHAT IS DELIBERATELY DROPPED. The fifth column of every row is the running
- * balance after the movement, and this is the only file of the project that
- * reports it. It is read (a row whose fifth cell is not an amount is not a row
- * of this table) and then thrown away: `balance` stays `null` like every other
- * bank, ADR-013 is not touched here, and the datum is written down in
- * `progress/implementations/openbank-statement.md` so the day it is decided
- * nobody has to rediscover it exists. The currency of the movements is `''`,
- * never an invented `EUR`: the table has no currency column, and the one glued
- * to the balance of the preamble is not propagated to 200 rows.
+ * WHAT USED TO BE DELIBERATELY DROPPED, AND NOW IS KEPT (feature 31 reverts
+ * feature 19 on this one point). The fifth column of every row is the running
+ * balance after the movement, and this is still the only file of the project
+ * that reports it. Feature 19 read it only to validate the shape of the row and
+ * then threw it away, on a decision of the human of 2026-08-17; feature 31
+ * reverses that decision because the real balance of an account is computed
+ * from an anchor, and this column IS the anchor for this bank — dropping it
+ * meant the balance could not be derived without re-reading the file. So
+ * `balance` now carries the parsed amount of the fifth cell. 🔴 If you are
+ * about to «restore» the `null` because some other text says it is dropped:
+ * don't. That is the F19 behaviour and it was reverted on purpose; the reason
+ * lives in `specs/real-account-balance/requirements.md` §R11. Deroging ADR-013
+ * is NOT this file's job (feature 31 does it in `docs/architecture.md`), and
+ * nothing else of the shared contract changes here. The currency of the
+ * movements is still `''`, never an invented `EUR`: the table has no currency
+ * column, and the one glued to the balance of the preamble is not propagated to
+ * 200 rows.
  *
  * The whole history enters: no cut-off by date, no limit to the current month
  * and no deduplication — two identical rows both come out.
@@ -307,16 +315,24 @@ function parseMovementRow(cells: string[]): ParsedMovementDraft | { reason: stri
     problems.push(`importe no interpretable ('${cells[3]}')`)
   }
 
-  // The running balance is READ but never kept: it is the fifth column of the
-  // row, and a row whose fifth cell is not an amount is not a row of this
-  // table. Reporting it costs one movement that looked readable; accepting it
-  // would mean this parser no longer knows what it is looking at. Reported,
-  // which is always recoverable, over dropped in silence, which never is.
-  if (parseAmountText(cells[4]) === null) {
+  // The running balance is the fifth column of the row, and a row whose fifth
+  // cell is not an amount is not a row of this table. Reporting it costs one
+  // movement that looked readable; accepting it would mean this parser no
+  // longer knows what it is looking at. Reported, which is always recoverable,
+  // over dropped in silence, which never is. That reporting predates feature 31
+  // and is unchanged by it: what changed is that the value is now KEPT.
+  const balance = parseAmountText(cells[4])
+  if (balance === null) {
     problems.push(`saldo del movimiento no interpretable ('${cells[4]}')`)
   }
 
-  if (bookingDate === null || valueDate === null || amount === null || problems.length > 0) {
+  if (
+    bookingDate === null ||
+    valueDate === null ||
+    amount === null ||
+    balance === null ||
+    problems.length > 0
+  ) {
     return { reason: problems.join('; ') }
   }
 
@@ -327,8 +343,11 @@ function parseMovementRow(cells: string[]): ParsedMovementDraft | { reason: stri
     // recomposed, because this bank does give one.
     description: cells[2],
     amount,
-    // Read above and deliberately NOT stored (ADR-013 untouched, feature 19).
-    balance: null,
+    // The balance AFTER this movement, straight from the fifth column. Feature
+    // 19 dropped it on purpose; feature 31 reverts that: it is the anchor the
+    // account balance is computed from, so throwing it away meant the real
+    // balance could never be derived without re-reading the file.
+    balance,
     // The file has no currency column: what it does not carry stays empty and
     // is never invented, not even when everything in it is obviously euros.
     currency: '',

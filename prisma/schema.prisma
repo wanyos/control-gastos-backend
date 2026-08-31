@@ -68,15 +68,22 @@ enum InvestmentProductType {
 
 // ── Models ────────────────────────────────────────────────
 model Account {
-  id             Int         @id @default(autoincrement())
-  iban           String      @unique
-  bank           String
-  alias          String
-  type           AccountType @default(checking)
-  initialBalance Decimal     @default(0) @db.Decimal(10, 2)
-  movements      Movement[]
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id                       Int         @id @default(autoincrement())
+  iban                     String      @unique
+  bank                     String
+  alias                    String
+  type                     AccountType @default(checking)
+  initialBalance           Decimal     @default(0) @db.Decimal(10, 2)
+  /// Feature 31: the balance the statement stated, kept as a FACT, with the
+  /// point in history it belongs to. NULL = never anchored. Amount and date are
+  /// both NULL or both set (CHECK Account_balance_anchor_pair).
+  balanceAnchor            Decimal?    @db.Decimal(10, 2)
+  balanceAnchorDate        DateTime?   @db.Date
+  /// Position within that day, to break ties. NULL when the bank gives none.
+  balanceAnchorDaySequence Int?
+  movements                Movement[]
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
 }
 
 model Category {
@@ -95,14 +102,14 @@ model Category {
 }
 
 model Movement {
-  id           Int      @id @default(autoincrement())
+  id           Int          @id @default(autoincrement())
   type         MovementType
-  bookingDate  DateTime @db.Date
-  valueDate    DateTime @db.Date
-  amount       Decimal  @db.Decimal(10, 2)
+  bookingDate  DateTime     @db.Date
+  valueDate    DateTime     @db.Date
+  amount       Decimal      @db.Decimal(10, 2)
   description  String
-  balanceAfter Decimal? @db.Decimal(10, 2)
-  currency     String   @default("EUR")
+  balanceAfter Decimal?     @db.Decimal(10, 2)
+  currency     String       @default("EUR")
   note         String?
 
   account       Account        @relation(fields: [accountId], references: [id])
@@ -129,12 +136,12 @@ model Movement {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // Dedup of imported movements: PARTIAL unique index created with raw SQL in
+  // the migration (Prisma 7 cannot express it in the schema).
 
   @@index([accountId, bookingDate, daySequence])
   @@index([transferId])
   @@index([productId])
-  // Dedup of imported movements: PARTIAL unique index created with raw SQL in
-  // the migration (Prisma 7 cannot express it in the schema).
 }
 
 /// What every investment product has, whatever its type. One table only: the

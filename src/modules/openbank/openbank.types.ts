@@ -56,7 +56,10 @@ export interface ParsedStatementSummary {
   /**
    * Balance of the ACCOUNT at the date of the statement, read from the `Saldo:`
    * row of the file's own preamble; `null` when that row is absent. Not the
-   * per-movement balance, which this bank does report and this parser drops.
+   * per-movement balance, which this bank reports on every row and which this
+   * parser DOES keep since feature 31 (it dropped it under feature 19; see the
+   * header of `openbank.statement.parser.ts`). Two different data, and this
+   * field is only ever the first of them.
    */
   accountBalance: number | null
   /** Number of parsed movements. */

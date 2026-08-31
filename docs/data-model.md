@@ -30,8 +30,14 @@
    existe en el banco y llegará en su fichero; y si no viene del banco, no debe
    tocar el saldo. El efectivo se agota en la **retirada de cajero**, que ya es
    una línea del extracto: no hace falta saber en qué se gastó ese dinero.
-2. **El saldo se lee del extracto, no se suma.** Todo banco imprime el saldo tras
-   cada línea, así que el saldo de una cuenta **es el del banco** (ver
+2. **El saldo lo ancla el extracto; encima se suma lo posterior.** El número del
+   banco manda donde el banco lo da —eso no ha cambiado nunca—, pero desde la
+   **F31** (ADR-028) no se queda ahí: el saldo es el importe del **punto de
+   anclaje** más el neto de los movimientos **estrictamente posteriores** a él.
+   ⛔ ~~«Todo banco imprime el saldo tras cada línea, así que el saldo de una
+   cuenta **es** el del banco»~~ era falso en las dos mitades: MyInvestor y N26 no
+   traen saldo por línea (lo traen en el preámbulo), y el extracto se queda viejo
+   en cuanto llega un movimiento posterior (ver
    [Cálculo del saldo](#cálculo-del-saldo-de-una-cuenta)).
 3. **Un traspaso entre cuentas propias no se crea: se reconoce.** Sus dos apuntes
    ya llegan en los extractos; lo único propio es el `transferId` que los enlaza
@@ -73,6 +79,9 @@ erDiagram
         string alias
         AccountType type
         decimal initialBalance
+        decimal balanceAnchor
+        date balanceAnchorDate
+        int balanceAnchorDaySequence
     }
     CATEGORY {
         int id PK
@@ -153,7 +162,15 @@ model Account {
   bank           String                // p. ej. "bankinter"
   alias          String                // por defecto "<bank> ···<4 últimos del IBAN>"
   type           AccountType @default(checking)
-  initialBalance Decimal     @default(0) @db.Decimal(10, 2)  // semilla del caso excepcional
+  initialBalance Decimal     @default(0) @db.Decimal(10, 2)  // semilla de la cuenta SIN ancla
+                                       // y sin un solo balanceAfter (F31: ese es hoy su único papel)
+  // ── Ancla del saldo (F31 `real-account-balance`, 2026-08-25, ADR-028) ──
+  // El saldo que declaró el extracto, guardado como HECHO junto al punto de la
+  // historia al que pertenece. NULL = la cuenta nunca se ancló. Importe y fecha
+  // son los dos NULL o los dos no-NULL (CHECK Account_balance_anchor_pair).
+  balanceAnchor            Decimal?    @db.Decimal(10, 2)
+  balanceAnchorDate        DateTime?   @db.Date
+  balanceAnchorDaySequence Int?        // posición dentro de ese día, para desempatar
   movements      Movement[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
@@ -290,20 +307,41 @@ model Movement {
 
 #### Cálculo del saldo de una cuenta
 
-El saldo **no se recalcula sumando**: se **lee** del extracto.
+⛔ ~~El saldo **no se recalcula sumando**: se **lee** del extracto, y la suma es el
+plan B.~~ → **reescrito por la F31 `real-account-balance`** (2026-08-25, ADR-028).
+Desde entonces hay **una sola fórmula**: el saldo es el **importe del punto de
+anclaje efectivo** más el **neto de lo estrictamente posterior** a él.
 
 ```
-balance(cuenta):
+balance(cuenta):                                   # movements.service.ts
+  A = ancla guardada de la cuenta                  # readAnchor()
+      (balanceAnchor, balanceAnchorDate, balanceAnchorDaySequence)
+      NULL si esa cuenta nunca se ancló
   M = movimiento de la cuenta con balanceAfter != null más reciente
       ORDER BY bookingDate DESC, daySequence DESC   LIMIT 1
-  si M existe:  balance = M.balanceAfter                          # el número del banco, tal cual
+
+  P = el más reciente entre A y M                  # resolveAnchorPoint()
+      recencia = (bookingDate, daySequence), daySequence ausente = 0   # isAfter()
+      empate exacto → gana A: sale del preámbulo del extracto, que manda
+                      sobre el saldo de una sola línea
+
+  si P existe:  balance = importe(P)
+                        + Σ income − Σ expense de los movimientos
+                          ESTRICTAMENTE posteriores a P
+                        (neutral aporta 0; lo anterior ya está dentro de P)
   si no:        balance = initialBalance + Σ income − Σ expense   # CASO EXCEPCIONAL
-                (neutral aporta 0)
 ```
 
-La rama de la suma es solo el plan B: un banco cuyo extracto **no traiga saldo
-corrido**, o una cuenta a la que todavía no se le ha importado nada. El
-`initialBalance` de `Account` es la semilla de esa rama.
+**La precedencia NO se ha invertido.** Donde el archivo trae saldo por línea, ese
+movimiento normalmente **es** `P` y el número sigue siendo el del banco, tal cual.
+Lo que desaparece es que la suma fuera un *fallback*: ahora corre siempre, desde
+el ancla en vez de desde cero. La consecuencia práctica es que un movimiento
+**posterior** al último saldo del extracto sí mueve el saldo (antes no lo movía) y
+uno **anterior** no lo mueve (ya estaba contado dentro del ancla).
+
+La rama de `initialBalance` sigue siendo el caso excepcional, pero ahora es más
+estrecho: una cuenta **sin ancla y sin un solo `balanceAfter`** — creada a mano y
+que nunca vio un extracto. Ese es hoy el único papel de `initialBalance`.
 
 Ninguna rama mira `transferId`: la pierna de un traspaso es un cargo (o un abono)
 real de esa cuenta y ya está dentro del `balanceAfter` que dio el banco.
@@ -798,11 +836,16 @@ documentada):
 
 > 📌 **Aviso sobre el saldo del banco de inversión.** Su extracto de cuenta
 > corriente **no trae saldo por movimiento**, así que `Movement.balanceAfter` será
-> siempre `NULL` para esa cuenta y `computeAccountBalance` caerá en la rama que
+> siempre `NULL` para esa cuenta. ⛔ ~~`computeAccountBalance` caerá en la rama que
 > suma desde `initialBalance` — el **caso excepcional** de la regla 2 pasa a ser el
-> camino normal. El código ya lo soporta sin tocar una línea, pero
-> **`Account.initialBalance` deja de ser decorativo: es el único ancla del saldo de
-> esa cuenta.** Y como su extracto **tampoco trae IBAN**, esa cuenta hay que darla
+> camino normal— … **`Account.initialBalance` deja de ser decorativo: es el único
+> ancla del saldo de esa cuenta.**~~ → **actualizado por la F31
+> `real-account-balance`** (2026-08-25, ADR-028): el ancla de esa cuenta sale del
+> `accountBalance` de su preámbulo (la línea `saldo;<importe>` que escribe el
+> humano) y se guarda en `Account.balanceAnchor` con su fecha; el saldo se calcula
+> desde ahí más lo posterior. **`initialBalance` solo actúa en una cuenta sin ancla
+> y sin ningún saldo por movimiento**, es decir, si esa línea no se escribió nunca.
+> Y como su extracto **tampoco trae IBAN**, esa cuenta hay que darla
 > de alta **a mano** (`POST /api/accounts`); es el camino previsto por
 > `MISSING_ACCOUNT_DATA` (422), no un problema.
 

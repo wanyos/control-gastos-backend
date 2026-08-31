@@ -15,7 +15,13 @@ import type {
   ProductParserAdapter,
   SavingsSnapshotInput,
 } from '../investments/investments.types.js'
-import { importPending, toMovementRows } from './import.service.js'
+import type { AppPrismaClient } from '../../lib/prisma.js'
+import {
+  deriveAnchorFromStatement,
+  importPending,
+  importStatement,
+  toMovementRows,
+} from './import.service.js'
 import type {
   AttemptedFileReport,
   AttemptedProductFileReport,
@@ -728,6 +734,7 @@ describe('importPending', () => {
       unparsedCount: 0,
       failedCount: 0,
       skippedCount: 0,
+      balanceMismatchCount: 0,
       files: [],
     })
     expect(get).not.toHaveBeenCalled()
@@ -1168,5 +1175,705 @@ describe('importPending: the product files (feature 26)', () => {
 
     expect(await app.prisma.account.count()).toBe(accountsBefore)
     expect(await app.prisma.movement.count()).toBe(movementsBefore)
+  })
+})
+
+// ── Feature 31: the importer anchors the account and fills missing balances ──
+//
+// 🔒 ADR-017: not one real amount here. Every figure is invented, every bank is
+// a `zz-anchor-…` slug of its own and every IBAN comes from `syntheticIban()`.
+
+describe('deriveAnchorFromStatement (pure: no database, no clock)', () => {
+  it('takes the preamble balance with the date of the MOST RECENT movement (R1)', () => {
+    const anchor = deriveAnchorFromStatement(
+      statement('zz-anchor-pure', {
+        accountBalance: 1234.5,
+        movements: [
+          movement({ bookingDate: '2026-07-24', daySequence: 1, balance: 900 }),
+          movement({ bookingDate: '2026-07-26', daySequence: 2, balance: 800 }),
+          movement({ bookingDate: '2026-07-26', daySequence: 1, balance: 850 }),
+        ],
+      }),
+    )
+
+    // The preamble is the balance of the ACCOUNT: it outranks the 800 of a line.
+    // Its date is the one of the last movement of the file, because that is what
+    // the human means when writing the `saldo;` line (confirmed 2026-08-25).
+    expect(anchor).toEqual({
+      amount: '1234.50',
+      bookingDate: new Date('2026-07-26T00:00:00.000Z'),
+      daySequence: 2,
+    })
+  })
+
+  it('falls back to the balance of the most recent LINE, with its own date (R2)', () => {
+    const anchor = deriveAnchorFromStatement(
+      statement('zz-anchor-pure', {
+        accountBalance: null,
+        movements: [
+          movement({ bookingDate: '2026-07-26', daySequence: 1, balance: 640.25 }),
+          movement({ bookingDate: '2026-07-24', daySequence: 3, balance: 700.75 }),
+        ],
+      }),
+    )
+
+    expect(anchor).toEqual({
+      amount: '640.25',
+      bookingDate: new Date('2026-07-26T00:00:00.000Z'),
+      daySequence: 1,
+    })
+  })
+
+  it('keeps the newest line that DOES carry a balance when the newest one has none (R2)', () => {
+    const anchor = deriveAnchorFromStatement(
+      statement('zz-anchor-pure', {
+        accountBalance: null,
+        movements: [
+          movement({ bookingDate: '2026-07-24', daySequence: 1, balance: 310.4 }),
+          movement({ bookingDate: '2026-07-25', daySequence: 1, balance: null }),
+        ],
+      }),
+    )
+
+    // Without a preamble there is nothing to attach to the newest line: the
+    // anchor is the newest line that DOES carry a balance, with its own date.
+    expect(anchor).toEqual({
+      amount: '310.40',
+      bookingDate: new Date('2026-07-24T00:00:00.000Z'),
+      daySequence: 1,
+    })
+  })
+
+  it('treats a preamble balance of zero as a REAL anchor (R4)', () => {
+    const anchor = deriveAnchorFromStatement(
+      statement('zz-anchor-pure', {
+        accountBalance: 0,
+        movements: [movement({ bookingDate: '2026-07-24', daySequence: 1, balance: null })],
+      }),
+    )
+
+    // `if (statement.accountBalance)` would return null here: that is the bug
+    // this test exists to keep out.
+    expect(anchor).toEqual({
+      amount: '0.00',
+      bookingDate: new Date('2026-07-24T00:00:00.000Z'),
+      daySequence: 1,
+    })
+  })
+
+  it('offers no anchor when neither the preamble nor a line brings a balance (R5)', () => {
+    expect(
+      deriveAnchorFromStatement(
+        statement('zz-anchor-pure', { accountBalance: null, movements: [movement()] }),
+      ),
+    ).toBeNull()
+  })
+
+  it('offers no anchor for a file with no movement to date it', () => {
+    expect(
+      deriveAnchorFromStatement(
+        statement('zz-anchor-pure', { accountBalance: 500, movements: [] }),
+      ),
+    ).toBeNull()
+  })
+})
+
+describe('the importer anchors the account and fills the balances it left empty', () => {
+  let app: FastifyInstance
+  let rawCopyBaseDir: string
+  const usedBanks: string[] = []
+  let bankCounter = 0
+
+  function uniqueBank(): string {
+    bankCounter += 1
+    const slug = `zz-anchor-${Date.now()}-${bankCounter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function run(
+    client: AppDriveClient,
+    parsers: BankParserAdapter[],
+  ): ReturnType<typeof importPending> {
+    return importPending({
+      client,
+      prisma: app.prisma,
+      rootFolderId: 'root',
+      rawCopyBaseDir,
+      parsers,
+    })
+  }
+
+  function attempted(report: { files: unknown[] }, index = 0): AttemptedFileReport {
+    const file = report.files[index] as AttemptedFileReport
+    expect(file.status).not.toBe('skipped')
+    return file
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  beforeEach(async () => {
+    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-anchor-'))
+  })
+
+  afterEach(async () => {
+    await rm(rawCopyBaseDir, { recursive: true, force: true })
+    if (usedBanks.length > 0) {
+      const accounts = await app.prisma.account.findMany({
+        where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
+      })
+      const ids = accounts.map((account) => account.id)
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('anchors an account that had no anchor, with the date of the last movement (R1)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          accountBalance: 2500.75,
+          movements: [
+            movement({ bookingDate: '2026-07-20', daySequence: 1, amount: -10 }),
+            movement({ bookingDate: '2026-07-22', daySequence: 2, amount: -20 }),
+          ],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('imported')
+    expect(file.anchored).toBe(true)
+    expect(file.account?.balanceAnchor).toBe('2500.75')
+
+    const stored = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    expect(stored.balanceAnchor?.toFixed(2)).toBe('2500.75')
+    expect(stored.balanceAnchorDate).toEqual(new Date('2026-07-22T00:00:00.000Z'))
+    expect(stored.balanceAnchorDaySequence).toBe(2)
+  })
+
+  it('does NOT rewrite the anchor of an account a previous file already anchored (R3)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const parse = (accountBalance: number, bookingDate: string) => () =>
+      statement(bank, {
+        accountIban: iban,
+        accountBalance,
+        movements: [
+          movement({ bookingDate, daySequence: 1, amount: -10, description: bookingDate }),
+        ],
+      })
+
+    const first = buildDrive(treeWith(bank, [{ id: 'f1', name: 'primero.csv' }]))
+    const firstRun = await run(first.client, [fakeAdapter(bank, parse(400.1, '2026-07-31'))])
+
+    const second = buildDrive(treeWith(bank, [{ id: 'f2', name: 'segundo.csv' }]))
+    const secondRun = await run(second.client, [fakeAdapter(bank, parse(999.99, '2026-08-31'))])
+
+    expect(attempted(firstRun).anchored).toBe(true)
+    // The second file imports normally and reports the anchor that stayed: what
+    // it must NOT do is move it. The condition lives in the WHERE, so two runs
+    // at once could not race each other into a different answer either.
+    expect(attempted(secondRun).status).toBe('imported')
+    expect(attempted(secondRun).anchored).toBe(false)
+    expect(attempted(secondRun).account?.balanceAnchor).toBe('400.10')
+
+    const stored = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    expect(stored.balanceAnchor?.toFixed(2)).toBe('400.10')
+    expect(stored.balanceAnchorDate).toEqual(new Date('2026-07-31T00:00:00.000Z'))
+    expect(await app.prisma.movement.count({ where: { accountId: stored.id } })).toBe(2)
+  })
+
+  it('stores an anchor of zero as a real anchor (R4)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          accountBalance: 0,
+          movements: [movement({ bookingDate: '2026-07-24', daySequence: 1 })],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    expect(attempted(result).anchored).toBe(true)
+    expect(attempted(result).account?.balanceAnchor).toBe('0.00')
+    const stored = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    expect(stored.balanceAnchor?.toFixed(2)).toBe('0.00')
+    expect(stored.balanceAnchorDate).not.toBeNull()
+  })
+
+  it('imports a file with no balance at all and leaves the account unanchored (R5)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, { accountIban: iban, accountBalance: null, movements: [movement()] }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('imported')
+    expect(file.imported).toBe(1)
+    expect(file.anchored).toBe(false)
+    expect(file.account?.balanceAnchor).toBeNull()
+
+    const stored = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    expect(stored.balanceAnchor).toBeNull()
+    expect(stored.balanceAnchorDate).toBeNull()
+    expect(stored.balanceAnchorDaySequence).toBeNull()
+  })
+
+  it('anchors nothing when the file fails (R1, R3)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const account = await app.prisma.account.create({
+      data: { iban, bank, alias: `${bank} account`, type: 'checking' },
+    })
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () => {
+        throw new NotUtf8Error('el archivo no se puede leer')
+      }),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('failed')
+    expect(file.anchored).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+
+    const stored = await app.prisma.account.findUniqueOrThrow({ where: { id: account.id } })
+    expect(stored.balanceAnchor).toBeNull()
+    expect(stored.balanceAnchorDate).toBeNull()
+  })
+
+  it('fills the balance of a row already stored empty, without touching the rest (R12, R13)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const rows = (balances: Array<number | null>) => () =>
+      statement(bank, {
+        accountIban: iban,
+        accountBalance: null,
+        movements: [
+          movement({ description: 'EMPTY ONE', amount: -10, daySequence: 1, balance: balances[0] }),
+          movement({ description: 'FULL ONE', amount: -20, daySequence: 2, balance: balances[1] }),
+        ],
+      })
+
+    // First pass: the parser of the day dropped the balance of the first row.
+    const first = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const firstRun = await run(first.client, [fakeAdapter(bank, rows([null, 300.3]))])
+
+    // Second pass: the same file, now read by a parser that reports both.
+    const second = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const secondRun = await run(second.client, [fakeAdapter(bank, rows([120.15, 999.99]))])
+
+    expect(attempted(firstRun)).toMatchObject({ imported: 2, duplicates: 0, balancesFilled: 0 })
+    // Not a single new row: the two are duplicates, and only the EMPTY one was
+    // written to. The stored 300.30 wins over the 999.99 of the file (R13):
+    // reconciling the two is feature 32, not this one.
+    expect(attempted(secondRun)).toMatchObject({ imported: 0, duplicates: 2, balancesFilled: 1 })
+
+    const account = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    const stored = await app.prisma.movement.findMany({
+      where: { accountId: account.id },
+      orderBy: { daySequence: 'asc' },
+    })
+    expect(stored).toHaveLength(2)
+    expect(stored.map((row) => row.balanceAfter?.toFixed(2) ?? null)).toEqual(['120.15', '300.30'])
+  })
+
+  it('fills nothing when the file brought no duplicate at all (R12)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          movements: [movement({ description: 'BRAND NEW', balance: 55.55 })],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    expect(attempted(result)).toMatchObject({ imported: 1, duplicates: 0, balancesFilled: 0 })
+  })
+})
+
+// ── Feature 32 `balance-reconciliation`: the descuadres of a file ───────────
+//
+// 🔒 Every amount here is invented (ADR-017). The chains are built so the sums
+// are readable: 100 → 60 with a −20 in between does not add up, and −40 against
+// −20 is the descuadre it must report.
+
+/** One call to `prisma.account`, recorded to say WHEN it happened and with what. */
+interface AccountCall {
+  method: string
+  /** `true` when the call asked for the three anchor columns: the anchor read. */
+  readsAnchor: boolean
+  /** What that call gave back, so the test can say WHICH anchor travelled. */
+  balanceAnchor: string | null
+}
+
+/**
+ * The real client with every `account` call recorded, in order. It is the only
+ * way to pin the ONE thing the preamble check depends on and no black-box
+ * assertion can see: that the anchor it receives is the one from BEFORE this
+ * file anchored the account. Read it afterwards and the check compares the file
+ * against itself, finds nothing for ever, and stays green while checking nothing.
+ */
+function recordingPrisma(prisma: AppPrismaClient, calls: AccountCall[]): AppPrismaClient {
+  const delegate = prisma.account as unknown as Record<string, unknown>
+  const spied = new Proxy(delegate, {
+    get(target, property) {
+      const original = Reflect.get(target, property)
+      if (typeof original !== 'function') return original
+      const call = original as (...args: unknown[]) => Promise<unknown>
+      return async (...args: unknown[]) => {
+        const result = await call.apply(target, args)
+        const argument = (args[0] ?? {}) as { select?: Record<string, unknown> }
+        const row = (result ?? null) as {
+          balanceAnchor?: { toFixed(digits: number): string } | null
+        } | null
+        calls.push({
+          method: String(property),
+          readsAnchor: argument.select?.balanceAnchorDate !== undefined,
+          balanceAnchor: row?.balanceAnchor?.toFixed(2) ?? null,
+        })
+        return result
+      }
+    },
+  })
+
+  return new Proxy(prisma, {
+    get(target, property) {
+      if (property === 'account') return spied
+      const value = Reflect.get(target, property)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  }) as AppPrismaClient
+}
+
+describe('the importer reports the descuadres of a file and lets nothing else change', () => {
+  let app: FastifyInstance
+  let rawCopyBaseDir: string
+  const usedBanks: string[] = []
+  let bankCounter = 0
+
+  function uniqueBank(): string {
+    bankCounter += 1
+    const slug = `zz-mismatch-${Date.now()}-${bankCounter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function run(
+    client: AppDriveClient,
+    parsers: BankParserAdapter[],
+  ): ReturnType<typeof importPending> {
+    return importPending({
+      client,
+      prisma: app.prisma,
+      rootFolderId: 'root',
+      rawCopyBaseDir,
+      parsers,
+    })
+  }
+
+  function attempted(report: { files: unknown[] }, index = 0): AttemptedFileReport {
+    const file = report.files[index] as AttemptedFileReport
+    expect(file.status).not.toBe('skipped')
+    return file
+  }
+
+  /** Two lines whose balances jump 40 while the amount in between says 20. */
+  function chainThatDoesNotAddUp(): ParsedMovement[] {
+    return [
+      movement({ bookingDate: '2026-07-20', daySequence: 1, amount: -10, balance: 100 }),
+      movement({ bookingDate: '2026-07-21', daySequence: 1, amount: -20, balance: 60 }),
+    ]
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  beforeEach(async () => {
+    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-mismatch-'))
+  })
+
+  afterEach(async () => {
+    await rm(rawCopyBaseDir, { recursive: true, force: true })
+    if (usedBanks.length > 0) {
+      const accounts = await app.prisma.account.findMany({
+        where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
+      })
+      const ids = accounts.map((account) => account.id)
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  // ── T11: a descuadre stops nothing (R6, R7) ──────────────────────────────
+
+  it('reports a per-line descuadre, imports the file anyway and goes on with the next (R6, R7)', async () => {
+    const bank = uniqueBank()
+    const broken = syntheticIban()
+    const clean = syntheticIban()
+    const { client, update } = buildDrive(
+      treeWith(bank, [
+        { id: 'f1', name: 'descuadra.csv' },
+        { id: 'f2', name: 'cuadra.csv' },
+      ]),
+    )
+    const parsers = [
+      fakeAdapter(bank, (content) =>
+        content.toString().includes('f1')
+          ? statement(bank, { accountIban: broken, movements: chainThatDoesNotAddUp() })
+          : statement(bank, {
+              accountIban: clean,
+              movements: [
+                movement({ bookingDate: '2026-07-20', daySequence: 1, amount: -10, balance: 100 }),
+                movement({ bookingDate: '2026-07-21', daySequence: 1, amount: -20, balance: 80 }),
+              ],
+            }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    const first = attempted(result, 0)
+    const second = attempted(result, 1)
+    const account = await app.prisma.account.findUniqueOrThrow({ where: { iban: broken } })
+
+    // The file with the descuadre is imported, moved and complete...
+    expect(first.status).toBe('imported')
+    expect(first.imported).toBe(2)
+    expect(first.movedToProcessed).toBe(true)
+    expect(await app.prisma.movement.count({ where: { accountId: account.id } })).toBe(2)
+    // ...and it reports the five data of the descuadre.
+    expect(first.balanceMismatches).toEqual([
+      {
+        accountId: account.id,
+        accountAlias: account.alias,
+        date: '2026-07-21',
+        computed: '-40.00',
+        fromFile: '-20.00',
+        difference: '-20.00',
+        check: 'per-line',
+      },
+    ])
+    // The next file of the run enters exactly as it would have on its own.
+    expect(second.status).toBe('imported')
+    expect(second.imported).toBe(2)
+    expect(second.balanceMismatches).toEqual([])
+    expect(result.balanceMismatchCount).toBe(1)
+    expect(update).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves the stored anchor untouched when the file that arrives descuadra (R8)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const anchored = await app.prisma.account.create({
+      data: {
+        iban,
+        bank,
+        alias: `${bank} account`,
+        type: 'checking',
+        balanceAnchor: '750.00',
+        balanceAnchorDate: new Date('2026-07-01T00:00:00.000Z'),
+        balanceAnchorDaySequence: 1,
+      },
+    })
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'descuadra.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, { accountIban: iban, movements: chainThatDoesNotAddUp() }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    expect(attempted(result).balanceMismatches).toHaveLength(1)
+    const stored = await app.prisma.account.findUniqueOrThrow({ where: { id: anchored.id } })
+    expect(stored.balanceAnchor?.toFixed(2)).toBe('750.00')
+    expect(stored.balanceAnchorDate).toEqual(new Date('2026-07-01T00:00:00.000Z'))
+    expect(stored.balanceAnchorDaySequence).toBe(1)
+  })
+
+  // ── The preamble check, through the real import (R3, R6) ─────────────────
+
+  it('reports the preamble descuadre of a file reaching an ALREADY anchored account (R3, R6)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const account = await app.prisma.account.create({
+      data: {
+        iban,
+        bank,
+        alias: `${bank} account`,
+        type: 'checking',
+        balanceAnchor: '500.00',
+        balanceAnchorDate: new Date('2026-07-01T00:00:00.000Z'),
+        balanceAnchorDaySequence: 1,
+      },
+    })
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'preambulo.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          // 500.00 − 30.00 = 470.00, and the file says 450.00: 20.00 of descuadre.
+          accountBalance: 450,
+          movements: [movement({ bookingDate: '2026-07-05', daySequence: 1, amount: -30 })],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('imported')
+    expect(file.balanceMismatches).toEqual([
+      {
+        accountId: account.id,
+        accountAlias: account.alias,
+        date: '2026-07-05',
+        computed: '470.00',
+        fromFile: '450.00',
+        difference: '20.00',
+        check: 'statement-balance',
+      },
+    ])
+    expect(result.balanceMismatchCount).toBe(1)
+  })
+
+  // ── The order of the two steps, which nothing else can see ───────────────
+
+  it('hands the preamble check the anchor from BEFORE this file anchored the account (R4)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const calls: AccountCall[] = []
+    const adapter = fakeAdapter(bank, () =>
+      statement(bank, {
+        accountIban: iban,
+        accountBalance: 300,
+        movements: [movement({ bookingDate: '2026-07-10', daySequence: 1, amount: -25 })],
+      }),
+    )
+
+    const stored = await importStatement({
+      prisma: recordingPrisma(app.prisma, calls),
+      content: Buffer.from('raw'),
+      adapter,
+      bankSlug: bank,
+    })
+
+    expect(stored.status).toBe('imported')
+    // R4: there was no anchor before this file, so there is nothing to compare
+    // and NOTHING is reported -- a first file is not a descuadre.
+    expect(stored.balanceMismatches).toEqual([])
+
+    // And here is why that emptiness is honest. The account IS anchored now, so
+    // an anchor read AFTER the anchoring would have come back with this file's
+    // own 300.00 and the check would compare the file against itself, for ever
+    // and in silence. The read that travels has to be the one that came back null.
+    const account = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    expect(account.balanceAnchor?.toFixed(2)).toBe('300.00')
+
+    const anchorRead = calls.findIndex((call) => call.readsAnchor)
+    const anchoring = calls.findIndex((call) => call.method === 'updateMany')
+    expect(anchorRead).toBeGreaterThanOrEqual(0)
+    expect(anchoring).toBeGreaterThanOrEqual(0)
+    expect(anchorRead).toBeLessThan(anchoring)
+    expect(calls[anchorRead]?.balanceAnchor).toBeNull()
+  })
+
+  // ── T12: nothing to compare is not a descuadre (R9) ──────────────────────
+
+  it('imports a file with no preamble balance and no per-line balance, reporting no descuadre (R9)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'sin-saldos.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          accountBalance: null,
+          movements: [
+            movement({ bookingDate: '2026-07-20', daySequence: 1, amount: -10, balance: null }),
+            movement({ bookingDate: '2026-07-21', daySequence: 1, amount: -20, balance: null }),
+          ],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('imported')
+    expect(file.imported).toBe(2)
+    expect(file.balanceMismatches).toEqual([])
+    expect(result.balanceMismatchCount).toBe(0)
+  })
+
+  // ── T14: the descuadre does not move the balance anyone reads (R8) ───────
+
+  it('does NOT move the balance GET /api/accounts and GET /api/accounts/:id return (R8)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'descuadra.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, { accountIban: iban, movements: chainThatDoesNotAddUp() }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+    expect(attempted(result).balanceMismatches).toHaveLength(1)
+
+    const account = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    const list = await app.inject({ method: 'GET', url: '/api/accounts' })
+    const one = await app.inject({ method: 'GET', url: `/api/accounts/${account.id}` })
+
+    // Where the file rules, the file goes on ruling: the balance is the one of
+    // the most recent line of the file, descuadre or no descuadre.
+    const listed = list
+      .json<Array<{ id: number; balance: string }>>()
+      .find((candidate) => candidate.id === account.id)
+    expect(listed?.balance).toBe('60.00')
+    expect(one.json<{ balance: string }>().balance).toBe('60.00')
+    // And the account reports the very same anchor feature 31 left in it.
+    expect(one.json<{ balanceAnchor: string | null }>().balanceAnchor).toBe('60.00')
   })
 })

@@ -442,6 +442,166 @@ describe('importLocalCopies', () => {
     expect(attempted(result).error?.code).toBe('MISSING_ACCOUNT_DATA')
     expect(await accountsOfTheBank(bank)).toBe(0)
   })
+
+  // ── Feature 31: the local reimport is the path that fixes what is inside ──
+  //
+  // 🔒 Nothing real here either: the copies are written into the temporary
+  // directory of this test, NEVER read from the human's `var/drive-read/`, and
+  // every amount is invented (ADR-017).
+
+  it('anchors the accounts and fills the missing balances without duplicating a row (R15)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+
+    // What the database looks like before: the account was created by an older
+    // import, so it has no anchor, and one of its rows was stored with its
+    // per-line balance empty (the hole the F19 left behind).
+    const account = await app.prisma.account.create({
+      data: { iban, bank, alias: `${bank} account`, type: 'checking' },
+    })
+    await app.prisma.movement.create({
+      data: {
+        accountId: account.id,
+        type: 'expense',
+        bookingDate: new Date('2026-07-24T00:00:00.000Z'),
+        valueDate: new Date('2026-07-24T00:00:00.000Z'),
+        amount: '10.00',
+        description: 'ALREADY STORED',
+        balanceAfter: null,
+        currency: 'EUR',
+        daySequence: 1,
+        origin: 'imported',
+        status: 'pending_review',
+      },
+    })
+
+    await writeCopy(bank, '2026', 'movs.csv')
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          accountBalance: 1800.4,
+          movements: [
+            movement({
+              bookingDate: '2026-07-24',
+              daySequence: 1,
+              amount: -10,
+              description: 'ALREADY STORED',
+              balance: 1810.4,
+            }),
+            movement({
+              bookingDate: '2026-07-25',
+              daySequence: 1,
+              amount: -20,
+              description: 'NOT STORED YET',
+              balance: 1790.4,
+            }),
+          ],
+        }),
+      ),
+    ]
+
+    const result = await run(parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('imported')
+    // The row that was already there is a duplicate and stays one row; the new
+    // one is stored; and the empty balance of the old one gets filled.
+    expect(file).toMatchObject({ imported: 1, duplicates: 1, balancesFilled: 1, anchored: true })
+    expect(file.movedToProcessed).toBe(false)
+
+    const stored = await app.prisma.account.findUniqueOrThrow({ where: { id: account.id } })
+    expect(stored.balanceAnchor?.toFixed(2)).toBe('1800.40')
+    expect(stored.balanceAnchorDate).toEqual(new Date('2026-07-25T00:00:00.000Z'))
+    expect(stored.balanceAnchorDaySequence).toBe(1)
+
+    const movements = await app.prisma.movement.findMany({
+      where: { accountId: account.id },
+      orderBy: { bookingDate: 'asc' },
+    })
+    expect(movements).toHaveLength(2)
+    expect(movements.map((row) => row.balanceAfter?.toFixed(2) ?? null)).toEqual([
+      '1810.40',
+      '1790.40',
+    ])
+  })
+
+  it('leaves the account unanchored when its local copies bring no balance (R5, R15)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    await writeCopy(bank, '2026', 'movs.csv')
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, { accountIban: iban, accountBalance: null, movements: [movement()] }),
+      ),
+    ]
+
+    const result = await run(parsers)
+
+    expect(attempted(result)).toMatchObject({ imported: 1, anchored: false, balancesFilled: 0 })
+    const stored = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    expect(stored.balanceAnchor).toBeNull()
+    expect(stored.balanceAnchorDate).toBeNull()
+  })
+
+  // ── Feature 32 `balance-reconciliation` (R11) ────────────────────────────
+  //
+  // The local way in shares `importStatement` and `totals` with the Drive one,
+  // so it gains the descuadres without a line of its own. This test is here to
+  // stop the two from drifting apart, and every amount in it is invented.
+
+  it('reports the descuadres of each copy and the total of the run, as the Drive way does (R11)', async () => {
+    const bank = uniqueBank()
+    const broken = syntheticIban()
+    const clean = syntheticIban()
+    await writeCopy(bank, '2026', 'descuadra.csv', 'raw-descuadra')
+    await writeCopy(bank, '2026', 'cuadra.csv', 'raw-cuadra')
+    const parsers = [
+      fakeAdapter(bank, (content) =>
+        content.toString().includes('descuadra')
+          ? statement(bank, {
+              accountIban: broken,
+              movements: [
+                movement({ bookingDate: '2026-07-20', daySequence: 1, amount: -10, balance: 100 }),
+                movement({ bookingDate: '2026-07-21', daySequence: 1, amount: -20, balance: 60 }),
+              ],
+            })
+          : statement(bank, {
+              accountIban: clean,
+              movements: [
+                movement({ bookingDate: '2026-07-20', daySequence: 1, amount: -10, balance: 100 }),
+                movement({ bookingDate: '2026-07-21', daySequence: 1, amount: -20, balance: 80 }),
+              ],
+            }),
+      ),
+    ]
+
+    const result = await run(parsers)
+
+    const account = await app.prisma.account.findUniqueOrThrow({ where: { iban: broken } })
+    const files = result.files as AttemptedLocalFileReport[]
+    const descuadra = files.find((file) => file.name === 'descuadra.csv')
+    const cuadra = files.find((file) => file.name === 'cuadra.csv')
+
+    expect(descuadra?.status).toBe('imported')
+    expect(descuadra?.movedToProcessed).toBe(false)
+    expect(descuadra?.balanceMismatches).toEqual([
+      {
+        accountId: account.id,
+        accountAlias: account.alias,
+        date: '2026-07-21',
+        computed: '-40.00',
+        fromFile: '-20.00',
+        difference: '-20.00',
+        check: 'per-line',
+      },
+    ])
+    // A copy that adds up brings the empty array, never `undefined`: "nothing
+    // was found" must not look like "nothing was checked".
+    expect(cuadra?.status).toBe('imported')
+    expect(cuadra?.balanceMismatches).toEqual([])
+    expect(result.balanceMismatchCount).toBe(1)
+  })
 })
 
 // ── Feature 26: the product files also come back from the local copy ─────────

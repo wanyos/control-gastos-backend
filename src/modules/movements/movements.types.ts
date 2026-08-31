@@ -23,6 +23,27 @@ export interface BalanceMovement {
   daySequence: number | null
 }
 
+/**
+ * A point in the history of an account: `bookingDate` plus the position within
+ * that day. Everything that asks "which one is more recent" takes this shape.
+ */
+export interface RecencyPoint {
+  bookingDate: Date
+  daySequence: number | null
+}
+
+/** An amount together with the point in history it belongs to (feature 31, R6). */
+export interface BalanceAnchor extends RecencyPoint {
+  amount: DecimalLike
+}
+
+/** The three anchor columns of an account, as they come out of the database. */
+export interface AnchorColumns {
+  balanceAnchor: DecimalLike | null
+  balanceAnchorDate: Date | null
+  balanceAnchorDaySequence: number | null
+}
+
 /** Minimum shape needed to aggregate global totals (R20). */
 export interface TotalsMovement {
   type: MovementType

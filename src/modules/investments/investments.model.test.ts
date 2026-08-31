@@ -700,8 +700,11 @@ describe('investments model: InvestmentProduct and Valuation', () => {
         'SavingsSnapshot',
       ])
 
-      // The additive migration adds NO column to the flow model: the shape of
-      // Account is the one feature 26 found.
+      // The additive migration of feature 26 adds NO column to the flow model.
+      // The three `balanceAnchor*` ones are NOT hers: feature 31 added them so
+      // an account can remember the balance its statement stated. This guardian
+      // is a closed list on purpose: it went red the day feature 31 touched the
+      // table, which is exactly what it is here for.
       const flowColumns = await app.prisma.$queryRaw<Array<{ column_name: string }>>`
         SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'Account'
@@ -709,6 +712,9 @@ describe('investments model: InvestmentProduct and Valuation', () => {
       `
       expect(flowColumns.map((column) => column.column_name)).toEqual([
         'alias',
+        'balanceAnchor',
+        'balanceAnchorDate',
+        'balanceAnchorDaySequence',
         'bank',
         'createdAt',
         'iban',

@@ -314,13 +314,38 @@ describe('parseOpenbankStatement — dates and amounts (R6, R7)', () => {
   })
 })
 
-describe('parseOpenbankStatement — what is read and not kept (R8)', () => {
-  it('leaves the per-movement balance null although the file does report it', () => {
-    // This is the only file of the project carrying a running balance. The
-    // human decided it is not stored: ADR-013 is not touched here.
+describe('parseOpenbankStatement — the per-movement balance (F31 R11)', () => {
+  it('emits the balance of the fifth column instead of the null of feature 19', () => {
+    // This is the only file of the project carrying a running balance. Feature
+    // 19 read it and threw it away on purpose; feature 31 reverts exactly that,
+    // because this column is the anchor the real balance is computed from.
+    // The `null` of the old test is NOT a regression to restore.
     const result = parseOpenbankStatement(buildOpenbankStatement())
 
-    expect(result.movements.every((movement) => movement.balance === null)).toBe(true)
+    expect(result.movements.every((movement) => movement.balance !== null)).toBe(true)
+    expect(result.movements.map((movement) => movement.balance)).toEqual([
+      12409.31, 12446.8, 12928.93, 15544.01, 14596.39, 14596.39, 14685.16, 14780.16,
+    ])
+  })
+
+  it('keeps the balance of a row apart from its amount: two cells, two data', () => {
+    // Invented row: the fourth cell is the amount and the fifth is the balance,
+    // and neither is ever read from the other's place.
+    const rows = [['17/08/2026', '17/08/2026', 'MOVIMIENTO INVENTADO', '-11,11', '2.222,22']]
+
+    const [movement] = parseOpenbankStatement(buildOpenbankStatement({ rows })).movements
+
+    expect(movement.amount).toBe(-11.11)
+    expect(movement.balance).toBe(2222.22)
+  })
+
+  it('keeps a balance of zero as a real balance, never as an absent one', () => {
+    const rows = [['17/08/2026', '17/08/2026', 'CUENTA A CERO INVENTADA', '-5,55', '0,00']]
+
+    const [movement] = parseOpenbankStatement(buildOpenbankStatement({ rows })).movements
+
+    expect(movement.balance).toBe(0)
+    expect(movement.balance).not.toBeNull()
   })
 
   it('leaves the currency empty instead of inventing an EUR for every row', () => {
@@ -331,12 +356,17 @@ describe('parseOpenbankStatement — what is read and not kept (R8)', () => {
     expect(result.accountBalance).toBe(1234.56)
   })
 
-  it('reports the row when its fifth cell is not a balance, instead of dropping it', () => {
+  it('still reports the row when its fifth cell is not a balance (no regression)', () => {
+    // The OTHER half of feature 31 T3: keeping the datum does not change what
+    // happens when the cell is unreadable. A row that looked like a movement
+    // but whose fifth cell is not an amount is reported exactly as before,
+    // never let in with a null balance.
     const rows = [['17/08/2026', '17/08/2026', 'SALDO ILEGIBLE', '-1,00', 'no es un saldo']]
 
     const result = parseOpenbankStatement(buildOpenbankStatement({ rows }))
 
     expect(result.movements).toEqual([])
+    expect(result.unparsedRows).toHaveLength(1)
     expect(result.unparsedRows[0].reason).toContain('saldo del movimiento no interpretable')
   })
 })
@@ -371,8 +401,11 @@ describe('parseOpenbankStatement — the balance of the account (R9, R10)', () =
   it('never confuses it with the balance of a line: they are two different data', () => {
     const result = parseOpenbankStatement(buildOpenbankStatement())
 
+    // Both are kept since feature 31, and precisely because both are kept they
+    // must not be the same number: the preamble is a datum of the ACCOUNT, the
+    // fifth column is a datum of the ROW.
     expect(result.accountBalance).toBe(1234.56)
-    expect(result.movements[0].balance).toBeNull()
+    expect(result.movements[0].balance).toBe(12409.31)
   })
 })
 
