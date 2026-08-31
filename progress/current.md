@@ -89,11 +89,14 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 abierta en su veredicto, y es suya a propósito: la suite en verde dice que el
 código hace lo que el spec dice, no que el número sea el que tiene en el banco.
 
-1. Lanzar `POST /api/import/local` una vez. Es lo que ancla sus cuatro cuentas y
-   rellena los saldos por línea de Openbank. **No hay que subir nada a Drive.**
-2. Comparar cada cuenta contra la web de su banco.
-3. Asegurarse de que al menos un extracto de N26 y uno de MyInvestor llevan la
-   línea `saldo;`. Basta **una vez por cuenta**, para siempre.
+1. ~~Lanzar `POST /api/import/local` una vez.~~ ✅ **hecho el 2026-08-31**, y ya
+   estaba hecho antes: las cuatro cuentas están ancladas. Informe de la pasada:
+   [`explorations/prueba-real-f31-2026-08-31.md`](explorations/prueba-real-f31-2026-08-31.md).
+2. 🔴 **Comparar cada cuenta contra la web de su banco.** Este paso **sigue
+   abierto y es el único que importa**: solo lo puede hacer él.
+3. ~~Asegurarse de que al menos un extracto de N26 y uno de MyInvestor llevan la
+   línea `saldo;`.~~ ✅ **comprobado el 2026-08-31** sobre los archivos de
+   `var/drive-read/`: los dos la llevan.
 
 > Las dos veces anteriores que hizo esta prueba, con la suite entera en verde,
 > **aparecieron dos features nuevas**. Si aquí sale algo, no es un fallo de la

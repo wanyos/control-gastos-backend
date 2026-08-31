@@ -6,6 +6,11 @@
 > bancos; crear un banco es una acción explícita."* Detalle en
 > `docs/architecture.md` → **ADR-008** y en `specs/drive-structure/design.md` §6.
 
+> 📌 **¿Solo quieres saber qué archivo pide cada banco y qué se escribe a mano
+> en él?** Está en una página de una tabla:
+> [`docs/archivos-por-banco.md`](archivos-por-banco.md). Esta de aquí es el runbook
+> completo, con el porqué de cada cosa.
+
 ## Por qué hay que hacerlo a mano
 
 La fuente de verdad de "qué bancos existen" son **las subcarpetas directas de la
