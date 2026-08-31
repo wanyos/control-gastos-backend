@@ -327,6 +327,117 @@ function captureText(dir = captureRoot): string {
  */
 const ourProseKeys = new Set(['reason'])
 
+/**
+ * OUR OWN FILE-NAMING CONVENTION INSIDE HIS DUMP (feature 34, measured by feature 33
+ * on 2026-08-25 and NOT covered by the rule above).
+ *
+ * The dump of a product parser stores, per entry, the NAME OF THE FILE it parsed. That
+ * name is not a datum of his statement: for Trade Republic it is the convention THIS
+ * PROJECT PUBLISHES in `docs/trade-republic-product-files.md` and prints on the template
+ * he fills in. So the guardian was reporting OUR OWN texts —`docs/api-contract.md`, three
+ * test files whose data is synthetic, `history.md`— as «a phrase of his statement»: 52
+ * warnings out of ONE trigram, the three words the name leaves once `words()` throws the
+ * digits away. It is not a leftover of feature 33: every real parse of Trade Republic he
+ * runs writes that name again, so the suite went red whenever he used the application.
+ *
+ * WHY THE FEATURE 24 MECHANISM DOES NOT COVER IT, and why this is a separate piece:
+ * feature 24 subtracts a phrase only when OUR PRODUCTION SOURCE proves we wrote it, and
+ * it excludes tests and fixtures ON PURPOSE (a copy is not proof of ownership). The word
+ * of this convention lives in the DOCUMENTATION and in the template, never in a message
+ * literal of `src/`, so `ownSourceVocabulary` says —correctly— «this is not mine». The
+ * proof needed here is of another kind, so it is read from another place, mechanically.
+ *
+ * WHERE THE LINE IS DRAWN, and why it does not open a hole:
+ *
+ *  - BY PROVENANCE FIRST: only a value under a key we KNOW holds a file name
+ *    (`fileNameKeys`). The very same string sitting in `name`, which is where a product
+ *    of his lands, is compared exactly as before.
+ *  - AND BY FORM ON TOP: the value has to match, WHOLE and anchored, a naming pattern
+ *    that our own documentation publishes. Both, never one — the same shape as the two
+ *    conditions of feature 24.
+ *  - The patterns are READ FROM OUR DOCS, not written here: there is no hand-kept list to
+ *    extend every time it fires, and a run can say WHICH page let a value through.
+ *  - A pattern whose placeholder is NOT a date is DISCARDED, because everything a
+ *    placeholder admits is HIS. That is what keeps MyInvestor watched: its published
+ *    convention is `<producto>-<AAAA-MM-DD>.json`, and `<producto>` is the name he gives
+ *    his fund. Only a pattern made of OUR literal words plus a date can exempt anything,
+ *    so an exempted value is our published text plus digits, and nothing else can hide
+ *    inside it.
+ *  - AND THE AMOUNT LAYER IS NOT TOUCHED: it keeps comparing against the RAW text of
+ *    every capture, file names included. Digits are its business, not this one's.
+ */
+const fileNameKeys = new Set(['file'])
+
+interface PublishedFilename {
+  /** The pattern as the documentation writes it, placeholder included. */
+  source: string
+  /** The page it was read from, so it can be said WHY a value was let through. */
+  doc: string
+  pattern: RegExp
+}
+
+/** The pages this project publishes to him: `docs/*.md`, never a test nor a fixture. */
+function isPublishedDoc(file: string): boolean {
+  return /^docs\/[^/]+\.md$/.test(file)
+}
+
+/** The ONE placeholder that admits no word of his: a calendar date. */
+const datePlaceholder = '<AAAA-MM-DD>'
+
+/**
+ * A published pattern compiled into an anchored regular expression, or `null` when it
+ * carries a placeholder that is not a date — that one admits HIS words and may exempt
+ * nothing.
+ */
+function compilePublishedFilename(source: string): RegExp | null {
+  if (source.length === 0) return null
+  let body = ''
+  for (const part of source.split(/(<[^>]*>)/)) {
+    if (part.length === 0) continue
+    if (!part.startsWith('<')) {
+      body += part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      continue
+    }
+    if (part !== datePlaceholder) return null
+    body += '\\d{4}-\\d{2}-\\d{2}'
+  }
+  return new RegExp(`^${body}$`)
+}
+
+/**
+ * The naming conventions this project publishes, read from the documentation itself:
+ * the line «Convención recomendada …» of each page, with the pattern between backticks.
+ */
+function publishedFilenames(
+  sources: SourceFile[] = versionedSources().filter((source) => isPublishedDoc(source.file)),
+): PublishedFilename[] {
+  const published: PublishedFilename[] = []
+  for (const source of sources) {
+    for (const match of source.text.matchAll(/Convención recomendada[^`\n]*`([^`\n]+)`/g)) {
+      const text = match[1] ?? ''
+      const pattern = compilePublishedFilename(text)
+      if (pattern) published.push({ source: text, doc: source.file, pattern })
+    }
+  }
+  return published
+}
+
+let publishedFilenamesCache: PublishedFilename[] | null = null
+
+/** Read once per run: the repository does not change while the suite runs. */
+function defaultPublishedFilenames(): PublishedFilename[] {
+  publishedFilenamesCache ??= publishedFilenames()
+  return publishedFilenamesCache
+}
+
+/** The published convention a value follows, or `null` when it follows none. */
+function publishedFilenameOf(
+  value: string,
+  published: PublishedFilename[],
+): PublishedFilename | null {
+  return published.find((entry) => entry.pattern.test(value)) ?? null
+}
+
 interface CaptureSources {
   /**
    * His: every capture, minus the template half of our own messages. ONE ENTRY PER
@@ -345,6 +456,19 @@ interface CaptureSources {
    * own source proves we wrote it.
    */
   ourProse: string[]
+  /**
+   * Neither: the file names let through as OUR OWN published naming convention, with the
+   * page that publishes each one (feature 34). Nothing here is compared — it is kept so
+   * that «why did the guardian let this through» has an answer that is not a hand-kept
+   * list, and so the tests below can assert on exactly what was exempted.
+   */
+  letThrough: PublishedFileName[]
+}
+
+/** A value the guardian let through, and the page whose convention it follows. */
+interface PublishedFileName {
+  value: string
+  doc: string
 }
 
 /**
@@ -374,9 +498,15 @@ function echoedSpans(message: string): string[] {
  * document that talks about the model. Only the values are his… except the ones under
  * `ourProseKeys`, which are the sentences we compose about his file.
  */
-function capturePhraseSources(dir = captureRoot): CaptureSources {
+function capturePhraseSources(
+  dir = captureRoot,
+  published: PublishedFilename[] = defaultPublishedFilenames(),
+): CaptureSources {
   const data: string[] = []
   const ourProse: string[] = []
+  const letThrough: PublishedFileName[] = []
+  const exemptionOf = (value: string): PublishedFilename | null =>
+    publishedFilenameOf(value, published)
   for (const file of captureFiles(dir)) {
     const outcome = readCapture(file)
     if (!outcome.readable) continue
@@ -401,6 +531,20 @@ function capturePhraseSources(dir = captureRoot): CaptureSources {
         // Both, so that no cut of ours can lose a phrase of his.
         data.push(...echoedSpans(node))
         ourProse.push(node)
+      } else if (
+        typeof node === 'string' &&
+        key !== null &&
+        fileNameKeys.has(key) &&
+        exemptionOf(node)
+      ) {
+        // A file name that follows, WHOLE, a convention we publish: our words plus a
+        // date, and nothing of his can hide inside it (feature 34). It is compared as
+        // NEITHER — it is not his data, and it is not one of our messages either, so
+        // asking `ownSourceVocabulary` about it would keep it watched: the convention
+        // lives in the documentation, not in a message literal of `src/`. What it IS
+        // gets recorded, so a run can say what it let through and which page says so.
+        // The amount layer never sees this split and keeps reading the raw capture.
+        letThrough.push({ value: node, doc: exemptionOf(node)?.doc ?? '' })
       } else if (typeof node === 'string' || typeof node === 'number') {
         data.push(String(node))
       } else if (Array.isArray(node)) {
@@ -411,7 +555,7 @@ function capturePhraseSources(dir = captureRoot): CaptureSources {
     }
     walk(parsed, null)
   }
-  return { data, ourProse }
+  return { data, ourProse, letThrough }
 }
 
 /**
@@ -1513,5 +1657,182 @@ describe('the guardian tells our own words from his data inside the dump (featur
 
     expect(own.phrases.size).toBeGreaterThan(100)
     expect(own.words.has('cuadran')).toBe(true)
+  })
+})
+
+/**
+ * OUR OWN NAMING CONVENTION INSIDE HIS DUMP (feature 34). EVERYTHING HERE IS INVENTED:
+ * the bank, the page, the convention it publishes, the product and the file names. What
+ * is REAL is the SHAPE — a dump of ours carrying the NAME of the file it parsed, and a
+ * page of ours publishing how that file is to be named.
+ */
+const inventedConventionDoc: SourceFile = {
+  file: 'docs/monte-tramontana-product-files.md',
+  text: [
+    '# Ficheros de producto de Monte Tramontana',
+    '',
+    '**El nombre del archivo no se valida nunca**: la cuenta y la fecha salen de dentro.',
+    '',
+    '**Convención recomendada (no obligatoria):** `cuenta-ventolera-<AAAA-MM-DD>.json`.',
+  ].join('\n'),
+}
+
+/** A page that publishes a pattern with a hole HIS words fall into: it exempts nothing. */
+const inventedOpenConventionDoc: SourceFile = {
+  file: 'docs/otro-banco-product-files.md',
+  text: '**Convención recomendada (no obligatoria):** `<producto>-<AAAA-MM-DD>.json`, p. ej.',
+}
+
+const inventedOwnName = 'cuenta-ventolera-2026-08-31.json'
+/** A name of HIS: the product he keeps calling like that, written into the file name. */
+const inventedHisName = 'renta-ventolera-tramontana-2026-08-31.json'
+
+function fileNameDump(name: string, key = 'file'): string {
+  return JSON.stringify({
+    bank: inventedBank,
+    year: '2026',
+    products: [{ [key]: name, type: 'savings-account' }],
+  })
+}
+
+/** A dump whose only interesting value is the NAME of the file it parsed. */
+function fileNameRoot(name: string, key = 'file'): string {
+  const root = temporaryCaptureRoot()
+  writeCapture(root, `drive-read/${inventedBank}/2026/${name}`, '{"saldo": 7408.41}')
+  writeCapture(root, `parsed/${inventedBank}/2026/products.json`, fileNameDump(name, key))
+  return root
+}
+
+function fileNamePhrases(
+  root: string,
+  published: PublishedFilename[] = publishedFilenames([inventedConventionDoc]),
+): string[] {
+  return comparablePhrases(
+    capturePhraseSources(root, published),
+    ownSourceVocabulary(inventedOwnSources),
+  )
+}
+
+describe('the guardian knows our own published file names (feature 34)', () => {
+  it('reads the conventions from our own docs, never from a list written by hand', () => {
+    const published = publishedFilenames([inventedConventionDoc])
+
+    expect(published).toHaveLength(1)
+    expect(published[0]?.doc).toBe(inventedConventionDoc.file)
+    // The pattern matches WHOLE and anchored: our literal words plus a date, no more.
+    expect(published[0]?.pattern.test(inventedOwnName)).toBe(true)
+    expect(published[0]?.pattern.test(`x-${inventedOwnName}`)).toBe(false)
+    expect(published[0]?.pattern.test('cuenta-ventolera.json')).toBe(false)
+    expect(published[0]?.pattern.test(inventedHisName)).toBe(false)
+  })
+
+  it('DISCARDS a published pattern whose placeholder is not a date', () => {
+    // `<producto>` is the name HE gives his fund: a pattern with that hole in it would
+    // exempt any word of his. Only a date is admitted, because a date carries none.
+    expect(compilePublishedFilename('<producto>-<AAAA-MM-DD>.json')).toBeNull()
+    expect(publishedFilenames([inventedOpenConventionDoc])).toEqual([])
+    expect(compilePublishedFilename('cuenta-ventolera-<AAAA-MM-DD>.json')).not.toBeNull()
+  })
+
+  it('the real docs of this repository do feed it, and none of them opens a hole', () => {
+    // Not a tautology, and the same guard feature 24 put on its vocabulary: if the line
+    // of the docs ever changes shape, this empties in silence and the false positive is
+    // back on every real parse. The patterns are NOT written here: each example is built
+    // from the page itself, so no name of the convention is copied into this file.
+    const published = publishedFilenames()
+
+    expect(published.length).toBeGreaterThan(0)
+    for (const entry of published) {
+      expect(entry.pattern.test(entry.source.replace(datePlaceholder, '2026-08-31'))).toBe(true)
+      // DECISION 4, checked and not assumed: no real published pattern accepts a name
+      // that carries a product of his. The one that could (`<producto>-…`, MyInvestor)
+      // is discarded above, so its dump stays watched exactly as before.
+      expect(entry.pattern.test(inventedHisName)).toBe(false)
+      expect(entry.pattern.test('plazo-tramontana-global-2026-08-31.json')).toBe(false)
+    }
+  })
+
+  it('reports NOTHING about a file name our own documentation publishes', () => {
+    // THE REGRESSION MEASURED ON 2026-08-25, with invented data: the dump keeps the NAME
+    // of the file, the name is the convention we publish, and our own texts repeat it.
+    // 52 warnings out of one trigram — and a guardian nobody reads is a guardian that is
+    // off. It is not a leftover: every real parse of his writes that name again.
+    const root = fileNameRoot(inventedOwnName)
+
+    const ourText: SourceFile = {
+      file: 'docs/api-contract.md',
+      text: `Un archivo llamado ${inventedOwnName} entra como producto.`,
+    }
+
+    expect(report(scanSources([ourText], phraseLeak(fileNamePhrases(root)), true, 2))).toEqual([])
+  })
+
+  it('would have reported it without the rule, so the test above is not vacuous', () => {
+    const root = fileNameRoot(inventedOwnName)
+
+    const ourText: SourceFile = {
+      file: 'docs/api-contract.md',
+      text: `Un archivo llamado ${inventedOwnName} entra como producto.`,
+    }
+
+    const naive = report(scanSources([ourText], phraseLeak(fileNamePhrases(root, [])), true, 2))
+
+    expect(naive.length).toBeGreaterThan(0)
+  })
+
+  it('KEEPS CATCHING a real datum of his inside a file name, with file and line', () => {
+    // THE CENTRAL TEST OF THIS FEATURE: a name that is NOT our convention is his, and it
+    // is compared exactly as before. Without this the change would be indistinguishable
+    // from switching the alarm off.
+    const root = fileNameRoot(inventedHisName)
+
+    const leak: SourceFile = {
+      file: 'docs/example.md',
+      text: 'El movimiento RENTA VENTOLERA TRAMONTANA del extracto.',
+    }
+    const findings = report(scanSources([leak], phraseLeak(fileNamePhrases(root)), true, 2))
+
+    expect(findings).toEqual([
+      'docs/example.md:1 — ' +
+        'a three-word sequence copied from a file of var/ (a concept of his statement?)',
+    ])
+    // WHERE and WHAT KIND, never the value (ADR-017).
+    expect(findings[0]).not.toContain('VENTOLERA')
+  })
+
+  it('KEEPS CATCHING the very same name under a key that is not a file name', () => {
+    // The provenance half of the rule: `name` is where a product of his lands, and the
+    // exemption does not reach it however our own the words look.
+    const root = fileNameRoot(inventedOwnName, 'name')
+
+    const copied: SourceFile = { file: 'docs/example.md', text: `Su ${inventedOwnName} de 2026.` }
+
+    expect(report(scanSources([copied], phraseLeak(fileNamePhrases(root)), true, 2))).toHaveLength(
+      1,
+    )
+  })
+
+  it('KEEPS CATCHING his amounts: the amount layer never sees this split', () => {
+    const root = fileNameRoot(inventedOwnName)
+    const secrets = amountsOf(captureText(root))
+
+    const copied: SourceFile = { file: 'docs/example.md', text: 'El saldo era 7.408,41 euros.' }
+
+    expect(report(scanSources([copied], amountLeak(secrets), true))).toEqual([
+      'docs/example.md:1 — ' +
+        'an amount on this line is in a file of var/: it is real data, invent another one',
+    ])
+    // The raw capture is what that layer reads, file names included.
+    expect(captureText(root)).toContain(inventedOwnName)
+  })
+
+  it('says WHAT it let through and WHICH page says so: no silent exception', () => {
+    const published = publishedFilenames([inventedConventionDoc])
+
+    const { letThrough } = capturePhraseSources(fileNameRoot(inventedOwnName), published)
+
+    expect(letThrough).toEqual([{ value: inventedOwnName, doc: inventedConventionDoc.file }])
+    // And nothing is let through when the name is his.
+    expect(capturePhraseSources(fileNameRoot(inventedHisName), published).letThrough).toEqual([])
   })
 })

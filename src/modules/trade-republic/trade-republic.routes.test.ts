@@ -111,14 +111,18 @@ describe('POST /api/parser/trade-republic (R16)', () => {
   })
 
   it('is registered in the real app, under the same prefix as the other banks', async () => {
+    // The route is asserted as REGISTERED on the real app, never INVOKED: the
+    // real app points at `var/drive-read/` of this machine, which holds real
+    // bank data, and the POST would also rewrite the dump in `var/parsed/`.
+    // It used to be injected here — «var/ does not exist on a fresh machine» —
+    // and on the machine that does have it the suite parsed his files and
+    // overwrote his dump on every run (feature 33). Same wording as the other
+    // four banks; the guarantee is the same: this is `buildApp()`, not a test
+    // app, so it is the wiring of `src/app.ts` that is checked.
     const app = buildApp()
     await app.ready()
 
-    // Only the routing is asserted here: the real app points at `var/`, which
-    // does not exist on a fresh machine, and an empty walk is a 200 with zeros.
-    const response = await app.inject({ method: 'POST', url: '/api/parser/trade-republic' })
-
-    expect(response.statusCode).toBe(200)
+    expect(app.hasRoute({ method: 'POST', url: '/api/parser/trade-republic' })).toBe(true)
 
     await app.close()
   })

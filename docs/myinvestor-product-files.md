@@ -255,6 +255,11 @@ real: la ingesta **sobrescribe la copia local** si dos archivos del mismo
 `<banco>/<año>/` se llaman igual, así que subiendo `fondo.json` todos los meses cada
 descarga pisaría la anterior.
 
+> **Ojo con el guardián de datos reales** (`src/no-real-data.test.ts`, F34): esta
+> convención lleva **tu** nombre de producto dentro (`<producto>`), así que **no** exime
+> nada y los nombres de tus archivos de MyInvestor se siguen comparando enteros, igual
+> que antes. Es lo correcto: ahí dentro hay palabras tuyas. Porqué en el ADR-017.
+
 **Si dos archivos declaran el mismo `name` y la misma `date`** (el caso típico:
 `fondo.json` y `fondo (1).json`, que Drive crea al subir dos veces), se conserva el
 **primero por orden alfabético** y el otro se reporta diciendo con cuál choca. El mismo

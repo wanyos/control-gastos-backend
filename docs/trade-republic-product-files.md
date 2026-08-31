@@ -173,6 +173,12 @@ Ordena cronológicamente sola y evita un límite real: la ingesta **sobrescribe 
 local** si dos archivos del mismo `<banco>/<año>/` se llaman igual, así que subiendo
 `cuenta.json` todos los meses cada descarga pisaría la anterior.
 
+> **Esta línea la lee un test** (`src/no-real-data.test.ts`, F34): el guardián de datos
+> reales necesita saber qué nombres de archivo son **convención nuestra** para no
+> confundirlos con una frase de tu extracto. Por eso el patrón va **entre comillas
+> invertidas** y con la **fecha como único hueco**: un hueco que admitiera palabras tuyas
+> no eximiría nada. Si reescribes la línea, mantén esas dos cosas. Porqué en el ADR-017.
+
 **Si dos archivos declaran la misma cuenta (`name`) y la misma fecha (`date`)** —el caso
 típico: `cuenta.json` y `cuenta (1).json`, que Drive crea al subir dos veces—, se
 conserva el **primero por orden alfabético** y el otro se reporta diciendo con cuál
