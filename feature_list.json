@@ -1482,6 +1482,178 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 36,
+      "name": "movements-filters-and-totals",
+      "title": "Filtrar y paginar los movimientos, con los totales del periodo que pido",
+      "intent": {
+        "_procedencia": "Dictado por el humano en la sesión del 2026-09-01, al elegir el siguiente paso con 35/35 features cerradas. Estado medido ese día contra la app viva, no deducido: GET /api/movements devuelve los 1520 movimientos de golpe (821 KB), sin un solo filtro y sin paginar, y no hay ningún otro camino para leerlos.",
+        "que_quiero": "Poder pedir los movimientos de una cuenta, de un rango de fechas, de un tipo (ingreso o gasto) y de un estado, en vez de que me los den todos. Que la respuesta venga paginada y que traiga, además de los movimientos, los totales de lo que he pedido: cuánto entró, cuánto salió y la diferencia.",
+        "por_que": "Hoy tengo los datos dentro y no hay manera de sacarles nada: 1520 movimientos en una sola respuesta no son una consulta, son un volcado. Con esto puedo por fin preguntar «cuánto gasté en agosto en esta cuenta», que es lo primero que quiero ver, y es lo que el frontend necesita para pintar algo.",
+        "como_se_que_esta_bien": [
+          "Cuando pido los movimientos de UNA cuenta, solo me llegan los de esa cuenta.",
+          "Cuando pido un rango de fechas, solo me llegan los movimientos de ese rango, incluidos los de los dos días extremos.",
+          "Cuando pido solo gastos, no me llega ni un ingreso.",
+          "La respuesta me dice cuántos movimientos hay en total para lo que he pedido, no solo los de la página que me devuelve.",
+          "Los totales que vienen en la respuesta son los del filtro que he pedido, no los de toda la base de datos.",
+          "Si no pido ningún filtro, sigo pudiendo leer los movimientos, pero paginados: nunca más una respuesta de 1520.",
+          "Una aportación mía a una cuenta de inversión no cuenta como gasto en esos totales: eso es dinero que sigue siendo mío, no dinero que me he gastado."
+        ],
+        "que_no_quiero": [
+          "No quiero que cambie la forma de cada movimiento: los campos que ya vienen se quedan como están.",
+          "No quiero escribir nada por aquí: esta consulta solo lee.",
+          "No quiero que se inventen filtros que no he pedido. Los iré pidiendo yo según los necesite.",
+          "No quiero que se toque la importación ni los saldos."
+        ],
+        "delego_en_agente": [
+          "Los nombres exactos de los parámetros y la forma de la paginación, mientras sea coherente con lo que ya hay en la API.",
+          "El límite por defecto y el máximo por página."
+        ],
+        "_avisos_tecnicos": [
+          "Cierra el cabo suelto 8 del roadmap: computeTotals (src/modules/movements/movements.service.ts:202) NO excluye hoy los movimientos con productId != null. Es el único sitio donde vive esa suma.",
+          "GET /api/movements es hoy read-only a propósito y así se queda (src/modules/movements/movements.routes.ts).",
+          "Medido el 2026-09-01: 1520 movimientos, los 1520 en pending_review y ninguno con categoría."
+        ]
+      },
+      "acceptance": [
+        "GET /api/movements acepta filtros por cuenta, rango de fechas, tipo y estado, combinables entre sí.",
+        "La respuesta viene paginada, con el total de coincidencias además de la página.",
+        "La respuesta trae los totales (entradas, salidas y diferencia) calculados SOBRE EL FILTRO, no sobre toda la tabla.",
+        "computeTotals excluye los movimientos con productId != null, con test que lo demuestra.",
+        "Un filtro con valores imposibles (fecha mal escrita, cuenta inexistente) responde con error de petición, no con 500 ni con lista vacía silenciosa.",
+        "docs/api-contract.md actualizado con los parámetros, la paginación y la forma de los totales.",
+        "Ninguna ruta existente cambia lo que devolvía cuando no se le pasa ningún filtro, salvo la paginación."
+      ],
+      "sdd": false,
+      "status": "pending"
+    },
+    {
+      "id": 37,
+      "name": "categories-and-tagging",
+      "title": "Poner categorías a los movimientos, empezando por una lista genérica",
+      "intent": {
+        "_procedencia": "Dictado por el humano en la sesión del 2026-09-01, al elegir el siguiente paso con 35/35 features cerradas. El humano pidió empezar por las categorías más genéricas y dejar las concretas para después, y encargó que la lista saliera de sus propios movimientos. La lista de abajo es el resultado de clasificar sus 1520 movimientos reales el 2026-09-01: esas reglas cubrían el 75% de ellos.",
+        "que_quiero": "Poder crear categorías y ponérselas a un movimiento. Arrancar con una lista genérica que ya sirva desde el primer día, y poder afinarla después sin tocar código. Y que las categorías que NO son gasto de verdad —mover dinero entre mis propias cuentas, aportar a una inversión, pagar la tarjeta— no ensucien mis totales de gasto.",
+        "por_que": "Un total de gastos sin categorías es un solo número que no dice nada. Y hoy no hay ni forma de crear una categoría: la tabla está vacía y su endpoint es solo de lectura.",
+        "como_se_que_esta_bien": [
+          "Puedo crear una categoría, listarlas y cambiarle el nombre a una sin tocar código ni base de datos a mano.",
+          "Puedo ponerle una categoría a un movimiento y quitársela.",
+          "Al empezar, la lista genérica ya está dada de alta y no tengo que escribirla yo entera.",
+          "Una categoría marcada como «no es gasto» (traspaso entre mis cuentas, aportación a inversión, pago de tarjeta) NO suma en el total de gastos.",
+          "Un movimiento que ya he revisado puedo darlo por bueno, y se distingue de los que no he mirado todavía.",
+          "Borrar o cambiar una categoría no borra ningún movimiento."
+        ],
+        "_lista_generica_propuesta": "Salida del análisis de los 1520 movimientos reales del 2026-09-01, sin nombres de comercio: Nómina · Otros ingresos · Vivienda · Suministros · Telefonía e internet · Supermercado · Comer y beber fuera · Compras · Transporte y vehículo · Salud y deporte · Suscripciones · Impuestos y administración · Ocio · Transferencias a personas · Traspaso entre mis cuentas (no es gasto) · Aportación a inversión (no es gasto) · Pago de tarjeta (no es gasto) · Sin categoría.",
+        "que_no_quiero": [
+          "No quiero categorías automáticas todavía: primero quiero poder ponerlas a mano y ver qué sale.",
+          "No quiero subcategorías por ahora.",
+          "No quiero que categorizar cambie ningún importe, ningún saldo ni la importación.",
+          "No quiero que se me imponga una lista cerrada: la de arranque es un punto de partida, no una jaula."
+        ],
+        "delego_en_agente": [
+          "Cómo se marca que una categoría no cuenta como gasto y cómo se siembra la lista de arranque.",
+          "Si el estado revisado/no revisado viaja en el mismo sitio que la categoría o aparte."
+        ],
+        "_avisos_tecnicos": [
+          "Cierra el cabo suelto 3 del roadmap: todo lo importado nace pending_review y hoy nada lo pasa a confirmed.",
+          "La columna Movement.categoryId y el modelo Category existen desde la feature 8; hoy /api/categories solo lee y la tabla está VACÍA (medido el 2026-09-01: 0 categorías, 0 movimientos categorizados).",
+          "Los movimientos NO se crean ni se borran por API (specs/data-model/design.md §5): esta feature no abre esa puerta, solo actualiza dos campos de uno que ya existe."
+        ]
+      },
+      "acceptance": [
+        "Crear, listar y renombrar categorías por API, con nombre único y validación.",
+        "Se puede asignar y quitar la categoría de un movimiento existente, sin tocar ningún otro campo suyo.",
+        "Se puede marcar un movimiento como revisado (pending_review -> confirmed) y volver atrás.",
+        "Una categoría marcada como «no es gasto» queda excluida del total de gastos de la feature 36, con test.",
+        "La lista genérica de arranque queda sembrada de forma idempotente: sembrarla dos veces no duplica nada.",
+        "Borrar una categoría en uso no borra movimientos: los deja sin categoría o lo impide, y está decidido cuál de las dos.",
+        "docs/api-contract.md y docs/data-model.md actualizados."
+      ],
+      "sdd": true,
+      "status": "pending"
+    },
+    {
+      "id": 38,
+      "name": "money-overview",
+      "title": "Una vista de todo mi dinero: cuánto hay, dónde está y qué ahorré este mes",
+      "intent": {
+        "_procedencia": "Dictado por el humano en la sesión del 2026-09-01, al elegir el siguiente paso con 35/35 features cerradas. Literal del humano: «me gustaria una vision general de todo el dinero repartido entre las diferentes cuentas, a modo resumen, ingreso totales, gastos totales, ahorro del mes, etc».",
+        "que_quiero": "Una sola consulta que me diga, de un vistazo: cuánto dinero tengo en total, cómo está repartido entre mis cuentas, cuánto entró y cuánto salió en el mes, y cuánto ahorré (lo que entró menos lo que salió).",
+        "por_que": "Tengo cuatro cuentas en cuatro bancos y hoy la única manera de saber cuánto tengo es sumarlas yo a mano. Es la pantalla que quiero abrir cada mes.",
+        "como_se_que_esta_bien": [
+          "Me dice el total de dinero y el desglose por cuenta, con el saldo real de cada una.",
+          "Me dice cuánto entró, cuánto salió y cuánto ahorré en el periodo que pido, no solo en el mes en curso.",
+          "El ahorro del mes cuadra con lo que entró menos lo que salió, y mover dinero de una cuenta mía a otra NO lo cambia.",
+          "Puedo pedir el mes que quiera, no solo el último.",
+          "Si un mes no tiene movimientos, me lo dice con ceros y no con un error."
+        ],
+        "que_no_quiero": [
+          "No quiero que esta vista escriba nada.",
+          "No quiero gráficos ni nada de presentación: eso es del frontend.",
+          "No quiero que mezcle las inversiones aquí todavía: eso va en su propia vista."
+        ],
+        "delego_en_agente": [
+          "Si es un endpoint nuevo o cuelga de uno existente.",
+          "Cómo se pide el periodo."
+        ],
+        "_avisos_tecnicos": [
+          "El saldo real por cuenta ya existe desde la feature 31 (Account.balanceAnchor más los movimientos posteriores); esta feature LEE, no recalcula por su cuenta.",
+          "Reutiliza los totales de la feature 36 en vez de escribir una segunda suma: dos sumas distintas del mismo dinero divergen.",
+          "Un traspaso entre cuentas del humano aparece como DOS movimientos (uno en cada extracto): si se cuentan como ingreso y gasto, el ahorro sale bien, pero los totales de entradas y salidas quedan inflados. Decidir y dejarlo escrito."
+        ]
+      },
+      "acceptance": [
+        "Una consulta devuelve el total de dinero y el desglose por cuenta usando el saldo real de la feature 31.",
+        "Devuelve entradas, salidas y ahorro del periodo pedido, reutilizando el cálculo de totales de la feature 36.",
+        "El periodo es un parámetro; sin él, el mes en curso.",
+        "Un periodo sin movimientos devuelve ceros y 200, nunca error.",
+        "Las categorías «no es gasto» de la feature 37 quedan fuera de entradas y salidas, con test.",
+        "docs/api-contract.md actualizado."
+      ],
+      "sdd": false,
+      "status": "pending"
+    },
+    {
+      "id": 39,
+      "name": "investments-overview",
+      "title": "Lo más interesante de mis inversiones: si suben o bajan y cuánto gané",
+      "intent": {
+        "_procedencia": "Dictado por el humano en la sesión del 2026-09-01, al elegir el siguiente paso con 35/35 features cerradas. Literal del humano: «me gustaria obtener lo mas interesante de las inversiones, si han subido, bajado, cuanto se gano en total en un mes, otros filtros que puedan ser interesantes».",
+        "que_quiero": "Ver mis productos de inversión con lo que valen hoy, si han subido o bajado desde la foto anterior, y cuánto he ganado en total en un mes. Y poder mirarlo por producto o todo junto.",
+        "por_que": "Llevo meses escribiendo un JSON al mes por producto y esos datos no los lee nadie: no aparecen en ningún total ni hay forma de ver la serie. La cuenta remunerada y los cinco productos de MyInvestor están dentro de la base de datos y son invisibles.",
+        "como_se_que_esta_bien": [
+          "Veo cada producto con lo que vale hoy y cuánto ha cambiado desde la foto anterior, en euros y en porcentaje.",
+          "Veo cuánto he ganado en total en el mes que pida, sumando todos los productos.",
+          "Los depósitos, que no fluctúan, aparecen sin fingir una subida ni una bajada: lo suyo son sus condiciones y sus intereses.",
+          "Los intereses de la cuenta remunerada cuentan como ganancia del mes en que se abonaron.",
+          "Si un mes no subí ningún archivo de un producto, se ve que falta esa foto en vez de dar por bueno el mes anterior."
+        ],
+        "que_no_quiero": [
+          "No quiero que se calcule ni se redondee ningún importe que yo escribo: se muestra lo que tecleé.",
+          "No quiero mezclar esto con el saldo de las cuentas corrientes todavía.",
+          "No quiero que escriba nada: los datos entran por importación, como ahora."
+        ],
+        "delego_en_agente": [
+          "Qué filtros tienen sentido además de por producto y por periodo.",
+          "Cómo se dice «esta foto falta» sin inventar datos."
+        ],
+        "_avisos_tecnicos": [
+          "Cierra el cabo suelto 12 del roadmap: nada LEE la capa de inversiones (InvestmentProduct, Valuation, SavingsSnapshot), escrita por las features 26 y 29.",
+          "Los depósitos NO guardan valoraciones a propósito (ADR-012): sus condiciones viven en el propio producto y su snapshot es null.",
+          "El patrimonio de un producto es marketValue más uninvestedCash, y van aparte (feature 9)."
+        ]
+      },
+      "acceptance": [
+        "Una consulta lista los productos con su última valoración, la variación frente a la anterior en euros y en porcentaje, y la fecha de cada foto.",
+        "Una consulta devuelve la ganancia total del periodo pedido, sumando lo que fluctúa y los intereses abonados.",
+        "Los depósitos aparecen con sus condiciones y sin variación inventada, con test.",
+        "Un producto sin foto en el periodo se marca como tal en vez de arrastrar la anterior.",
+        "Se puede filtrar por producto y por periodo.",
+        "docs/api-contract.md actualizado; GET /api/accounts no cambia."
+      ],
+      "sdd": true,
+      "status": "pending"
     }
   ]
 }

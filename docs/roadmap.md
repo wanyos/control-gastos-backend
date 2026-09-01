@@ -51,20 +51,28 @@ escribe los descuadres en el informe de esa importación, con la cuenta, la fech
 los dos números y la diferencia (F32). Tolerancia cero, y un descuadre no tumba
 la importación ni cambia ningún saldo.
 
-⚠️ **No hay siguiente paso decidido.** Las **35 features están `done`** y no
-queda ninguna abierta. La elección vuelve a ser tuya entre estos dos caminos:
+✅ **El siguiente paso ya está elegido (2026-09-01).** Las 35 primeras features
+están `done` y hay **cuatro nuevas escritas y `pending`**, dictadas por el humano
+en esa sesión y en este orden:
 
-- **Seguir con bancos (E4).** ✅ **Desbloqueado el 2026-08-17**: el inventario está
-  relleno y son **6 bancos, 2 parsers por escribir** (Revolut, Trade
-  Republic; **N26 ✅ hecho** por la F18 el 2026-08-18 y **Openbank ✅** por la F19 el
-  2026-08-19). Diagnóstico de cada formato en
-  [`progress/explorations/inventario-bancos-2026-08-17.md`](../progress/explorations/inventario-bancos-2026-08-17.md).
-  Antes de abrir la primera feature hay **6 decisiones tuyas** anotadas ahí; las
-  cuatro primeras bloquean.
-- **Empezar a enriquecer (E6).** No está bloqueado por nada, pero **no tiene
-  ninguna feature escrita**: hay que redactar el `intent` de la primera.
+| # | Feature | Qué trae | Spec |
+|---|---|---|---|
+| **36** | `movements-filters-and-totals` | Filtrar por cuenta, fechas, tipo y estado; paginar; y los totales del filtro pedido | no |
+| **37** | `categories-and-tagging` | Crear categorías y ponérselas a un movimiento, con una lista genérica de arranque, y dar un movimiento por revisado | **sí** |
+| **38** | `money-overview` | Cuánto dinero hay en total, cómo está repartido y qué se ahorró en el mes | no |
+| **39** | `investments-overview` | Qué valen los productos, si suben o bajan y cuánto se ganó en el mes | **sí** |
 
----
+**Por qué en ese orden.** La 36 va primera porque hoy `GET /api/movements`
+devuelve los 1520 movimientos de golpe y sin filtros (medido el 2026-09-01), así
+que no hay forma de encontrar nada: sin eso, categorizar a mano es impracticable.
+La 38 se apoya en los totales de la 36 para no escribir dos sumas distintas del
+mismo dinero. La 39 no depende de ninguna y puede adelantarse si apetece.
+
+**Lo que cierran de esta tabla:** la 36 el cabo 8, la 37 el cabo 3 y la 39 el
+cabo 12.
+
+**La E4 sigue con Revolut pendiente**, aparcado por decisión del humano hasta que
+ese banco tenga movimientos.
 
 ## El recorrido en etapas
 
@@ -78,8 +86,8 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
 | E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 **5 de 6 bancos**, **contrato ✅** · inventario ✅ (2026-08-17); solo queda **Revolut**, aparcado sin datos (Trade Republic entró por `.json` escrito a mano, sin parser de PDF: provisional) | F6, F7, F11, F10, F13, **F18**, **F19**, **F20** |
 | E5 | **La importación** — del fichero parseado a la base de datos | ✅ | **F12** |
-| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | ⬜ **candidata a siguiente** | *sin features* |
-| E7 | **Consultar** — filtros, saldos, totales, patrimonio | 🟡 **empezada**: el saldo real por cuenta ✅ (F31) y su comprobación al importar ✅ (F32); faltan filtros, totales y patrimonio | **F31**, **F32** |
+| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **feature escrita, sin empezar** | **F37** |
+| E7 | **Consultar** — filtros, saldos, totales, patrimonio | 🟡 **empezada**: saldo real ✅ (F31) y su comprobación ✅ (F32); los filtros, los totales y el patrimonio son las **F36, F38 y F39**, escritas y sin empezar | **F31**, **F32**, F36, F38, F39 |
 | E8 | **Ver** — el frontend | ⬜ | otro proyecto |
 | E9 | **Que esto viva en algún sitio** — despliegue y acceso | ⬜ | *sin etapa hasta hoy* |
 
