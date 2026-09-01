@@ -18,7 +18,7 @@ cliente**, no una ruta de sistema de archivos, así que debe ser estable entre
 plataformas y usar siempre `/` (como ya mostraba `docs/api-contract.md`).
 
 **Cambio (solo el response).** En
-[ingesta.service.ts:96](../../src/modules/ingesta/ingesta.service.ts#L96) se separan
+ingesta.service.ts:96 se separan
 las dos rutas dentro del bucle por archivo:
 
 - **Escritura local:** `targetPath = join(dumpBaseDir, bank.name, year.name, file.name)`
@@ -28,7 +28,7 @@ las dos rutas dentro del bucle por archivo:
   `/`, nunca con `\`. Se añade `posix` al import de `node:path`.
 
 **Test que lo fija.** En
-[ingesta.service.test.ts:135](../../src/modules/ingesta/ingesta.service.test.ts#L135)
+ingesta.service.test.ts:135
 (`processPending` copia y mueve) el `toEqual` de `result.processed` ahora exige el
 literal `'bankinter/2026/movs.xlsx'` / `'santander/2025/extracto.pdf'` (con `/`), y
 se añade una aserción explícita `expect(entry.path).not.toContain('\\')` sobre cada
@@ -113,11 +113,11 @@ ADR-008/ADR-009). Sin dependencias ni variables de entorno nuevas. `.env` NO toc
 | `listPendingFiles` (pendientes del año, excluye `procesados/`) | [drive-structure.ts:407](../../src/lib/drive-structure.ts#L407) |
 | `downloadFileContent` (`files.get` alt=media → `Buffer`) | [drive-structure.ts:438](../../src/lib/drive-structure.ts#L438) |
 | `processedFolderName` exportado (reuso f4) | [drive-structure.ts:12](../../src/lib/drive-structure.ts#L12) |
-| `detectPending` (detección multi-banco no destructiva) | [ingesta.service.ts:32](../../src/modules/ingesta/ingesta.service.ts#L32) |
-| `processPending` (descarga + copia local + mover, archivo-a-archivo) | [ingesta.service.ts:72](../../src/modules/ingesta/ingesta.service.ts#L72) |
-| `describeError` (mensaje sanitizado del fallo) | [ingesta.service.ts:139](../../src/modules/ingesta/ingesta.service.ts#L139) |
-| Rutas `GET /pending` y `POST /process` (base inyectable) | [ingesta.routes.ts:24](../../src/modules/ingesta/ingesta.routes.ts#L24) |
-| Tipos de respuesta (`DetectionResult`, `ProcessResult`, ...) | [ingesta.types.ts:1](../../src/modules/ingesta/ingesta.types.ts#L1) |
+| `detectPending` (detección multi-banco no destructiva) | ingesta.service.ts:32 |
+| `processPending` (descarga + copia local + mover, archivo-a-archivo) | ingesta.service.ts:72 |
+| `describeError` (mensaje sanitizado del fallo) | ingesta.service.ts:139 |
+| Rutas `GET /pending` y `POST /process` (base inyectable) | ingesta.routes.ts:24 |
+| Tipos de respuesta (`DetectionResult`, `ProcessResult`, ...) | ingesta.types.ts:1 |
 | Registro del módulo bajo `/api/ingesta` | [app.ts:32](../../src/app.ts#L32) |
 | Guardián: ingesta sin `prisma` | [architecture.test.ts:104](../../src/architecture.test.ts#L104) |
 | Guardián: `.gitignore` tapa el volcado (privacidad) | [architecture.test.ts:116](../../src/architecture.test.ts#L116) |
@@ -129,17 +129,17 @@ ADR-008/ADR-009). Sin dependencias ni variables de entorno nuevas. `.env` NO toc
 
 | Test | Dónde |
 | --- | --- |
-| Detección multi-banco dinámica, no destructiva | [ingesta.service.test.ts:96](../../src/modules/ingesta/ingesta.service.test.ts#L96) |
-| Detección: cero pendientes → sin bancos | [ingesta.service.test.ts:120](../../src/modules/ingesta/ingesta.service.test.ts#L120) |
-| Proceso: copia local + mover original (reuso f4) | [ingesta.service.test.ts:135](../../src/modules/ingesta/ingesta.service.test.ts#L135) |
-| Proceso: idempotencia (sin pendientes, x2) → no duplica | [ingesta.service.test.ts:189](../../src/modules/ingesta/ingesta.service.test.ts#L189) |
-| Fallo de lectura → no mueve + error sanitizado | [ingesta.service.test.ts:211](../../src/modules/ingesta/ingesta.service.test.ts#L211) |
-| Fallo de copia local → no mueve | [ingesta.service.test.ts:241](../../src/modules/ingesta/ingesta.service.test.ts#L241) |
-| Aislamiento del fallo por archivo (los sanos siguen) | [ingesta.service.test.ts:268](../../src/modules/ingesta/ingesta.service.test.ts#L268) |
-| Fallo Drive de nivel superior → `DriveConnectionError` | [ingesta.service.test.ts:305](../../src/modules/ingesta/ingesta.service.test.ts#L305) |
-| Endpoint `GET /pending` 200 | [ingesta.routes.test.ts:74](../../src/modules/ingesta/ingesta.routes.test.ts#L74) |
-| Endpoint `GET /pending` 503 `DRIVE_CONNECTION_ERROR` | [ingesta.routes.test.ts:96](../../src/modules/ingesta/ingesta.routes.test.ts#L96) |
-| Endpoint `POST /process` 200 + copia + mover | [ingesta.routes.test.ts:113](../../src/modules/ingesta/ingesta.routes.test.ts#L113) |
+| Detección multi-banco dinámica, no destructiva | ingesta.service.test.ts:96 |
+| Detección: cero pendientes → sin bancos | ingesta.service.test.ts:120 |
+| Proceso: copia local + mover original (reuso f4) | ingesta.service.test.ts:135 |
+| Proceso: idempotencia (sin pendientes, x2) → no duplica | ingesta.service.test.ts:189 |
+| Fallo de lectura → no mueve + error sanitizado | ingesta.service.test.ts:211 |
+| Fallo de copia local → no mueve | ingesta.service.test.ts:241 |
+| Aislamiento del fallo por archivo (los sanos siguen) | ingesta.service.test.ts:268 |
+| Fallo Drive de nivel superior → `DriveConnectionError` | ingesta.service.test.ts:305 |
+| Endpoint `GET /pending` 200 | ingesta.routes.test.ts:74 |
+| Endpoint `GET /pending` 503 `DRIVE_CONNECTION_ERROR` | ingesta.routes.test.ts:96 |
+| Endpoint `POST /process` 200 + copia + mover | ingesta.routes.test.ts:113 |
 | `listBankFolders` (id/name, filtra basura) | [drive-structure.test.ts:405](../../src/lib/drive-structure.test.ts#L405) |
 | `listYearFolders` (solo años) | [drive-structure.test.ts:438](../../src/lib/drive-structure.test.ts#L438) |
 | `listPendingFiles` (excluye `procesados/`) | [drive-structure.test.ts:461](../../src/lib/drive-structure.test.ts#L461) |
@@ -259,3 +259,8 @@ end-to-end y existe el resumen de cierre
 - `.env.example` (comentario: acepta id o URL de la carpeta)
 - `docs/stack.md` (fila y nota de `GOOGLE_DRIVE_ROOT_FOLDER_ID`)
 - `specs/drive-structure/design.md` (§9: nota de normalización)
+
+> **Nota del 2026-09-01:** algunas rutas que citaba este informe ya no existen
+> (el renombrado `ingesta` → `ingestion` de la F12, el módulo `expenses` retirado,
+> el cambio de ESLint a oxlint). Se han dejado como **texto**, no como enlace, para
+> que no manden a ninguna parte. Lo que el informe cuenta no cambia.

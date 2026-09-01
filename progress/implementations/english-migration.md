@@ -1,5 +1,11 @@
 # Implementación: english-migration
 
+> **Tarea directa, no una feature.** No tiene entrada en `feature_list.json` ni
+> veredicto de reviewer: es anterior al flujo de features. Etiqueta añadida el
+> 2026-09-01, al ser el único informe de `progress/` que no decía de dónde salía.
+> ⚠️ Describe el estado de julio de 2026 (módulo `expenses`, ESLint): varias de
+> las rutas que cita ya no existen.
+
 Migrar el dominio de `gastos-backend` de español a inglés (código + esquema
 Prisma). Infraestructura (nombre de paquete, contenedor, BD, `.env`, carpeta
 del repo) intacta. Comportamiento idéntico; solo renombrado/traducción.

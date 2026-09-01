@@ -11,7 +11,7 @@
 > como `checkDriveConnection(client)` (`src/lib/drive.ts:110`).
 >
 > Investigación previa que sostiene este spec: `progress/explorations/
-> google-drive-auth.md` (§4.1 ya anticipa `GOOGLE_DRIVE_ROOT_FOLDER_ID` y cómo
+> google-drive-auth-2026-07-14.md` (§4.1 ya anticipa `GOOGLE_DRIVE_ROOT_FOLDER_ID` y cómo
 > obtener el fileId de la raíz desde la URL de la carpeta en Drive).
 >
 > 🚨 **El paso manual que te toca a ti (crear la carpeta raíz `notas-banco/` a

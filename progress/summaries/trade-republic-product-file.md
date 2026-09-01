@@ -12,7 +12,7 @@ parser de lo que emite el banco.** Su extracto es un PDF con dos apuntes al mes 
 merecía un parser, así que en su lugar **escribes tú un `.json` al mes**, lo dejas en su
 carpeta de Drive y el backend lo lee por `POST /api/parser/trade-republic`, exactamente
 igual que ya hacía con los productos de inversión de MyInvestor. Tienes una plantilla
-copiable, [`docs/plantillas/trade-republic-cuenta-remunerada.json`](../../docs/plantillas/trade-republic-cuenta-remunerada.json),
+copiable, `docs/plantillas/trade-republic-cuenta-remunerada.json` (**retirado del repositorio el 2026-08-22**; el formato vive en [`docs/trade-republic-product-files.md`](../../docs/trade-republic-product-files.md)),
 donde **todos** los valores son marcadores `<…>`: lo que te dejes sin rellenar canta a la
 vista, y si aun así se cuela, el parser lo rechaza **nombrando los diez campos**.
 
@@ -39,7 +39,7 @@ cuenta tenga movimientos de verdad se escribe el parser del PDF.
   `var/parsed/`. Devuelve 200 aunque un archivo falle: el fallo va dentro, en `failed[]`.
   Ver [trade-republic.routes.ts:41](../../src/modules/trade-republic/trade-republic.routes.ts#L41).
 - **La plantilla que copias cada mes**:
-  [`docs/plantillas/trade-republic-cuenta-remunerada.json`](../../docs/plantillas/trade-republic-cuenta-remunerada.json),
+  `docs/plantillas/trade-republic-cuenta-remunerada.json` (**retirado del repositorio el 2026-08-22**; el formato vive en [`docs/trade-republic-product-files.md`](../../docs/trade-republic-product-files.md)),
   y el runbook con de dónde sale cada campo en
   [`docs/trade-republic-product-files.md`](../../docs/trade-republic-product-files.md).
 - **No** entra en el registro de parsers de `POST /api/import`: este banco no tiene

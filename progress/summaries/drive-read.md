@@ -40,11 +40,11 @@ No parsea contenido ni toca la base de datos: eso es la feature 6.
 
 | Qué hace | Símbolo | Código |
 | --- | --- | --- |
-| Detección no destructiva multi-banco | detectPending | [ingesta.service.ts:32](../../src/modules/ingesta/ingesta.service.ts#L32) |
-| Proceso archivo-a-archivo (descarga + copia + mover) | processPending | [ingesta.service.ts:72](../../src/modules/ingesta/ingesta.service.ts#L72) |
-| Mensaje de error sanitizado | describeError | [ingesta.service.ts:139](../../src/modules/ingesta/ingesta.service.ts#L139) |
-| Endpoints GET /pending y POST /process (base inyectable) | ingestaRoutes | [ingesta.routes.ts:24](../../src/modules/ingesta/ingesta.routes.ts#L24) |
-| Tipos de respuesta | DetectionResult/ProcessResult | [ingesta.types.ts:1](../../src/modules/ingesta/ingesta.types.ts#L1) |
+| Detección no destructiva multi-banco | detectPending | ingesta.service.ts:32 |
+| Proceso archivo-a-archivo (descarga + copia + mover) | processPending | ingesta.service.ts:72 |
+| Mensaje de error sanitizado | describeError | ingesta.service.ts:139 |
+| Endpoints GET /pending y POST /process (base inyectable) | ingestaRoutes | ingesta.routes.ts:24 |
+| Tipos de respuesta | DetectionResult/ProcessResult | ingesta.types.ts:1 |
 | Registro bajo /api/ingesta | buildApp | [app.ts:32](../../src/app.ts#L32) |
 
 ### Privacidad y guardianes
@@ -59,14 +59,14 @@ No parsea contenido ni toca la base de datos: eso es la feature 6.
 
 | Qué cubre | Código |
 | --- | --- |
-| Detección multi-banco dinámica, no destructiva | [ingesta.service.test.ts:96](../../src/modules/ingesta/ingesta.service.test.ts#L96) |
-| Proceso: copia local + mover original | [ingesta.service.test.ts:135](../../src/modules/ingesta/ingesta.service.test.ts#L135) |
-| Idempotencia (sin pendientes, x2, no duplica) | [ingesta.service.test.ts:189](../../src/modules/ingesta/ingesta.service.test.ts#L189) |
-| Fallo de lectura, no mueve + error sanitizado | [ingesta.service.test.ts:211](../../src/modules/ingesta/ingesta.service.test.ts#L211) |
-| Fallo de copia local, no mueve | [ingesta.service.test.ts:241](../../src/modules/ingesta/ingesta.service.test.ts#L241) |
-| Aislamiento del fallo por archivo | [ingesta.service.test.ts:268](../../src/modules/ingesta/ingesta.service.test.ts#L268) |
-| Fallo Drive de nivel superior a 503 | [ingesta.service.test.ts:305](../../src/modules/ingesta/ingesta.service.test.ts#L305) |
-| Endpoints GET/POST (200, 503, copia+mover) | [ingesta.routes.test.ts:74](../../src/modules/ingesta/ingesta.routes.test.ts#L74) |
+| Detección multi-banco dinámica, no destructiva | ingesta.service.test.ts:96 |
+| Proceso: copia local + mover original | ingesta.service.test.ts:135 |
+| Idempotencia (sin pendientes, x2, no duplica) | ingesta.service.test.ts:189 |
+| Fallo de lectura, no mueve + error sanitizado | ingesta.service.test.ts:211 |
+| Fallo de copia local, no mueve | ingesta.service.test.ts:241 |
+| Aislamiento del fallo por archivo | ingesta.service.test.ts:268 |
+| Fallo Drive de nivel superior a 503 | ingesta.service.test.ts:305 |
+| Endpoints GET/POST (200, 503, copia+mover) | ingesta.routes.test.ts:74 |
 | Descarga tal cual + wrap sanitizado | [drive-structure.test.ts:492](../../src/lib/drive-structure.test.ts#L492) |
 
 ## Cumplimiento de la intención
@@ -125,3 +125,8 @@ Por cada punto del como_se_que_esta_bien:
   nextPageToken (revisitar si un año supera 1000 pendientes); dos pendientes con el mismo
   nombre en el mismo banco/año sobrescribirían la copia local (el original en Drive nunca
   se pierde). Ninguno rompe un criterio del acceptance.
+
+> **Nota del 2026-09-01:** algunas rutas que citaba este informe ya no existen
+> (el renombrado `ingesta` → `ingestion` de la F12, el módulo `expenses` retirado,
+> el cambio de ESLint a oxlint). Se han dejado como **texto**, no como enlace, para
+> que no manden a ninguna parte. Lo que el informe cuenta no cambia.

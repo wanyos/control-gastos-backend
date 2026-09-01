@@ -4,7 +4,7 @@
 > **qué viene después** y **por qué en ese orden**. Es el mapa del recorrido
 > completo, no el detalle de ninguna parada.
 >
-> **Última revisión:** 2026-08-30.
+> **Última revisión:** 2026-09-01.
 
 ## Este documento frente a los otros cuatro
 
@@ -180,10 +180,11 @@ ninguna declaración duplicada** de `ParsedMovement`, `UnparsedRow` ni
 
 Decisiones en el **ADR-013** de [`docs/architecture.md`](./architecture.md).
 
-> 📌 **Lo que falta antes de poder planificar los ~5 restantes:** la tabla
-> «Inventario por banco» de [`docs/ideas.md`](../../docs/ideas.md) sigue
-> **vacía**. Hasta que no entres en cada web y anotes si da CSV, no sabes cuántas
-> features son ni cuáles necesitan la extensión de navegador.
+> ~~📌 **Lo que falta antes de poder planificar los ~5 restantes:** la tabla
+> «Inventario por banco» de `docs/ideas.md` sigue **vacía**.~~ ✅ **Se rellenó el
+> 2026-08-17** ([`docs/ideas.md`](../../docs/ideas.md) §Inventario por banco) y
+> **ya no bloquea nada**. Este párrafo siguió diciendo lo contrario hasta el
+> 2026-09-01, en el mismo documento que arriba lo daba por hecho.
 
 ### E5 — La importación ✅ (**F12**, 2026-08-12)
 
@@ -336,7 +337,7 @@ tiene etapa, es que se va a perder.
 | ~~7~~ | ~~`ParsedMovement` vive dentro de `bankinter/`; `deriveMovementTypeFromAmount` reimplementado~~ | ✅ **cerrado por la F11**: contrato en [`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts), helper único |
 | 8 | `computeTotals` **no excluye** `productId != null`. Hoy da igual (la columna es siempre `null`), pero en cuanto exista quien la escriba, las aportaciones mensuales contarán como gasto del mes | **E6** (con su escritor) |
 | ~~9~~ | ~~`InvestmentProduct.openedAt` nace **sin escritor previsto**~~ | ✅ **cerrado del todo por la F26** (2026-08-20): la F15 puso la fecha en el JSON y la F26 le puso el escritor — `persistSavingsSnapshot` la guarda en la columna. Para los productos de MyInvestor sigue pendiente su feature hermana |
-| ~~11~~ | ~~Lo que el humano deja en Drive **no llega a la base de datos**: los `.json` de producto morían en `var/parsed/`~~ | ✅ **cerrado para Trade Republic por la F26** (2026-08-20, ADR-026): su `.json` entra por `POST /api/import` y se guarda como `InvestmentProduct` + `SavingsSnapshot`. 🔴 **Sigue abierto para los 5 `.json` de MyInvestor** |
+| ~~11~~ | ~~Lo que el humano deja en Drive **no llega a la base de datos**: los `.json` de producto morían en `var/parsed/`~~ | ✅ **cerrado del todo**: para Trade Republic por la **F26** (2026-08-20, ADR-026) y para los 5 `.json` de MyInvestor por la **F29** (2026-08-21). Los dos entran por `POST /api/import` y se guardan como `InvestmentProduct` (+ `SavingsSnapshot` o `Valuation`); sus dos parsers están en el registro de productos de [`src/app.ts`](../src/app.ts). ⚠️ Esta fila siguió diciendo «sigue abierto para MyInvestor» **diez días después de cerrarse**, hasta el 2026-09-01 |
 | 12 | **Nada LEE la capa de inversiones.** La F26 le puso escritor, pero no hay ningún `GET` de patrimonio ni de la serie de un producto, y la cuenta remunerada no aparece en ningún total | **E7** |
 | 13 | **Los contadores de `POST /api/import` cuentan movimientos, no productos.** Un archivo de producto que ha entrado bien sale con `status: "imported"` y su `product`/`snapshot` creados, pero el resumen de arriba dice `importedCount: 0` — y el resumen es lo primero que se lee, así que un mes bien guardado se lee como «0 importados». Encontrado en la **prueba real de la F26** ([informe](../progress/explorations/prueba-real-cuenta-remunerada-2026-08-20.md)); misma familia que el mensaje falso de la F22 y que el del `.pdf`: la respuesta dice algo que no es. Se arregla haciendo que los contadores distingan movimientos de productos, o que cuenten las dos cosas | **candidato, sin abrir** |
 | 14 | **Los dos inquilinos de `var/drive-read/` no saben volver a Drive.** Esa carpeta es una **caché**: la importación no la necesita (descarga a memoria, escribe la copia y parsea el buffer), pero **el ensayo** (`POST /api/parser/<banco>`) y **la reimportación local** (`POST /api/import/local`, F25) leen SOLO de ella. En producción la caché es efímera —se pierde en cada despliegue— y los dos dejan de funcionar en cuanto no está. El almacén duradero ya existe y es Drive: los ficheros ya importados viven en `procesados/`, que **hoy no lee ningún endpoint**. Anotado el 2026-08-22 a petición del humano, «para que no se me olvide», con la decisión explícita de **no construirlo todavía**: la forma del arreglo depende de cómo se despliegue y de si esas dos rutas tienen sentido en producción | **sin abrir, hasta que haya despliegue** |
@@ -345,7 +346,7 @@ tiene etapa, es que se va a perder.
 | 10 | `daySequence` numera solo las filas parseadas: reimportar un fichero tras arreglar su parser puede renumerar ese día y dejar duplicados **visibles** | sin dueño |
 | 15 | **`bankinter.routes.test.ts` es el único banco que NO comprueba que su ruta esté registrada en la app real.** No es un agujero de datos —no invoca nada—, pero sí de cobertura: si alguien quitara su línea de `src/app.ts`, ningún test lo diría. Una línea con `hasRoute` lo cierra. Encontrado en la **F33** (2026-08-26) al arreglar el test hermano de Trade Republic | **sin abrir, una línea** |
 | 16 | **El valor por defecto que apunta a `var/` vive en seis módulos de rutas.** Mientras exista, un test que olvide inyectar directorios cae en los datos reales del humano — que es exactamente lo que pasó y originó la F33. La red que puso la F33 lo **caza**, pero no lo **impide**. Pasar esos valores por defecto a inyectarse desde `src/app.ts` haría que un test no pudiera caer en `var/` ni queriendo. Es un cambio de firma en seis módulos | **sin abrir** |
-| 18 | **`./init.sh` no ejecuta `format:check`**, así que una regresión de formato pasa la puerta de calidad en verde. Encontrado por el reviewer de la **F35** (2026-08-30): dos líneas se pasaron del límite de 100 columnas, `prettier --check` fallaba y `./init.sh` decía «entorno listo». Es un estándar vivo y documentado (`docs/conventions.md:48-53`) que **nadie hace cumplir**: o entra en `init.sh` junto al lint y los tests, o deja de ser una regla y hay que decirlo. **Y ya hay código en `HEAD` que la incumple**: `scripts/bankinter-pdf-a-xlsx.mjs` entró así en el commit `1121868` y nadie se enteró, que es la prueba de que el hueco no es teórico | **sin abrir, pequeño** |
+| ~~18~~ | ~~`./init.sh` no ejecuta `format:check`~~ | ✅ **cerrado el 2026-09-01**, y era peor de lo escrito: **tampoco ejecutaba el linter**. Ahora hay un **paso 5, «Lint y formato»**, que corre `pnpm run lint` y `pnpm run format:check` y **pone la pasada en rojo** — comprobado metiendo un archivo mal formateado a propósito, no deducido. Va después de la salida del modo `--fast` para no cargar el ciclo corto del hook. ⚠️ **Y la última frase de este cabo era falsa**: `scripts/bankinter-pdf-a-xlsx.mjs` **no** incumple el estándar en `HEAD` (`prettier --check` lo da por bueno tal y como está commiteado; le quedan 5 líneas de más de 100 columnas, pero son cadenas y comentarios que el formateador no puede partir, y el formateador es quien hace cumplir la regla). Lo que fallaba era **la copia del árbol de trabajo, con finales de línea CRLF** — exactamente el caso que `.gitattributes` describe en su propio comentario. Se normalizó al vuelo y el commit no cambia ni un byte de ese archivo |
 | 17 | **Los contadores de `POST /api/import` no distinguen anclaje ni relleno en el total del run.** La F31 añadió `anchored` y `balancesFilled` por archivo, pero `ImportRunResult` no los agrega, así que no hay total de la pasada. Documentado a propósito en `docs/api-contract.md` para que nadie lo busque. Misma familia que el cabo 13 | **con el cabo 13** |
 | ~~5~~ | ~~El histórico del Excel de años~~ | ✅ **descartado (2026-08-22, reafirmado el 2026-08-23)**, ver `../../docs/ideas.md` §6. El vacío se llena con extractos de los bancos de varios años atrás, no con el Excel: una sola fuente, sin solape ni duplicados incasables |
 | 6 | La base de datos no tiene copia de seguridad; el crudo de Drive te salva los movimientos, **no** las categorías, alias ni `initialBalance` | sin dueño |
@@ -358,6 +359,15 @@ tiene etapa, es que se va a perder.
 
 ## Deberes tuyos pendientes (no son código)
 
+- 🔴 **Comparar los cuatro saldos con la web de tu banco** — es el paso que queda
+  del checkpoint **C4 bis** de la F31, y es tuyo porque nadie más puede hacerlo:
+  la suite en verde dice que la app cuadra **consigo misma**, no que el número sea
+  el que tienes en el banco. Los otros dos pasos ya están hechos
+  ([informe de la pasada del 2026-08-31](../progress/explorations/prueba-real-f31-2026-08-31.md)):
+  las cuatro cuentas tienen su punto de partida guardado y hay extracto con la
+  línea `saldo;` en MyInvestor y en N26. Las dos veces anteriores que hiciste esta
+  prueba, con la suite entera en verde, salieron **dos features nuevas**.
+
 - **El IBAN, una vez, en el fichero.** En el CSV de MyInvestor, una línea
   `iban;ES30…` **encima** de la fila de cabecera. Con ponerlo en uno de sus
   ficheros basta: los siguientes ya no lo necesitan. Si lo editas con Excel,
@@ -368,10 +378,13 @@ tiene etapa, es que se va a perder.
   un **dígito mal tecleado**: el fichero se rechaza entero (`INVALID_IBAN`) y no se
   crea ninguna cuenta. El separador sigue siendo `;`; `iban: …` con dos puntos no
   vale, por decisión tuya del mismo día. Ver ADR-021.
-- **El saldo, cada mes, debajo del IBAN** (F16, 2026-08-16): línea `saldo;1500,00`
-  encima de la cabecera, y **borrar la fila `Saldo` del final** del fichero, que el
-  backend no lee. Si algún mes se te olvida, no falla nada: el saldo sale vacío.
-  Cómo se escribe: [`docs/dar-de-alta-un-banco.md`](dar-de-alta-un-banco.md).
+- **El saldo, UNA VEZ por cuenta, debajo del IBAN** (F16, 2026-08-16; corregido
+  por la **F31**, 2026-08-25): línea `saldo;1500,00` encima de la cabecera, y
+  **borrar la fila `Saldo` del final** del fichero, que el backend no lee. ~~Cada
+  mes~~: basta una vez, porque ese importe queda guardado como punto de partida y
+  a partir de ahí el saldo se mantiene solo. Si algún mes te la saltas, no falla
+  nada. Cómo se escribe: [`docs/archivos-por-banco.md`](archivos-por-banco.md)
+  (tabla) o [`docs/dar-de-alta-un-banco.md`](dar-de-alta-un-banco.md) (el porqué).
 - ~~**Cuenta corriente de MyInvestor: alta a mano.**~~ ✅ **ya no hace falta**
   (F12): con esa línea, la cuenta se crea sola al importar.
 - ~~**`initialBalance` de esa cuenta: correcto a la primera.**~~ ✅ **deja de ser un
@@ -387,8 +400,9 @@ tiene etapa, es que se va a perder.
   preámbulo—, no en el de apertura, y `initialBalance` ya no interviene en una
   cuenta anclada. Ver
   [`historico-cuentas-2026-08-24.md`](../progress/explorations/historico-cuentas-2026-08-24.md).
-- **Inventario por banco:** entrar en cada web y anotar si da CSV/PDF. **Es lo
-  que bloquea la E4 entera:** sin él no se sabe ni cuántas features son.
+- ~~**Inventario por banco:** entrar en cada web y anotar si da CSV/PDF.~~ ✅
+  **hecho el 2026-08-17**, leyendo las muestras reales de Drive en vez de entrar
+  en cada web. Ya no bloquea la E4.
 - Los dos anteriores salen de
   [`specs/myinvestor-statement/decisions.md`](../specs/myinvestor-statement/decisions.md)
   (§Consecuencias que te tocan a ti).

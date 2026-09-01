@@ -2,7 +2,7 @@
 
 > Prueba de humo con los archivos reales del humano en `notas-banco/myinvestor/2026/`.
 > No es una feature: es la verificación que quedaba pendiente en
-> [`current.md`](current.md) («va a poner la línea `iban;ES…` y a subir sus JSON»).
+> [`current.md`](../current.md) («va a poner la línea `iban;ES…` y a subir sus JSON»).
 > No se ha tocado código de aplicación.
 >
 > 🔴 **Saneado el 2026-08-15, después de escribirlo.** La primera versión de este
@@ -31,7 +31,7 @@
 ### 🔴 A. Los cuatro JSON llevan **coma decimal**: no son JSON válido
 
 Es el fallo dominante. La plantilla de
-[`docs/myinvestor-product-files.md`](../docs/myinvestor-product-files.md) usa punto
+[`docs/myinvestor-product-files.md`](../../docs/myinvestor-product-files.md) usa punto
 (punto decimal), pero los archivos escritos llevan coma:
 
 ```json
@@ -53,7 +53,7 @@ otra clave», y por eso el error habla de comillas. Afecta a los cuatro archivos
 
 **Ajuste que merece la pena en el backend.** El motivo que devuelve hoy el parser es
 `JSON inválido: Expected double-quoted property name in JSON at position 144`
-([`myinvestor.product.parser.ts:63`](../src/modules/myinvestor/myinvestor.product.parser.ts#L63)).
+([`myinvestor.product.parser.ts:63`](../../src/modules/myinvestor/myinvestor.product.parser.ts#L63)).
 Eso no le dice a nadie que el problema es la coma decimal, y este es el error que va
 a cometer un humano español **todos los meses**. El parser ya tiene la doctrina de
 que «el motivo debe bastar para arreglar el archivo» (R77 hace exactamente esto con
@@ -76,7 +76,7 @@ Un documento nativo de Google no tiene bytes que descargar, así que
 `downloadFileContent` (`files.get` con `alt: 'media'`) falla siempre. Y hay un
 segundo problema encadenado: al convertirse **perdió la extensión `.csv`**, así que
 aunque se bajara, el parser lo mandaría a `ignored[]`
-([`myinvestor.service.ts:69`](../src/modules/myinvestor/myinvestor.service.ts#L69):
+([`myinvestor.service.ts:69`](../../src/modules/myinvestor/myinvestor.service.ts#L69):
 el parser se elige por extensión y por nada más).
 
 **Lo que le toca al humano:** volver a subir el `.csv` **sin convertir** (arrastrar
@@ -159,7 +159,7 @@ cero problemas**: los dos que quedan son silenciosos, y ese es justo el peor tip
 ```
 
 Editó los números y se dejó las dos primeras líneas del ejemplo de
-[`docs/myinvestor-product-files.md`](../docs/myinvestor-product-files.md). El archivo
+[`docs/myinvestor-product-files.md`](../../docs/myinvestor-product-files.md). El archivo
 es **JSON perfectamente válido y del todo coherente**, así que el parser lo acepta sin
 una queja y el ETF de oro entra en el sistema como un fondo llamado «el nombre del ejemplo de la plantilla».
 
@@ -190,7 +190,7 @@ La solución inmediata es guardarlo como UTF-8 — en el Bloc de notas, *Guardar
 Codificación: UTF-8*.
 
 Pero la parte del backend es la que importa, porque esto va a repetirse cada mes:
-[`myinvestor.statement.parser.ts:64`](../src/modules/myinvestor/myinvestor.statement.parser.ts#L64)
+[`myinvestor.statement.parser.ts:64`](../../src/modules/myinvestor/myinvestor.statement.parser.ts#L64)
 hace `content.toString('utf8')` a secas, y un byte que no es UTF-8 válido se
 convierte en `�` sin error ni aviso. La cabecera sí sobrevive (se reconoce por
 su prefijo ASCII, previsión deliberada del parser), así que **el archivo parece

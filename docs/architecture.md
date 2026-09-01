@@ -1486,7 +1486,7 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 - **Fecha:** 2026-08-15.
 - **Estado:** aceptada (feature 17 `statement-encoding-guard`).
 - **Contexto:** la prueba con archivos reales del 2026-08-15
-  (`progress/prueba-drive-real-2026-08-15.md` §E) midió el daño byte a byte: el humano
+  (`progress/explorations/prueba-drive-real-2026-08-15.md` §E) midió el daño byte a byte: el humano
   editó el CSV que MyInvestor exporta en UTF-8 y su editor lo guardó en **cp1252**
   (la `Ó` pasó de `c3 93` a `d3`). `content.toString('utf8')` **no lanza nunca**: los
   bytes inválidos se convirtieron en `U+FFFD` y `SUSCRIPCIÓN PREMIUM` quedó como
@@ -1544,7 +1544,7 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 - **Contexto:** el extracto de MyInvestor no trae el saldo de la cuenta por ningún
   lado, y el humano lo quiere en el sistema: sin él solo hay movimientos sueltos sin
   punto de referencia. Él mismo decidió el 2026-08-15
-  (`progress/prueba-drive-real-2026-08-15.md` §Decisión del humano sobre el saldo)
+  (`progress/explorations/prueba-drive-real-2026-08-15.md` §Decisión del humano sobre el saldo)
   escribirlo **a mano como línea de preámbulo**, frente a leer la fila `Saldo` que su
   export lleva al final del fichero.
 - **Decisión:**

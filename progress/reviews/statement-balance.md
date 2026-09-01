@@ -93,7 +93,7 @@ Fijado con la mayúscula real, no solo en minúscula:
   [`myinvestor.fixture.ts:117-118`](../../src/modules/myinvestor/myinvestor.fixture.ts#L117)
   escribe `Saldo;` **con mayúscula y con el relleno `;;;`**, así que todos los tests
   de extremo a extremo (parser, servicio, volcado) usan la forma real del humano, no
-  una cómoda. Coincide con `progress/prueba-drive-real-2026-08-15.md`.
+  una cómoda. Coincide con `progress/explorations/prueba-drive-real-2026-08-15.md`.
 
 ### 4. La fila `Saldo` del final (criterio 7)
 

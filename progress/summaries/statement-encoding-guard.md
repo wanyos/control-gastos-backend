@@ -3,7 +3,7 @@
 Fecha de cierre: 2026-08-15
 Intención original: `feature_list.json` → feature `statement-encoding-guard`, bloque `intent`
 Spec: no tiene (`sdd: false`); el contrato es el `intent` + los 8 `acceptance`
-Origen: [`prueba-drive-real-2026-08-15.md`](../prueba-drive-real-2026-08-15.md) §🔴 E
+Origen: [`prueba-drive-real-2026-08-15.md`](../explorations/prueba-drive-real-2026-08-15.md) §🔴 E
 
 ## Qué hace ahora la app que antes no
 

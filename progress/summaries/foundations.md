@@ -56,8 +56,8 @@ La app tiene una base común que todas las features futuras van a reutilizar:
 
 | Qué hace | Símbolo | Código |
 | --- | --- | --- |
-| Único acceso a datos del módulo | `expensesDb` | [expenses.service.ts:13](../../src/modules/expenses/expenses.service.ts#L13) |
-| Capa HTTP fina (sin Prisma) | `expensesRoutes` | [expenses.routes.ts:22](../../src/modules/expenses/expenses.routes.ts#L22) |
+| Único acceso a datos del módulo | `expensesDb` | expenses.service.ts:13 |
+| Capa HTTP fina (sin Prisma) | `expensesRoutes` | expenses.routes.ts:22 |
 | Fábrica de Prisma (ya sin leer env) | `createPrismaClient` | [prisma.ts:13](../../src/lib/prisma.ts#L13) |
 
 ### 🧪 Tests y documentación
@@ -129,3 +129,8 @@ Por cada punto del `como_se_que_esta_bien` del `intent`:
 - Aviso de entorno para agentes en Windows: ejecutar la suite desde la ruta
   con unidad en mayúscula (`C:\...`); con `c:\...` Vitest 4 falla al
   recolectar tests (comprobado durante esta review; no es un bug del código).
+
+> **Nota del 2026-09-01:** algunas rutas que citaba este informe ya no existen
+> (el renombrado `ingesta` → `ingestion` de la F12, el módulo `expenses` retirado,
+> el cambio de ESLint a oxlint). Se han dejado como **texto**, no como enlace, para
+> que no manden a ninguna parte. Lo que el informe cuenta no cambia.

@@ -2,7 +2,7 @@
 
 > Rechazar el extracto que no venga en UTF-8. Sin spec (`sdd: false`): se trabaja del
 > `intent` + `acceptance` de la feature 17 de `feature_list.json`.
-> Origen del hallazgo: [`prueba-drive-real-2026-08-15.md`](../prueba-drive-real-2026-08-15.md) §🔴 E.
+> Origen del hallazgo: [`prueba-drive-real-2026-08-15.md`](../explorations/prueba-drive-real-2026-08-15.md) §🔴 E.
 
 ## Archivos modificados / creados
 
@@ -153,9 +153,9 @@ datos que han pasado a ser reales.
 
 | Test | Ofensores (todos ajenos a la F17) |
 |---|---|
-| *versions no well-formed Spanish IBAN…* | `progress/prueba-drive-real-2026-08-15.md:204` — **el IBAN real del humano, con checksum válido, versionado en `progress/`** |
-| *repeats no telling amount…* | `progress/prueba-drive-real-2026-08-15.md` (12 líneas con importes reales del humano) y `feature_list.json:684` (el `intent` de la **F16**, que citaba su saldo real) |
-| *copies no telling phrase…* | `docs/api-contract.md`, `docs/data-model.md`, `docs/myinvestor-product-files.md`, `specs/investments-data-model/design.md`, `specs/myinvestor-products/design.md` y `progress/prueba-drive-real-2026-08-15.md` — todas por «el nombre del ejemplo de la plantilla» / `producto-de-ejemplo` |
+| *versions no well-formed Spanish IBAN…* | `progress/explorations/prueba-drive-real-2026-08-15.md:204` — **el IBAN real del humano, con checksum válido, versionado en `progress/`** |
+| *repeats no telling amount…* | `progress/explorations/prueba-drive-real-2026-08-15.md` (12 líneas con importes reales del humano) y `feature_list.json:684` (el `intent` de la **F16**, que citaba su saldo real) |
+| *copies no telling phrase…* | `docs/api-contract.md`, `docs/data-model.md`, `docs/myinvestor-product-files.md`, `specs/investments-data-model/design.md`, `specs/myinvestor-products/design.md` y `progress/explorations/prueba-drive-real-2026-08-15.md` — todas por «el nombre del ejemplo de la plantilla» / `producto-de-ejemplo` |
 
 Las dos naturalezas son distintas y merecen respuestas distintas (ambas **fuera del
 scope de la F17**, por eso no se han tocado):

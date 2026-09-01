@@ -226,7 +226,7 @@ meses, esta vez sin un histórico que lo explique.
   2026-08-12). En esa ventana **solo se ejecutó `process` una vez contra el Drive
   real**, el smoke del 2026-08-04, y en Drive **solo había el fichero de
   Bankinter** (`pending` lo detectó a él y volvió a 0). La otra ejecución
-  registrada, [`prueba-drive-real-2026-08-15.md:26`](../prueba-drive-real-2026-08-15.md)
+  registrada, [`prueba-drive-real-2026-08-15.md:26`](../explorations/prueba-drive-real-2026-08-15.md)
   (4 copiados, 1 fallido), es **posterior** al arreglo: no movió nada.
 - La cuadratura lo confirma: 204 + 201 + 11 = 416, el total de la base. No falta
   ningún otro banco.

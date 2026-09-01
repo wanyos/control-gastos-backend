@@ -2,7 +2,7 @@
 
 > Feature sin spec (`sdd: false`): se trabajó del `intent` + los **12 criterios de
 > `acceptance`** de `feature_list.json`, más la sección «Decisión del humano sobre el
-> saldo» de [`../prueba-drive-real-2026-08-15.md`](../prueba-drive-real-2026-08-15.md).
+> saldo» de [`../explorations/prueba-drive-real-2026-08-15.md`](../explorations/prueba-drive-real-2026-08-15.md).
 
 ## Qué hace ahora que antes no
 

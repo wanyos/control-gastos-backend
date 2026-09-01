@@ -7,8 +7,8 @@
 > `docs/conventions.md`. Notación EARS estricta (ver `docs/specs.md`).
 >
 > Investigación previa que sostiene este spec (no se repite aquí):
-> `progress/explorations/google-drive-auth.md` y
-> `progress/explorations/foundations-integration-points.md`.
+> `progress/explorations/google-drive-auth-2026-07-14.md` y
+> `progress/explorations/foundations-integration-points-2026-07-14.md`.
 >
 > 🚨 **Los pasos manuales que te tocan a ti (Google Cloud Console) están en
 > `design.md` §10.** Léelos en la puerta de aprobación: la feature no se puede

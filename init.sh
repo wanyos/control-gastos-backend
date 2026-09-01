@@ -321,7 +321,7 @@ if [ "$STACK" = "node" ] && [ -f "tsconfig.json" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────
-# 5. Ejecución de tests (depende del stack)
+# Salida temprana del modo --fast: estado y tipos, sin lint ni suite.
 # ─────────────────────────────────────────────────────────────────────
 if [ "$MODE" = "fast" ]; then
   echo ""
@@ -333,8 +333,50 @@ if [ "$MODE" = "fast" ]; then
   exit $EXIT_CODE
 fi
 
+# ─────────────────────────────────────────────────────────────────────
+# 5. Lint y formato (solo Node, y solo si el proyecto los declara)
+# ─────────────────────────────────────────────────────────────────────
+# WHY: hasta el 2026-09-01 este script no ejecutaba NINGUNO de los dos, asi que
+# una regresion de estilo pasaba la puerta de calidad en verde. El limite de 100
+# columnas y las comillas simples estan escritos en docs/conventions.md como
+# estandar del proyecto, y un estandar que nadie hace cumplir deja de serlo: el
+# 2026-08-30 entro en HEAD un script que no lo cumplia y nadie se entero.
+# Los dos van DESPUES de la salida del modo --fast a proposito: ese modo lo
+# dispara un hook tras cada lote de herramientas y ahi manda el tiempo de vuelta.
+if [ "$STACK" = "node" ]; then
+  echo ""
+  echo "── 5. Lint y formato ──────────────────────────────"
+
+  if grep -q '"lint"' package.json 2>/dev/null; then
+    info "Ejecutando: $PKG run lint"
+    if $PKG run lint; then
+      ok "Lint OK"
+    else
+      fail "Lint fallido"
+      EXIT_CODE=1
+    fi
+  else
+    warn "El proyecto no declara un script 'lint' en package.json"
+  fi
+
+  if grep -q '"format:check"' package.json 2>/dev/null; then
+    info "Ejecutando: $PKG run format:check"
+    if $PKG run format:check; then
+      ok "Formato OK"
+    else
+      fail "Formato fallido (arreglable con '$PKG run format')"
+      EXIT_CODE=1
+    fi
+  else
+    warn "El proyecto no declara un script 'format:check' en package.json"
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# 6. Ejecución de tests (depende del stack)
+# ─────────────────────────────────────────────────────────────────────
 echo ""
-echo "── 5. Ejecutando tests ─────────────────────────────────"
+echo "── 6. Ejecutando tests ─────────────────────────────────"
 
 if [ -z "$TEST_CMD" ]; then
   warn "No hay comando de tests configurado para el stack '$STACK'"
@@ -350,10 +392,10 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────
-# 6. Resumen
+# 7. Resumen
 # ─────────────────────────────────────────────────────────────────────
 echo ""
-echo "── 6. Resumen ──────────────────────────────────────────"
+echo "── 7. Resumen ──────────────────────────────────────────"
 
 if [ $EXIT_CODE -eq 0 ]; then
   ok "Entorno listo. Puedes empezar a trabajar."

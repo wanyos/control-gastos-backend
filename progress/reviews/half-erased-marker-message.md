@@ -6,7 +6,7 @@
 **Veredicto: APPROVED**, con dos condiciones de cierre que **no son del implementer**
 (están abajo, §Condiciones) y una observación que pertenece a la **F29**.
 
-Resumen de cierre: [`progress/summaries/half-erased-marker-message.md`](summaries/half-erased-marker-message.md).
+Resumen de cierre: [`progress/summaries/half-erased-marker-message.md`](../summaries/half-erased-marker-message.md).
 
 ## Lo que se ha ejecutado, no leído
 

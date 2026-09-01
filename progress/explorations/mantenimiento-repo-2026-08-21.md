@@ -149,7 +149,7 @@ secciones duplicadas, y él mismo documenta por qué. Ese trabajo está hecho.
 
 | Qué | Evidencia | Riesgo |
 |---|---|---|
-| `progress/prueba-drive-real-2026-08-15.md` (254 líneas) | **Único archivo de prueba real que vive en la raíz de `progress/`.** Los otros ocho están en `progress/explorations/` con el patrón `<tema>-<fecha>.md`, que es el sitio que `current.md` declara correcto («Una pasada real o un diagnóstico → `explorations/<tema>-<fecha>.md`»). | **Mover a `progress/explorations/`**, no borrar: es la primera pasada real contra Drive y tiene valor histórico. Nada lo enlaza por ruta salvo `history.md`, que habría que ajustar al moverlo. |
+| `progress/explorations/prueba-drive-real-2026-08-15.md` (254 líneas) | **Único archivo de prueba real que vive en la raíz de `progress/`.** Los otros ocho están en `progress/explorations/` con el patrón `<tema>-<fecha>.md`, que es el sitio que `current.md` declara correcto («Una pasada real o un diagnóstico → `explorations/<tema>-<fecha>.md`»). | **Mover a `progress/explorations/`**, no borrar: es la primera pasada real contra Drive y tiene valor histórico. Nada lo enlaza por ruta salvo `history.md`, que habría que ajustar al moverlo. |
 
 ### 🟡 A decidir — huecos del registro, no basura
 
@@ -287,7 +287,7 @@ Para que la próxima limpieza no repita el trabajo:
 2. Borrar `dist/` y `tsconfig.tsbuildinfo` — 314 KB, se regeneran; además quita
    la trampa de que hoy `pnpm start` arrancaría la app de julio.
 3. Borrar `myinvestorSampleFixture()` y pasar `oxlint` + `pnpm test`.
-4. Mover `progress/prueba-drive-real-2026-08-15.md` a `explorations/`.
+4. Mover `progress/explorations/prueba-drive-real-2026-08-15.md` a `explorations/`.
 5. Actualizar el `README.md` (endpoints y árbol) — no es borrar, es la deuda de
    documentación más visible del repo.
 

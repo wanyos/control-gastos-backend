@@ -32,9 +32,9 @@ línea dentro de su día.
 | [`src/architecture.test.ts`](../../src/architecture.test.ts) | 3 guardianes nuevos + los 2 archivos nuevos en el árbol esperado. |
 | [`src/modules/bankinter/bankinter.parser.test.ts`](../../src/modules/bankinter/bankinter.parser.test.ts) | 3 tests nuevos, 4 con expectativa ajustada (ver §5). |
 | [`src/modules/bankinter/bankinter.service.test.ts`](../../src/modules/bankinter/bankinter.service.test.ts) | 1 test nuevo: el resumen y el JSON volcado llevan `accountIban: null`. |
-| [`docs/architecture.md`](../architecture.md) | **ADR-013** + `lib/parsed-statement.ts` en el árbol. |
-| [`docs/conventions.md`](../conventions.md) | §Parsers de banco apunta ya al archivo y a las líneas concretas del contrato, del helper y de los guardianes. |
-| [`docs/api-contract.md`](../api-contract.md) | Modelo `ParsedMovement` actualizado (`balance` nullable, `type` con `neutral`, `daySequence`) + nota de **breaking change** aún no consumido por el frontend. |
+| [`docs/architecture.md`](../../docs/architecture.md) | **ADR-013** + `lib/parsed-statement.ts` en el árbol. |
+| [`docs/conventions.md`](../../docs/conventions.md) | §Parsers de banco apunta ya al archivo y a las líneas concretas del contrato, del helper y de los guardianes. |
+| [`docs/api-contract.md`](../../docs/api-contract.md) | Modelo `ParsedMovement` actualizado (`balance` nullable, `type` con `neutral`, `daySequence`) + nota de **breaking change** aún no consumido por el frontend. |
 
 ## 4. Decisiones (las cuatro delegadas)
 
@@ -64,7 +64,7 @@ línea dentro de su día.
    `balance: null` por línea ya lo dice y una constante por banco duplica el dato.
 
 Todo ello está razonado, con alternativas descartadas, en **ADR-013** de
-[`docs/architecture.md`](../architecture.md).
+[`docs/architecture.md`](../../docs/architecture.md).
 
 ## 5. Tests que cambian de expectativa (y por qué)
 
@@ -118,8 +118,8 @@ Tres capas, todas ejecutables:
 | 6 | No regresión salvo el importe 0 | `parseBankinterXlsx > produces exactly the same movements and values as before the shared contract` (+ todos los tests preexistentes del parser, del service y de la ruta, verdes sin cambios de valor) |
 | 7 | El contrato no es el modelo de la BD y no se comparte el código que lee el formato | `architecture invariants > keeps the contract free of database and bank-specific knowledge (feature 11)` (sin Prisma, sin `accountId`/`transferId`/`origin`, **sin ningún import**) · `... > keeps the bankinter parser module free of data access (no "prisma" reference)` (preexistente, sigue verde) |
 | 8 | No toca Prisma/BD, ni cómo lee Bankinter, ni MyInvestor | `parseSpanishAmount` (3 tests) y `parseSpanishDate` (2 tests) intactos · `parseBankinterXlsx > reports a row with a non-numeric balance as an unparsed row` · `> collects a non-interpretable row in unparsedRows...` · `> throws ValidationError when there is no recognizable header row` · evidencia adicional: `git status` no muestra cambios en `prisma/` ni existe `src/modules/myinvestor/` |
-| 9 | Cada criterio con test + `./init.sh` verde + decisiones como ADR + convenciones apuntando al contrato | esta misma tabla · §8 (salida de `./init.sh`) · **ADR-013** en [`docs/architecture.md`](../architecture.md) · [`docs/conventions.md`](../conventions.md) §Parsers de banco |
-| 10 | `docs/api-contract.md` actualizado con nota de breaking change | [`docs/api-contract.md`](../api-contract.md) §Parser de Bankinter: aviso ⚠️ de 2026-08-11 (importe 0 → `neutral`, `daySequence`, `null`s) + tabla del modelo + nota en la respuesta de `POST /api/parser/bankinter` |
+| 9 | Cada criterio con test + `./init.sh` verde + decisiones como ADR + convenciones apuntando al contrato | esta misma tabla · §8 (salida de `./init.sh`) · **ADR-013** en [`docs/architecture.md`](../../docs/architecture.md) · [`docs/conventions.md`](../../docs/conventions.md) §Parsers de banco |
+| 10 | `docs/api-contract.md` actualizado con nota de breaking change | [`docs/api-contract.md`](../../docs/api-contract.md) §Parser de Bankinter: aviso ⚠️ de 2026-08-11 (importe 0 → `neutral`, `daySequence`, `null`s) + tabla del modelo + nota en la respuesta de `POST /api/parser/bankinter` |
 
 ## 8. Verificación — último `./init.sh`
 

@@ -63,7 +63,7 @@ Exactamente las reglas fijadas por el humano en `docs/conventions.md` §Estilo:
   README/AGENTS/CHECKPOINTS/CLAUDE de raíz) por el mismo motivo. Revisable.
 - [`feature_list.json`](../../feature_list.json) — estado del harness gestionado por agentes; excluido
   para garantizar que `prettier --write .` jamás lo toque.
-- [`.vscode/`](../../.vscode/) — configuración local del editor, fuera del alcance del formatter.
+- `.vscode/` — configuración local del editor, fuera del alcance del formatter.
 
 Con esto, Prettier posee: `src/**` (salvo generated), los configs de raíz
 (`eslint.config.js`, `vitest.config.ts`, `prisma.config.ts`, `tsconfig.json`,
@@ -86,7 +86,7 @@ Con esto, Prettier posee: `src/**` (salvo generated), los configs de raíz
 - [`docker-compose.yml`](../../docker-compose.yml): 2 líneas, comillas dobles → simples (`'5434:5432'` y
   el array del healthcheck). YAML semánticamente idéntico; verificado por diff
   antes de escribir.
-- [`eslint.config.js`](../../eslint.config.js): plegado a 100 columnas del propio archivo nuevo.
+- `eslint.config.js`: plegado a 100 columnas del propio archivo nuevo.
 
 ## Comandos ejecutados y resultado (verificación final)
 
@@ -117,3 +117,8 @@ Con esto, Prettier posee: `src/**` (salvo generated), los configs de raíz
 Sin cambios (tarea directa, no feature). Feature 2 sigue en `spec_ready`
 esperando aprobación humana; cuando se apruebe, T22 del spec queda N/A por
 «ya hecho en tarea directa».
+
+> **Nota del 2026-09-01:** algunas rutas que citaba este informe ya no existen
+> (el renombrado `ingesta` → `ingestion` de la F12, el módulo `expenses` retirado,
+> el cambio de ESLint a oxlint). Se han dejado como **texto**, no como enlace, para
+> que no manden a ninguna parte. Lo que el informe cuenta no cambia.

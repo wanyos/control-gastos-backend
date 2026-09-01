@@ -26,11 +26,11 @@ T1-T21 y T23-T25 completadas y marcadas `[x]` en `specs/fundamentos/tasks.md`.
 | [`src/errors/app-error.test.ts`](../../src/errors/app-error.test.ts) | 6 tests unitarios de la jerarquía |
 | [`src/plugins/error-handler.ts`](../../src/plugins/error-handler.ts) | `handleError` exportado + plugin `fp` con `setErrorHandler` y `setNotFoundHandler` |
 | [`src/plugins/error-handler.test.ts`](../../src/plugins/error-handler.test.ts) | 3 unit (`handleError` con spies) + 2 integración (500 genérico, 404 de router) |
-| [`src/modules/expenses/expenses.types.ts`](../../src/modules/expenses/expenses.types.ts) | `CreateExpenseBody`, `ExpenseIdParams` |
-| [`src/modules/expenses/expenses.schema.ts`](../../src/modules/expenses/expenses.schema.ts) | `createExpenseSchema` (movido) + `expenseIdParamsSchema` (nuevo) |
-| [`src/modules/expenses/expenses.service.ts`](../../src/modules/expenses/expenses.service.ts) | `expensesDb`, `listExpenses`, `getExpenseById`, `createExpense`, `deleteExpense` (P2025 → `NotFoundError`) |
-| [`src/modules/expenses/expenses.routes.ts`](../../src/modules/expenses/expenses.routes.ts) | capa HTTP fina, sin referencia alguna a `prisma` |
-| [`src/modules/expenses/expenses.test.ts`](../../src/modules/expenses/expenses.test.ts) | los 6 tests movidos (solo cambió el import) + 3 nuevos de formato de error |
+| `src/modules/expenses/expenses.types.ts` | `CreateExpenseBody`, `ExpenseIdParams` |
+| `src/modules/expenses/expenses.schema.ts` | `createExpenseSchema` (movido) + `expenseIdParamsSchema` (nuevo) |
+| `src/modules/expenses/expenses.service.ts` | `expensesDb`, `listExpenses`, `getExpenseById`, `createExpense`, `deleteExpense` (P2025 → `NotFoundError`) |
+| `src/modules/expenses/expenses.routes.ts` | capa HTTP fina, sin referencia alguna a `prisma` |
+| `src/modules/expenses/expenses.test.ts` | los 6 tests movidos (solo cambió el import) + 3 nuevos de formato de error |
 | [`src/modules/health/health.routes.ts`](../../src/modules/health/health.routes.ts) | movido de `src/routes/health.ts` sin cambios funcionales |
 | [`src/modules/health/health.test.ts`](../../src/modules/health/health.test.ts) | los 2 tests movidos (solo cambió el import) |
 | [`src/architecture.test.ts`](../../src/architecture.test.ts) | guardián: `process.env` centralizado, árbol ADR-004, no `src/routes/`, rutas sin `prisma` |
@@ -165,3 +165,8 @@ Salida final de `npm test` (dentro de `bash ./init.sh`):
 - El assert histórico `GET /api/expenses/99999 returns 404 with "Expense not
   found"` en `expenses.test.ts` quedó redundante con el test nuevo del body
   completo; se conserva intacto por mandato de R14.
+
+> **Nota del 2026-09-01:** algunas rutas que citaba este informe ya no existen
+> (el renombrado `ingesta` → `ingestion` de la F12, el módulo `expenses` retirado,
+> el cambio de ESLint a oxlint). Se han dejado como **texto**, no como enlace, para
+> que no manden a ninguna parte. Lo que el informe cuenta no cambia.
