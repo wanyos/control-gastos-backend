@@ -31,7 +31,7 @@ function toDecimal(value: DecimalLike): Prisma.Decimal {
 /**
  * Sign rule of the domain: the parser emits a signed amount, the database keeps
  * it always positive and lets `type` carry the sign. A zero amount is neither an
- * income nor an expense, hence `neutral` (see specs/data-model/design.md §6).
+ * income nor an expense, hence `neutral` (see specs/08-data-model/design.md §6).
  */
 export function deriveMovementTypeFromAmount(amount: number): MovementType {
   if (amount < 0) return 'expense'

@@ -1,5 +1,5 @@
 // Guardian test for whole-tree invariants (R4, R11, R12, R13 of
-// specs/fundamentos). Lives at the root of src/ because it guards the tree,
+// specs/02-foundations). Lives at the root of src/ because it guards the tree,
 // not a single file (conscious exception to "test next to the file").
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -80,7 +80,7 @@ describe('architecture invariants', () => {
       'modules/categories/categories.types.ts',
       'modules/categories/categories.test.ts',
       // movements has no *.schema.ts on purpose: it is read-only, there is no
-      // body to validate (specs/data-model/design.md §5).
+      // body to validate (specs/08-data-model/design.md §5).
       'modules/movements/movements.routes.ts',
       'modules/movements/movements.service.ts',
       'modules/movements/movements.types.ts',

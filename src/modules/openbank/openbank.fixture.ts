@@ -47,7 +47,7 @@ import { join } from 'node:path'
  * file — and that is why the invented balances of `openbankSampleRows()` went
  * from decoration to values the tests assert on. 🔴 Do NOT «restore» the `null`:
  * that was the feature 19 behaviour and it was reverted on purpose (requirement
- * R11 of `specs/real-account-balance/`). Deroging ADR-013 is NOT done from here.
+ * R11 of `specs/31-real-account-balance/`). Deroging ADR-013 is NOT done from here.
  */
 export const openbankHeaders = [
   'Fecha Operación', // 1 · booking date

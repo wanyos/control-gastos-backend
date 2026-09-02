@@ -10,7 +10,7 @@ import { listMovements, movementsDb, serializeMovement } from './movements.servi
  * READ-ONLY on purpose: a movement that does not come from the bank must not
  * exist, so there is no create nor delete endpoint (and no transfer endpoint:
  * both legs of a transfer already arrive in their statements). The importer
- * writes the table (see specs/data-model/design.md §5 and §2.1).
+ * writes the table (see specs/08-data-model/design.md §5 and §2.1).
  */
 export default async function movementsRoutes(fastify: FastifyInstance) {
   const db = movementsDb(fastify)

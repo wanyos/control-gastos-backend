@@ -89,7 +89,7 @@ export interface AccountResolution {
 
 /**
  * Maps the parsed movements of a file to the rows of its account, applying the
- * table of `specs/data-model/design.md` §9. Pure: no database, no clock, no id.
+ * table of `specs/08-data-model/design.md` §9. Pure: no database, no clock, no id.
  *
  * Two deliberate details: the amount travels as a STRING (`toFixed(2)`) so no
  * floating point ever reaches a `Decimal(10,2)`, and the dates are built with an

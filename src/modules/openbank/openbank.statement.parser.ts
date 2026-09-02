@@ -83,7 +83,7 @@ const commentsBefore = '<table'
  * `balance` now carries the parsed amount of the fifth cell. 🔴 If you are
  * about to «restore» the `null` because some other text says it is dropped:
  * don't. That is the F19 behaviour and it was reverted on purpose; the reason
- * lives in `specs/real-account-balance/requirements.md` §R11. Deroging ADR-013
+ * lives in `specs/31-real-account-balance/requirements.md` §R11. Deroging ADR-013
  * is NOT this file's job (feature 31 does it in `docs/architecture.md`), and
  * nothing else of the shared contract changes here. The currency of the
  * movements is still `''`, never an invented `EUR`: the table has no currency

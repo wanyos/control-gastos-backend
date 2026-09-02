@@ -130,7 +130,7 @@ function treeWith(
 
 // ── Pure mapping ───────────────────────────────────────────────────────────
 
-describe('toMovementRows (mapping of specs/data-model/design.md §9)', () => {
+describe('toMovementRows (mapping of specs/08-data-model/design.md §9)', () => {
   it('maps a parsed movement to a movement row of its account', () => {
     const [row] = toMovementRows(
       [
