@@ -1602,7 +1602,7 @@
         "_avisos_tecnicos": [
           "El saldo real por cuenta ya existe desde la feature 31 (Account.balanceAnchor más los movimientos posteriores); esta feature LEE, no recalcula por su cuenta.",
           "Reutiliza los totales de la feature 36 en vez de escribir una segunda suma: dos sumas distintas del mismo dinero divergen.",
-          "Corregido por el humano el 2026-09-02: un traspaso entre cuentas propias no es ni gasto ni ingreso, y eso YA estaba decidido en docs/data-model.md — sus dos apuntes son movimientos ordinarios enlazados por Movement.transferId, y los totales globales no cuentan un movimiento con transferId != null (docs/data-model.md, §Traspasos y §Totales). El tipo neutral NO es eso: neutral es solo el importe cero. OJO, medido el 2026-09-02: hoy NADA escribe transferId (0 de 1520 movimientos lo tienen); su escritor es la feature de detección de traspasos prevista en el modelo y aún sin escribir. Consecuencia para esta vista: hasta que exista ese escritor, un traspaso contará como entrada en una cuenta y salida en la otra — el ahorro sale bien porque se cancelan, pero entradas y salidas quedan infladas. Si eso importa para estrenar la vista, la detección de traspasos tiene que ir antes; lo decide el humano."
+          "Depende de la feature 40 (transfer-detection), decidida por el humano el 2026-09-02 justo para esto: sin ella, un traspaso entre sus cuentas contaría como entrada en una y salida en la otra (36 parejas, 44.550 EUR medidos ese día). Orden acordado: la 40 va ANTES que esta."
         ]
       },
       "acceptance": [
@@ -1653,6 +1653,52 @@
         "Un producto sin foto en el periodo se marca como tal en vez de arrastrar la anterior.",
         "Se puede filtrar por producto y por periodo.",
         "docs/api-contract.md actualizado; GET /api/accounts no cambia."
+      ],
+      "sdd": true,
+      "status": "pending"
+    },
+    {
+      "id": 40,
+      "name": "transfer-detection",
+      "title": "Reconocer los traspasos entre mis cuentas para que no cuenten ni como gasto ni como ingreso",
+      "intent": {
+        "_procedencia": "Decidido por el humano el 2026-09-02, al revisar las features 36 a 39: «cuando hay una transferencia entre mis cuentas no se anota ni como gasto ni como ingreso, otra cosa es que una transferencia sea a una cuenta que no es mia, en ese caso se debe de contabilizar como gasto, al igual cuando haga un bizum desde openbank». Eligió detección automática antes de la F38, frente a marcarlos a mano o dejarlo para después. El mecanismo ya estaba previsto en docs/data-model.md §Traspasos: dos movimientos ordinarios que comparten Movement.transferId; esta feature es su escritor, que faltaba. Medido ese día: 0 de 1520 movimientos con transferId, y 36 parejas candidatas que mueven 44.550 EUR.",
+        "que_quiero": "Que la app reconozca sola los traspasos entre mis propias cuentas: después de importar, cruza lo que hay, encuentra las dos piernas del mismo traspaso (mismo importe, direcciones opuestas, dos cuentas mías, fechas pegadas) y las deja enlazadas. A partir de ahí ese dinero no cuenta ni como gasto ni como ingreso en ningún total.",
+        "por_que": "Mover dinero de un bolsillo mío a otro no es ni ganar ni gastar, y hoy 44.550 EUR de traspasos aparecerían inflando las entradas y salidas de cualquier resumen. El archivo del banco no puede traer este dato: cada banco solo ve su lado y ninguno sabe que la otra cuenta también es mía, así que o lo cruza la app o no lo sabe nadie.",
+        "como_se_que_esta_bien": [
+          "Después de importar, un traspaso entre dos cuentas mías queda con sus dos piernas enlazadas, sin que yo escriba nada.",
+          "Una transferencia a una cuenta que NO es mía sigue contando como gasto, y un Bizum a un tercero también: como no tienen pierna espejo en mis cuentas, no se emparejan nunca.",
+          "Los totales de la feature 36 y el resumen de la feature 38 dejan fuera las dos piernas de cada traspaso.",
+          "Reimportar los mismos archivos no duplica marcas ni cambia parejas ya hechas.",
+          "Si la segunda pierna llega semanas después (cada banco exporta cuando exporta), el emparejamiento la encuentra en la siguiente pasada.",
+          "Ningún dato del movimiento cambia: importe, fechas, concepto y cuenta quedan exactamente como los trajo el archivo."
+        ],
+        "que_no_quiero": [
+          "No quiero marcar traspasos a mano: lo descarté explícitamente el 2026-09-02.",
+          "No quiero que un emparejamiento dudoso se haga en silencio: antes un traspaso sin marcar (que solo infla totales) que dos movimientos ajenos enlazados (que esconden un gasto real).",
+          "No quiero que se toque el ancla, ningún saldo ni el dedup de la importación.",
+          "No quiero que se borre ni se modifique ningún movimiento."
+        ],
+        "delego_en_agente": [
+          "La ventana de fechas del emparejamiento y qué hacer cuando hay más de un candidato con el mismo importe.",
+          "Cuándo corre exactamente (al final de cada importación, bajo demanda, o ambos).",
+          "Cómo se deshace una pareja mal hecha, si hace falta deshacerla."
+        ],
+        "_avisos_tecnicos": [
+          "Movement.transferId y su índice existen desde la feature 8 (prisma/schema.prisma); esta feature es el escritor previsto en docs/data-model.md, que ya fija que los totales no cuentan un movimiento con transferId != null.",
+          "transferId queda FUERA del índice de dedup a propósito: escribirlo no puede romper la deduplicación (docs/data-model.md §dedup).",
+          "La exclusión en los totales la implementa la feature 36; esta feature pone la marca. Las dos cosas se prueban juntas: pareja marcada => fuera de entradas y salidas.",
+          "Los importes de las dos piernas son iguales y positivos (el signo va en type, ADR de la feature 11): el cruce es amount igual y type opuesto, nunca amount con signo."
+        ]
+      },
+      "acceptance": [
+        "Tras una importación, las parejas inequívocas (mismo importe, type opuesto, cuentas distintas del humano, fechas dentro de la ventana) comparten transferId, con test.",
+        "Un movimiento sin pierna espejo (Bizum o transferencia a terceros) nunca recibe transferId, con test.",
+        "El emparejamiento es idempotente: correrlo dos veces deja exactamente las mismas parejas.",
+        "Un caso ambiguo (dos candidatos válidos) NO se empareja en silencio y queda visible en el informe de la pasada.",
+        "Una pierna que llega en una importación posterior se empareja en esa pasada.",
+        "No cambia ningún otro campo de ningún movimiento, con test que compara la fila entera.",
+        "docs/api-contract.md y docs/data-model.md actualizados (el segundo deja de decir que nada escribe transferId)."
       ],
       "sdd": true,
       "status": "pending"

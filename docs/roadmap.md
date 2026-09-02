@@ -52,24 +52,29 @@ los dos números y la diferencia (F32). Tolerancia cero, y un descuadre no tumba
 la importación ni cambia ningún saldo.
 
 ✅ **El siguiente paso ya está elegido (2026-09-01).** Las 35 primeras features
-están `done` y hay **cuatro nuevas escritas y `pending`**, dictadas por el humano
+están `done` y hay **cinco nuevas escritas y `pending`**, dictadas por el humano
 en esa sesión y en este orden:
 
 | # | Feature | Qué trae | Spec |
 |---|---|---|---|
 | **36** | `movements-filters-and-totals` | Filtrar por cuenta, fechas, tipo y estado; paginar; y los totales del filtro pedido | no |
 | **37** | `categories-and-tagging` | Crear categorías y ponérselas a un movimiento, con una lista genérica de arranque, y dar un movimiento por revisado | **sí** |
+| **40** | `transfer-detection` | Reconocer los traspasos entre cuentas propias (el escritor de `transferId` que el modelo dejó previsto) para que no cuenten ni como gasto ni como ingreso | **sí** |
 | **38** | `money-overview` | Cuánto dinero hay en total, cómo está repartido y qué se ahorró en el mes | no |
 | **39** | `investments-overview` | Qué valen los productos, si suben o bajan y cuánto se ganó en el mes | **sí** |
 
 **Por qué en ese orden.** La 36 va primera porque hoy `GET /api/movements`
 devuelve los 1520 movimientos de golpe y sin filtros (medido el 2026-09-01), así
 que no hay forma de encontrar nada: sin eso, categorizar a mano es impracticable.
-La 38 se apoya en los totales de la 36 para no escribir dos sumas distintas del
-mismo dinero. La 39 no depende de ninguna y puede adelantarse si apetece.
+La **40 va antes que la 38** por decisión del humano del 2026-09-02: sin ella, el
+resumen contaría como entradas y salidas los traspasos entre sus propias cuentas
+(36 parejas moviendo 44.550 € medidas ese día), y la 38 se apoya además en los
+totales de la 36 para no escribir dos sumas distintas del mismo dinero. La 39 no
+depende de ninguna y puede adelantarse si apetece.
 
-**Lo que cierran de esta tabla:** la 36 el cabo 8, la 37 el cabo 3 y la 39 el
-cabo 12.
+**Lo que cierran de esta tabla:** la 36 el cabo 8, la 37 el cabo 3, la 39 el
+cabo 12, y la 40 le pone por fin escritor a `Movement.transferId` (reservado
+desde la F8).
 
 **La E4 sigue con Revolut pendiente**, aparcado por decisión del humano hasta que
 ese banco tenga movimientos.
