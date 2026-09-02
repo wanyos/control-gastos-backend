@@ -21,10 +21,10 @@
 > (R17, R19, R24).
 >
 > 🔗 **Reconciliado con la antigua feature 10 `myinvestor-parser`**, hoy partida en
-> [`specs/myinvestor-statement/`](../myinvestor-statement/tasks.md) (extracto `.csv`) y
-> [`specs/myinvestor-products/`](../myinvestor-products/tasks.md) (JSON de producto;
+> [`specs/10-myinvestor-statement/`](../10-myinvestor-statement/tasks.md) (extracto `.csv`) y
+> [`specs/13-myinvestor-products/`](../13-myinvestor-products/tasks.md) (JSON de producto;
 > el balance para este esquema está en su
-> [`design.md` §12](../myinvestor-products/design.md)), y con las **muestras reales del
+> [`design.md` §12](../13-myinvestor-products/design.md)), y con las **muestras reales del
 > banco**
 > (`var/drive-read/myinvestor/2026/`). **El esquema Prisma no cambia: ni una columna,
 > ni un tipo, ni un índice, ni una precisión.** Consecuencias en esta lista: el archivo
@@ -224,8 +224,8 @@
 - ❌ **Un guardián de "la carpeta `investments/` solo tiene un archivo"** (T12): el
   módulo está diseñado para crecer con el servicio del importador.
 - ❌ **Parser de los archivos de MyInvestor e importador.** Sus formatos ya están
-  definidos en [`specs/myinvestor-statement/`](../myinvestor-statement/requirements.md)
-  (extracto `.csv`) y [`specs/myinvestor-products/`](../myinvestor-products/requirements.md)
+  definidos en [`specs/10-myinvestor-statement/`](../10-myinvestor-statement/requirements.md)
+  (extracto `.csv`) y [`specs/13-myinvestor-products/`](../13-myinvestor-products/requirements.md)
   (un JSON por producto, plantillas en `docs/myinvestor-product-files.md`), pero **el
   código es de esas features** y vive en `src/modules/myinvestor/`, no aquí.
 - ❌ **Escribir `Movement.productId` desde ningún sitio**, ni excluirlo de

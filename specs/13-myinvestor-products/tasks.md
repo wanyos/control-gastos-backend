@@ -31,7 +31,7 @@
   nombres y fechas que aparecen en este spec ya son inventados a propósito**: úsalos tal
   cual o inventa otros, pero **no los sustituyas** por los de las capturas reales.
 - 🔴 **No toques** `prisma/`, los módulos del flujo, `src/lib/`, `src/errors/`, el módulo
-  de parser de otro banco, ni `specs/investments-data-model/`.
+  de parser de otro banco, ni `specs/09-investments-data-model/`.
 - ⚠️ Convenciones: comillas simples, sin `;`, 2 espacios, 100 columnas, imports relativos
   con `.js`, `import type` para tipos, dominio en inglés.
 
@@ -133,7 +133,7 @@
       añadir los archivos nuevos al árbol de la sección «Estructura de carpetas».
       Cubre: R72.
 
-- [x] T17 — Anotar en `progress/current.md`, sin tocar `specs/investments-data-model/`,
+- [x] T17 — Anotar en `progress/current.md`, sin tocar `specs/09-investments-data-model/`,
       que el **esquema de la feature 9 no cambia** (`design.md` §12.1) y que sus enlaces
       a la antigua `specs/myinvestor-parser/` apuntan hoy a **dos** carpetas
       (`myinvestor-statement` y `myinvestor-products`). Cubre: R63.
@@ -147,7 +147,7 @@
 
 - [x] T19b — Verificar el alcance sobre el diff: `package.json` y `pnpm-lock.yaml` sin
       cambios, `prisma/` sin cambios, `.gitignore` sin cambios, ningún archivo de
-      `specs/investments-data-model/` tocado, ningún archivo del módulo de otro banco
+      `specs/09-investments-data-model/` tocado, ningún archivo del módulo de otro banco
       tocado, y `myinvestor.routes.ts` **sin cambios**. Cubre: (proceso).
 
 - [x] T20b — Ejecutar `pnpm run typecheck` y `pnpm test`: **la suite completa en verde**,

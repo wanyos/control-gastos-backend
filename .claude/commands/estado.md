@@ -47,6 +47,6 @@ CABOS SUELTOS SIN DUEÑO
 - Si `./init.sh --state` falla, dilo **arriba del todo**: el estado es
   incoherente y eso manda sobre cualquier otra cosa que digas.
 - Si hay una feature en `spec_ready`, la línea `EN CURSO` termina en
-  **«⏸ esperando que apruebes `specs/<name>/decisions.md`»**. Es lo que más fácil
+  **«⏸ esperando que apruebes `specs/<nn>-<name>/decisions.md`»**. Es lo que más fácil
   se queda olvidado.
 - Sin adornos ni resúmenes de más. El valor está en que se lee en diez segundos.

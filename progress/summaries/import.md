@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-12
 Intención original: `feature_list.json` → feature `import`, bloque `intent`
-Spec (SDD): [`specs/import/`](../../specs/import/decisions.md)
+Spec (SDD): [`specs/12-import/`](../../specs/12-import/decisions.md)
 
 ## Qué hace ahora la app que antes no
 
@@ -201,7 +201,7 @@ no hay interfaz, no se rehízo Drive y no se inventa ningún saldo.
 ## Decisiones que se tomaron por ti
 
 Lo que en el spec estaba marcado `(delegado)` o `(añadido)` y aprobaste en
-[`decisions.md`](../../specs/import/decisions.md):
+[`decisions.md`](../../specs/12-import/decisions.md):
 
 - **(delegado) La importación se dispara con un endpoint nuevo, `POST /api/import`,
   sin cuerpo**, en vez de reutilizar los de la ingesta. Los de la ingesta se

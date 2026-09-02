@@ -354,7 +354,7 @@ devuelve todavía), igual que `DRIVE_CONNECTION_ERROR`.
 *Verificación:* manual — checklist del reviewer contra `design.md` §5 y el diff
 (no aparecen rutas nuevas; las notas de `api-contract.md` quedan escritas).
 Requirement de proceso sin superficie ejecutable propia (misma excepción consciente
-que R21/R22/R23 de `specs/drive-connection/`).
+que R21/R22/R23 de `specs/03-drive-connection/`).
 
 ### R21
 El sistema DEBE registrar las decisiones delegadas como **ADR-008** en

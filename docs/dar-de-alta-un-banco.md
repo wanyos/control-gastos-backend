@@ -4,7 +4,7 @@
 > por su cuenta: dar de alta un banco es una acción **explícita y deliberada**.
 > Decisión de la puerta de aprobación (2026-07-24): *"Drive es el registro de
 > bancos; crear un banco es una acción explícita."* Detalle en
-> `docs/architecture.md` → **ADR-008** y en `specs/drive-structure/design.md` §6.
+> `docs/architecture.md` → **ADR-008** y en `specs/04-drive-structure/design.md` §6.
 
 > 📌 **¿Solo quieres saber qué archivo pide cada banco y qué se escribe a mano
 > en él?** Está en una página de una tabla:
@@ -511,4 +511,4 @@ Drive" sea idéntico a "lo que el backend busca".
 | Resolver banco existente o `UnknownBankError` | `src/lib/drive-structure.ts:254` (`resolveBankFolder`) |
 | Reglas del nombre de banco | `src/lib/drive-structure.ts:52` (`normalizeBankName`) |
 | Estructura banco/año/procesados | `src/lib/drive-structure.ts:288` (`ensureBankYearFolders`) |
-| Decisión de diseño | `docs/architecture.md` → ADR-008 · `specs/drive-structure/design.md` §6 |
+| Decisión de diseño | `docs/architecture.md` → ADR-008 · `specs/04-drive-structure/design.md` §6 |

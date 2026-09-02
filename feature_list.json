@@ -434,7 +434,7 @@
       ],
       "sdd": true,
       "status": "done",
-      "_intent_repartido": "Reparto MECÁNICO del intent que el humano escribió para la feature 10 'myinvestor-parser', partida en dos el 2026-08-11 con su aprobación (70 requirements, muy por encima del tope de ~15 de docs/specs.md §2; y los cinco puntos rojos pendientes eran todos del JSON de producto). Las frases son las SUYAS, literales: no se ha reescrito el QUÉ, solo se ha repartido. El 'por_que' se conserva entero en las dos porque explica la decisión común. Historial del corte: specs/myinvestor-statement/CHANGELOG-respec.md."
+      "_intent_repartido": "Reparto MECÁNICO del intent que el humano escribió para la feature 10 'myinvestor-parser', partida en dos el 2026-08-11 con su aprobación (70 requirements, muy por encima del tope de ~15 de docs/specs.md §2; y los cinco puntos rojos pendientes eran todos del JSON de producto). Las frases son las SUYAS, literales: no se ha reescrito el QUÉ, solo se ha repartido. El 'por_que' se conserva entero en las dos porque explica la decisión común. Historial del corte: specs/10-myinvestor-statement/CHANGELOG-respec.md."
     },
     {
       "id": 11,
@@ -538,7 +538,7 @@
       "id": 13,
       "name": "myinvestor-products",
       "title": "Parser de MyInvestor (2/2): archivos JSON de los productos de inversión (sin BD)",
-      "_intent_repartido": "Reparto MECÁNICO del intent que el humano escribió para la feature 10 'myinvestor-parser', partida en dos el 2026-08-11 con su aprobación (70 requirements, muy por encima del tope de ~15 de docs/specs.md §2; y los cinco puntos rojos pendientes eran todos del JSON de producto). Las frases son las SUYAS, literales: no se ha reescrito el QUÉ, solo se ha repartido. El 'por_que' se conserva entero en las dos porque explica la decisión común. Historial del corte: specs/myinvestor-statement/CHANGELOG-respec.md.",
+      "_intent_repartido": "Reparto MECÁNICO del intent que el humano escribió para la feature 10 'myinvestor-parser', partida en dos el 2026-08-11 con su aprobación (70 requirements, muy por encima del tope de ~15 de docs/specs.md §2; y los cinco puntos rojos pendientes eran todos del JSON de producto). Las frases son las SUYAS, literales: no se ha reescrito el QUÉ, solo se ha repartido. El 'por_que' se conserva entero en las dos porque explica la decisión común. Historial del corte: specs/10-myinvestor-statement/CHANGELOG-respec.md.",
       "intent": {
         "que_quiero": "Que el módulo de MyInvestor —el mismo que ya parsea su extracto en la feature 10— lea también SU SEGUNDA ENTRADA: mis productos de inversión. Un archivo JSON por producto, que preparo yo a mano y dejo en la carpeta del banco en Google Drive, con los campos explícitos que ese tipo de producto necesita. Los productos que tengo son fondos, un ETF, una cartera automatizada y depósitos. De la web del banco puedo sacar, para un fondo, un ETF y la cartera automatizada, el valor de mercado, la ganancia, el tanto por ciento y lo invertido; la cartera trae además el efectivo sin invertir, que queda fuera de cualquier total y es el remanente de mi aportación mensual que aún no se ha invertido. De un depósito puedo sacar su nombre, el importe, la TAE que se me aplica, los intereses brutos y la fecha de vencimiento, pero no la fecha de contratación. La lista exacta de campos la cierro yo antes de implementar; aquí quiero que se proponga a partir de mis muestras reales y que se me marque qué se ha inventado. Quiero que un archivo mal escrito me diga qué archivo es y qué le pasa, sin que se caigan los demás. Quiero ver el resultado en un JSON local para revisarlo. Nada de guardar en base de datos todavía.",
         "por_que": "El modelo de datos de inversiones (feature 9) está esperando en la puerta de aprobación y quiero revisarlo junto a este, porque es al definir los archivos cuando se descubre si al modelo le falta o le sobra algo. Ya ha servido: mirando mis muestras se ha confirmado que el efectivo va aparte del valor de mercado, que un depósito trae dos TAE y solo interesa la que se me aplica, y que el extracto de esta cuenta no trae saldo, así que su saldo habrá que calcularlo. Separar 'entender el archivo' de 'guardarlo' me deja pensar la estructura con calma.",
@@ -1195,7 +1195,7 @@
       "name": "myinvestor-products-to-db",
       "title": "Los 5 productos de MyInvestor entran en la base de datos, como ya entra la cuenta remunerada",
       "intent": {
-        "_procedencia": "Es la FEATURE HERMANA que el humano eligió en la puerta de aprobación de la F26, el 2026-08-20 (punto 1 de specs/savings-account-as-product/decisions.md): entonces decidió que entrara solo Trade Republic y que MyInvestor fuera después, reutilizando todo lo construido. La pidió el 2026-08-21: «si abre la feature para myinvestor». Estado medido ese día: sus 5 .json siguen saliendo skipped en POST /api/import con el motivo «extensión no soportada por el parser de myinvestor», y sus productos no están en la base.",
+        "_procedencia": "Es la FEATURE HERMANA que el humano eligió en la puerta de aprobación de la F26, el 2026-08-20 (punto 1 de specs/26-savings-account-as-product/decisions.md): entonces decidió que entrara solo Trade Republic y que MyInvestor fuera después, reutilizando todo lo construido. La pidió el 2026-08-21: «si abre la feature para myinvestor». Estado medido ese día: sus 5 .json siguen saliendo skipped en POST /api/import con el motivo «extensión no soportada por el parser de myinvestor», y sus productos no están en la base.",
         "que_quiero": "Que mis 5 productos de MyInvestor —mis fondos, mi ETF, mi cartera y mis depósitos— entren en la base de datos igual que ha entrado mi cuenta remunerada, subiendo los .json como cada mes.",
         "por_que": "Es el otro medio de lo mismo: todo lo que dejo en Drive es para acabar en la base. Hoy mis productos de MyInvestor viven solo en un volcado, que es la base de datos falsa que quedamos en quitar.",
         "como_se_que_esta_bien": [
@@ -1498,7 +1498,7 @@
           "La respuesta me dice cuántos movimientos hay en total para lo que he pedido, no solo los de la página que me devuelve.",
           "Los totales que vienen en la respuesta son los del filtro que he pedido, no los de toda la base de datos.",
           "Si no pido ningún filtro, sigo pudiendo leer los movimientos, pero paginados: nunca más una respuesta de 1520.",
-          "Una aportación mía a una cuenta de inversión no cuenta como gasto en esos totales: eso es dinero que sigue siendo mío, no dinero que me he gastado."
+          "Una aportación mía a una cuenta de inversión no cuenta como gasto, y un traspaso entre mis propias cuentas no cuenta ni como gasto ni como ingreso: en los dos casos el dinero sigue siendo mío."
         ],
         "que_no_quiero": [
           "No quiero que cambie la forma de cada movimiento: los campos que ya vienen se quedan como están.",
@@ -1511,16 +1511,17 @@
           "El límite por defecto y el máximo por página."
         ],
         "_avisos_tecnicos": [
-          "Cierra el cabo suelto 8 del roadmap: computeTotals (src/modules/movements/movements.service.ts:202) NO excluye hoy los movimientos con productId != null. Es el único sitio donde vive esa suma.",
+          "Cierra el cabo suelto 8 del roadmap: computeTotals (src/modules/movements/movements.service.ts:202) debe excluir los movimientos con productId != null Y los movimientos con transferId != null. Las dos exclusiones ya están decididas en docs/data-model.md §Totales; hoy las dos columnas están a NULL en el 100% de las filas, así que no cambia ningún número visible hasta que existan sus escritores.",
           "GET /api/movements es hoy read-only a propósito y así se queda (src/modules/movements/movements.routes.ts).",
-          "Medido el 2026-09-01: 1520 movimientos, los 1520 en pending_review y ninguno con categoría."
+          "Medido el 2026-09-01: 1520 movimientos, los 1520 en pending_review y ninguno con categoría.",
+          "Corregido por el humano el 2026-09-02: un traspaso entre cuentas propias no es ni gasto ni ingreso, y eso YA estaba decidido en docs/data-model.md — sus dos apuntes son movimientos ordinarios enlazados por Movement.transferId, y los totales globales no cuentan un movimiento con transferId != null (docs/data-model.md, §Traspasos y §Totales). El tipo neutral NO es eso: neutral es solo el importe cero. OJO, medido el 2026-09-02: hoy NADA escribe transferId (0 de 1520 movimientos lo tienen); su escritor es la feature de detección de traspasos prevista en el modelo y aún sin escribir."
         ]
       },
       "acceptance": [
         "GET /api/movements acepta filtros por cuenta, rango de fechas, tipo y estado, combinables entre sí.",
         "La respuesta viene paginada, con el total de coincidencias además de la página.",
         "La respuesta trae los totales (entradas, salidas y diferencia) calculados SOBRE EL FILTRO, no sobre toda la tabla.",
-        "computeTotals excluye los movimientos con productId != null, con test que lo demuestra.",
+        "computeTotals excluye los movimientos con productId != null y los movimientos con transferId != null, con tests que lo demuestran.",
         "Un filtro con valores imposibles (fecha mal escrita, cuenta inexistente) responde con error de petición, no con 500 ni con lista vacía silenciosa.",
         "docs/api-contract.md actualizado con los parámetros, la paginación y la forma de los totales.",
         "Ninguna ruta existente cambia lo que devolvía cuando no se le pasa ningún filtro, salvo la paginación."
@@ -1534,17 +1535,16 @@
       "title": "Poner categorías a los movimientos, empezando por una lista genérica",
       "intent": {
         "_procedencia": "Dictado por el humano en la sesión del 2026-09-01, al elegir el siguiente paso con 35/35 features cerradas. El humano pidió empezar por las categorías más genéricas y dejar las concretas para después, y encargó que la lista saliera de sus propios movimientos. La lista de abajo es el resultado de clasificar sus 1520 movimientos reales el 2026-09-01: esas reglas cubrían el 75% de ellos.",
-        "que_quiero": "Poder crear categorías y ponérselas a un movimiento. Arrancar con una lista genérica que ya sirva desde el primer día, y poder afinarla después sin tocar código. Y que las categorías que NO son gasto de verdad —mover dinero entre mis propias cuentas, aportar a una inversión, pagar la tarjeta— no ensucien mis totales de gasto.",
+        "que_quiero": "Poder crear categorías y ponérselas a un movimiento. Arrancar con una lista genérica que ya sirva desde el primer día, y poder afinarla después sin tocar código.",
         "por_que": "Un total de gastos sin categorías es un solo número que no dice nada. Y hoy no hay ni forma de crear una categoría: la tabla está vacía y su endpoint es solo de lectura.",
         "como_se_que_esta_bien": [
           "Puedo crear una categoría, listarlas y cambiarle el nombre a una sin tocar código ni base de datos a mano.",
           "Puedo ponerle una categoría a un movimiento y quitársela.",
           "Al empezar, la lista genérica ya está dada de alta y no tengo que escribirla yo entera.",
-          "Una categoría marcada como «no es gasto» (traspaso entre mis cuentas, aportación a inversión, pago de tarjeta) NO suma en el total de gastos.",
           "Un movimiento que ya he revisado puedo darlo por bueno, y se distingue de los que no he mirado todavía.",
           "Borrar o cambiar una categoría no borra ningún movimiento."
         ],
-        "_lista_generica_propuesta": "Salida del análisis de los 1520 movimientos reales del 2026-09-01, sin nombres de comercio: Nómina · Otros ingresos · Vivienda · Suministros · Telefonía e internet · Supermercado · Comer y beber fuera · Compras · Transporte y vehículo · Salud y deporte · Suscripciones · Impuestos y administración · Ocio · Transferencias a personas · Traspaso entre mis cuentas (no es gasto) · Aportación a inversión (no es gasto) · Pago de tarjeta (no es gasto) · Sin categoría.",
+        "_lista_generica_propuesta": "Salida del análisis de los 1520 movimientos reales del 2026-09-01, sin nombres de comercio. De gasto: Vivienda · Suministros · Telefonía e internet · Supermercado · Comer y beber fuera · Compras · Transporte y vehículo · Salud y deporte · Suscripciones · Impuestos y administración · Ocio · Pago de tarjeta · Transferencias a personas. De ingreso: Nómina · Intereses · Otros ingresos. Un movimiento sin categoría simplemente lleva categoryId a NULL: «Sin categoría» no es una categoría. Los traspasos entre cuentas propias y las aportaciones a inversión NO son categorías: los marcan transferId y productId (ver avisos).",
         "que_no_quiero": [
           "No quiero categorías automáticas todavía: primero quiero poder ponerlas a mano y ver qué sale.",
           "No quiero subcategorías por ahora.",
@@ -1552,20 +1552,22 @@
           "No quiero que se me imponga una lista cerrada: la de arranque es un punto de partida, no una jaula."
         ],
         "delego_en_agente": [
-          "Cómo se marca que una categoría no cuenta como gasto y cómo se siembra la lista de arranque.",
+          "Cómo se siembra la lista de arranque de forma idempotente.",
           "Si el estado revisado/no revisado viaja en el mismo sitio que la categoría o aparte."
         ],
         "_avisos_tecnicos": [
           "Cierra el cabo suelto 3 del roadmap: todo lo importado nace pending_review y hoy nada lo pasa a confirmed.",
           "La columna Movement.categoryId y el modelo Category existen desde la feature 8; hoy /api/categories solo lee y la tabla está VACÍA (medido el 2026-09-01: 0 categorías, 0 movimientos categorizados).",
-          "Los movimientos NO se crean ni se borran por API (specs/data-model/design.md §5): esta feature no abre esa puerta, solo actualiza dos campos de uno que ya existe."
+          "Los movimientos NO se crean ni se borran por API (specs/08-data-model/design.md §5): esta feature no abre esa puerta, solo actualiza dos campos de uno que ya existe.",
+          "El modelo Category ya trae kind (expense | income) y parentId para subcategorías (sin usar por ahora): la lista de arranque respeta ese kind y no inventa un tercer tipo.",
+          "Corregido por el humano el 2026-09-02: un traspaso entre cuentas propias no es ni gasto ni ingreso, y eso YA estaba decidido en docs/data-model.md — sus dos apuntes son movimientos ordinarios enlazados por Movement.transferId, y los totales globales no cuentan un movimiento con transferId != null (docs/data-model.md, §Traspasos y §Totales). El tipo neutral NO es eso: neutral es solo el importe cero. OJO, medido el 2026-09-02: hoy NADA escribe transferId (0 de 1520 movimientos lo tienen); su escritor es la feature de detección de traspasos prevista en el modelo y aún sin escribir. Por eso esta feature NO lleva categorías de traspaso ni de aportación, ni ninguna marca «no es gasto»: eso no va por categorías."
         ]
       },
       "acceptance": [
         "Crear, listar y renombrar categorías por API, con nombre único y validación.",
         "Se puede asignar y quitar la categoría de un movimiento existente, sin tocar ningún otro campo suyo.",
         "Se puede marcar un movimiento como revisado (pending_review -> confirmed) y volver atrás.",
-        "Una categoría marcada como «no es gasto» queda excluida del total de gastos de la feature 36, con test.",
+        "La lista de arranque respeta Category.kind (expense | income); no existe ninguna marca «no es gasto» ni categoría de traspaso o aportación.",
         "La lista genérica de arranque queda sembrada de forma idempotente: sembrarla dos veces no duplica nada.",
         "Borrar una categoría en uso no borra movimientos: los deja sin categoría o lo impide, y está decidido cuál de las dos.",
         "docs/api-contract.md y docs/data-model.md actualizados."
@@ -1584,7 +1586,7 @@
         "como_se_que_esta_bien": [
           "Me dice el total de dinero y el desglose por cuenta, con el saldo real de cada una.",
           "Me dice cuánto entró, cuánto salió y cuánto ahorré en el periodo que pido, no solo en el mes en curso.",
-          "El ahorro del mes cuadra con lo que entró menos lo que salió, y mover dinero de una cuenta mía a otra NO lo cambia.",
+          "El ahorro del mes cuadra con lo que entró menos lo que salió, y mover dinero de una cuenta mía a otra no cuenta ni como entrada ni como salida: no cambia nada.",
           "Puedo pedir el mes que quiera, no solo el último.",
           "Si un mes no tiene movimientos, me lo dice con ceros y no con un error."
         ],
@@ -1600,7 +1602,7 @@
         "_avisos_tecnicos": [
           "El saldo real por cuenta ya existe desde la feature 31 (Account.balanceAnchor más los movimientos posteriores); esta feature LEE, no recalcula por su cuenta.",
           "Reutiliza los totales de la feature 36 en vez de escribir una segunda suma: dos sumas distintas del mismo dinero divergen.",
-          "Un traspaso entre cuentas del humano aparece como DOS movimientos (uno en cada extracto): si se cuentan como ingreso y gasto, el ahorro sale bien, pero los totales de entradas y salidas quedan inflados. Decidir y dejarlo escrito."
+          "Corregido por el humano el 2026-09-02: un traspaso entre cuentas propias no es ni gasto ni ingreso, y eso YA estaba decidido en docs/data-model.md — sus dos apuntes son movimientos ordinarios enlazados por Movement.transferId, y los totales globales no cuentan un movimiento con transferId != null (docs/data-model.md, §Traspasos y §Totales). El tipo neutral NO es eso: neutral es solo el importe cero. OJO, medido el 2026-09-02: hoy NADA escribe transferId (0 de 1520 movimientos lo tienen); su escritor es la feature de detección de traspasos prevista en el modelo y aún sin escribir. Consecuencia para esta vista: hasta que exista ese escritor, un traspaso contará como entrada en una cuenta y salida en la otra — el ahorro sale bien porque se cancelan, pero entradas y salidas quedan infladas. Si eso importa para estrenar la vista, la detección de traspasos tiene que ir antes; lo decide el humano."
         ]
       },
       "acceptance": [
@@ -1608,7 +1610,7 @@
         "Devuelve entradas, salidas y ahorro del periodo pedido, reutilizando el cálculo de totales de la feature 36.",
         "El periodo es un parámetro; sin él, el mes en curso.",
         "Un periodo sin movimientos devuelve ceros y 200, nunca error.",
-        "Las categorías «no es gasto» de la feature 37 quedan fuera de entradas y salidas, con test.",
+        "Los movimientos con transferId != null o productId != null quedan fuera de entradas y salidas, con test (reutilizando la exclusión de la feature 36).",
         "docs/api-contract.md actualizado."
       ],
       "sdd": false,

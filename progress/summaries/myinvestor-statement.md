@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-11
 Intención original: `feature_list.json` → feature `myinvestor-statement`, bloque `intent`
-Spec (SDD): [`specs/myinvestor-statement/`](../../specs/myinvestor-statement/decisions.md)
+Spec (SDD): [`specs/10-myinvestor-statement/`](../../specs/10-myinvestor-statement/decisions.md)
 
 ## Qué hace ahora la app que antes no
 
@@ -135,7 +135,7 @@ Punto por punto del `como_se_que_esta_bien` que escribiste:
 ## Decisiones que se tomaron por ti
 
 Lo que en el spec estaba marcado como `(delegado)` o `(añadido)` y tú aprobaste en
-[`decisions.md`](../../specs/myinvestor-statement/decisions.md):
+[`decisions.md`](../../specs/10-myinvestor-statement/decisions.md):
 
 - **(añadido) El resultado dice explícitamente «aquí no hay IBAN».** Tu extracto no lo
   trae. Consecuencia práctica, que sigue en pie: el alta automática de cuenta necesita

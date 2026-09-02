@@ -31,14 +31,18 @@ Cada feature con `"sdd": true` tiene una carpeta dedicada en cuanto deja
 `pending`:
 
 ```
-specs/<feature-name>/
+specs/<nn>-<feature-name>/
 ├── decisions.md      # PARA EL HUMANO: una página, las decisiones y nada más
 ├── requirements.md   # QUÉ se necesita (EARS notation)
 ├── design.md         # CÓMO se construirá (decisiones técnicas)
 └── tasks.md          # PASOS concretos a implementar
 ```
 
-El `feature-name` coincide con el campo `name` de `feature_list.json`.
+El `feature-name` coincide con el campo `name` de `feature_list.json`, y `nn`
+es el `id` de la feature con **dos dígitos** (`08-data-model`,
+`31-real-account-balance`): así la carpeta se localiza por el número y la lista
+sale ordenada. Decidido por el humano el 2026-09-02; `./init.sh` exige ese
+nombre exacto en su paso 3.
 
 `decisions.md` sigue la plantilla de `docs/decisions-template.md`. Los otros
 tres son material del `implementer` y del `reviewer`.
@@ -114,7 +118,7 @@ intent (humano) → acceptance (derivado) → requirements/design/tasks (spec) �
 
 El flujo automático se detiene **una vez**: cuando el `spec-author` termina
 sus cuatro archivos, marca la feature como `spec_ready` y para. El humano
-lee **`specs/<feature>/decisions.md` y nada más**, y dice "aprobado" (o pide
+lee **`specs/<nn>-<feature>/decisions.md` y nada más**, y dice "aprobado" (o pide
 cambios).
 
 Lo que el humano revisa en esa hoja son dos cosas:

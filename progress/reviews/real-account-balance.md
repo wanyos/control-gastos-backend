@@ -142,7 +142,7 @@ sigue devolviendo el `balanceAfter` cuando es más reciente que el ancla.
   `src/modules/openbank/openbank.statement.parser.test.ts`, R14 en
   `src/modules/accounts/accounts.test.ts`, R15 en
   `src/modules/import/import.local.service.test.ts`.
-- **Las 23 tasks están `[x]`** en `specs/real-account-balance/tasks.md`, y las 23
+- **Las 23 tasks están `[x]`** en `specs/31-real-account-balance/tasks.md`, y las 23
   tienen rastro en el código.
 - **Los tres tests que cambiaron de resultado: ninguno se aflojó.**
   - **T10** (`movements.test.ts:113` y `:133`): la mitad «anterior» conserva

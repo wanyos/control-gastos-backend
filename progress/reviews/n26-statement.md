@@ -143,7 +143,7 @@ verificado por el revisor: existen `var/drive-read/` y `var/parsed/`, luego la
 **capa de comparación está activa** (importes y trigramas contra las capturas
 reales, `var/drive-read/N26/2026/N26-2026-08-17.csv` incluida) y no ha encontrado
 nada. `grep` de `no-real-data-ok` en todo el repo: **ningún marcador nuevo**; los
-que hay son de `docs/`, `specs/investments-data-model/` y del propio guardián,
+que hay son de `docs/`, `specs/09-investments-data-model/` y del propio guardián,
 todos anteriores. Los fixtures son sintéticos y en memoria, el IBAN es el público
 de la documentación, no hay red en ningún test.
 

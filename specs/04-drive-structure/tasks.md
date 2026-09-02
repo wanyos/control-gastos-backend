@@ -222,7 +222,7 @@
       `docs/verification.md`) para **R1-R28**, anotando explícitamente que **R20 y
       R21 son requirements de proceso** verificados por checklist del reviewer, no
       por test (excepción consciente, precedente: R21/R22/R23 de
-      `specs/drive-connection/`). Cubre: R22 (y cierra la trazabilidad de todos).
+      `specs/03-drive-connection/`). Cubre: R22 (y cierra la trazabilidad de todos).
 
 ## Smoke test del humano (Nivel 3 — NO es del implementer)
 

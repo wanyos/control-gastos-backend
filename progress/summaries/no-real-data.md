@@ -59,7 +59,7 @@ que están gitignoreadas, y cuando no están **se salta la comparación diciénd
 | --- | --- |
 | Tests y fixtures | `bankinter.parser.test.ts`, `accounts.test.ts`, `movements.test.ts`, `import.service.test.ts`, `investments.model.test.ts`, `myinvestor.fixture.ts`, `myinvestor.format.ts` (comentario), `myinvestor.format.test.ts`, `myinvestor.statement.parser.test.ts`, `myinvestor.product.parser.test.ts` |
 | Documentación | `docs/data-model.md`, `docs/architecture.md` (ADR-012), `docs/api-contract.md`, `docs/myinvestor-product-files.md` |
-| Specs | `specs/data-model/`, `specs/investments-data-model/`, `specs/myinvestor-statement/`, `specs/myinvestor-products/`, `specs/import/` |
+| Specs | `specs/08-data-model/`, `specs/09-investments-data-model/`, `specs/10-myinvestor-statement/`, `specs/13-myinvestor-products/`, `specs/12-import/` |
 | Bitácora | `progress/current.md`, `progress/history.md`, 7 reviews y 3 resúmenes |
 | Tu propio texto | `feature_list.json` — **una** línea del `intent` de la F13 (una cifra tuya usada como ejemplo de formato: cambió el número, no el QUÉ) |
 

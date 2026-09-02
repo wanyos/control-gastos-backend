@@ -70,7 +70,7 @@ dándolos por buenos porque el informe lo diga.
 
 ## Tasks completas (SDD)
 
-Las **18** tasks vivas de [`tasks.md`](../../specs/myinvestor-statement/tasks.md) están
+Las **18** tasks vivas de [`tasks.md`](../../specs/10-myinvestor-statement/tasks.md) están
 `[x]` y verificadas contra el disco: T1-T6, T9-T12, T14-T16 y T18-T22. T7, T8, T13 y
 T17 no existen aquí: se fueron enteras a la F13, y así está anotado en el propio
 `tasks.md`. **No queda ninguna sin marcar.**
@@ -245,7 +245,7 @@ feature; que lo unifique el próximo trabajo que toque el endpoint de Bankinter.
 - [x] **C6 — Coherencia con el proyecto hermano:** el endpoint nuevo y su modelo quedan
       en `docs/api-contract.md`, la fuente de verdad que consume el frontend. No hay
       rutas ni tipos inventados fuera del contrato.
-- [x] **C7 — SDD:** `specs/myinvestor-statement/` con los cuatro archivos;
+- [x] **C7 — SDD:** `specs/10-myinvestor-statement/` con los cuatro archivos;
       `decisions.md` cabe en una página, tiene sus bloques y **ningún punto rojo**;
       requirements en EARS; 34 requirements vivos, por encima del tope de ~15 pero con la
       razón dicha explícitamente y ya actuada (la feature se partió en dos por eso,
@@ -278,7 +278,7 @@ la F13 y no se ha versionado ni un dato financiero.
 
 ## Anotaciones no bloqueantes (para quien venga detrás)
 
-1. `specs/myinvestor-statement/requirements.md`, R2 — la *nota de verificación* está mal
+1. `specs/10-myinvestor-statement/requirements.md`, R2 — la *nota de verificación* está mal
    redactada («ningún otro archivo de `src/` importa el módulo») y contradice a
    `design.md` §1 y a R51. Defecto del spec, ya resuelto en el código con una lista
    blanca de un solo elemento; corregir la frase si ese spec se reutiliza de plantilla.

@@ -1,7 +1,7 @@
 # Plantilla de Hoja de Decisiones
 
 > **Esto lo escribe el SPEC-AUTHOR, para el humano, junto a los otros tres
-> archivos del spec.** Un archivo por feature en `specs/<feature>/decisions.md`.
+> archivos del spec.** Un archivo por feature en `specs/<nn>-<feature>/decisions.md`.
 >
 > Es la pieza de REVISIÓN, la que el humano lee en la puerta de aprobación.
 > Existe porque el spec se escribe para el agente pero se le da a revisar al
@@ -21,7 +21,7 @@
 >   decir qué pasa si no, no es revisable.
 > - En cristiano, sin jerga. El humano no va a abrir los otros tres archivos.
 > - Enlaces clicables a archivo y línea cuando cites código, con la ruta relativa
->   a la propia hoja (desde `specs/<feature>/` son dos niveles: `../../src/...`).
+>   a la propia hoja (desde `specs/<nn>-<feature>/` son dos niveles: `../../src/...`).
 
 ---
 

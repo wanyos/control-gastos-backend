@@ -23,7 +23,7 @@ No me he fiado de los partes. He extraído **todos** los valores de sus tres cap
 porcentajes, principal, las dos TAE, intereses brutos, fecha de vencimiento y el nombre literal
 del depósito— y he buscado **cada uno** en su **forma inglesa** (`1234.56`) y en su **forma
 española** (`1.234,56`), más la fecha en los dos formatos, sobre `src/`, `docs/`,
-`specs/myinvestor-products/` y `progress/`.
+`specs/13-myinvestor-products/` y `progress/`.
 
 **En la superficie de la F13 no queda ni uno.** Limpios:
 
@@ -32,7 +32,7 @@ española** (`1.234,56`), más la fecha en los dos formatos, sobre `src/`, `docs
   ADR-016** de `docs/architecture.md` — este último llevaba dos importes suyos que **yo no
   detecté en la primera pasada**; el implementer lo encontró y lo saneó. Anotado como acierto
   suyo y como fallo de cobertura mío.
-- `specs/myinvestor-products/` — los **cinco** archivos, incluido el nombre literal del depósito
+- `specs/13-myinvestor-products/` — los **cinco** archivos, incluido el nombre literal del depósito
   en `CAMPOS-cerrados.md`, y las cifras que también llevaban `requirements.md`, `tasks.md` y
   `decisions.md`. Los ejemplos van marcados «ej. inventado» / 🔒, que es lo que evita que alguien
   los «corrija» de vuelta al original.
@@ -164,7 +164,7 @@ guarden relación con las capturas — ni el mismo valor, ni el mismo valor desp
 
 ### 2. 🔴 BLOQUEANTE — El mismo leak está en el spec, y el implementer no debe tocarlo solo
 
-`specs/myinvestor-products/design.md` §7.1, §7.2 y §7.3 y `CAMPOS-cerrados.md` llevan las mismas
+`specs/13-myinvestor-products/design.md` §7.1, §7.2 y §7.3 y `CAMPOS-cerrados.md` llevan las mismas
 cifras reales **y además el nombre literal de su depósito** (`design.md:285`,
 `CAMPOS-cerrados.md:50`), que sí aparece tal cual en su captura. Ya están commiteados. **Para el
 leader / `spec_author`:** sanearlos en la misma tanda, o la corrección del punto 1 se deshace la
@@ -206,7 +206,7 @@ documentación». Los nombres sí, las cifras no.
   `architecture.test.ts` incluye ya el parser nuevo.
 - **ADR:** ✅ el ADR-016 no pisa a nadie — el 015 es el de la F12 y el implementer lo detectó.
   **Roadmap coherente.**
-- **La F9 intacta:** ✅ `specs/investments-data-model/` y `prisma/` sin un solo cambio.
+- **La F9 intacta:** ✅ `specs/09-investments-data-model/` y `prisma/` sin un solo cambio.
 - **Alcance (T19b):** ✅ `package.json`, `pnpm-lock.yaml`, `.gitignore` y **`myinvestor.routes.ts`**
   sin tocar; cero dependencias nuevas.
 - **Trazabilidad (C7):** ✅ los 30 requirements con test concreto verificado en el árbol;

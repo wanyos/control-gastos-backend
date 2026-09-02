@@ -71,8 +71,8 @@ implementable de una pieza.
 # El corte, ejecutado (2026-08-11)
 
 > **El humano aprobó la propuesta de arriba.** La carpeta `specs/myinvestor-parser/` ya
-> no existe: se movió a `specs/myinvestor-statement/` (este archivo se queda aquí) y la
-> mitad de productos salió a `specs/myinvestor-products/`. `feature_list.json` lo lleva
+> no existe: se movió a `specs/10-myinvestor-statement/` (este archivo se queda aquí) y la
+> mitad de productos salió a `specs/13-myinvestor-products/`. `feature_list.json` lo lleva
 > el `leader`; el `spec-author` no lo ha tocado.
 >
 > ⚠️ **Sobre `git mv`:** no fue posible porque `specs/myinvestor-parser/` **nunca llegó a
@@ -130,7 +130,7 @@ sección, para que se pueda aprobar de un vistazo.
 
 ## ✅ Enlaces rotos del resto del repo — arreglados (2026-08-11)
 
-> El humano levantó la veda sobre `specs/investments-data-model/` (F9, ya `done`) para
+> El humano levantó la veda sobre `specs/09-investments-data-model/` (F9, ya `done`) para
 > reapuntarlos. **Solo se han tocado punteros, nunca decisiones**, y de paso se han
 > convertido de backticks a **enlaces markdown clicables**, que es la convención del
 > repo.
@@ -139,9 +139,9 @@ sección, para que se pueda aprobar de un vistazo.
 
 | Archivo | Refs | → `myinvestor-statement` | → `myinvestor-products` | → las dos |
 |---|---|---|---|---|
-| `specs/investments-data-model/design.md` | 11 | 4 (L505 §3.4/§3.5, L592+L595 §2, L648) | 6 (L211, L276, L330, L361, L408, L720) | 1 (L26) |
-| `specs/investments-data-model/requirements.md` | 8 | 2 (L384+L386 §2) | 5 (L27, L150, L541, L577, L581) | 1 (L537, solo el nombre) |
-| `specs/investments-data-model/tasks.md` | 2 | — | — | 2 (L23, L223) |
+| `specs/09-investments-data-model/design.md` | 11 | 4 (L505 §3.4/§3.5, L592+L595 §2, L648) | 6 (L211, L276, L330, L361, L408, L720) | 1 (L26) |
+| `specs/09-investments-data-model/requirements.md` | 8 | 2 (L384+L386 §2) | 5 (L27, L150, L541, L577, L581) | 1 (L537, solo el nombre) |
+| `specs/09-investments-data-model/tasks.md` | 2 | — | — | 2 (L23, L223) |
 | `docs/roadmap.md` | 1 | 1 (L301) | — | — |
 
 **Criterio:** `closedAt`, plantillas de producto, formato de números y fechas,
@@ -183,7 +183,7 @@ de su `decisions.md`.
 # Las cuatro decisiones del humano sobre la F13, propagadas (2026-08-11)
 
 > **Corrección, no spec nuevo** (`docs/specs.md` §Regla 3). Solo se ha tocado
-> [`specs/myinvestor-products/`](../myinvestor-products/); la F13 sigue en `spec_ready`,
+> [`specs/13-myinvestor-products/`](../13-myinvestor-products/); la F13 sigue en `spec_ready`,
 > `feature_list.json` no se ha tocado, y **nada de esta carpeta ni del código de la F10
 > se ha modificado**. La numeración `R<n>` se ha mantenido: lo que cambia se ha editado
 > en su sitio y lo nuevo continúa la numeración global (**R77**).
@@ -242,8 +242,8 @@ anotado tal cual en `decisions.md`.
 ## Lo único que sigue bloqueando la F13
 
 **La lista de campos.** Se ha escrito para el humano, en una página, en
-`specs/myinvestor-products/CAMPOS-para-cerrar.md` (⚠️ **renombrado el 2026-08-11 a**
-[`CAMPOS-cerrados.md`](../myinvestor-products/CAMPOS-cerrados.md), ver la sección
+`specs/13-myinvestor-products/CAMPOS-para-cerrar.md` (⚠️ **renombrado el 2026-08-11 a**
+[`CAMPOS-cerrados.md`](../13-myinvestor-products/CAMPOS-cerrados.md), ver la sección
 siguiente):
 una tabla por tipo, con qué es cada campo, si es obligatorio, su origen y **qué hay que
 teclear cada mes**. **No he decidido nada por él**: las cuatro casillas marcadas 🟥/🟠 y
@@ -255,7 +255,7 @@ resueltas.
 # Las tres casillas de la lista de campos, cerradas (2026-08-11)
 
 > **Corrección, no spec nuevo** (`docs/specs.md` §Regla 3). Solo
-> [`specs/myinvestor-products/`](../myinvestor-products/). La F13 sigue en `spec_ready`,
+> [`specs/13-myinvestor-products/`](../13-myinvestor-products/). La F13 sigue en `spec_ready`,
 > `feature_list.json` intacto, `src/` intacto, esta carpeta intacta salvo este archivo.
 > **Ni un `R<n>` nuevo ni renumerado:** las tres decisiones confirman lo que la spec ya
 > decía, así que solo cambia el texto que las presentaba como abiertas.
@@ -281,7 +281,7 @@ resueltas.
    seguidos" —eso son dos `date` distintas— sino **la copia duplicada** (`fondo.json` +
    `fondo (1).json` que Drive crea al subir dos veces), que es el escenario de ADR-009 y
    el más probable en los dos tipos.
-5. **`CAMPOS-para-cerrar.md` → [`CAMPOS-cerrados.md`](../myinvestor-products/CAMPOS-cerrados.md).**
+5. **`CAMPOS-para-cerrar.md` → [`CAMPOS-cerrados.md`](../13-myinvestor-products/CAMPOS-cerrados.md).**
    Se conserva (es lo único que responde *"¿cuánto me cuesta esto cada mes?"*, que ni
    `decisions.md` ni `design.md` §7.3 contestan) pero **reescrito como registro**: título
    y encabezado dicen que no se le pide nada, desaparecen las marcas 🟥/🟠, la columna

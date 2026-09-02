@@ -77,7 +77,7 @@ salidas de dos pasadas manuales.
 ## C7 — Spec Driven Development (solo si la feature tiene `"sdd": true`)
 
 - [ ] Toda feature con `"sdd": true` en estado `spec_ready`, `in_progress`
-      o `done` tiene su carpeta `specs/<name>/` con los archivos técnicos:
+      o `done` tiene su carpeta `specs/<nn>-<name>/` con los archivos técnicos:
       `requirements.md`, `design.md`, `tasks.md`.
 - [ ] Si la feature está en `spec_ready` o `in_progress`, la carpeta tiene
       además `decisions.md` — son **4 archivos**, no 3. (No se exige en

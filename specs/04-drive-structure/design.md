@@ -432,7 +432,7 @@ El `error-handler` central **no cambia**: mapea cualquier `AppError` por su
 `{ statusCode: 404, code: 'UNKNOWN_BANK', message }` el día que un endpoint lo
 propague. Hoy nadie lo propaga por HTTP (servicio interno).
 
-## 8. Estrategia de test SIN red (hereda `specs/drive-connection/design.md` §8)
+## 8. Estrategia de test SIN red (hereda `specs/03-drive-connection/design.md` §8)
 
 **Postura declarada por la feature 3 y adoptada aquí:** *seam inyectable + doble en
 el seam para los tests automáticos; el contacto real con Drive es smoke manual

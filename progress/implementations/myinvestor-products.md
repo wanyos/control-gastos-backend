@@ -31,11 +31,11 @@
 | [`docs/architecture.md`](../../docs/architecture.md) | **ADR-016** + árbol de carpetas del módulo |
 | [`docs/roadmap.md`](../../docs/roadmap.md) | fila de E4 «MyInvestor · productos» (decía que le esperaban 5 puntos rojos que ya no existen) |
 | [`progress/current.md`](../current.md) | nota T17 (la F9 no cambia) y bitácora |
-| [`specs/myinvestor-products/tasks.md`](../../specs/myinvestor-products/tasks.md) | las 18 tasks marcadas `[x]` |
+| [`specs/13-myinvestor-products/tasks.md`](../../specs/13-myinvestor-products/tasks.md) | las 18 tasks marcadas `[x]` |
 
 **`myinvestor.routes.ts` NO se ha tocado**, como manda el diseño: un solo disparo.
 Tampoco `prisma/`, `package.json`, `pnpm-lock.yaml`, `.gitignore`, `src/lib/`,
-`src/errors/`, el módulo de otro banco ni `specs/investments-data-model/`.
+`src/errors/`, el módulo de otro banco ni `specs/09-investments-data-model/`.
 
 ## Decisiones tomadas
 
@@ -172,7 +172,7 @@ todos los archivos de esta feature: **cero coincidencias**. `./init.sh` verde
 
 **Lo que NO he tocado** (no es mío y sigue teniendo sus cifras):
 
-- `specs/myinvestor-products/design.md` §7 y `CAMPOS-cerrados.md` — los sanea el
+- `specs/13-myinvestor-products/design.md` §7 y `CAMPOS-cerrados.md` — los sanea el
   `spec_author` en paralelo (punto 2 del review).
 - **La fuga es más ancha de lo que se ha corregido:** `docs/data-model.md`,
   `docs/architecture.md` (ADR-012), `src/modules/investments/investments.model.test.ts`,
@@ -214,7 +214,7 @@ guardaba en LF).
    y el parser la lee. Es prosa de un comentario de la F10, no de esta feature.
 4. **Enlaces del spec de la F9** a la antigua `specs/myinvestor-parser/`: hay que
    repartirlos entre `myinvestor-statement` y `myinvestor-products` (anotado como manda
-   T17; `specs/investments-data-model/` no se ha tocado).
+   T17; `specs/09-investments-data-model/` no se ha tocado).
 5. **Nadie guarda todavía los productos.** Cuando exista esa feature, su regla de
    recarga es **sobrescribir** (la contraria a la del importador de movimientos) y le
    toca escribir `InvestmentProduct.closedAt` a partir del campo del archivo.

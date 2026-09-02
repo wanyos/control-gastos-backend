@@ -18,7 +18,7 @@
 > `myinvestor-parser` hacía dos cosas; esta se queda con **el extracto CSV de la cuenta
 > corriente**. Los archivos JSON de producto de inversión son la **F13
 > `myinvestor-products`**
-> ([`../myinvestor-products/`](../myinvestor-products/requirements.md)), que se lleva
+> ([`../13-myinvestor-products/`](../13-myinvestor-products/requirements.md)), que se lleva
 > **R21-R46, R48, R53, R60 y R63** y los **cinco puntos 🔴**. La numeración `R<n>` NO se
 > ha tocado: los huecos que verás abajo (R21-R46, R48, R53, R60, R63) son ellos.
 >
@@ -255,7 +255,7 @@ nombre de archivo y cuyos conceptos contienen cadenas con forma de IBAN.
 ## D-F. Los archivos JSON de producto → **F13 `myinvestor-products`**
 
 > **R21-R46, R48, R53, R60 y R63 viven ahora en
-> [`../myinvestor-products/requirements.md`](../myinvestor-products/requirements.md).**
+> [`../13-myinvestor-products/requirements.md`](../13-myinvestor-products/requirements.md).**
 > No se han renumerado: buscar `R33` allí sigue dando el mismo requirement que antes.
 >
 > Lo único de aquel bloque que se queda **aquí** es lo que construye el **servicio**, que
@@ -468,7 +468,7 @@ test de tipos que comprueba que el resultado del parser encaja en `ParsedStateme
 
 Los puntos del `intent` que caen de este lado del corte (los de los archivos de producto
 —5 a 12— se cubren en
-[`../myinvestor-products/requirements.md`](../myinvestor-products/requirements.md)):
+[`../13-myinvestor-products/requirements.md`](../13-myinvestor-products/requirements.md)):
 
 | # | Frase del `intent` | Requirements que la cubren |
 | --- | --- | --- |
@@ -497,7 +497,7 @@ de la F11).
 ### 🟥 AÑADIDO — cosas que el humano NO pidió y que introduce el agente
 
 > **Tres** de las ocho que quedaban vivas tras el corte caen de este lado; las otras
-> cinco están en [`../myinvestor-products/`](../myinvestor-products/requirements.md).
+> cinco están en [`../13-myinvestor-products/`](../13-myinvestor-products/requirements.md).
 > Ninguna de estas tres llega a punto 🔴: no cambian nada de lo que el humano escribe ni
 > ve, y su consecuencia está dicha en `decisions.md`.
 

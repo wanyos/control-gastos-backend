@@ -25,11 +25,11 @@
 >
 > 🔗 **Reconciliado con la antigua feature 10 `myinvestor-parser`**, que ya definió
 > esos formatos y que desde el 2026-08-11 está **partida en dos**: el extracto `.csv`
-> del banco es [`specs/myinvestor-statement/`](../myinvestor-statement/design.md) y
+> del banco es [`specs/10-myinvestor-statement/`](../10-myinvestor-statement/design.md) y
 > **el JSON por producto** —con plantillas en `docs/myinvestor-product-files.md`— es
-> [`specs/myinvestor-products/`](../myinvestor-products/design.md). El balance completo
+> [`specs/13-myinvestor-products/`](../13-myinvestor-products/design.md). El balance completo
 > para este esquema está en
-> [`myinvestor-products/design.md` §12](../myinvestor-products/design.md).
+> [`myinvestor-products/design.md` §12](../13-myinvestor-products/design.md).
 > **Se revisaba en la misma puerta que esta.** Además el humano
 > aportó **muestras reales del banco** (`var/drive-read/myinvestor/2026/`,
 > gitignoreadas), que confirman el modelo **aritméticamente**.
@@ -214,7 +214,7 @@ porque son el cimiento de lo que viene, y se anotan para que nadie las dé por r
 | Columna | Quién la rellenará |
 | --- | --- |
 | `Movement.productId` | la feature de **importación/enlace de aportaciones**, sobre el parser del fichero de inversiones (regla 5, §10) |
-| `InvestmentProduct.closedAt` | ✅ **el importador, del fichero** (feature 10). Ya no es un punto abierto: el fichero lleva un `closedAt` **opcional** que el humano escribe **una sola vez**, en la última aparición del producto, y **dejar de escribir un producto NO lo cierra** — un olvido no puede parecer un cierre ([`myinvestor-products/design.md` §8](../myinvestor-products/design.md)) |
+| `InvestmentProduct.closedAt` | ✅ **el importador, del fichero** (feature 10). Ya no es un punto abierto: el fichero lleva un `closedAt` **opcional** que el humano escribe **una sola vez**, en la última aparición del producto, y **dejar de escribir un producto NO lo cierra** — un olvido no puede parecer un cierre ([`myinvestor-products/design.md` §8](../13-myinvestor-products/design.md)) |
 | `InvestmentProduct.openedAt` | 🟡 **nadie, de momento: se queda `NULL`.** El formato de la feature 10 **no lleva** este campo (una fecha que no cambia sería un dato más que teclear cada mes, y no es ninguno de los que el `intent` enumera). Si algún día se quiere, es un campo opcional más del fichero y **cero migración**, porque la columna ya existe |
 
 ## 3. ⭐ DECISIÓN PROPIA #2 — Claves naturales: `(bank, name)` y `(productId, date)` (R6, R14)
@@ -279,7 +279,7 @@ Este spec solo dejó escrita la resolución por UPSERT de la **valoración**. Al
 formato de la feature 10 aparece una segunda, del mismo tipo y fácil de olvidar:
 
 🔗 **Cada fichero mensual re-afirma la identidad y las condiciones de TODOS los
-productos** ([`myinvestor-products/design.md` §7](../myinvestor-products/design.md)): el humano copia el fichero del
+productos** ([`myinvestor-products/design.md` §7](../13-myinvestor-products/design.md)): el humano copia el fichero del
 mes pasado y actualiza solo los números que cambian, así que el depósito vuelve a
 venir entero —`principal`, `interestRate`, `expectedGain`, `maturityDate`— mes tras
 mes hasta que vence. Por tanto el importador **no puede hacer `create` del producto**:
@@ -333,7 +333,7 @@ con un valor reconocible (`2.7500`).
 
 Era el punto abierto nº 2 y está cerrado. La feature 10 fija la misma semántica con las
 mismas palabras (`"interestRate": "3"` es una TAE del 3 %,
-[`myinvestor-products/design.md` §6](../myinvestor-products/design.md)), y las dos capas diciendo lo mismo es lo único
+[`myinvestor-products/design.md` §6](../13-myinvestor-products/design.md)), y las dos capas diciendo lo mismo es lo único
 que protege de este error.
 
 La muestra real (`var/drive-read/myinvestor/2026/deposito.txt`) añadió un matiz que
@@ -367,7 +367,7 @@ preguntas que el `intent` quiere poder contestar.
 
 Este spec los dejó **nullable** porque "el que manda es el fichero y ese fichero
 todavía no existe". **Ya existe, y los exige**
-([`myinvestor-products/requirements.md` R33-R39](../myinvestor-products/requirements.md)): si el humano se deja la ganancia, el
+([`myinvestor-products/requirements.md` R33-R39](../13-myinvestor-products/requirements.md)): si el humano se deja la ganancia, el
 producto se reporta como no parseado y lo ve. El punto abierto nº 5 queda **cerrado**.
 
 **Aun así las columnas se quedan `NULL`-ables**, por recomendación explícita de la
@@ -414,7 +414,7 @@ razonamiento que hizo caer el enum `MovementDirection` en ADR-011.
 
 Este spec dejaba abierto **quién** rellena la columna, temiendo que hubiera que
 inferirlo de la ausencia de un producto en el fichero. La feature 10 lo cierra y con
-una regla mejor que el temor ([`myinvestor-products/design.md` §8](../myinvestor-products/design.md), R30-R31):
+una regla mejor que el temor ([`myinvestor-products/design.md` §8](../13-myinvestor-products/design.md), R30-R31):
 
 - **El fichero lleva un `closedAt` opcional** en cualquier producto, que el humano
   escribe **una sola vez**: en la última aparición del producto, el mes en que vence o
@@ -516,7 +516,7 @@ Las muestras trajeron dos hechos sobre el **extracto de la cuenta corriente** de
 banco (`Movimientos Mi Cuenta MyInvestor.csv`) que no cambian ni una columna de este
 spec, pero que **son del modelo** y conviene tenerlos escritos donde se leen. Los
 verificó la feature 10 sobre el archivo real
-([`myinvestor-statement/design.md`](../myinvestor-statement/design.md) §3.4 y §3.5).
+([`myinvestor-statement/design.md`](../10-myinvestor-statement/design.md) §3.4 y §3.5).
 
 **1. Este banco NO da saldo por movimiento.** Las columnas son
 `Fecha de operación;Fecha de valor;Concepto;Importe;Divisa` — **no hay columna de
@@ -605,7 +605,7 @@ lo dice: los tests del **modelo** (Prisma contra Postgres real).
 > Las features del parser de MyInvestor **no** ponen nada en esta carpeta: su código
 > vive en `src/modules/myinvestor/`, porque la norma del proyecto es **un parser por
 > banco** y el módulo no puede llamarse como el dominio que no es
-> ([`myinvestor-statement/design.md` §2](../myinvestor-statement/design.md)).
+> ([`myinvestor-statement/design.md` §2](../10-myinvestor-statement/design.md)).
 
 - **Integración contra el Postgres real** (`localhost:5434`, `docker-compose`) vía
   `buildApp()` + `app.prisma`, **sin mocks**, limpiando las filas creadas en un
@@ -658,8 +658,8 @@ y guardar "esto es todo lo que puede haber".
 
 > 📌 **Nota de reconciliación:** la justificación anterior era "la feature 10 aterriza
 > seis archivos en esta carpeta". **Ya no es cierta**: el parser de MyInvestor
-> ([`myinvestor-statement/`](../myinvestor-statement/design.md) y
-> [`myinvestor-products/`](../myinvestor-products/design.md)) vive en
+> ([`myinvestor-statement/`](../10-myinvestor-statement/design.md) y
+> [`myinvestor-products/`](../13-myinvestor-products/design.md)) vive en
 > `src/modules/myinvestor/`, carpeta disjunta.
 > La decisión se mantiene; el porqué es el de arriba, que además es permanente y no
 > depende de qué haga la feature siguiente.
@@ -733,7 +733,7 @@ que se hizo con R32/R36 en la feature 8.
      existen aquí) y **solo `closedAt` en el producto**, sin enum `status` (un
      booleano derivable duplicado acaba desincronizado). 🔗 **Su escritor lo aporta la
      feature de los archivos de producto**
-     ([`myinvestor-products/`](../myinvestor-products/design.md)): el fichero lleva un `closedAt` opcional que
+     ([`myinvestor-products/`](../13-myinvestor-products/design.md)): el fichero lleva un `closedAt` opcional que
      el humano escribe **una sola vez**, en la última aparición del producto, y
      **dejar de escribir un producto NO lo cierra** — un olvido es indistinguible de
      un cierre, y convertir una ausencia en un hecho es la inferencia que no debe

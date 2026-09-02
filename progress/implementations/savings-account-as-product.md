@@ -1,9 +1,9 @@
 # savings-account-as-product (F26) — implementación
 
-> Feature **SDD**. Manda [`specs/savings-account-as-product/`](../../specs/savings-account-as-product/);
-> la hoja del humano es [`decisions.md`](../../specs/savings-account-as-product/decisions.md),
+> Feature **SDD**. Manda [`specs/26-savings-account-as-product/`](../../specs/26-savings-account-as-product/);
+> la hoja del humano es [`decisions.md`](../../specs/26-savings-account-as-product/decisions.md),
 > aprobada el 2026-08-20 con las **6 decisiones 🔴 tal cual**.
-> **Las 28 tasks de [`tasks.md`](../../specs/savings-account-as-product/tasks.md) están en `[x]`**
+> **Las 28 tasks de [`tasks.md`](../../specs/26-savings-account-as-product/tasks.md) están en `[x]`**
 > (lotes A, B, C y D, ejecutados por un solo implementer, en ese orden).
 >
 > **Dos pasadas.** La primera dejó la feature entera con la migración **sin aplicar**

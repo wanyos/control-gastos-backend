@@ -236,7 +236,7 @@ export function toMovementRows(
 ```
 
 Función **pura** (test unitario directo), aplicando la tabla de
-`specs/data-model/design.md` §9:
+`specs/08-data-model/design.md` §9:
 
 | Contrato del parser | `Movement` |
 |---|---|

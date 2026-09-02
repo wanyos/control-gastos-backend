@@ -12,7 +12,7 @@
 >
 > ⚠️ **Re-especificado el 2026-08-11 contra el contrato de la F11** y **cortado** ese
 > mismo día: esta spec se queda con **el extracto CSV**; los archivos JSON de producto
-> son la F13 [`../myinvestor-products/`](../myinvestor-products/design.md). Diff completo
+> son la F13 [`../13-myinvestor-products/`](../13-myinvestor-products/design.md). Diff completo
 > en [`CHANGELOG-respec.md`](CHANGELOG-respec.md). Las secciones §5.3-§5.4, §6, §7, §8 y
 > §12 se fueron enteras allí y aquí quedan como punteros; **la numeración de secciones no
 > se ha alterado**.
@@ -409,7 +409,7 @@ sabe leerlos todavía**, y eso es correcto: no son un fallo. La **F13
 > producto —la identidad y la fecha dentro del archivo (§5.3), un archivo por producto
 > (§5.4), los números y las fechas escritos a mano (§6), los campos de cada tipo de
 > producto (§7) y cómo se declara un producto cerrado (§8)— vive ahora en
-> [`../myinvestor-products/design.md`](../myinvestor-products/design.md), **con la misma
+> [`../13-myinvestor-products/design.md`](../13-myinvestor-products/design.md), **con la misma
 > numeración de secciones**, para que las referencias ya escritas sigan valiendo.
 >
 > 📌 **Lo único que esta feature debe saber de aquello:** la F13 **reutilizará
@@ -444,7 +444,7 @@ parser del repo ya emite desde la feature 7. Un solo vocabulario para todos los 
 > Los motivos propios de un **archivo de producto** (sintaxis rota, campo ausente,
 > número ilegible, tipo desconocido, fecha en otro formato, clave desconocida, choque de
 > duplicados) los añade la **F13** a este mismo `failed[]`; ver
-> [`../myinvestor-products/design.md`](../myinvestor-products/design.md) §9.
+> [`../13-myinvestor-products/design.md`](../13-myinvestor-products/design.md) §9.
 
 ### 9.3 Las dos reglas que gobiernan el reporte
 
@@ -590,9 +590,9 @@ Drive  ──ingesta (f5)──►  var/drive-read/myinvestor/<año>/   (copias 
 > de la feature 9?" (R63) era de los **archivos de producto**, no del extracto: un
 > movimiento de la cuenta corriente no toca ni `InvestmentProduct` ni `Valuation`. La
 > respuesta —**el esquema no cambia**— y su detalle están en
-> [`../myinvestor-products/design.md`](../myinvestor-products/design.md) §12.
+> [`../13-myinvestor-products/design.md`](../13-myinvestor-products/design.md) §12.
 >
-> **Esta feature no toca `specs/investments-data-model/` ni `prisma/`.**
+> **Esta feature no toca `specs/09-investments-data-model/` ni `prisma/`.**
 
 ## 13. Modelo de tipos y firmas nuevas (`myinvestor.types.ts`)
 

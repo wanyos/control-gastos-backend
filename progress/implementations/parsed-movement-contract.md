@@ -56,7 +56,7 @@ línea dentro de su día.
    `10000,00 − 45,37 = 9954,63`). Numerar no es leer el formato: la norma «un
    parser por banco» se mantiene intacta.
 4. 📌 **El contrato NO incluye nada más para el importador.** Repasada la tabla de
-   mapeo de `specs/data-model/design.md` §9: ya tiene `bookingDate`, `valueDate`,
+   mapeo de `specs/08-data-model/design.md` §9: ya tiene `bookingDate`, `valueDate`,
    `description`, `amount`, `balance`, `currency`, `daySequence`, `accountIban` y
    `bank`. Lo demás (`origin`, `status`, `transferId`, `accountId`, la dedup) lo
    pone el importador; meterlo aquí convertiría el contrato en el modelo de la BD.

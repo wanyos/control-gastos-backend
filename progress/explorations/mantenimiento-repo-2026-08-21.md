@@ -278,7 +278,7 @@ Para que la próxima limpieza no repita el trabajo:
   `prisma/schema.prisma` están cubiertos, y el documento se declara a sí mismo
   secundario respecto al `.prisma`.
 - **`scripts/get-drive-refresh-token.mjs`** parecía huérfano y no lo es: es el
-  *one-shot* de la F5, exigido por `specs/drive-connection/design.md:425` (R23) y
+  *one-shot* de la F5, exigido por `specs/03-drive-connection/design.md:425` (R23) y
   documentado en el `summaries/` de esa feature.
 
 ## Orden sugerido, si se decide actuar

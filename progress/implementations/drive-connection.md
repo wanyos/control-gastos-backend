@@ -4,7 +4,7 @@
 - **Fecha:** 2026-07-20
 - **Estado en `feature_list.json`:** `in_progress` (NO se cierra: pendiente de
   aprobación del reviewer y del resumen de cierre C8; T25 es del humano).
-- **Spec seguido:** `specs/drive-connection/{requirements,design,tasks}.md`.
+- **Spec seguido:** `specs/03-drive-connection/{requirements,design,tasks}.md`.
   Todas las tasks **T1–T24** marcadas `[x]`. T25 (smoke real contra Drive) queda
   pendiente del humano.
 
@@ -119,7 +119,7 @@ código ni parte de la feature.
 
 > **R21, R22 y R23 son requirements de proceso**, verificados por checklist del
 > reviewer, no por test ejecutable. Es la misma excepción consciente que R16/R17
-> de `specs/foundations/` (requirements de proceso sin superficie ejecutable).
+> de `specs/02-foundations/` (requirements de proceso sin superficie ejecutable).
 
 ## Salida de la verificación final
 

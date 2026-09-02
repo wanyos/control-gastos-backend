@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-26
 Intención original: `feature_list.json` → feature `real-account-balance`, bloque `intent`
-Spec: [`specs/real-account-balance/`](../../specs/real-account-balance/decisions.md) · ADR nuevo: **ADR-028**
+Spec: [`specs/31-real-account-balance/`](../../specs/31-real-account-balance/decisions.md) · ADR nuevo: **ADR-028**
 
 ## Qué hace ahora la app que antes no
 

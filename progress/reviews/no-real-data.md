@@ -66,7 +66,7 @@
    `src/modules/movements/movements.test.ts:267,435,455`,
    `src/modules/investments/investments.model.test.ts:474`,
    `docs/data-model.md:332`, `docs/architecture.md:646`,
-   `specs/data-model/design.md:252`, `specs/data-model/requirements.md:167`.
+   `specs/08-data-model/design.md:252`, `specs/08-data-model/requirements.md:167`.
    Sanearlos (no son portantes en ninguna aserción: solo hay que mantener
    coherente en cada test el importe como número y como cadena, y la frase «tres
    líneas idénticas») y **corregir §3.7**, que hoy afirma lo contrario de lo que hay.
@@ -176,7 +176,7 @@ Resumen de cierre: [`progress/summaries/no-real-data.md`](../summaries/no-real-d
   saldos de escalera `100/200/300`, un `1000.00` de andamiaje— ninguno acompañado
   de un concepto suyo. Coincide con lo que declara §8.2.
 - **La cita del humano conserva el sentido.** En
-  `specs/investments-data-model/design.md:479` y `requirements.md:322,559` la
+  `specs/09-investments-data-model/design.md:479` y `requirements.md:322,559` la
   frase entrecomillada sigue diciendo lo que demuestra: que el efectivo queda
   fuera de los totales porque es el remanente de una aportación recurrente. Solo
   desaparece la cantidad, que no era portante. **Redactar en vez de reinventar es

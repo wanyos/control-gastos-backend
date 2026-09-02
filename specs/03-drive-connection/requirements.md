@@ -229,7 +229,7 @@ endpoint `GET /health/drive` y con el código estable
 
 *Verificación:* manual — checklist del reviewer contra las respuestas reales de
 los tests de integración. (Requirement de proceso sin superficie ejecutable
-propia; misma excepción consciente que R16/R17 de `specs/foundations/`.)
+propia; misma excepción consciente que R16/R17 de `specs/02-foundations/`.)
 
 ### R22
 El sistema DEBE actualizar `docs/architecture.md` al cierre de la feature con

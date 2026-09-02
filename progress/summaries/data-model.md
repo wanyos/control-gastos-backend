@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-06
 Intención original: `feature_list.json` → feature `data-model`, bloque `intent`
-Spec (SDD): [`specs/data-model/`](../../specs/data-model/requirements.md)
+Spec (SDD): [`specs/08-data-model/`](../../specs/08-data-model/requirements.md)
 Review: [`progress/reviews/data-model.md`](../reviews/data-model.md) — **APROBADO**
 
 ## Qué hace ahora la app que antes no

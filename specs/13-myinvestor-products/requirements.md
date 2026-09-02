@@ -2,7 +2,7 @@
 
 > **Esta feature nace del corte de la antigua F10 `myinvestor-parser`** (aprobado por el
 > humano el 2026-08-11, ver
-> [`../myinvestor-statement/CHANGELOG-respec.md`](../myinvestor-statement/CHANGELOG-respec.md)).
+> [`../10-myinvestor-statement/CHANGELOG-respec.md`](../10-myinvestor-statement/CHANGELOG-respec.md)).
 > Se queda con **la segunda entrada del banco: los archivos JSON de producto de
 > inversión que el humano escribe a mano**. El extracto CSV de la cuenta corriente es la
 > **F10 `myinvestor-statement`**, que se implementa antes.
@@ -10,7 +10,7 @@
 > 🔴 **La numeración `R<n>` es la de la spec original y NO se renumera.** Este documento
 > empieza en **R21** a propósito: renumerar destruiría la trazabilidad de todo lo ya
 > escrito y revisado. R1-R20 y otros viven en
-> [`../myinvestor-statement/requirements.md`](../myinvestor-statement/requirements.md).
+> [`../10-myinvestor-statement/requirements.md`](../10-myinvestor-statement/requirements.md).
 >
 > Derivados del bloque `intent` (**fuente de verdad del QUÉ**) y de las **muestras
 > reales** que el humano dejó en `var/drive-read/myinvestor/2026/` (ruta gitignoreada,
@@ -33,7 +33,7 @@
 > del archivo, `currency` opcional que no escribe, y el archivo del depósito **solo al
 > contratar y al vencer**). Ver [`decisions.md`](decisions.md),
 > [`CAMPOS-cerrados.md`](CAMPOS-cerrados.md) y
-> [`../myinvestor-statement/CHANGELOG-respec.md`](../myinvestor-statement/CHANGELOG-respec.md).
+> [`../10-myinvestor-statement/CHANGELOG-respec.md`](../10-myinvestor-statement/CHANGELOG-respec.md).
 > La implementación solo espera a que la F10 `myinvestor-statement` esté `done`.
 
 ## Qué construye la F10 y aquí solo se consume
@@ -394,7 +394,7 @@ El sistema DEBE dejar el mapa de trazabilidad `R<n>` → test concreto en
 ## Cobertura del `como_se_que_esta_bien`
 
 Los puntos del `intent` que caen de este lado del corte (los del extracto se cubren en
-[`../myinvestor-statement/requirements.md`](../myinvestor-statement/requirements.md)):
+[`../10-myinvestor-statement/requirements.md`](../10-myinvestor-statement/requirements.md)):
 
 | # | Frase del `intent` | Requirements que la cubren |
 | --- | --- | --- |

@@ -161,7 +161,7 @@ Códigos estables:
 > **Nota (feature "drive-structure", 2026-07-25):** la feature 4 (estructura en
 > Drive: crear carpetas, subir y mover archivos) se resolvió como **servicio
 > interno** (funciones en `src/lib/drive-structure.ts`), **sin endpoints de API**
-> — razón en `specs/drive-structure/design.md` §5 y §7. Por eso este contrato **no
+> — razón en `specs/04-drive-structure/design.md` §5 y §7. Por eso este contrato **no
 > gana endpoints** en esta feature. Añade sin embargo el código de error nuevo
 > `UNKNOWN_BANK` (404) a la tabla de arriba, también **reservado** (interno; lo
 > devolverá la feature que exponga la operación de cara al cliente, p. ej. la

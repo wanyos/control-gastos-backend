@@ -1,7 +1,7 @@
 # Implementación — Feature 9 `investments-data-model`
 
 > Informe del `implementer`. Feature SDD: la fuente de verdad es
-> [`specs/investments-data-model/`](../../specs/investments-data-model/design.md)
+> [`specs/09-investments-data-model/`](../../specs/09-investments-data-model/design.md)
 > (requirements + design + tasks), **no** el `acceptance` original de
 > `feature_list.json`. El spec pasó la puerta de aprobación humana el 2026-08-11 y
 > las **dos decisiones marcadas en rojo se confirmaron tal cual**: el depósito sin
@@ -15,7 +15,7 @@
 >   ficheros** (la suite estaba en **197 / 16** al arrancar: **+23 tests, +1
 >   fichero**, ninguno modificado).
 > - **Tasks:** T1-T20 de
->   [`specs/investments-data-model/tasks.md`](../../specs/investments-data-model/tasks.md)
+>   [`specs/09-investments-data-model/tasks.md`](../../specs/09-investments-data-model/tasks.md)
 >   **todas marcadas `[x]`**. Ninguna saltada.
 > - **Alcance respetado:** solo **esquema + migración**. Cero endpoints, cero
 >   rutas, cero servicios, cero parser, cero importador. `src/app.ts` sin tocar.
@@ -42,7 +42,7 @@
 | [`docs/architecture.md`](../../docs/architecture.md) | **ADR-012** completo + `investments/` en el árbol de «Estructura de carpetas». |
 | [`docs/api-contract.md`](../../docs/api-contract.md) | Una nota: la capa de inversiones **no expone endpoints todavía**. Cero endpoints añadidos. |
 | [`progress/current.md`](../current.md) | Estado de la sesión, columnas reservadas nuevas, el punto abierto cerrado y el deber del humano sobre la cuenta de MyInvestor. |
-| [`specs/investments-data-model/tasks.md`](../../specs/investments-data-model/tasks.md) | T1-T20 marcadas `[x]`. |
+| [`specs/09-investments-data-model/tasks.md`](../../specs/09-investments-data-model/tasks.md) | T1-T20 marcadas `[x]`. |
 
 ### NO tocados (regla dura R17/R19, verificado con `git diff --stat`)
 
@@ -261,6 +261,6 @@ es realmente aditiva.
 - `feature_list.json`: la feature 9 sigue en **`in_progress`**. **No se marca
   `done`**: falta el veredicto del `reviewer` y su
   `progress/summaries/investments-data-model.md` (C8 de `CHECKPOINTS.md`).
-- `specs/investments-data-model/tasks.md`: **T1-T20 todas `[x]`**.
+- `specs/09-investments-data-model/tasks.md`: **T1-T20 todas `[x]`**.
 - Repositorio limpio: sin archivos temporales, sin `console.log`, sin `TODO`
   nuevos, sin dependencias ni variables de entorno nuevas.

@@ -143,8 +143,8 @@
 > [`src/app.ts`](../src/app.ts) (`LOG_LEVEL`) y
 > [`src/config/env.ts`](../src/config/env.ts) (las tres de Drive y
 > `GOOGLE_DRIVE_ROOT_FOLDER_ID`). Cómo obtener las de Drive:
-> `specs/drive-connection/design.md` §10 (pasos manuales del humano); cómo obtener
-> el fileId de la raíz: `specs/drive-structure/design.md` §9 (de la URL de la
+> `specs/03-drive-connection/design.md` §10 (pasos manuales del humano); cómo obtener
+> el fileId de la raíz: `specs/04-drive-structure/design.md` §9 (de la URL de la
 > carpeta). `GOOGLE_DRIVE_ROOT_FOLDER_ID` admite tanto el fileId pelado como la
 > URL de la carpeta; `normalizeDriveFolderId` en
 > [`src/config/env.ts`](../src/config/env.ts) extrae el id al arrancar.

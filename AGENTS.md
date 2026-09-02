@@ -28,8 +28,8 @@
 | `progress/history.md`         | Índice de una línea por feature cerrada, con enlace a su resumen                                          | Si necesitas contexto histórico |
 | `progress/<feature>.md`       | Informe del implementer + veredicto del reviewer, en un solo archivo                                      | Al revisar o retomar una feature |
 | `progress/summaries/<feature>.md`| **DEL HUMANO.** Qué hace la app que antes no y dónde vive cada pieza del código                          | Al cerrar una feature, y para no perder el hilo después |
-| `specs/<feature>/decisions.md`| **DEL HUMANO.** Una página: las decisiones y nada más. Es lo único que se le pide leer en la puerta       | Al aprobar un spec (humano); nunca se le manda a leer otra cosa |
-| `specs/<feature>/`            | `requirements.md` + `design.md` + `tasks.md` (Kiro-style) — material del `implementer` y del `reviewer`   | Antes de implementar cualquier feature con `"sdd": true` |
+| `specs/<nn>-<feature>/decisions.md`| **DEL HUMANO.** Una página: las decisiones y nada más. Es lo único que se le pide leer en la puerta       | Al aprobar un spec (humano); nunca se le manda a leer otra cosa |
+| `specs/<nn>-<feature>/`            | `requirements.md` + `design.md` + `tasks.md` (Kiro-style) — material del `implementer` y del `reviewer`   | Antes de implementar cualquier feature con `"sdd": true` |
 | `docs/stack.md`               | Lenguaje, framework, librerías, versiones                                                                 | Antes de tocar dependencias |
 | `docs/architecture.md`        | Qué significa "hacer un buen trabajo" en este proyecto                                                    | Antes de implementar |
 | `docs/conventions.md`         | Reglas de estilo, nombres, estructura                                                                     | Antes de escribir código |
@@ -68,9 +68,9 @@ pending → [spec-author] → spec_ready → ⏸ HUMANO → in_progress → [imp
 
 1. El leader detecta la primera feature `pending` con `"sdd": true`.
 2. El leader lanza `spec-author`, que crea
-   `specs/<name>/{decisions,requirements,design,tasks}.md` y marca el status
+   `specs/<nn>-<name>/{decisions,requirements,design,tasks}.md` y marca el status
    como `spec_ready`.
-3. **Pausa.** El humano lee **solo `specs/<name>/decisions.md`** — una página —
+3. **Pausa.** El humano lee **solo `specs/<nn>-<name>/decisions.md`** — una página —
    y aprueba (o pide cambios). Los otros tres archivos son material del
    implementer y del reviewer: **nunca se le manda a leerlos**; si necesita más
    detalle de una decisión, se lo resume el leader. Si pide cambios, recibe un

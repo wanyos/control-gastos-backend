@@ -7,7 +7,7 @@
 > líneas fallidas, renombrado de `ingesta/` a inglés).
 >
 > **20 requirements, por encima del tope de ~15.** Razón dicha en voz alta
-> (`docs/specs.md` §regla 2 y `specs/import/decisions.md`): R15/R20 son el *retoque* y el
+> (`docs/specs.md` §regla 2 y `specs/12-import/decisions.md`): R15/R20 son el *retoque* y el
 > *renombrado* del flujo de la F5 (el humano los metió aquí para no tocar dos veces los
 > mismos archivos), R16/R17 son *alcance excluido* que él pidió explícitamente, y R18/R19
 > salen de su resolución del 2026-08-12. Ninguno abre una línea de comportamiento nuevo;
@@ -28,7 +28,7 @@
 
 CUANDO el sistema importa un fichero pendiente cuyo parseo ha producido movimientos, el
 sistema DEBE guardar cada movimiento parseado como un `Movement` de la cuenta resuelta,
-aplicando la tabla de mapeo de `specs/data-model/design.md` §9: `bookingDate`,
+aplicando la tabla de mapeo de `specs/08-data-model/design.md` §9: `bookingDate`,
 `valueDate`, `description` y `daySequence` tal cual; `amount = abs(amount)` con
 `type = deriveMovementTypeFromAmount(amount)`; `balanceAfter = balance`;
 `currency = currency` (`'EUR'` cuando el parser emite `''`); `origin = 'imported'`;
@@ -204,7 +204,7 @@ las mismas capacidades DEBEN estar disponibles en `/api/ingestion/pending` y
 
 - **R1** — (humano) Sale de «que los movimientos parseados se guarden en su cuenta». El
   mapeo campo a campo no lo inventa esta spec: lo dejó escrito
-  `specs/data-model/design.md` §9 y el `acceptance` A1 lo cita.
+  `specs/08-data-model/design.md` §9 y el `acceptance` A1 lo cita.
 - **R2** — (delegado) El humano cedió «cómo se dispara la importación y su forma exacta en
   la API». Decido: endpoint propio `POST /api/import` con informe por fichero.
   **Aprobado el 2026-08-12**, con su añadido explícito: el informe incluye el **recuento**

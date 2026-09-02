@@ -7,7 +7,7 @@
 - **Verificación:** `bash ./init.sh` → `[OK] Entorno listo`, **280 tests en 22
   ficheros** (baseline antes de la feature: 233 en 18 → **+47 tests, +4 ficheros**).
   `pnpm run lint`, `pnpm run format:check` y `pnpm run typecheck` limpios.
-- **Las 18 tasks de [`tasks.md`](../../specs/myinvestor-statement/tasks.md) quedan
+- **Las 18 tasks de [`tasks.md`](../../specs/10-myinvestor-statement/tasks.md) quedan
   `[x]`.**
 
 ## Archivos creados
@@ -47,11 +47,11 @@ no hay ninguna desviación en este punto.**
 - [`feature_list.json`](../../feature_list.json) — feature 10 a `in_progress`
   (**no** a `done`: eso es después del reviewer).
 - [`progress/current.md`](../current.md) y
-  [`specs/myinvestor-statement/tasks.md`](../../specs/myinvestor-statement/tasks.md).
+  [`specs/10-myinvestor-statement/tasks.md`](../../specs/10-myinvestor-statement/tasks.md).
 
 **Sin tocar:** `package.json`, `pnpm-lock.yaml` (**cero dependencias nuevas**),
 `.gitignore`, `prisma/`, `src/lib/`, `src/errors/`, los módulos del flujo, el módulo
-de Bankinter y `specs/investments-data-model/`.
+de Bankinter y `specs/09-investments-data-model/`.
 
 ## Diseño y decisiones tomadas
 

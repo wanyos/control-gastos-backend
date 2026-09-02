@@ -158,7 +158,7 @@ Plantilla para cada entrada nueva:
 - **Cambios:** `progress/` organizado por tipo — `implementations/`,
   `reviews/`, `summaries/` (y `explorations/` para el futuro); `current.md`
   e `history.md` quedan en la raíz. Renombrados a inglés:
-  `specs/fundamentos/` → `specs/foundations/`, `name` de la feature 2 →
+  `specs/fundamentos/` → `specs/02-foundations/`, `name` de la feature 2 →
   `foundations`, `docs/resumen-template.md` → `docs/summary-template.md`.
   Referencias actualizadas en `.claude/agents/*` (leader, implementer,
   reviewer, spec_author — este último ahora reporta bloqueos en
@@ -169,7 +169,7 @@ Plantilla para cada entrada nueva:
   Corregida de paso la nota obsoleta de conventions.md §Manejo de errores
   ("aún no implementado" → implementado por foundations).
 - **Verificación:** `./init.sh` → `[OK] Entorno listo` (su paso 3 valida
-  `specs/foundations/` contra el nombre nuevo); 35/35 tests.
+  `specs/02-foundations/` contra el nombre nuevo); 35/35 tests.
 - **Cierre:** los informes históricos NO se editaron (history.md es
   append-only; las rutas citadas en su contenido reflejan la época en que
   se escribieron). Siguiente: commits del trabajo pendiente.
@@ -185,14 +185,14 @@ Plantilla para cada entrada nueva:
   problemas bloqueantes; review en `progress/reviews/drive-connection.md`, informe
   del implementer en `progress/implementations/drive-connection.md`). Pendiente
   del humano: **T25** (smoke real contra su Drive + pasos manuales de
-  `specs/drive-connection/design.md` §10). Próxima feature: 4 `drive-structure`
+  `specs/03-drive-connection/design.md` §10). Próxima feature: 4 `drive-structure`
   (SDD, `pending`: requiere spec-author y aprobación humana antes de implementar).
 
 ### Resumen de cierre
 
 Fecha de cierre: 2026-07-20
 Intención original: `feature_list.json` -> feature `drive-connection`, bloque `intent`
-Spec (SDD): `specs/drive-connection/`
+Spec (SDD): `specs/03-drive-connection/`
 
 #### Qué hace ahora la app que antes no
 
@@ -294,7 +294,7 @@ Y los `que_no_quiero`:
 
 #### Notas para el futuro
 
-- **Pendiente tuyo (T25):** haz los pasos manuales de `specs/drive-connection/design.md`
+- **Pendiente tuyo (T25):** haz los pasos manuales de `specs/03-drive-connection/design.md`
   §10 (Google Cloud Console) y ejecuta `node scripts/get-drive-refresh-token.mjs`.
   EL PASO QUE MÁS IMPORTA: publicar la app "In production"; si la dejas en
   "Testing", el refresh token caduca cada 7 días. Luego `pnpm dev` + `curl
@@ -311,7 +311,7 @@ Y los `que_no_quiero`:
 
 - **Agente:** leader (orquestando) + spec-author + implementer + reviewer.
 - **Plan:** flujo SDD completo con dos puertas de aprobación humana. spec-author
-  redactó `specs/drive-structure/` (R1-R28 en EARS + design + T1-T20); la 1ª puerta
+  redactó `specs/04-drive-structure/` (R1-R28 en EARS + design + T1-T20); la 1ª puerta
   cambió el modelo de identidad de banco a "Drive es el registro; crear es
   explícito" (R23-R28 nuevos) y la 2ª aprobó el umbral de sugerencia (Levenshtein
   ≤ 2, desempate alfabético). El implementer ejecutó las tasks en orden; el reviewer
@@ -345,7 +345,7 @@ Y los `que_no_quiero`:
 
 Fecha de cierre: 2026-07-25
 Intención original: `feature_list.json` → feature `drive-structure`, bloque `intent`
-Spec (SDD): `specs/drive-structure/`
+Spec (SDD): `specs/04-drive-structure/`
 
 #### Qué hace ahora la app que antes no
 
@@ -506,7 +506,7 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 > Resumen de cierre: [`progress/summaries/data-model.md`](summaries/data-model.md).
 
 - **Agente:** leader (orquestando) + spec-author + **puerta humana (4 correcciones)**
-  + implementer + reviewer. SDD: `specs/data-model/{requirements,design,tasks}.md`
+  + implementer + reviewer. SDD: `specs/08-data-model/{requirements,design,tasks}.md`
   fue la fuente de verdad, no el `acceptance` original.
 - **Qué hace:** fija la **base de datos real del flujo de dinero**. Reemplaza el
   `Expense` + `Category` placeholder del bootstrap por `Account` / `Category`
@@ -574,7 +574,7 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 
 - **Agente:** leader (orquestando) + spec-author + **puerta humana (2 decisiones
   confirmadas)** + implementer + reviewer. SDD:
-  `specs/investments-data-model/{requirements,design,tasks}.md` (28 requirements,
+  `specs/09-investments-data-model/{requirements,design,tasks}.md` (28 requirements,
   20 tasks) fue la fuente de verdad, no el `acceptance` original.
 - **Qué hace:** llena el hueco que la feature 8 dejó reservado a propósito — ahora
   la base de datos sabe guardar **inversiones**. `InvestmentProduct` es la
@@ -694,7 +694,7 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   tres vías existía desde la F8 en
   [`movements.service.ts:33`](../src/modules/movements/movements.service.ts#L33)
   y los dos parsers la reimplementaban mal. El design de la F8 lo había predicho
-  por escrito (`specs/data-model/design.md:584`).
+  por escrito (`specs/08-data-model/design.md:584`).
 - **Cambios:** orden nuevo **F9 → F11 → F10 → F12** (E3 y E4 intercambiadas en el
   roadmap: el modelo va antes que los parsers porque la salida del parser se
   deriva de él). Dos features nuevas en `feature_list.json`: **F11
@@ -797,14 +797,14 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 > [`progress/implementations/myinvestor-statement.md`](implementations/myinvestor-statement.md).
 > Review: [`progress/reviews/myinvestor-statement.md`](reviews/myinvestor-statement.md).
 > Resumen de cierre: [`progress/summaries/myinvestor-statement.md`](summaries/myinvestor-statement.md).
-> Spec: [`specs/myinvestor-statement/`](../specs/myinvestor-statement/decisions.md).
+> Spec: [`specs/10-myinvestor-statement/`](../specs/10-myinvestor-statement/decisions.md).
 
 - **Agente:** leader (orquestando) + spec-author (re-especificación y corte) +
   implementer + reviewer. **SDD**: puerta de aprobación humana pasada el
   2026-08-11 sobre un `decisions.md` **sin ningún punto 🔴**.
 - **⚠️ La antigua F10 `myinvestor-parser` se partió en dos** (aprobado por el
   humano; historial en
-  [`CHANGELOG-respec.md`](../specs/myinvestor-statement/CHANGELOG-respec.md)):
+  [`CHANGELOG-respec.md`](../specs/10-myinvestor-statement/CHANGELOG-respec.md)):
   tenía **70 requirements** —muy por encima del tope de ~15 de `docs/specs.md`
   §2— y sus cinco puntos rojos pendientes eran **todos** del JSON de producto.
   - **F10 `myinvestor-statement`** (esta): **el extracto CSV** que genera el

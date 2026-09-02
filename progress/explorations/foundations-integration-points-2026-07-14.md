@@ -16,7 +16,7 @@ decora la instancia y cierra en `onClose`) + `config/env.ts` (única lectura de
 
 **Mecanismo: validador manual a mano. NO hay AJV/JSON Schema/Zod aquí.**
 Decidido en ADR-006 (`docs/architecture.md:180-196`) y en
-`specs/foundations/design.md:113-126`. `@fastify/env` se descartó
+`specs/02-foundations/design.md:113-126`. `@fastify/env` se descartó
 explícitamente porque valida dentro del ciclo de plugins, demasiado tarde para
 el `logLevel` que se necesita al construir la instancia.
 
@@ -359,7 +359,7 @@ explícitamente** — es un caso nuevo que las reglas actuales no cubren.
 
 ---
 
-## 7. `specs/foundations/` (feature 2, done) — patrón establecido
+## 7. `specs/02-foundations/` (feature 2, done) — patrón establecido
 
 Tres archivos: `requirements.md` (QUÉ, notación EARS), `design.md` (CÓMO),
 `tasks.md`. Lo que dejó establecido y que la feature 3 debe respetar:
@@ -385,7 +385,7 @@ Tres archivos: `requirements.md` (QUÉ, notación EARS), `design.md` (CÓMO),
 
 ### 🔑 Hallazgo clave: la feature 2 excluyó explícitamente el cliente saliente
 
-`specs/foundations/requirements.md:9-12`, literal:
+`specs/02-foundations/requirements.md:9-12`, literal:
 
 > *"Nota de alcance: el `intent` dice 'el cliente HTTP o la validación de datos
 > según el proyecto'. Este proyecto es un backend: aplica la **validación de
@@ -464,7 +464,7 @@ se borró. `init.sh` — la puerta de cierre — corre `pnpm test`.
   (`@prisma/engines`, `esbuild`, `prisma`): no es un monorepo, es la config de
   pnpm 10 para permitir scripts de build.
 - Toda la documentación (`stack.md:37-48`, `verification.md:19-31`,
-  `conventions.md:37-38`) y `specs/foundations/requirements.md:133` documentan
+  `conventions.md:37-38`) y `specs/02-foundations/requirements.md:133` documentan
   comandos `npm run …` / `npm test`. Funcionan por accidente (los binarios están
   en `node_modules/.bin`), pero `npm install` regeneraría un árbol distinto del
   que valida `init.sh`.

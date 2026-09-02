@@ -19,7 +19,7 @@ hacía dos cosas. **Los archivos JSON de producto de inversión son ahora la F13
 **Esta feature no tiene ninguna decisión pendiente de tu visto bueno.** Es deliberado y
 es la razón de ser del corte: los cinco «confirma o corrige» de la spec original eran
 **todos** de los archivos de producto y se han ido enteros a
-[`../myinvestor-products/decisions.md`](../myinvestor-products/decisions.md). Aquí el
+[`../13-myinvestor-products/decisions.md`](../13-myinvestor-products/decisions.md). Aquí el
 banco genera el archivo y no hay formato que elegir: se lee lo que viene.
 
 Puedes aprobar esta de un vistazo y dejar la otra para cuando tengas la cabeza puesta en

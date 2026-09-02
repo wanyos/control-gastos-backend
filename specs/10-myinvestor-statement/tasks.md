@@ -24,7 +24,7 @@
   `src/architecture.test.ts`. **No hace falta tocar `.gitignore`.**
 - 🔴 **No MODIFIQUES** `prisma/`, los módulos del flujo (`accounts`, `categories`,
   `movements`), `src/lib/`, `src/errors/`, el otro módulo de parser del repo, ni
-  `specs/investments-data-model/`. ⚠️ **Importarlos sí, y es obligatorio:** el parser
+  `specs/09-investments-data-model/`. ⚠️ **Importarlos sí, y es obligatorio:** el parser
   consume [`src/lib/parsed-statement.ts`](../../src/lib/parsed-statement.ts) y
   [`deriveMovementTypeFromAmount`](../../src/modules/movements/movements.service.ts#L33)
   (F11, ADR-013). Lo prohibido es **cambiarlos** o **duplicarlos**.
@@ -97,7 +97,7 @@
       R13, R14, R15, R16, R17, R18, R19, R20, R68, R69.
 
 > **Fase 3 (los archivos JSON de producto) se fue entera a la F13
-> [`../myinvestor-products/tasks.md`](../myinvestor-products/tasks.md)**, con sus T7 y T8
+> [`../13-myinvestor-products/tasks.md`](../13-myinvestor-products/tasks.md)**, con sus T7 y T8
 > intactas. Aquí no se escribe ni una línea de eso.
 
 ## Fase 4 — Servicio, ruta y volcado
@@ -166,7 +166,7 @@
 
 - [x] T19 — Verificar el alcance sobre el diff: `package.json` y `pnpm-lock.yaml` sin
       cambios, `prisma/` sin cambios, `.gitignore` sin cambios, ningún archivo de
-      `specs/investments-data-model/` tocado, ningún archivo del otro módulo de parser
+      `specs/09-investments-data-model/` tocado, ningún archivo del otro módulo de parser
       tocado y **ningún archivo de la F13 adelantado** (no existe
       `myinvestor.product.parser.ts` ni `docs/myinvestor-product-files.md`).
       Cubre: R58, R59.

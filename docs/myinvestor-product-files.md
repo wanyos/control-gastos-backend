@@ -17,7 +17,7 @@
 > comprueba que las dos coincidan**. Cuando el formato cambie, se cambia **aquí** y tú
 > actualizas la de Drive.
 >
-> Decisiones que lo fijan: `specs/myinvestor-products/decisions.md` y
+> Decisiones que lo fijan: `specs/13-myinvestor-products/decisions.md` y
 > `docs/architecture.md` §ADR-016.
 
 ## Las dos reglas de escritura

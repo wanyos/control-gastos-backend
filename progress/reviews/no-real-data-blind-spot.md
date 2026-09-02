@@ -125,7 +125,7 @@ y tiempos; los ejemplos citados son sintéticos y ya documentados).
 **Criterio 7 — la app no cambia.** `git status` limpio salvo el guardián, dos docs,
 `feature_list.json` y `current.md`. Ni parsers, ni rutas, ni Prisma, ni `package.json`,
 ni `pnpm-lock.yaml` (cero dependencias). *Observación al margen*: el árbol trae también
-los cuatro archivos de `specs/trade-republic-product-file/` modificados (puerta de
+los cuatro archivos de `specs/20-trade-republic-product-file/` modificados (puerta de
 aprobación de la F20, trabajo del leader); no son de esta feature ni de esta revisión.
 
 **Criterio 8 — coste, medido por mí, no leído del informe.** Ejecutando el archivo del

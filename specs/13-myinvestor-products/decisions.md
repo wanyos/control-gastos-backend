@@ -14,7 +14,7 @@ hacía dos cosas. **El extracto CSV de la cuenta corriente es la F10 `myinvestor
 ya implementada y cerrada.
 
 ✅ **Actualizado el 2026-08-11 con tus decisiones.** El diff está en
-[`../myinvestor-statement/CHANGELOG-respec.md`](../myinvestor-statement/CHANGELOG-respec.md).
+[`../10-myinvestor-statement/CHANGELOG-respec.md`](../10-myinvestor-statement/CHANGELOG-respec.md).
 
 ---
 

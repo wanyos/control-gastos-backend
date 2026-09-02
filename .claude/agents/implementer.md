@@ -16,7 +16,7 @@ Ejecutas **una** feature de `feature_list.json` de inicio a verificación — o
 ## Pre-condiciones
 
 - Feature con `"sdd": true`: debe estar `in_progress` y existir los 4 archivos en
-  `specs/<name>/`. Si falta alguno, o el estado es `pending` / `spec_ready`,
+  `specs/<nn>-<name>/`. Si falta alguno, o el estado es `pending` / `spec_ready`,
   **paras** — el leader no debería haberte lanzado. (`decisions.md` no es
   material tuyo: es la hoja que aprobó el humano. Su ausencia significa que el
   spec no pasó por la puerta.)
@@ -27,7 +27,7 @@ Ejecutas **una** feature de `feature_list.json` de inicio a verificación — o
 
 1. **Lee**: `AGENTS.md`, `docs/stack.md`, `docs/architecture.md`,
    `docs/conventions.md`, `docs/verification.md`. Si es SDD, además
-   `specs/<name>/` completo.
+   `specs/<nn>-<name>/` completo.
 
    **No hace falta que leas `docs/specs.md`** — es el manual del `spec-author`.
    Lo que te toca a ti de un spec son cuatro cosas:

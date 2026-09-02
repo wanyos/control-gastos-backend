@@ -2,7 +2,7 @@
 
 > Feature **sin SDD**: manda el bloque `acceptance` de `feature_list.json` (10 criterios,
 > citados aquí como **C1…C10**). Reutiliza entera la vía que construyó la F26
-> ([`specs/savings-account-as-product/`](../../specs/savings-account-as-product/decisions.md),
+> ([`specs/26-savings-account-as-product/`](../../specs/26-savings-account-as-product/decisions.md),
 > [informe](savings-account-as-product.md)): esta feature añade **quién escribe** los
 > otros cuatro tipos, no cómo se leen.
 >

@@ -3,7 +3,7 @@
 **Veredicto: APROBADO (APPROVED)**
 
 - **Fecha:** 2026-08-06
-- **Revisado contra:** `specs/data-model/{requirements,design,tasks}.md`,
+- **Revisado contra:** `specs/08-data-model/{requirements,design,tasks}.md`,
   `progress/implementations/data-model.md`, `docs/architecture.md`,
   `docs/conventions.md`, `docs/verification.md`, `CHECKPOINTS.md`.
 - **Alcance del diff revisado:** working tree vs. commit `4caeb38`. Los cambios de
@@ -203,7 +203,7 @@ Ningún `R<n>` se queda sin cubrir.**
 
 ## 3. Tasks completas
 
-Las 22 tasks de `specs/data-model/tasks.md` están `[x]` y **verificadas contra el
+Las 22 tasks de `specs/08-data-model/tasks.md` están `[x]` y **verificadas contra el
 código**, no solo marcadas:
 
 - **T1** `[x]` `app-error.ts:29,39` + `app-error.test.ts:59-86`.
@@ -335,7 +335,7 @@ código**, no solo marcadas:
 - [x] **C4 — Verificación real.** Al menos un test ejecutable por módulo nuevo;
   corren en el entorno de `docs/verification.md`; feliz y error cubiertos.
 - [x] **C5 — Sesión cerrada bien.** Los untracked son legítimos
-  (`specs/data-model/`, `progress/implementations/data-model.md`, la migración y
+  (`specs/08-data-model/`, `progress/implementations/data-model.md`, la migración y
   los tres módulos nuevos): ni temporales, ni builds, ni caches.
   `progress/current.md` refleja la sesión; la entrada de `history.md` es el paso
   de cierre del leader.
@@ -343,7 +343,7 @@ código**, no solo marcadas:
   queda anotado en `docs/api-contract.md`, que es la fuente de verdad que lee el
   frontend, con la nota de que **aún no está consumido**. No hay endpoints ni
   modelos inventados fuera del contrato.
-- [x] **C7 — SDD.** `specs/data-model/` con los tres archivos; `requirements.md`
+- [x] **C7 — SDD.** `specs/08-data-model/` con los tres archivos; `requirements.md`
   en EARS estricto **y con la sección de Procedencia completa** (cada `R<n>`
   vigente clasificado `humano` / `delegado` / `añadido`, con los `← REVISAR` que
   el humano usó en la puerta); las 22 tasks `[x]`; cada `R<n>` con test.

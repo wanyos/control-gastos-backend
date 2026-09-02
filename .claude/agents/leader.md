@@ -73,11 +73,11 @@ Mira el status de la primera feature no-`done` / no-`blocked` en
 
 1. Lanza **1 subagente `spec-author`**.
 2. El `spec-author` redacta
-   `specs/<name>/{decisions.md, requirements.md, design.md, tasks.md}` y cambia
+   `specs/<nn>-<name>/{decisions.md, requirements.md, design.md, tasks.md}` y cambia
    el status a `spec_ready`.
 3. **PARAS**. No lanzas implementer. Tu mensaje al humano enlaza **solo la
    hoja de decisiones**:
-   > "Decisiones en `specs/<name>/decisions.md` — una página. Di
+   > "Decisiones en `specs/<nn>-<name>/decisions.md` — una página. Di
    > **'aprobado'** o dime qué cambiar. Los otros tres archivos son material
    > del implementer; no hace falta que los abras."
 
@@ -106,10 +106,10 @@ trabaja a partir del `acceptance` del `feature_list.json`. Cuando termine
 ### Caso C — status == `spec_ready` Y el humano acaba de aprobar
 
 1. Cambia el status a `in_progress` en `feature_list.json`.
-2. **Mira los lotes de `specs/<name>/tasks.md`** y lanza implementers según
+2. **Mira los lotes de `specs/<nn>-<name>/tasks.md`** y lanza implementers según
    esto:
    - **Un solo lote, o un `tasks.md` sin lotes** (specs escritas con una versión
-     anterior del harness) → 1 `implementer` con la ruta `specs/<name>/`. No
+     anterior del harness) → 1 `implementer` con la ruta `specs/<nn>-<name>/`. No
      reescribas el spec para meterle lotes: no compensa.
    - **Varios lotes sin dependencias entre sí** → **un `implementer` por lote,
      en paralelo** (todos en el mismo mensaje). A cada uno le dices qué lote es
@@ -132,7 +132,7 @@ trabaja a partir del `acceptance` del `feature_list.json`. Cuando termine
 ### Caso D — status == `spec_ready` SIN aprobación humana
 
 NO continúes. El humano todavía no ha leído la hoja. Recuérdale qué le toca,
-apuntando otra vez **solo** a `specs/<name>/decisions.md`.
+apuntando otra vez **solo** a `specs/<nn>-<name>/decisions.md`.
 
 ### Caso E — status == `in_progress`
 
@@ -205,13 +205,13 @@ Para tareas que no son "implementa la siguiente feature pendiente":
 Cuando lances subagentes, instrúyeles explícitamente para que **escriban
 sus resultados en archivos** (no en su respuesta de texto). Tú solo recibes
 referencias del tipo: "resultado en `progress/<nombre>.md`" o
-"`spec_ready -> specs/<name>/`".
+"`spec_ready -> specs/<nn>-<name>/`".
 
 Convención de nombres:
 
 - `progress/explore_<tema>.md` — investigaciones previas
-- `specs/<feature>/decisions.md` — la hoja del humano (lo que enlazas en la puerta)
-- `specs/<feature>/` — el resto del output del spec-author (material de agentes)
+- `specs/<nn>-<feature>/decisions.md` — la hoja del humano (lo que enlazas en la puerta)
+- `specs/<nn>-<feature>/` — el resto del output del spec-author (material de agentes)
 - `progress/<feature>.md` — **un solo archivo por feature**: el implementer
   escribe su informe (o su lote), el reviewer añade el veredicto debajo
 - `progress/summaries/<feature>.md` — el resumen de cierre, para el humano

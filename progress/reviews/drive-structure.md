@@ -2,7 +2,7 @@
 
 **Veredicto:** APPROVED
 
-Revisado contra `specs/drive-structure/{requirements,design,tasks}.md`, el informe
+Revisado contra `specs/04-drive-structure/{requirements,design,tasks}.md`, el informe
 `progress/implementations/drive-structure.md`, el código y los docs. `bash ./init.sh`
 ejecutado por el reviewer: **verde** (`[OK] Entorno listo`, typecheck + 95 tests en
 9 files, exit 0).

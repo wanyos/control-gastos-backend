@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-07-25
 Intención original: `feature_list.json` → feature `drive-structure`, bloque `intent`
-Spec (SDD): `specs/drive-structure/`
+Spec (SDD): `specs/04-drive-structure/`
 
 ## Qué hace ahora la app que antes no
 

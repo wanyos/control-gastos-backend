@@ -83,7 +83,7 @@ error) siguen verdes: el placeholder `test-root-folder-id` de
 
 **Docs (ligero):** comentario en [.env.example:18](../../.env.example#L18) (acepta
 id o URL), fila y nota de la variable en `docs/stack.md`, y nota de la raíz en
-`specs/drive-structure/design.md` §9. **Sin ADR nuevo** (endurecimiento dentro de
+`specs/04-drive-structure/design.md` §9. **Sin ADR nuevo** (endurecimiento dentro de
 ADR-008/ADR-009). Sin dependencias ni variables de entorno nuevas. `.env` NO tocado.
 
 ## Qué se construyó
@@ -258,7 +258,7 @@ end-to-end y existe el resumen de cierre
 - `src/config/env.test.ts` (+8 tests con id sintético)
 - `.env.example` (comentario: acepta id o URL de la carpeta)
 - `docs/stack.md` (fila y nota de `GOOGLE_DRIVE_ROOT_FOLDER_ID`)
-- `specs/drive-structure/design.md` (§9: nota de normalización)
+- `specs/04-drive-structure/design.md` (§9: nota de normalización)
 
 > **Nota del 2026-09-01:** algunas rutas que citaba este informe ya no existen
 > (el renombrado `ingesta` → `ingestion` de la F12, el módulo `expenses` retirado,

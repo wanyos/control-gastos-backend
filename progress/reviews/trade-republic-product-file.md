@@ -23,7 +23,7 @@ Verificado por el revisor, ejecutando:
 - `package.json` y `pnpm-lock.yaml` **sin cambio** frente a git (`git status
   --porcelain` vacío para los dos): cero dependencias nuevas, confirmado contra el
   índice y no contra el informe.
-- **25/25 tasks** en `[x]` en [`tasks.md`](../../specs/trade-republic-product-file/tasks.md)
+- **25/25 tasks** en `[x]` en [`tasks.md`](../../specs/20-trade-republic-product-file/tasks.md)
   (T1-T22 más T1b, T9b, T11b). Ninguna `[ ]`.
 
 ---
@@ -78,7 +78,7 @@ añade que los tres salen «del **resumen** del extracto».
 Yo **sí** he abierto el `.pdf` real (ver §Método de cruce) y, sin citar ni un valor:
 su resumen es **del periodo entero, no del mes**, y el extracto que hay hoy en `var/`
 **cubre varios abonos de intereses**. Con la cadencia decidida —un archivo por abono,
-[`decisions.md:19`](../../specs/trade-republic-product-file/decisions.md#L19)— el
+[`decisions.md:19`](../../specs/20-trade-republic-product-file/decisions.md#L19)— el
 resumen **no** da el `moneyIn`/`moneyOut` **de cada mes**: solo del conjunto. Que hoy
 salga bien es un accidente de esta cuenta (no tiene más apuntes que los intereses, así
 que los dos son `0` todos los meses); el documento, tal como está escrito, le dice que
@@ -240,10 +240,10 @@ el acierto (`+` = «hay de más»). No tengo ninguna pega que ponerle.
   escrito) está resuelto en ADR-024 y hecho ejecutable por los guardianes.
 - `decisions.md` existe, cabe en una hoja, tiene los bloques de la plantilla y el
   bloque 🔴 tiene **exactamente 6** puntos, cada uno con su alternativa, más su
-  **puerta de aprobación firmada** ([`:92`](../../specs/trade-republic-product-file/decisions.md#L92)).
+  **puerta de aprobación firmada** ([`:92`](../../specs/20-trade-republic-product-file/decisions.md#L92)).
 - **Tope de tamaño:** 16 > ~15, y la razón está **dicha explícitamente** en
-  [`decisions.md:81`](../../specs/trade-republic-product-file/decisions.md#L81) y
-  ampliada en [`requirements.md:204`](../../specs/trade-republic-product-file/requirements.md#L204).
+  [`decisions.md:81`](../../specs/20-trade-republic-product-file/decisions.md#L81) y
+  ampliada en [`requirements.md:204`](../../specs/20-trade-republic-product-file/requirements.md#L204).
   Cumple la regla.
 - **Procedencia** completa: los 16 vivos clasificados (`humano` / `delegado` /
   `añadido`), los dos retirados dichos como retirados y sus números no reutilizados.

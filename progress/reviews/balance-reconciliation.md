@@ -1,6 +1,6 @@
 # Review — F32 `balance-reconciliation`
 
-Fecha: 2026-08-30 · Revisor: `reviewer` · Spec: `specs/balance-reconciliation/`
+Fecha: 2026-08-30 · Revisor: `reviewer` · Spec: `specs/32-balance-reconciliation/`
 Informe revisado: `progress/implementations/balance-reconciliation.md` (lotes A y B)
 
 ## Review

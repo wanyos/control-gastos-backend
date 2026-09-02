@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-20
 Intención original: `feature_list.json` → feature `savings-account-as-product`, bloque `intent`
-Spec (SDD): [`specs/savings-account-as-product/`](../../specs/savings-account-as-product/) · la hoja que aprobaste: [`decisions.md`](../../specs/savings-account-as-product/decisions.md)
+Spec (SDD): [`specs/26-savings-account-as-product/`](../../specs/26-savings-account-as-product/) · la hoja que aprobaste: [`decisions.md`](../../specs/26-savings-account-as-product/decisions.md)
 Revisión: [`progress/reviews/savings-account-as-product.md`](../reviews/savings-account-as-product.md)
 
 ## Qué hace ahora la app que antes no

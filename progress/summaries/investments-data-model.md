@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-11
 Intención original: `feature_list.json` → feature `investments-data-model`, bloque `intent`
-Spec (SDD): [`specs/investments-data-model/`](../../specs/investments-data-model/decisions.md)
+Spec (SDD): [`specs/09-investments-data-model/`](../../specs/09-investments-data-model/decisions.md)
 
 ## Qué hace ahora la app que antes no
 

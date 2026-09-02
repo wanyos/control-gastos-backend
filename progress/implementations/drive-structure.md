@@ -5,7 +5,7 @@
 - **Estado en `feature_list.json`:** `in_progress` (NO se cierra: pendiente de
   `APPROVED` del reviewer y del resumen de cierre en
   `progress/summaries/drive-structure.md`). T20 (smoke real contra Drive) es del humano.
-- **Spec seguido:** `specs/drive-structure/{requirements,design,tasks}.md`. Tasks
+- **Spec seguido:** `specs/04-drive-structure/{requirements,design,tasks}.md`. Tasks
   **T1–T19** marcadas `[x]` (T17 con salvedad de lint, ver abajo). T20 es del humano.
 
 ## Archivos creados
@@ -102,7 +102,7 @@
 
 > **R20 y R21 son requirements de proceso**, verificados por checklist del
 > reviewer, no por test ejecutable. Misma excepción consciente que R21/R22/R23 de
-> `specs/drive-connection/` y R16/R17 de `specs/foundations/`.
+> `specs/03-drive-connection/` y R16/R17 de `specs/02-foundations/`.
 
 ## Salida de la verificación final
 

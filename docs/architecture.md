@@ -223,7 +223,7 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 - **Estado:** aceptada (implementada en la feature #2)
 - **Contexto:** el `intent` de la feature #2 exige que todo error salga "con un
   formato consistente en toda la app". El patrón concreto estaba delegado al
-  agente (ver `specs/foundations/`).
+  agente (ver `specs/02-foundations/`).
 - **Decisión:** clases de error de dominio (`AppError` con `code` + `statusCode`;
   subclases `NotFoundError`, `ValidationError` en `src/errors/app-error.ts`) +
   `setErrorHandler` central registrado como plugin `fp`
@@ -260,7 +260,7 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 - **Estado:** aceptada (implementada en la feature #2)
 - **Contexto:** la config por entorno debe validarse al arrancar y fallar con
   mensaje claro (Principio 4). ¿Librería declarativa o validador manual?
-  Decisión delegada al agente (ver `specs/foundations/design.md` §2).
+  Decisión delegada al agente (ver `specs/02-foundations/design.md` §2).
 - **Decisión:** validador manual tipado en `src/config/env.ts`
   (`loadConfig(env)`): 4 variables, 1 obligatoria; acumula todos los problemas
   en un único error. `src/server.ts` hace fail-fast (stderr + `exit(1)`).
@@ -277,13 +277,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     simple posible (strings obligatorios, sin coerción ni enum). Reevaluar de
     verdad cuando la feature 4 lleve la cuenta a 8 **y** aparezca la primera
     variable que no sea un string plano (detalle en
-    `specs/drive-connection/design.md` §3).
+    `specs/03-drive-connection/design.md` §3).
   - **Evaluado el 2026-07-25 (feature "drive-structure"):**
     `GOOGLE_DRIVE_ROOT_FOLDER_ID` lleva la cuenta a **8**. Se **mantiene el
     validador manual**: la 8ª variable sigue siendo un string plano obligatorio
     (fileId), sin coerción ni enum, así que se cruza el umbral en **número** pero
     no en **tipo**. Reevaluar `@fastify/env` cuando aparezca la primera variable
-    que no sea un string plano (detalle en `specs/drive-structure/design.md` §10,
+    que no sea un string plano (detalle en `specs/04-drive-structure/design.md` §10,
     ADR-008 consecuencias).
 
 ### ADR-007: Conexión con Google Drive — `@googleapis/drive` + OAuth2 con refresh token
@@ -340,7 +340,7 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     arranque lazy; R8 lo convierte en test).
   - La feature 4 hereda el cliente vía `fastify.drive` sin volver a resolver auth.
   - **Umbral de ADR-006 evaluado**: 7 variables tras esta feature; se mantiene el
-    validador manual (razones en `specs/drive-connection/design.md` §3).
+    validador manual (razones en `specs/03-drive-connection/design.md` §3).
 
 ### ADR-008: Estructura en Drive — servicio interno idempotente en `lib/`, Drive como registro de bancos, raíz por env
 
@@ -936,7 +936,7 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
      de la F8. Con ello el **importe 0 pasa de `income` a `neutral`** — el **único**
      cambio de comportamiento de la feature, y el cabo suelto #2 del roadmap.
   5. **El contrato NO gana nada más para el importador.** Repasada la tabla de
-     mapeo de `specs/data-model/design.md` §9, el importador ya tiene todo lo que
+     mapeo de `specs/08-data-model/design.md` §9, el importador ya tiene todo lo que
      necesita (`bookingDate`, `valueDate`, `description`, `amount`, `balance`,
      `currency`, `daySequence`, `accountIban`, `bank`); el resto (`origin`,
      `status`, `transferId`, `accountId`) lo pone **él**, y meterlo aquí convertiría

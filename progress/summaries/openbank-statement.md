@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-19
 Intención original: `feature_list.json` → feature `openbank-statement`, bloque `intent`
-Spec (SDD): [`specs/openbank-statement/`](../../specs/openbank-statement/decisions.md)
+Spec (SDD): [`specs/19-openbank-statement/`](../../specs/19-openbank-statement/decisions.md)
 
 ## Qué hace ahora la app que antes no
 

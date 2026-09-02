@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Revisor automático. Aprueba o rechaza el trabajo del implementador comparándolo contra docs/, specs/<feature>/ (si aplica) y CHECKPOINTS.md. Nunca corrige código.
+description: Revisor automático. Aprueba o rechaza el trabajo del implementador comparándolo contra docs/, specs/<nn>-<feature>/ (si aplica) y CHECKPOINTS.md. Nunca corrige código.
 tools: Read, Glob, Grep, Bash, Write
 ---
 
@@ -19,7 +19,7 @@ no puede tocar lo que juzga. Tienes `Write` para tus dos informes y para nada m�
   `docs/verification.md`
 - `CHECKPOINTS.md`
 - `progress/<feature>.md` — el informe del implementer (tú escribes debajo)
-- Si la feature es SDD: `specs/<feature>/` completo. **No necesitas leer
+- Si la feature es SDD: `specs/<nn>-<feature>/` completo. **No necesitas leer
   `docs/specs.md`**: todo lo que tienes que comprobar de un spec está en la
   checklist de aquí abajo.
 
@@ -45,7 +45,7 @@ los incumplimientos (ver «Formato del veredicto»).
 
 **Solo si la feature es SDD (`"sdd": true`):**
 
-6. **Hoja de decisiones**: existe `specs/<feature>/decisions.md`, cabe en una
+6. **Hoja de decisiones**: existe `specs/<nn>-<feature>/decisions.md`, cabe en una
    página, tiene los bloques del formato de `docs/decisions-template.md`, y el
    bloque 🔴 **no pasa de 6 puntos**, cada uno con su alternativa. Si falta o se
    desborda, rechaza: sin ella el humano no pudo aprobar en un tiempo razonable.

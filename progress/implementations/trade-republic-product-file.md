@@ -31,7 +31,7 @@
 | [`docs/api-contract.md:1253`](../../docs/api-contract.md#L1253) | §Parser de Trade Republic + `POST /api/parser/trade-republic` |
 | [`docs/conventions.md:208`](../../docs/conventions.md#L208) | §Parsers de banco: un banco puede entrar **solo por archivo escrito a mano** |
 | [`docs/roadmap.md`](../../docs/roadmap.md) | E4 pasa a **5 de 6 bancos** y la fila de Trade Republic pasa a ✅ con su nota de provisionalidad |
-| [`specs/trade-republic-product-file/tasks.md`](../../specs/trade-republic-product-file/tasks.md) | 25 tasks marcadas `[x]` |
+| [`specs/20-trade-republic-product-file/tasks.md`](../../specs/20-trade-republic-product-file/tasks.md) | 25 tasks marcadas `[x]` |
 
 ---
 

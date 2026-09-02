@@ -74,7 +74,7 @@ palabras de formato y verbos genéricos de banca).
 - [`:206`](../../progress/implementations/openbank-statement.md#L206) — criterio
   13 dado por cumplido («ni un nombre real»): el criterio del `intent` habla de
   nombres, pero el 🔒 de
-  [`specs/openbank-statement/tasks.md:8`](../../specs/openbank-statement/tasks.md#L8)
+  [`specs/19-openbank-statement/tasks.md:8`](../../specs/19-openbank-statement/tasks.md#L8)
   dice literalmente «ni un **importe**, concepto, IBAN, CCC ni nombre del fichero
   real», y el ADR-017 va de datos financieros reales, no solo de nombres.
   Corregir la afirmación cuando se corrijan las cifras.

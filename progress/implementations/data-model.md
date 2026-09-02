@@ -1,7 +1,7 @@
 # Implementación — Feature 8 `data-model`
 
 > Informe del `implementer`. Feature SDD: la fuente de verdad es
-> [`specs/data-model/`](../../specs/data-model/design.md) (requirements + design +
+> [`specs/08-data-model/`](../../specs/08-data-model/design.md) (requirements + design +
 > tasks), **no** el `acceptance` original de `feature_list.json`. El spec pasó por
 > **cuatro correcciones humanas** en la puerta de aprobación y todas se han
 > respetado (sin endpoint de traspasos, sin alta ni borrado de movimientos, saldo
@@ -12,7 +12,7 @@
 >   el veredicto del `reviewer` y su `progress/summaries/data-model.md`).
 > - **Verificación:** `bash ./init.sh` **verde** — typecheck + **197 tests**
 >   (la suite estaba en 146 al arrancar).
-> - **Tasks:** T1-T22 de [`specs/data-model/tasks.md`](../../specs/data-model/tasks.md)
+> - **Tasks:** T1-T22 de [`specs/08-data-model/tasks.md`](../../specs/08-data-model/tasks.md)
 >   **todas marcadas `[x]`**. Ninguna saltada.
 
 ---
@@ -52,7 +52,7 @@
 | `docs/data-model.md` | T16: reescrito al modelo final. |
 | `docs/architecture.md` | T17: **ADR-011**, árbol de carpetas, subclases nuevas bajo ADR-005. |
 | `progress/current.md` | T18: plan de implementación + nota de **breaking change**. |
-| `specs/data-model/tasks.md` | T1-T22 marcadas `[x]`. |
+| `specs/08-data-model/tasks.md` | T1-T22 marcadas `[x]`. |
 
 ### Borrados
 

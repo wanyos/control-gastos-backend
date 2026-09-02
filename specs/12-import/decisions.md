@@ -38,7 +38,7 @@ añadidos, y la nº 4 tal cual.
 
 ## ⚙️ Técnicas — decididas, no necesitan tu visto bueno (8)
 
-1. **El mapeo parser → base de datos ya estaba escrito** (`specs/data-model/design.md` §9): se reutiliza tal cual, no se rehace.
+1. **El mapeo parser → base de datos ya estaba escrito** (`specs/08-data-model/design.md` §9): se reutiliza tal cual, no se rehace.
 2. **Todo lo importado nace `origin=imported`, `status=pending_review`**, sin categoría, sin forma de pago y sin traspaso.
 3. **Los duplicados los descarta la base de datos**, con el índice único que ya incluye `daySequence`; se cuentan y se te reportan, no se descartan en silencio.
 4. **Cada fichero se guarda en una sola operación:** o entran todos sus movimientos buenos o no entra ninguno, y entonces el fichero se queda pendiente en Drive.

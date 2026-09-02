@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-12
 Intención original: `feature_list.json` → feature `myinvestor-products`, bloque `intent`
-Spec: `specs/myinvestor-products/` (SDD, cinco archivos)
+Spec: `specs/13-myinvestor-products/` (SDD, cinco archivos)
 
 ## Qué hace ahora la app que antes no
 
@@ -136,7 +136,7 @@ Por cada punto del `como_se_que_esta_bien`:
 Y del `que_no_quiero`: ✅ **sin base de datos** (ni una mención a `prisma` en el módulo, con
 guardián en `src/architecture.test.ts`), ✅ **sin enlazar movimientos con productos**, ✅ **sin
 mover nada a `procesados/`**, ✅ **sin interfaz**, ✅ **la lista de campos la cerraste tú** antes
-de implementar (`specs/myinvestor-products/CAMPOS-cerrados.md`), ✅ **no se guarda la TAE que no
+de implementar (`specs/13-myinvestor-products/CAMPOS-cerrados.md`), ✅ **no se guarda la TAE que no
 se te aplica** (una segunda TAE se rechaza como clave desconocida) y ✅ **no se versiona ningún
 dato financiero real**.
 

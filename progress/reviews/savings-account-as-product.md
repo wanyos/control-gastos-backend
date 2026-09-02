@@ -1,7 +1,7 @@
 # Review — F26 `savings-account-as-product`
 
-> Feature **SDD**. Manda [`specs/savings-account-as-product/`](../../specs/savings-account-as-product/):
-> [`decisions.md`](../../specs/savings-account-as-product/decisions.md) (puerta aprobada
+> Feature **SDD**. Manda [`specs/26-savings-account-as-product/`](../../specs/26-savings-account-as-product/):
+> [`decisions.md`](../../specs/26-savings-account-as-product/decisions.md) (puerta aprobada
 > el 2026-08-20, las 6 decisiones 🔴 tal cual), `requirements.md` (15 R), `design.md`,
 > `tasks.md` (28 tasks). Informe del implementer:
 > [`progress/implementations/savings-account-as-product.md`](../implementations/savings-account-as-product.md).
@@ -96,7 +96,7 @@ tabla entera no aparece.
   ([su informe, §Sugerencias fuera de scope nº 6](../implementations/savings-account-as-product.md)):
   hacía falta la migración aplicada —ya lo está— y que el archivo de Drive lleve el `name`
   corregido, que es cosa del humano
-  ([`decisions.md` §Puerta de aprobación](../../specs/savings-account-as-product/decisions.md)).
+  ([`decisions.md` §Puerta de aprobación](../../specs/26-savings-account-as-product/decisions.md)).
   Hoy la base tiene **0 productos y 0 fotos**, así que nadie la ha hecho. Es el único
   checkpoint que queda abierto y **no puede hacerlo un agente**: su archivo, su pasada,
   informe a `progress/explorations/prueba-real-<tema>-<fecha>.md` con recuentos y forma.
@@ -346,7 +346,7 @@ Las **10 que él añadió**, verificadas contra el código, no contra su palabra
 | Regla de negocio **gemela** (cada tipo, su serie) | Coincide con la guarda real del servicio, incluido el matiz de que un `name` repetido con otro tipo **rechaza** en vez de convertir | ✔ |
 | §Patrimonio: de dónde saldría el número de una cuenta remunerada | Marcado como consulta que **no existe todavía**: honesto | ✔ |
 | §«Lo que NO está aquí»: parsers e importador ya hechos | Las features citadas existen y son las correctas: F10 `myinvestor-statement`, F13 `myinvestor-products`, F15 `product-opened-at`, F20 `trade-republic-product-file`, F12 `import` | ✔ |
-| Fila nueva en la tabla de partes del documento (F26 / ADR-026) | El enlace a `specs/savings-account-as-product/design.md` **resuelve** | ✔ |
+| Fila nueva en la tabla de partes del documento (F26 / ADR-026) | El enlace a `specs/26-savings-account-as-product/design.md` **resuelve** | ✔ |
 | Nota «Dos tablas de foto, no una» + tabla tipo→serie | Coherente con la regla del servicio y con el límite conocido del depósito, que sigue documentado | ✔ |
 
 **Afirmaciones nuevas que he verificado contra el código porque eran verificables:**

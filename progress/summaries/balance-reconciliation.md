@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-30
 Intención original: `feature_list.json` → feature `balance-reconciliation`, bloque `intent`
-Spec: [`specs/balance-reconciliation/`](../../specs/balance-reconciliation/decisions.md) · ADR nuevo: **ADR-030**
+Spec: [`specs/32-balance-reconciliation/`](../../specs/32-balance-reconciliation/decisions.md) · ADR nuevo: **ADR-030**
 
 ## Qué hace ahora la app que antes no
 

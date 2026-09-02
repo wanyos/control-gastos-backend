@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-08-20
 Intención original: `feature_list.json` → feature `trade-republic-product-file`, bloque `intent`
-Spec (SDD): [`specs/trade-republic-product-file/`](../../specs/trade-republic-product-file/decisions.md)
+Spec (SDD): [`specs/20-trade-republic-product-file/`](../../specs/20-trade-republic-product-file/decisions.md)
 Prueba real (C4 bis): [`explorations/prueba-real-trade-republic-2026-08-20.md`](../explorations/prueba-real-trade-republic-2026-08-20.md)
 
 ## Qué hace ahora la app que antes no

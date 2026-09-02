@@ -182,7 +182,7 @@ ninguna declaración duplicada** de `ParsedMovement`, `UnparsedRow` ni
 - **`daySequence` la emite cada parser**, contando desde el más antiguo del día —
   el sentido en que exporta cada banco es conocimiento suyo, no del importador
   (Bankinter exporta `newest-first`). El design de la F8 lo predijo por escrito
-  (`specs/data-model/design.md:584`).
+  (`specs/08-data-model/design.md:584`).
 - ⚠️ **Supuesto que la F12 debe conocer:** `daySequence` numera solo las filas
   parseadas, no las no reconocidas.
 
@@ -412,11 +412,11 @@ tiene etapa, es que se va a perder.
   **hecho el 2026-08-17**, leyendo las muestras reales de Drive en vez de entrar
   en cada web. Ya no bloquea la E4.
 - Los dos anteriores salen de
-  [`specs/myinvestor-statement/decisions.md`](../specs/myinvestor-statement/decisions.md)
+  [`specs/10-myinvestor-statement/decisions.md`](../specs/10-myinvestor-statement/decisions.md)
   (§Consecuencias que te tocan a ti).
 - ~~**La plantilla mensual, en una carpeta HERMANA de `notas-banco/`**~~ ✅ **hecho**
   (2026-08-13): la carpeta ya está creada en Drive, fuera de `notas-banco/`. De
-  [`specs/myinvestor-products/decisions.md`](../specs/myinvestor-products/decisions.md).
+  [`specs/13-myinvestor-products/decisions.md`](../specs/13-myinvestor-products/decisions.md).
 - 🔴 **Actualizar esa plantilla con `openedAt`** (F15, 2026-08-13). Nadie comprueba
   que la plantilla de Drive coincida con la documentación, así que **todo archivo
   escrito con la plantilla vieja fallará** por falta de la fecha de apertura. Es una

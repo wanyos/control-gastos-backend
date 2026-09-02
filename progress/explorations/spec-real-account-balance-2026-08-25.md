@@ -121,5 +121,5 @@ importa, que es la puerta de aprobación.
 ## Estado
 
 `F31` queda en `blocked` en `feature_list.json` esperando respuesta. No se ha
-creado `specs/real-account-balance/`: no escribo el spec hasta saber si es uno
+creado `specs/31-real-account-balance/`: no escribo el spec hasta saber si es uno
 o son dos.

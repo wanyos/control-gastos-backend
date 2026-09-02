@@ -170,7 +170,7 @@
       `progress/implementations/drive-connection.md` (Nivel 4 de
       `docs/verification.md`), anotando explícitamente que **R21, R22 y R23 son
       requirements de proceso** verificados por checklist del reviewer, no por
-      test (excepción consciente, precedente: R16/R17 de `specs/foundations/`).
+      test (excepción consciente, precedente: R16/R17 de `specs/02-foundations/`).
       Cubre: todos.
 
 ## Smoke test del humano (Nivel 3 — NO es del implementer)

@@ -10,7 +10,7 @@
 > **Viene del corte de la antigua F10 `myinvestor-parser`** (2026-08-11). La numeración
 > de secciones se conserva (§5 a §12) para que las referencias ya escritas sigan
 > valiendo; §2, §3 y §4 viven en
-> [`../myinvestor-statement/design.md`](../myinvestor-statement/design.md).
+> [`../10-myinvestor-statement/design.md`](../10-myinvestor-statement/design.md).
 >
 > 📄 **Premisa que lo condiciona todo:** estos archivos **los escribe el humano a mano**,
 > así que su formato **se puede diseñar**. Esa es la diferencia con el extracto (F10),
@@ -20,7 +20,7 @@
 > Las decisiones delegadas se marcan **⭐ DECISIÓN PROPIA (aprobar en la puerta)**.
 >
 > ✅ **Actualizado el 2026-08-11 con las decisiones del humano** (diff en
-> [`../myinvestor-statement/CHANGELOG-respec.md`](../myinvestor-statement/CHANGELOG-respec.md)):
+> [`../10-myinvestor-statement/CHANGELOG-respec.md`](../10-myinvestor-statement/CHANGELOG-respec.md)):
 > los números de los archivos de producto van como **número JSON nativo** (§6.1, cambia
 > respecto a lo que se propuso) y las otras cuatro decisiones 🔴 quedan aprobadas tal
 > cual. ✅ **La lista de campos de §7 quedó CERRADA ese mismo día** (registro para el
@@ -581,7 +581,7 @@ Cuatro barreras, las dos primeras ya existentes:
 
 Lo digo explícitamente porque el `intent` pide que se diga en un sentido o en el otro:
 
-> **El esquema de `specs/investments-data-model/` NO cambia. Ni una columna, ni un tipo,
+> **El esquema de `specs/09-investments-data-model/` NO cambia. Ni una columna, ni un tipo,
 > ni un índice, ni una precisión decimal.**
 
 Comprobado campo a campo: los cuatro valores del enum, las cuatro columnas del depósito,

@@ -1,6 +1,6 @@
 # import (F12) — implementación
 
-> Spec: [`specs/import/`](../../specs/import/) — 20 requirements, 31 tasks en
+> Spec: [`specs/12-import/`](../../specs/12-import/) — 20 requirements, 31 tasks en
 > cuatro lotes. **Las 31 marcadas `[x]`.** Sin commits: el árbol queda listo para
 > que el humano commitee después del reviewer.
 >
@@ -36,7 +36,7 @@ de mover), `ingestion.types.ts`, `ingestion.routes.ts` y sus dos tests,
 [`docs/roadmap.md`](../../docs/roadmap.md),
 [`docs/conventions.md`](../../docs/conventions.md),
 [`docs/dar-de-alta-un-banco.md`](../../docs/dar-de-alta-un-banco.md),
-[`specs/import/tasks.md`](../../specs/import/tasks.md).
+[`specs/12-import/tasks.md`](../../specs/12-import/tasks.md).
 
 **No tocados**, como mandaba el design: `prisma/schema.prisma` (sin migración),
 el parser de Bankinter, `movements.*`, `categories.*`, `var/drive-read/`.
@@ -182,8 +182,8 @@ nunca llegó a un commit.
   habría hecho).
 - **13 ocurrencias en 6 archivos**, todas sustituidas:
   `src/modules/myinvestor/myinvestor.statement.parser.test.ts` (7),
-  `docs/dar-de-alta-un-banco.md` (1), `specs/import/decisions.md` (1),
-  `specs/import/design.md` (1), `specs/import/requirements.md` (1),
+  `docs/dar-de-alta-un-banco.md` (1), `specs/12-import/decisions.md` (1),
+  `specs/12-import/design.md` (1), `specs/12-import/requirements.md` (1),
   `progress/reviews/import.md` (2 — el propio informe del reviewer lo repetía).
 - **Verificado a nivel de workspace** (`control-gastos/` entero, incluido el
   frontend): **cero ocurrencias**.

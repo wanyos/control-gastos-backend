@@ -27,12 +27,12 @@
 > 🔗 **Reconciliado con la antigua feature 10 `myinvestor-parser`**, que ya definió
 > ese formato —JSON por producto, plantillas en `docs/myinvestor-product-files.md`— y
 > que desde el 2026-08-11 está **partida en dos**: ese formato es hoy
-> [`specs/myinvestor-products/`](../myinvestor-products/requirements.md) (el extracto
+> [`specs/13-myinvestor-products/`](../13-myinvestor-products/requirements.md) (el extracto
 > `.csv`, que este esquema no toca, es
-> [`specs/myinvestor-statement/`](../myinvestor-statement/requirements.md)).
+> [`specs/10-myinvestor-statement/`](../10-myinvestor-statement/requirements.md)).
 > **Se revisaba en la misma puerta que esta.**
 > Resultado, con el detalle en
-> [`myinvestor-products/design.md` §12](../myinvestor-products/design.md): **el esquema
+> [`myinvestor-products/design.md` §12](../13-myinvestor-products/design.md): **el esquema
 > Prisma de este spec NO cambia — ni una columna, ni un tipo, ni un índice, ni una precisión**. Los cuatro
 > tipos, las columnas del depósito, las cinco de la valoración y las dos claves
 > naturales cubren todo lo que ese formato puede expresar.
@@ -152,7 +152,7 @@ estado ni columna booleana de cierre para `InvestmentProduct`.
 > última aparición del producto, y su regla es explícita: **dejar de escribir un
 > producto NO lo cierra**, porque un olvido de un mes con prisa sería indistinguible
 > de un cierre y hundiría el patrimonio sin motivo. El importador **no infiere nada
-> de las ausencias** ([`myinvestor-products/design.md`](../myinvestor-products/design.md)
+> de las ausencias** ([`myinvestor-products/design.md`](../13-myinvestor-products/design.md)
 > §8 y §12). Esto
 > **cierra** el que era el punto abierto nº 3 de este spec.
 
@@ -392,7 +392,7 @@ cambios.
 > anterior diciendo que la feature 10 aterrizaría seis archivos en esta misma carpeta.
 > **Eso ya no es cierto** y no debe citarse: el parser de MyInvestor vive en
 > `src/modules/myinvestor/` (norma «un parser por banco»,
-> [`myinvestor-statement/design.md` §2](../myinvestor-statement/design.md)), una carpeta
+> [`myinvestor-statement/design.md` §2](../10-myinvestor-statement/design.md)), una carpeta
 > **disjunta** de esta. La
 > decisión no cambia; cambia su porqué.
 
@@ -548,7 +548,7 @@ mapa de trazabilidad (Nivel 4 de `docs/verification.md`).
 
 > Siguen siendo decisiones `(añadido)`/`(delegado)` mías —el humano las mira— pero
 > **ya no son preguntas sin respuesta**: los formatos definidos en
-> [`specs/myinvestor-products/`](../myinvestor-products/requirements.md) y las
+> [`specs/13-myinvestor-products/`](../13-myinvestor-products/requirements.md) y las
 > **muestras reales del banco**
 > (`var/drive-read/myinvestor/2026/`) las cierran. **Ninguna cambia el esquema.**
 
@@ -586,11 +586,11 @@ mapa de trazabilidad (Nivel 4 de `docs/verification.md`).
   cierre y hundiría el patrimonio sin motivo; convertir una **ausencia** en un
   **hecho** es exactamente la inferencia que no debe hacer un sistema con dinero
   dentro. El importador **no infiere nada de las ausencias**
-  ([`myinvestor-products/design.md`](../myinvestor-products/design.md) §8 y §12).
+  ([`myinvestor-products/design.md`](../13-myinvestor-products/design.md) §8 y §12).
 - **R8/R11 (era el punto abierto nº 5 — `gain` y `gainPercent` nullable) — ✅
   CONTESTADO.** Los dejé opcionales porque "el que manda es el fichero y ese fichero
   todavía no existe". **Ya existe: en el fichero son OBLIGATORIOS**
-  ([`myinvestor-products/requirements.md` R33-R39](../myinvestor-products/requirements.md)) — si te dejas la ganancia, el
+  ([`myinvestor-products/requirements.md` R33-R39](../13-myinvestor-products/requirements.md)) — si te dejas la ganancia, el
   producto se reporta como no parseado y lo ves. **Aun así las columnas se quedan
   `NULL`-ables en la base de datos**, por recomendación explícita de la feature 10 y
   porque es un **seguro que no cuesta nada**: si algún día el formato deja de

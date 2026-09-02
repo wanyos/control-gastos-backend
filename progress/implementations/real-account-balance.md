@@ -116,7 +116,7 @@ pnpm exec vitest run src/modules/openbank
 - `src/modules/investments/investments.model.test.ts` — **fuera de la cabecera
   `Archivos:` del lote**; adoptado por indicación explícita del leader porque la
   causa es mía (ver §Dos tests cambiaron de resultado).
-- `specs/real-account-balance/tasks.md` — T4..T11 marcadas.
+- `specs/31-real-account-balance/tasks.md` — T4..T11 marcadas.
 
 ### La firma que heredan los lotes C y D
 
@@ -376,7 +376,7 @@ Ejecutado completo el 2026-08-25 al terminar el lote:
   `src/no-real-data.test.ts` que ya estaban antes de empezar el lote: importes
   reales en `progress/explorations/handoff-backend-saldo-real.md` y frases en
   archivos de `trade-republic/`, `docs/api-contract.md`, `progress/` y
-  `specs/trade-republic-product-file/`. **Ninguno es de este lote** y no se han
+  `specs/20-trade-republic-product-file/`. **Ninguno es de este lote** y no se han
   tocado. Comprobado explícitamente que las líneas nuevas de
   `import.service.test.ts` y `import.local.service.test.ts` **no aparecen** entre
   los offenders (el `import.service.test.ts:1047-1048` que sale es de la F26 y

@@ -13,7 +13,7 @@
 
 Hoy el backend no sabe hablar con Drive. No hay ningún cliente HTTP saliente
 que reutilizar: la feature 2 excluyó explícitamente esa pieza
-(`specs/foundations/requirements.md:9-12`), así que **esta feature es el primer
+(`specs/02-foundations/requirements.md:9-12`), así que **esta feature es el primer
 consumidor saliente del proyecto** y crea el precedente. Lo único que se
 reutiliza es el triángulo config/lib/plugins.
 
@@ -348,7 +348,7 @@ app.register(drivePlugin)     // ← nuevo
 Va en `modules/health/health.routes.ts`, con el molde exacto de `/health/db`
 (`health.routes.ts:13-21`): `try/catch`, **sin `throw`**, respuesta de readiness
 con shape propio. `health/` **no tiene service** por decisión
-(`specs/foundations/design.md:283-288`): es un ping de infraestructura, no
+(`specs/02-foundations/design.md:283-288`): es un ping de infraestructura, no
 negocio.
 
 ```typescript
@@ -599,7 +599,7 @@ feature 4 (su fileId será una variable nueva entonces).
     necesita: usa placeholders (posible solo gracias al arranque lazy).
   - La feature 4 hereda el cliente vía `fastify.drive` sin volver a resolver auth.
   - **Umbral de ADR-006 evaluado**: 7 variables tras esta feature; se mantiene el
-    validador manual (razones en `specs/drive-connection/design.md` §3).
+    validador manual (razones en `specs/03-drive-connection/design.md` §3).
 
 ## 12. Riesgos y notas para el implementer
 

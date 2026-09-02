@@ -28,7 +28,7 @@
 
 Fecha de cierre: <YYYY-MM-DD>
 Intención original: `feature_list.json` → feature `<name>`, bloque `intent`
-Spec (si SDD): `specs/<name>/`
+Spec (si SDD): `specs/<nn>-<name>/`
 
 ## Qué hace ahora la app que antes no
 

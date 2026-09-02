@@ -11,7 +11,7 @@
 > **nadie comprueba que la de Drive coincida con esta**. Cuando el formato cambie, se
 > cambia **aquí** y tú actualizas la de Drive.
 >
-> Decisiones que lo fijan: `specs/trade-republic-product-file/decisions.md` y
+> Decisiones que lo fijan: `specs/20-trade-republic-product-file/decisions.md` y
 > `docs/architecture.md` §ADR-024.
 
 ## Las reglas de escritura no se repiten aquí

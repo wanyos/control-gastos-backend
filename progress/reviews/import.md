@@ -22,12 +22,12 @@ El IBAN `ES9121000418450200051332` entra en el repositorio con esta feature en
 |---|---|
 | `src/modules/myinvestor/myinvestor.statement.parser.test.ts` | líneas 259, 265, 271, 275, 284, 293, 306, 310 |
 | `docs/dar-de-alta-un-banco.md` | línea 135 (bloque de ejemplo) |
-| `specs/import/requirements.md` | procedencia de R18 |
-| `specs/import/decisions.md` | línea 53 |
-| `specs/import/design.md` | línea 199 |
+| `specs/12-import/requirements.md` | procedencia de R18 |
+| `specs/12-import/decisions.md` | línea 53 |
+| `specs/12-import/design.md` | línea 199 |
 
 No es un IBAN de manual: **tiene checksum válido** y la propia
-`specs/import/requirements.md` (procedencia de R18) lo atribuye al humano —
+`specs/12-import/requirements.md` (procedencia de R18) lo atribuye al humano —
 «Él mismo añadió la línea `iban;ES9121000418450200051332` **al CSV de MyInvestor
 en Drive**». Es decir: por lo que dice el propio spec, es el IBAN real de su
 cuenta, y `docs/dar-de-alta-un-banco.md` lo presenta como «esta forma exacta».
@@ -163,7 +163,7 @@ son sintéticos. La única excepción es el IBAN del punto 1.
   del mapeo §9 leído de la base de datos real, cuerpos HTTP completos, ids
   comparados entre ejecuciones. Los dobles son solo de Drive (red), que es lo
   correcto; la base de datos es real.
-- **C7 (SDD):** `specs/import/` con los cuatro archivos; `decisions.md` cabe en
+- **C7 (SDD):** `specs/12-import/` con los cuatro archivos; `decisions.md` cabe en
   una página, con los bloques de `docs/decisions-template.md` y **🔴 con 0 puntos**;
   los 20 requirements superan el tope de ~15 y **la razón está dicha en voz alta**
   en `requirements.md` (cabecera) y en `decisions.md`; procedencia completa, cada
@@ -313,7 +313,7 @@ contradicciones:
 
 ## Anotaciones no bloqueantes (nuevas de esta pasada)
 
-1. **`specs/import/requirements.md:255-256`** dice que el humano añadió la línea
+1. **`specs/12-import/requirements.md:255-256`** dice que el humano añadió la línea
    `iban;ES9121000418450200051332` a su CSV de Drive. Tras el reemplazo eso ya no
    es literalmente cierto: lo que añadió fue el suyo. La forma elidida `iban;ES30…`
    que usan `api-contract.md` y `roadmap.md` es más honesta y sirve igual. No

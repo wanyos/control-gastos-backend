@@ -2,7 +2,7 @@
 
 Fecha de cierre: 2026-07-20
 Intención original: `feature_list.json` -> feature `drive-connection`, bloque `intent`
-Spec (SDD): `specs/drive-connection/`
+Spec (SDD): `specs/03-drive-connection/`
 
 ## Qué hace ahora la app que antes no
 
@@ -120,7 +120,7 @@ Y los `que_no_quiero`:
 
 ## Notas para el futuro
 
-- **Pendiente tuyo (T25):** haz los pasos manuales de `specs/drive-connection/design.md`
+- **Pendiente tuyo (T25):** haz los pasos manuales de `specs/03-drive-connection/design.md`
   §10 (Google Cloud Console) y ejecuta `node scripts/get-drive-refresh-token.mjs`.
   EL PASO QUE MÁS IMPORTA: publicar la app "In production"; si la dejas en
   "Testing", el refresh token caduca cada 7 días. Luego `pnpm dev` + `curl

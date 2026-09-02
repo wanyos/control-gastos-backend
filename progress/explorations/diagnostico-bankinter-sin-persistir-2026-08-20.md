@@ -204,7 +204,7 @@ parser va con qué carpeta.
 
 ### (d) Escribir los 39 movimientos a mano en la base de datos — **descartada**
 
-Saltaría `toMovementRows` (el mapeo de `specs/data-model/design.md` §9: importe
+Saltaría `toMovementRows` (el mapeo de `specs/08-data-model/design.md` §9: importe
 como string, fechas `T00:00:00.000Z`, `origin: 'imported'`,
 `status: 'pending_review'`), la creación de cuenta con IBAN validado y el
 `daySequence`. Es exactamente el atajo que el índice parcial y el

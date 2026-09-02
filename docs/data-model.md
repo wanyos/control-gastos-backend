@@ -6,9 +6,9 @@
 >
 > | Parte | Qué cubre | Feature | Decisiones |
 > | --- | --- | --- | --- |
-> | [Parte 1 — Flujo](#parte-1--flujo) | cuentas, movimientos, categorías | 8 `data-model` (2026-08-06) | [ADR-011](architecture.md), [`specs/data-model/`](../specs/data-model/design.md) |
-> | [Parte 2 — Inversiones](#parte-2--inversiones) | productos de inversión y su valoración periódica | 9 `investments-data-model` (2026-08-11) | [ADR-012](architecture.md), [`specs/investments-data-model/`](../specs/investments-data-model/design.md) |
-> | ↳ **la cuenta remunerada** | quinto tipo de producto y su **foto mensual propia** (`SavingsSnapshot`) | 26 `savings-account-as-product` (2026-08-20) | [ADR-026](architecture.md), [`specs/savings-account-as-product/`](../specs/savings-account-as-product/design.md) |
+> | [Parte 1 — Flujo](#parte-1--flujo) | cuentas, movimientos, categorías | 8 `data-model` (2026-08-06) | [ADR-011](architecture.md), [`specs/08-data-model/`](../specs/08-data-model/design.md) |
+> | [Parte 2 — Inversiones](#parte-2--inversiones) | productos de inversión y su valoración periódica | 9 `investments-data-model` (2026-08-11) | [ADR-012](architecture.md), [`specs/09-investments-data-model/`](../specs/09-investments-data-model/design.md) |
+> | ↳ **la cuenta remunerada** | quinto tipo de producto y su **foto mensual propia** (`SavingsSnapshot`) | 26 `savings-account-as-product` (2026-08-20) | [ADR-026](architecture.md), [`specs/26-savings-account-as-product/`](../specs/26-savings-account-as-product/design.md) |
 > | ↳ **los otros cuatro tipos** | `Valuation` y las **condiciones del depósito** estrenan escritor; ni una columna nueva | 29 `myinvestor-products-to-db` (2026-08-21) | [ADR-012](architecture.md), [`progress/implementations/myinvestor-products-to-db.md`](../progress/implementations/myinvestor-products-to-db.md) |
 >
 > Las decisiones de producto están en `../../docs/ideas.md` §2 (flujo) y §3
@@ -285,7 +285,7 @@ model Movement {
 > 🔄 **Cambio del 2026-08-11.** El design de la f8 dejó el cálculo de
 > `daySequence` en el importer, pero avisó: «cuando haya un segundo banco,
 > conviene que cada parser emita la posición ya normalizada»
-> (`specs/data-model/design.md:584`). Ese segundo banco llegó, así que se mueve.
+> (`specs/08-data-model/design.md:584`). Ese segundo banco llegó, así que se mueve.
 > El sentido de la exportación —Bankinter va de más reciente a más antiguo— es
 > conocimiento del banco; si lo resolviera el importer, el importer sería
 > bank-specific y no podría compartirse entre los ~7 bancos.
@@ -453,7 +453,7 @@ centinela `parentId = 0` (ensucia el modelo y complica los `include`).
 > **Estado: IMPLEMENTADO** por la feature 9 `investments-data-model`
 > (2026-08-11): **esquema y migración**, exactamente el mismo alcance que la
 > feature 8 tuvo con el flujo. Decisiones en [ADR-012](architecture.md) y en
-> [`specs/investments-data-model/`](../specs/investments-data-model/design.md).
+> [`specs/09-investments-data-model/`](../specs/09-investments-data-model/design.md).
 >
 > 🔄 **Ampliada por la feature 26 `savings-account-as-product`** (2026-08-20,
 > [ADR-026](architecture.md)): entra el **quinto tipo de producto**,

@@ -7,7 +7,7 @@ Cada feature marcada con `"sdd": true` en `feature_list.json` tiene aquí
 una subcarpeta con sus cuatro archivos:
 
 ```
-specs/<feature-name>/
+specs/<nn>-<feature-name>/   # nn = id de la feature, con dos dígitos (08, 31...)
 ├── decisions.md      # PARA EL HUMANO: una página. Ver docs/decisions-template.md
 ├── requirements.md   # EARS notation, ids R1, R2, ...
 ├── design.md         # Decisiones técnicas + alternativa descartada

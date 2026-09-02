@@ -104,7 +104,7 @@ Verde = el proceso responde (`/health`) y la base de datos está accesible
 
 ### Nivel 4 — Trazabilidad de requirements (obligatorio para features con `"sdd": true`)
 
-Cada `R<n>` de `specs/<name>/requirements.md` debe poder mapearse a al
+Cada `R<n>` de `specs/<nn>-<name>/requirements.md` debe poder mapearse a al
 menos un test concreto. El reviewer rechaza si falta cobertura.
 
 El implementer documenta el mapa en `progress/implementations/<name>.md`:

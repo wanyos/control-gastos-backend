@@ -1,7 +1,7 @@
 # openbank-statement (F19) — implementación
 
 > Feature **SDD**. Los cinco lotes de
-> [`tasks.md`](../../specs/openbank-statement/tasks.md) (A→E, T1-T29) los ejecutó
+> [`tasks.md`](../../specs/19-openbank-statement/tasks.md) (A→E, T1-T29) los ejecutó
 > **un solo implementer**, en orden de dependencia, y están todos marcados `[x]`.
 >
 > 🔒 **Ni un dato del fichero real aparece aquí.** El fichero de Openbank trae el
@@ -39,7 +39,7 @@
 | `docs/dar-de-alta-un-banco.md` | §nueva del IBAN en HTML + §de codificación acotada + §del caso Openbank |
 | `docs/api-contract.md` | código `UNEXPECTED_ENCODING` (tabla estable, nota y tabla por archivo de `/api/import`) + **§Parser de Openbank** completa |
 | `docs/roadmap.md` | E4 a **4 de 6 bancos**, Openbank ✅, quedan **2 parsers** |
-| `specs/openbank-statement/tasks.md` | T1-T29 marcadas `[x]` |
+| `specs/19-openbank-statement/tasks.md` | T1-T29 marcadas `[x]` |
 
 ## Decisiones tomadas
 
@@ -146,7 +146,7 @@ que se decida guardarlo» llegó: `parseMovementRow` devuelve el importe de la
 quinta celda en `balance`, y ya no `null`. El motivo es que el saldo de una
 cuenta se calcula desde un **ancla** (importe + fecha tomados del archivo), y
 esta columna es el ancla de este banco; tirándola, el saldo real no se podía
-derivar sin volver a leer el fichero. Requisito: `specs/real-account-balance/`
+derivar sin volver a leer el fichero. Requisito: `specs/31-real-account-balance/`
 §R11. **La F31 NO deroga el ADR-013 desde aquí** — eso lo hace ella misma en
 `docs/architecture.md`; lo que cambia en este módulo es solo el valor del campo.
 
@@ -218,7 +218,7 @@ propio ADR. **No cambia ninguna decisión.**
 | 10 | El preámbulo no ensucia `unparsedRows` | [`parser.test.ts:320`](../../src/modules/openbank/openbank.statement.parser.test.ts#L320) |
 | 11 | Contrato común, `deriveMovementTypeFromAmount`, `assignDaySequence` | [`parser.test.ts:27`](../../src/modules/openbank/openbank.statement.parser.test.ts#L27) y [`:381`](../../src/modules/openbank/openbank.statement.parser.test.ts#L381) + los dos guardianes de `architecture.test.ts` |
 | 12 | `POST /api/parser/openbank` + registro de `src/app.ts` (deja de ser `skipped`) | [`routes.test.ts:117`](../../src/modules/openbank/openbank.routes.test.ts#L117), [`:139`](../../src/modules/openbank/openbank.routes.test.ts#L139) y [`:156`](../../src/modules/openbank/openbank.routes.test.ts#L156) |
-| 13 | 🔒 Ni un dato real del fichero en un archivo versionado — **nombres, conceptos, CCC, IBAN e importes** (🔒 de [`tasks.md:8`](../../specs/openbank-statement/tasks.md#L8), y el ADR-017 va de datos financieros, no solo de personas) | **Incumplido en la primera pasada por los IMPORTES y corregido en la segunda** (ver §Segunda pasada): hoy, verificación explícita contra el fichero gitignoreado con la **misma regla del guardián de la F14** más la de **pares contiguos**, cero coincidencias · fixtures inventados ([`openbank.fixture.ts`](../../src/modules/openbank/openbank.fixture.ts)) · [`parser.test.ts:338`](../../src/modules/openbank/openbank.statement.parser.test.ts#L338) (ningún nombre del preámbulo en el resultado) · [`src/no-real-data.test.ts`](../../src/no-real-data.test.ts) en verde, **que para este banco no prueba nada**: su capa de comparación no lee `.xls` |
+| 13 | 🔒 Ni un dato real del fichero en un archivo versionado — **nombres, conceptos, CCC, IBAN e importes** (🔒 de [`tasks.md:8`](../../specs/19-openbank-statement/tasks.md#L8), y el ADR-017 va de datos financieros, no solo de personas) | **Incumplido en la primera pasada por los IMPORTES y corregido en la segunda** (ver §Segunda pasada): hoy, verificación explícita contra el fichero gitignoreado con la **misma regla del guardián de la F14** más la de **pares contiguos**, cero coincidencias · fixtures inventados ([`openbank.fixture.ts`](../../src/modules/openbank/openbank.fixture.ts)) · [`parser.test.ts:338`](../../src/modules/openbank/openbank.statement.parser.test.ts#L338) (ningún nombre del preámbulo en el resultado) · [`src/no-real-data.test.ts`](../../src/no-real-data.test.ts) en verde, **que para este banco no prueba nada**: su capa de comparación no lee `.xls` |
 | 14 | Cada criterio con test sintético, sin red, mapeado aquí; `./init.sh` verde | esta tabla + §Último `./init.sh` |
 
 ## 🔒 Guardián de la F14: lo que se hizo para no repetir el susto de la F18
@@ -324,7 +324,7 @@ cambié los saldos, con dos consecuencias que el reviewer detectó:
 
 **La causa, para que no se repita:** leí el 🔒 del `acceptance` como «ni un
 **nombre**» —que es lo que dice el criterio 13 del `intent`— y no como lo que
-dice el 🔒 de [`tasks.md:8`](../../specs/openbank-statement/tasks.md#L8), «ni un
+dice el 🔒 de [`tasks.md:8`](../../specs/19-openbank-statement/tasks.md#L8), «ni un
 **importe**, concepto, IBAN, CCC ni nombre», que es además lo que protege el
 ADR-017: **datos financieros**, no solo personas. Y no lo cazó nadie porque para
 este banco **el guardián de la F14 está ciego** (su capa de comparación no lee

@@ -3,7 +3,7 @@
 **Veredicto: APROBADO (APPROVED)**
 
 - **Fecha:** 2026-08-11
-- **Revisado contra:** `specs/investments-data-model/{decisions,requirements,design,tasks}.md`,
+- **Revisado contra:** `specs/09-investments-data-model/{decisions,requirements,design,tasks}.md`,
   el bloque `intent` + `acceptance` de la feature 9 en `feature_list.json`,
   [`progress/implementations/investments-data-model.md`](../implementations/investments-data-model.md),
   `docs/architecture.md`, `docs/conventions.md`, `docs/verification.md`,
@@ -255,7 +255,7 @@ del sistema.**
 
 ## 3. Tasks completas
 
-Las **20 tasks** de `specs/investments-data-model/tasks.md` están `[x]` y
+Las **20 tasks** de `specs/09-investments-data-model/tasks.md` están `[x]` y
 **verificadas contra el árbol**, no solo marcadas:
 
 - **T1** `[x]` schema: enum ([schema.prisma:58](../../prisma/schema.prisma#L58)),
@@ -439,7 +439,7 @@ línea y **no bloqueantes**:
       contra el Postgres de `docs/verification.md`; camino feliz **y** de error
       (dos `P2002`, cinco ramas `null`); ninguno se limita a "no lanza".
 - [x] **C5 — Sesión cerrada bien.** Los untracked son legítimos (la migración, el
-      módulo nuevo, `specs/investments-data-model/` y el informe): ni temporales,
+      módulo nuevo, `specs/09-investments-data-model/` y el informe): ni temporales,
       ni builds, ni caches. `feature_list.json` refleja el estado correcto
       (`in_progress`, sin auto-marcar `done`). La entrada de
       `progress/history.md` es el paso de cierre del leader, posterior a esta
@@ -449,7 +449,7 @@ línea y **no bloqueantes**:
       dicho que `Movement.productId` no viaja en la respuesta. No hay endpoints ni
       modelos inventados fuera del contrato; nada que el frontend deba consumir
       todavía.
-- [x] **C7 — SDD.** `specs/investments-data-model/` con los cuatro archivos;
+- [x] **C7 — SDD.** `specs/09-investments-data-model/` con los cuatro archivos;
       `decisions.md` cabe en una página y tiene los cuatro bloques (🔴 **2**
       puntos, por debajo del máximo de 6; ✅ 4; ⚙️ 7; 📌 2);
       `requirements.md` en EARS estricto y con la **sección de Procedencia

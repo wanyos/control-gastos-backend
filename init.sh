@@ -206,7 +206,7 @@ try:
             print(f"[FAIL]  Estado inválido en feature {f.get('id')}: {f.get('status')}")
             sys.exit(1)
         if f.get("sdd") and f.get("status") in requires_spec:
-            spec_dir = os.path.join("specs", f.get("name", ""))
+            spec_dir = os.path.join("specs", f"{int(f.get('id', 0)):02d}-{f.get('name', '')}")
             required = ["requirements.md", "design.md", "tasks.md"]
             # decisions.md es la hoja de revisión del humano: se exige mientras
             # la feature está en la puerta o en curso. Las cerradas antes de que
@@ -254,7 +254,7 @@ elif NODEBIN=$(runnable node); then
           process.exit(1);
         }
         if (f.sdd && requiresSpec.has(f.status)) {
-          const specDir = path.join("specs", f.name || "");
+          const specDir = path.join("specs", String(f.id).padStart(2, "0") + "-" + (f.name || ""));
           const required = ["requirements.md", "design.md", "tasks.md"];
           // mismo criterio que la rama Python: decisions.md solo se exige
           // mientras la feature está en la puerta o en curso.
