@@ -439,44 +439,101 @@ Crea una categoría raíz (sin `parentId`) o una subcategoría (con `parentId`).
 Lista los movimientos **del más reciente al más antiguo** (`bookingDate DESC,
 daySequence DESC`), cada uno con su `account` y su `category` embebidos.
 
+Desde la feature "movements-filters-and-totals" (2026-09-02) la respuesta viene
+**siempre paginada** y admite **filtros combinables** por querystring; además de
+la página trae el **total de coincidencias** y los **totales del filtro pedido**
+(cuánto entró, cuánto salió y la diferencia).
+
+**Parámetros de querystring** (todos opcionales, combinables entre sí):
+
+| Parámetro   | Tipo                                     | Qué filtra                                                       |
+| ----------- | ---------------------------------------- | ---------------------------------------------------------------- |
+| `accountId` | number (entero ≥ 1)                      | Solo los movimientos de esa cuenta. Si la cuenta no existe → **404 `NOT_FOUND`** (misma respuesta que `GET /api/accounts/:id`). |
+| `from`      | string (`YYYY-MM-DD`)                    | Movimientos con `bookingDate` **≥ `from`**. Extremo **incluido**. |
+| `to`        | string (`YYYY-MM-DD`)                    | Movimientos con `bookingDate` **≤ `to`**. Extremo **incluido**: `from=2026-08-01&to=2026-08-31` es agosto entero. |
+| `type`      | `"expense"` \| `"income"` \| `"neutral"` | Solo movimientos de ese tipo.                                    |
+| `status`    | `"confirmed"` \| `"pending_review"`      | Solo movimientos en ese estado.                                  |
+| `page`      | number (entero ≥ 1)                      | Página pedida. Def. `1`.                                         |
+| `pageSize`  | number (entero 1–200)                    | Movimientos por página. Def. `50`, máximo `200`.                 |
+
 **Respuesta 200**
 ```json
-[
-  {
-    "id": 10,
-    "type": "expense",
-    "bookingDate": "2026-07-31",
-    "valueDate": "2026-07-31",
-    "amount": "45.37",
-    "description": "RECIBO /Recibo luz",
-    "balanceAfter": "9954.63",
-    "currency": "EUR",
-    "note": null,
-    "accountId": 1,
-    "account": {
-      "id": 1,
-      "iban": "ES9820385778983000760236",
-      "bank": "bankinter",
-      "alias": "bankinter ···0236",
-      "type": "checking"
-    },
-    "categoryId": null,
-    "category": null,
-    "paymentMethod": null,
-    "origin": "imported",
-    "status": "pending_review",
-    "transferId": null,
-    "daySequence": 2,
-    "createdAt": "2026-08-06T18:30:00.000Z",
-    "updatedAt": "2026-08-06T18:30:00.000Z"
-  }
-]
+{
+  "movements": [
+    {
+      "id": 10,
+      "type": "expense",
+      "bookingDate": "2026-07-31",
+      "valueDate": "2026-07-31",
+      "amount": "45.37",
+      "description": "RECIBO /Recibo luz",
+      "balanceAfter": "9954.63",
+      "currency": "EUR",
+      "note": null,
+      "accountId": 1,
+      "account": {
+        "id": 1,
+        "iban": "ES9820385778983000760236",
+        "bank": "bankinter",
+        "alias": "bankinter ···0236",
+        "type": "checking"
+      },
+      "categoryId": null,
+      "category": null,
+      "paymentMethod": null,
+      "origin": "imported",
+      "status": "pending_review",
+      "transferId": null,
+      "daySequence": 2,
+      "createdAt": "2026-08-06T18:30:00.000Z",
+      "updatedAt": "2026-08-06T18:30:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "pageSize": 50, "total": 132, "totalPages": 3 },
+  "totals": { "income": "1200.00", "expense": "845.37", "net": "354.63" }
+}
 ```
+
+- `movements`: la página pedida. **La forma de cada movimiento no cambia ni un
+  campo** respecto al contrato anterior.
+- `pagination.total`: cuántos movimientos **coinciden con el filtro entero**, no
+  cuántos trae la página. `totalPages` = `ceil(total / pageSize)` (`0` si no
+  coincide ninguno).
+- `totals`: calculados **sobre todas las coincidencias del filtro** —nunca sobre
+  la página y nunca sobre toda la tabla—. `income` = suma de los `income`,
+  `expense` = suma de los `expense`, `net` = `income − expense`. Strings
+  decimales, como todos los importes del contrato. **Quedan fuera de los
+  totales** (aunque sí se listan como movimientos): los `neutral`, las dos
+  piernas de un traspaso (`transferId != null`) y las aportaciones a un producto
+  de inversión (`productId != null`) — en los tres casos el dinero sigue siendo
+  del usuario (ver `docs/data-model.md` §Totales). Hoy ninguna fila lleva
+  `transferId` ni `productId` (sus escritores son features posteriores), así que
+  ningún número visible cambia todavía.
+
+**Errores**
+
+| Código HTTP | `code`             | Cuándo                                                             |
+| ----------- | ------------------ | ------------------------------------------------------------------ |
+| 400         | `VALIDATION_ERROR` | Un parámetro no cumple el esquema (fecha que no es `YYYY-MM-DD`, `type`/`status` fuera de su enumeración, `page` < 1, `pageSize` fuera de 1–200, `accountId` no entero); `from` posterior a `to`; o `page` más allá de la última página con coincidencias. |
+| 404         | `NOT_FOUND`        | El `accountId` pedido no existe.                                    |
+
+Un filtro **válido sin coincidencias** (una cuenta que existe pero sin
+movimientos en el rango) **no es un error**: responde 200 con `movements: []`,
+`total: 0` y totales a `"0.00"`. Un parámetro de querystring **desconocido se
+ignora** (el esquema lo descarta antes del handler); no estrecha ni vacía el
+resultado.
+
+> ⚠️ Breaking change (feature "movements-filters-and-totals", 2026-09-02): la
+> respuesta deja de ser un **array** de movimientos y pasa a ser el objeto
+> `{ movements, pagination, totals }` de arriba, y **siempre paginada** (nunca
+> más los 1520 movimientos —821 KB— en una respuesta). La forma de cada
+> movimiento serializado no cambia. Aún **NO** consumido por el frontend; su
+> feature correspondiente se planifica contra esta forma nueva.
 
 > ⚠️ **Es el único endpoint de movimientos: son de SOLO LECTURA.** No hay
 > `POST /api/movements` ni `DELETE /api/movements/:id`, y tampoco endpoint de
 > traspasos. Los movimientos entran **únicamente por importación** desde los
-> ficheros del banco (feature siguiente): si un movimiento existe, existe en el
+> ficheros del banco: si un movimiento existe, existe en el
 > banco y llegará en su extracto; y darlos de alta o borrarlos a mano
 > descuadraría el saldo contra el banco.
 

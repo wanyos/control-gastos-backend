@@ -79,9 +79,11 @@ describe('architecture invariants', () => {
       'modules/categories/categories.schema.ts',
       'modules/categories/categories.types.ts',
       'modules/categories/categories.test.ts',
-      // movements has no *.schema.ts on purpose: it is read-only, there is no
-      // body to validate (specs/08-data-model/design.md §5).
+      // movements is still read-only (no body to validate), but since feature
+      // 36 its listing takes a querystring, and that is what its schema file
+      // validates (specs/08-data-model/design.md §5).
       'modules/movements/movements.routes.ts',
+      'modules/movements/movements.schema.ts',
       'modules/movements/movements.service.ts',
       'modules/movements/movements.types.ts',
       'modules/movements/movements.test.ts',

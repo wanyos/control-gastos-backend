@@ -59,10 +59,13 @@
    ese dinero, lo has cambiado de sitio. Un reembolso es lo mismo con el signo
    cambiado (`income` + `productId`), **sin columna nueva**.
 
-> ⏳ **Estado de la regla 5:** en la feature 9 está **documentada, no
-> implementada**. La columna existe pero nadie la escribe, así que `computeTotals`
-> todavía no la excluye; esa línea llega junto al escritor de `productId`. Efecto
-> práctico hoy: **cero**, porque `productId` es siempre `null`.
+> ✅ **Estado de la regla 5:** la exclusión está **implementada desde la F36**
+> (2026-09-02): `computeTotals` deja fuera los movimientos con `productId != null`
+> — y llegó **antes** que el escritor de la columna, al revés de lo que este
+> párrafo preveía. La columna sigue sin escritor (marcar una aportación es una
+> feature posterior), así que el efecto práctico hoy sigue siendo **cero**: lo
+> que cambia es que el día que el escritor llegue, los totales ya estarán bien
+> sin tocar nada.
 
 ## Parte 1 — Flujo
 

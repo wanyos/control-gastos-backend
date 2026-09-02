@@ -16,6 +16,7 @@ import {
   computeAccountBalance,
   computeTotals,
   deriveMovementTypeFromAmount,
+  serializeTotals,
   isAfter,
   netOf,
   readAnchor,
@@ -24,7 +25,7 @@ import {
 import type {
   BalanceAnchor,
   BalanceMovement,
-  SerializedMovement,
+  MovementListResponse,
   TotalsMovement,
 } from './movements.types.js'
 
@@ -447,18 +448,41 @@ describe('netOf (exported for the reconciliation checks, feature 32)', () => {
 
 describe('computeTotals', () => {
   const dataset: TotalsMovement[] = [
-    { type: 'expense', amount: '45.90', transferId: null },
-    { type: 'income', amount: '1200.00', transferId: null },
-    { type: 'expense', amount: '500.00', transferId: 'transfer-1' },
-    { type: 'income', amount: '500.00', transferId: 'transfer-1' },
-    { type: 'neutral', amount: '0.00', transferId: null },
+    { type: 'expense', amount: '45.90', transferId: null, productId: null },
+    { type: 'income', amount: '1200.00', transferId: null, productId: null },
+    { type: 'expense', amount: '500.00', transferId: 'transfer-1', productId: null },
+    { type: 'income', amount: '500.00', transferId: 'transfer-1', productId: null },
+    { type: 'neutral', amount: '0.00', transferId: null, productId: null },
   ]
 
-  it('excludes transfer legs and neutral movements from the global totals', () => {
+  it('excludes transfer legs and neutral movements from the totals', () => {
     const totals = computeTotals(dataset)
 
     expect(totals.expense.toFixed(2)).toBe('45.90')
     expect(totals.income.toFixed(2)).toBe('1200.00')
+  })
+
+  // Feature 36 (roadmap loose end 8): a contribution to an investment product
+  // is not an expense — the money is still yours (docs/data-model.md §Totales).
+  it('excludes movements with a productId from the totals', () => {
+    const totals = computeTotals([
+      ...dataset,
+      { type: 'expense', amount: '3000.00', transferId: null, productId: 7 },
+      { type: 'income', amount: '150.00', transferId: null, productId: 7 },
+    ])
+
+    expect(totals.expense.toFixed(2)).toBe('45.90')
+    expect(totals.income.toFixed(2)).toBe('1200.00')
+  })
+
+  it('excludes a movement carrying BOTH transferId and productId exactly once', () => {
+    const totals = computeTotals([
+      { type: 'expense', amount: '10.00', transferId: null, productId: null },
+      { type: 'expense', amount: '99.00', transferId: 'transfer-2', productId: 3 },
+    ])
+
+    expect(totals.expense.toFixed(2)).toBe('10.00')
+    expect(totals.income.toFixed(2)).toBe('0.00')
   })
 
   it('returns zero totals for an empty dataset', () => {
@@ -469,10 +493,35 @@ describe('computeTotals', () => {
   })
 })
 
+describe('serializeTotals', () => {
+  it('ships decimal strings with net = income minus expense', () => {
+    const totals = computeTotals([
+      { type: 'income', amount: '1200.00', transferId: null, productId: null },
+      { type: 'expense', amount: '45.90', transferId: null, productId: null },
+    ])
+
+    expect(serializeTotals(totals)).toEqual({
+      income: '1200.00',
+      expense: '45.90',
+      net: '1154.10',
+    })
+  })
+
+  it('ships a negative net when more went out than came in', () => {
+    const totals = computeTotals([
+      { type: 'income', amount: '100.00', transferId: null, productId: null },
+      { type: 'expense', amount: '250.50', transferId: null, productId: null },
+    ])
+
+    expect(serializeTotals(totals).net).toBe('-150.50')
+  })
+})
+
 describe('movement routes (read-only) and database indexes', () => {
   let app: FastifyInstance
   const createdAccountIds: number[] = []
   const createdCategoryIds: number[] = []
+  const createdProductIds: number[] = []
   // Well formed since feature 21: an IBAN is validated wherever it enters.
   function uniqueIban(): string {
     return syntheticIban()
@@ -492,6 +541,11 @@ describe('movement routes (read-only) and database indexes', () => {
     if (createdCategoryIds.length > 0) {
       await app.prisma.category.deleteMany({ where: { id: { in: createdCategoryIds } } })
       createdCategoryIds.length = 0
+    }
+    // After the movements pointing at them are gone (feature 36 totals tests).
+    if (createdProductIds.length > 0) {
+      await app.prisma.investmentProduct.deleteMany({ where: { id: { in: createdProductIds } } })
+      createdProductIds.length = 0
     }
   })
 
@@ -527,6 +581,7 @@ describe('movement routes (read-only) and database indexes', () => {
     origin?: 'imported' | 'manual'
     transferId?: string | null
     categoryId?: number | null
+    productId?: number | null
   }
 
   function seedMovement(movement: SeedMovement) {
@@ -544,8 +599,25 @@ describe('movement routes (read-only) and database indexes', () => {
         origin: movement.origin ?? 'imported',
         transferId: movement.transferId ?? null,
         categoryId: movement.categoryId ?? null,
+        productId: movement.productId ?? null,
       },
     })
+  }
+
+  async function createProduct() {
+    const suffix = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`
+    const product = await app.prisma.investmentProduct.create({
+      data: { bank: 'myinvestor', name: `Synthetic fund ${suffix}`, type: 'fund' },
+    })
+    createdProductIds.push(product.id)
+    return product
+  }
+
+  function listUrl(params: Record<string, string | number>): string {
+    const search = new URLSearchParams(
+      Object.entries(params).map(([key, value]) => [key, String(value)]),
+    )
+    return `/api/movements?${search.toString()}`
   }
 
   it('GET /api/movements lists newest first with account and category embedded (R13)', async () => {
@@ -572,8 +644,8 @@ describe('movement routes (read-only) and database indexes', () => {
 
     expect(response.statusCode).toBe(200)
     const own = response
-      .json<SerializedMovement[]>()
-      .filter((movement) => movement.accountId === account.id)
+      .json<MovementListResponse>()
+      .movements.filter((movement) => movement.accountId === account.id)
 
     expect(own.map((movement) => movement.id)).toEqual([newer.id, older.id])
     expect(own[0]?.bookingDate).toBe('2026-07-31')
@@ -606,8 +678,8 @@ describe('movement routes (read-only) and database indexes', () => {
 
     const response = await app.inject({ method: 'GET', url: '/api/movements' })
     const own = response
-      .json<SerializedMovement[]>()
-      .filter((movement) => movement.accountId === account.id)
+      .json<MovementListResponse>()
+      .movements.filter((movement) => movement.accountId === account.id)
 
     expect(own.map((movement) => movement.id)).toEqual([second.id, first.id])
   })
@@ -836,6 +908,297 @@ describe('movement routes (read-only) and database indexes', () => {
     await seedMovement(movement)
 
     expect(await app.prisma.movement.count({ where: { accountId: account.id } })).toBe(2)
+  })
+
+  // ── Feature 36: filters, pagination and totals of the filter ──────────────
+
+  it('GET /api/movements?accountId= returns only the movements of that account', async () => {
+    const mine = await createAccount()
+    const other = await createAccount()
+    await seedMovement({ accountId: mine.id, description: 'Mine', daySequence: 1 })
+    await seedMovement({ accountId: other.id, description: 'Not mine', daySequence: 1 })
+
+    const response = await app.inject({ method: 'GET', url: listUrl({ accountId: mine.id }) })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<MovementListResponse>()
+    expect(body.movements).toHaveLength(1)
+    expect(body.movements[0]?.description).toBe('Mine')
+    expect(body.pagination.total).toBe(1)
+  })
+
+  it('GET /api/movements?from=&to= keeps both extreme days and drops the rest', async () => {
+    const account = await createAccount()
+    await seedMovement({ accountId: account.id, bookingDate: '2026-07-31', description: 'Before' })
+    await seedMovement({
+      accountId: account.id,
+      bookingDate: '2026-08-01',
+      description: 'First day',
+    })
+    await seedMovement({
+      accountId: account.id,
+      bookingDate: '2026-08-31',
+      description: 'Last day',
+    })
+    await seedMovement({ accountId: account.id, bookingDate: '2026-09-01', description: 'After' })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, from: '2026-08-01', to: '2026-08-31' }),
+    })
+
+    const body = response.json<MovementListResponse>()
+    expect(body.movements.map((movement) => movement.description)).toEqual([
+      'Last day',
+      'First day',
+    ])
+    expect(body.pagination.total).toBe(2)
+  })
+
+  it('GET /api/movements?type=expense returns not a single income', async () => {
+    const account = await createAccount()
+    await seedMovement({ accountId: account.id, type: 'expense', daySequence: 1 })
+    await seedMovement({ accountId: account.id, type: 'income', daySequence: 2 })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, type: 'expense' }),
+    })
+
+    const body = response.json<MovementListResponse>()
+    expect(body.movements).toHaveLength(1)
+    expect(body.movements.every((movement) => movement.type === 'expense')).toBe(true)
+  })
+
+  it('GET /api/movements combines account, range, type and status in one filter', async () => {
+    const account = await createAccount()
+    const other = await createAccount()
+    const inRange = { bookingDate: '2026-08-10', type: 'expense' as const }
+    // The one row that matches everything:
+    const match = await seedMovement({ accountId: account.id, ...inRange, daySequence: 1 })
+    // Each of these fails exactly ONE of the four conditions:
+    await seedMovement({ accountId: other.id, ...inRange, daySequence: 2 })
+    await seedMovement({ accountId: account.id, ...inRange, bookingDate: '2026-09-10' })
+    await seedMovement({ accountId: account.id, ...inRange, type: 'income', daySequence: 3 })
+    const confirmed = await seedMovement({ accountId: account.id, ...inRange, daySequence: 4 })
+    await app.prisma.movement.update({
+      where: { id: confirmed.id },
+      data: { status: 'confirmed' },
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({
+        accountId: account.id,
+        from: '2026-08-01',
+        to: '2026-08-31',
+        type: 'expense',
+        status: 'pending_review',
+      }),
+    })
+
+    const body = response.json<MovementListResponse>()
+    expect(body.movements.map((movement) => movement.id)).toEqual([match.id])
+    expect(body.pagination.total).toBe(1)
+  })
+
+  it('paginates keeping the order and reporting the total of ALL matches', async () => {
+    const account = await createAccount()
+    const first = await seedMovement({ accountId: account.id, daySequence: 1 })
+    const second = await seedMovement({ accountId: account.id, daySequence: 2 })
+    const third = await seedMovement({ accountId: account.id, daySequence: 3 })
+
+    const pageOne = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, page: 1, pageSize: 2 }),
+    })
+    const pageTwo = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, page: 2, pageSize: 2 }),
+    })
+
+    const one = pageOne.json<MovementListResponse>()
+    const two = pageTwo.json<MovementListResponse>()
+    expect(one.movements.map((movement) => movement.id)).toEqual([third.id, second.id])
+    expect(one.pagination).toEqual({ page: 1, pageSize: 2, total: 3, totalPages: 2 })
+    expect(two.movements.map((movement) => movement.id)).toEqual([first.id])
+    expect(two.pagination).toEqual({ page: 2, pageSize: 2, total: 3, totalPages: 2 })
+  })
+
+  it('answers without any filter, paginated with the defaults (page 1, 50 per page)', async () => {
+    const account = await createAccount()
+    await seedMovement({ accountId: account.id })
+
+    const response = await app.inject({ method: 'GET', url: '/api/movements' })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<MovementListResponse>()
+    expect(Array.isArray(body)).toBe(false)
+    expect(body.pagination.page).toBe(1)
+    expect(body.pagination.pageSize).toBe(50)
+    expect(body.movements.length).toBeLessThanOrEqual(50)
+    expect(body.totals).toMatchObject({ income: expect.any(String), expense: expect.any(String) })
+  })
+
+  it('computes the totals over the FILTER, every page of it, not the whole table', async () => {
+    const account = await createAccount()
+    const other = await createAccount()
+    await seedMovement({ accountId: account.id, type: 'expense', amount: '30.00', daySequence: 1 })
+    await seedMovement({ accountId: account.id, type: 'expense', amount: '20.00', daySequence: 2 })
+    await seedMovement({ accountId: account.id, type: 'income', amount: '100.00', daySequence: 3 })
+    // Noise in another account: must not enter the totals.
+    await seedMovement({ accountId: other.id, type: 'expense', amount: '999.00', daySequence: 1 })
+
+    // pageSize 1: the page shows one movement, the totals still sum the three.
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, pageSize: 1 }),
+    })
+
+    const body = response.json<MovementListResponse>()
+    expect(body.movements).toHaveLength(1)
+    expect(body.totals).toEqual({ income: '100.00', expense: '50.00', net: '50.00' })
+  })
+
+  it('leaves transfer legs and product contributions out of the response totals', async () => {
+    const account = await createAccount()
+    const product = await createProduct()
+    await seedMovement({ accountId: account.id, type: 'expense', amount: '45.90', daySequence: 1 })
+    await seedMovement({
+      accountId: account.id,
+      type: 'expense',
+      amount: '500.00',
+      daySequence: 2,
+      transferId: `transfer-${Date.now()}`,
+    })
+    await seedMovement({
+      accountId: account.id,
+      type: 'expense',
+      amount: '3000.00',
+      daySequence: 3,
+      productId: product.id,
+    })
+
+    const response = await app.inject({ method: 'GET', url: listUrl({ accountId: account.id }) })
+
+    const body = response.json<MovementListResponse>()
+    // The rows themselves are listed — only the totals leave them out.
+    expect(body.pagination.total).toBe(3)
+    expect(body.totals).toEqual({ income: '0.00', expense: '45.90', net: '-45.90' })
+  })
+
+  it('keeps the serialized shape of each movement exactly as it was (feature 36)', async () => {
+    const account = await createAccount()
+    await seedMovement({ accountId: account.id })
+
+    const response = await app.inject({ method: 'GET', url: listUrl({ accountId: account.id }) })
+
+    const [movement] = response.json<MovementListResponse>().movements
+    expect(Object.keys(movement ?? {}).sort()).toEqual(
+      [
+        'id',
+        'type',
+        'bookingDate',
+        'valueDate',
+        'amount',
+        'description',
+        'balanceAfter',
+        'currency',
+        'note',
+        'accountId',
+        'categoryId',
+        'paymentMethod',
+        'origin',
+        'status',
+        'transferId',
+        'daySequence',
+        'createdAt',
+        'updatedAt',
+        'account',
+        'category',
+      ].sort(),
+    )
+  })
+
+  it('rejects a date that is not a date with 400 VALIDATION_ERROR', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/movements?from=31-08-2026',
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+  })
+
+  it('rejects an unknown type and an unknown status with 400 VALIDATION_ERROR', async () => {
+    const byType = await app.inject({ method: 'GET', url: '/api/movements?type=transfer' })
+    const byStatus = await app.inject({ method: 'GET', url: '/api/movements?status=whatever' })
+
+    expect(byType.statusCode).toBe(400)
+    expect(byType.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+    expect(byStatus.statusCode).toBe(400)
+    expect(byStatus.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+  })
+
+  it('rejects page 0, a non-numeric accountId and an oversized pageSize with 400', async () => {
+    const byPage = await app.inject({ method: 'GET', url: '/api/movements?page=0' })
+    const byAccount = await app.inject({ method: 'GET', url: '/api/movements?accountId=abc' })
+    const bySize = await app.inject({ method: 'GET', url: '/api/movements?pageSize=500' })
+
+    for (const response of [byPage, byAccount, bySize]) {
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+    }
+  })
+
+  it('rejects a range with from after to with 400 VALIDATION_ERROR', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/movements?from=2026-08-31&to=2026-08-01',
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+  })
+
+  it('answers 404 NOT_FOUND for an accountId that does not exist', async () => {
+    const account = await createAccount()
+    await app.prisma.account.delete({ where: { id: account.id } })
+    createdAccountIds.length = 0
+
+    const response = await app.inject({ method: 'GET', url: listUrl({ accountId: account.id }) })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('rejects a page past the last one with 400, never an empty 200', async () => {
+    const account = await createAccount()
+    await seedMovement({ accountId: account.id })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, page: 5, pageSize: 50 }),
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+  })
+
+  it('answers an empty page with zero totals for an account with nothing in range', async () => {
+    const account = await createAccount()
+    await seedMovement({ accountId: account.id, bookingDate: '2026-07-10' })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, from: '2026-08-01', to: '2026-08-31' }),
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<MovementListResponse>()
+    expect(body.movements).toEqual([])
+    expect(body.pagination).toEqual({ page: 1, pageSize: 50, total: 0, totalPages: 0 })
+    expect(body.totals).toEqual({ income: '0.00', expense: '0.00', net: '0.00' })
   })
 })
 

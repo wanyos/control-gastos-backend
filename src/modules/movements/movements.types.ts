@@ -44,16 +44,53 @@ export interface AnchorColumns {
   balanceAnchorDaySequence: number | null
 }
 
-/** Minimum shape needed to aggregate global totals (R20). */
+/** Minimum shape needed to aggregate totals (R20 and feature 36). */
 export interface TotalsMovement {
   type: MovementType
   amount: DecimalLike
   transferId: string | null
+  productId: number | null
 }
 
 export interface MovementTotals {
   income: Prisma.Decimal
   expense: Prisma.Decimal
+}
+
+/**
+ * The querystring of `GET /api/movements`, after schema validation: every
+ * filter optional and combinable, pagination always present because the schema
+ * fills its defaults (feature 36).
+ */
+export interface MovementListQuery {
+  accountId?: number
+  from?: string
+  to?: string
+  type?: MovementType
+  status?: MovementStatus
+  page: number
+  pageSize: number
+}
+
+export interface MovementListPagination {
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
+/** Totals of THE FILTER asked for, as the contract ships them (decimal strings). */
+export interface SerializedMovementTotals {
+  income: string
+  expense: string
+  net: string
+}
+
+/** Shape of the `GET /api/movements` response since feature 36. */
+export interface MovementListResponse {
+  movements: SerializedMovement[]
+  pagination: MovementListPagination
+  totals: SerializedMovementTotals
 }
 
 /** What `GET /api/movements` reads: the movement plus its embedded relations. */

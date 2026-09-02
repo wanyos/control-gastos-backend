@@ -24,9 +24,7 @@
 
 ## Feature en curso
 
-_Ninguna._ **35 de 35 features `done`** y ningún trabajo abierto. El siguiente
-paso **no está decidido**: los caminos posibles y lo que bloquea cada uno están en
-[`docs/roadmap.md`](../docs/roadmap.md), que es donde se elige.
+_Ninguna._ Última cerrada: **F36 `movements-filters-and-totals`** (2026-09-02, aprobada) — [veredicto](reviews/movements-filters-and-totals.md) · [resumen](summaries/movements-filters-and-totals.md). Esta línea se **sustituye** en el siguiente cierre; aquí no se acumula nada.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:

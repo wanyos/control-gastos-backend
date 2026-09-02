@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { Prisma } from '../../generated/prisma/client.js'
 import type { MovementType } from '../../generated/prisma/client.js'
 
+import { NotFoundError, ValidationError } from '../../errors/app-error.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import type {
   AnchorColumns,
@@ -10,9 +11,12 @@ import type {
   BalanceMovement,
   DecimalLike,
   RecencyPoint,
+  MovementListQuery,
+  MovementListResponse,
   MovementTotals,
   MovementWithRelations,
   SerializedMovement,
+  SerializedMovementTotals,
   TotalsMovement,
 } from './movements.types.js'
 
@@ -137,16 +141,91 @@ export function computeAccountBalance(
   return netOf(after, toDecimal(point.amount))
 }
 
+/** `bookingDate` is a date-only column stored at midnight UTC (see toDateOnly). */
+function dateOnlyToDate(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`)
+}
+
 /**
- * Read-only listing: movements only enter through the importer (next feature),
- * so this module has no create/delete. Most recent first, with the account and
- * the category embedded (R13).
+ * The `where` clause every read of the listing shares: the page, the match
+ * count and the totals MUST look at the same rows, so the filter is built once
+ * (feature 36). Both date ends are inclusive: the column holds midnight UTC,
+ * so `lte` at midnight of `to` covers the whole day.
  */
-export function listMovements(prisma: AppPrismaClient): Promise<MovementWithRelations[]> {
-  return prisma.movement.findMany({
-    orderBy: [{ bookingDate: 'desc' }, { daySequence: { sort: 'desc', nulls: 'last' } }],
-    include: { account: true, category: true },
-  })
+function movementListWhere(query: MovementListQuery): Prisma.MovementWhereInput {
+  const where: Prisma.MovementWhereInput = {}
+  if (query.accountId !== undefined) where.accountId = query.accountId
+  if (query.type !== undefined) where.type = query.type
+  if (query.status !== undefined) where.status = query.status
+  if (query.from !== undefined || query.to !== undefined) {
+    where.bookingDate = {
+      ...(query.from === undefined ? {} : { gte: dateOnlyToDate(query.from) }),
+      ...(query.to === undefined ? {} : { lte: dateOnlyToDate(query.to) }),
+    }
+  }
+  return where
+}
+
+/**
+ * Read-only listing: movements only enter through the importer, so this module
+ * has no create/delete. Most recent first, with the account and the category
+ * embedded (R13). Since feature 36 the listing is filtered, paginated and
+ * carries the totals OF THE FILTER — never again 1520 rows in one response.
+ *
+ * Where the line between an error and a legitimate empty page runs:
+ *  - an `accountId` that does not exist → 404, same answer as GET /api/accounts/:id;
+ *  - `from` after `to` → 400, no movement could ever match it;
+ *  - a page past the last one → 400, the caller is reading a page that is not there;
+ *  - an existing account with nothing in the range → 200 with an empty page and
+ *    zero totals: the filter is fine, there is simply nothing in it.
+ */
+export async function listMovements(
+  prisma: AppPrismaClient,
+  query: MovementListQuery,
+): Promise<MovementListResponse> {
+  if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
+    throw new ValidationError(`'from' (${query.from}) is after 'to' (${query.to})`)
+  }
+
+  if (query.accountId !== undefined) {
+    const account = await prisma.account.findUnique({
+      where: { id: query.accountId },
+      select: { id: true },
+    })
+    if (account === null) throw new NotFoundError('Account not found')
+  }
+
+  const where = movementListWhere(query)
+  const total = await prisma.movement.count({ where })
+  const totalPages = Math.ceil(total / query.pageSize)
+
+  if (query.page > 1 && query.page > totalPages) {
+    throw new ValidationError(
+      `page ${query.page} is out of range: ${totalPages} page(s) match this filter`,
+    )
+  }
+
+  const [pageRows, totalsRows] = await Promise.all([
+    prisma.movement.findMany({
+      where,
+      orderBy: [{ bookingDate: 'desc' }, { daySequence: { sort: 'desc', nulls: 'last' } }],
+      include: { account: true, category: true },
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    }),
+    // The totals run over EVERY matching row, not over the page: "how much went
+    // out in August" cannot depend on which page you happen to be reading.
+    prisma.movement.findMany({
+      where,
+      select: { type: true, amount: true, transferId: true, productId: true },
+    }),
+  ])
+
+  return {
+    movements: pageRows.map(serializeMovement),
+    pagination: { page: query.page, pageSize: query.pageSize, total, totalPages },
+    totals: serializeTotals(computeTotals(totalsRows)),
+  }
 }
 
 /** Maps the domain object to the API contract shape. */
@@ -195,14 +274,19 @@ function toDateOnly(date: Date): string {
 }
 
 /**
- * Global expense/income totals. Moving money between your own accounts is
- * neither: both legs of a transfer (linked by `transferId`) are excluded, and so
- * are `neutral` movements (R20).
+ * Expense/income totals. Moving money between your own accounts is neither:
+ * both legs of a transfer (linked by `transferId`) are excluded, and so are
+ * `neutral` movements (R20). A contribution to an investment product
+ * (`productId != null`) is excluded too: the money is still yours, it just
+ * changed shape (docs/data-model.md §Totales; feature 36 closes roadmap
+ * loose end 8). Today no row carries either column — their writers are later
+ * features — so no visible number changes yet.
  */
 export function computeTotals(movements: TotalsMovement[]): MovementTotals {
   return movements.reduce<MovementTotals>(
     (totals, movement) => {
       if (movement.transferId !== null) return totals
+      if (movement.productId !== null) return totals
       if (movement.type === 'income') {
         return { ...totals, income: totals.income.plus(toDecimal(movement.amount)) }
       }
@@ -213,4 +297,13 @@ export function computeTotals(movements: TotalsMovement[]): MovementTotals {
     },
     { income: new Prisma.Decimal(0), expense: new Prisma.Decimal(0) },
   )
+}
+
+/** Totals as the contract ships them: decimal strings, `net = income − expense`. */
+export function serializeTotals(totals: MovementTotals): SerializedMovementTotals {
+  return {
+    income: totals.income.toFixed(2),
+    expense: totals.expense.toFixed(2),
+    net: totals.income.minus(totals.expense).toFixed(2),
+  }
 }

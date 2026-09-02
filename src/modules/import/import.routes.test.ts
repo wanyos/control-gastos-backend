@@ -163,8 +163,8 @@ describe('POST /api/import', () => {
 
     expect(response.statusCode).toBe(200)
     const own = response
-      .json<Array<{ description: string; account: { iban: string } }>>()
-      .filter((movement) => movement.account.iban === iban)
+      .json<{ movements: Array<{ description: string; account: { iban: string } }> }>()
+      .movements.filter((movement) => movement.account.iban === iban)
 
     expect(own.map((movement) => movement.description)).toEqual([
       'MOST RECENT',
