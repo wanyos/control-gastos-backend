@@ -17,6 +17,7 @@ import { parseMyinvestorStatement } from './modules/myinvestor/myinvestor.statem
 import n26Routes from './modules/n26/n26.routes.js'
 import { parseN26Statement } from './modules/n26/n26.statement.parser.js'
 import openbankRoutes from './modules/openbank/openbank.routes.js'
+import overviewRoutes from './modules/overview/overview.routes.js'
 import { parseOpenbankStatement } from './modules/openbank/openbank.statement.parser.js'
 import { parseTradeRepublicProductFile } from './modules/trade-republic/trade-republic.service.js'
 import tradeRepublicRoutes from './modules/trade-republic/trade-republic.routes.js'
@@ -83,6 +84,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(accountsRoutes, { prefix: '/api/accounts' })
   app.register(categoriesRoutes, { prefix: '/api/categories' })
   app.register(movementsRoutes, { prefix: '/api/movements' })
+  app.register(overviewRoutes, { prefix: '/api/overview' })
   app.register(ingestionRoutes, { prefix: '/api/ingestion' })
   app.register(importRoutes, { prefix: '/api/import', parsers: bankParsers, productParsers })
   app.register(bankinterRoutes, { prefix: '/api/parser' })

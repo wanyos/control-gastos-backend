@@ -193,6 +193,13 @@ describe('architecture invariants', () => {
       // the database through the REAL registry of app.ts. It lives in the bank
       // module because it is that bank's entry, not a second importer.
       'modules/myinvestor/myinvestor.import.test.ts',
+      // Feature 38: the money overview. One read-only endpoint that reuses the
+      // balance of feature 31 and the totals of feature 36; it owns no sum.
+      'modules/overview/overview.routes.ts',
+      'modules/overview/overview.service.ts',
+      'modules/overview/overview.schema.ts',
+      'modules/overview/overview.types.ts',
+      'modules/overview/overview.test.ts',
       // Feature 40: the transfer detection. No routes file on purpose -- the
       // detection has no endpoint; both import ways call it after their file
       // loop and its result travels inside the import report.
@@ -219,6 +226,7 @@ describe('architecture invariants', () => {
       'modules/accounts/accounts.routes.ts',
       'modules/categories/categories.routes.ts',
       'modules/movements/movements.routes.ts',
+      'modules/overview/overview.routes.ts',
     ]
 
     for (const file of files) {

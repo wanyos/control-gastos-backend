@@ -24,11 +24,7 @@
 
 ## Feature en curso
 
-_Ninguna._ Última cerrada: **F41 `transfer-batch-pairing`** (2026-09-03, aprobada) — [veredicto](reviews/transfer-batch-pairing.md) · [resumen](summaries/transfer-batch-pairing.md). Esta línea se **sustituye** en el siguiente cierre; aquí no se acumula nada.
-
-✅ **«Lote igualado» aprobado por el humano el 2026-09-05** y anotado en
-[`docs/vocabulario.md`](../docs/vocabulario.md): ya puede usarse con ese único
-significado.
+_Ninguna._ Última cerrada: **F38 `money-overview`** (2026-09-05, aprobada) — [veredicto](reviews/money-overview.md) · [resumen](summaries/money-overview.md). Esta línea se **sustituye** en el siguiente cierre; aquí no se acumula nada.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:

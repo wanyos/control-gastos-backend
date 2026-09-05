@@ -631,6 +631,90 @@ elemento de `movements` en `GET /api/movements`), con su `account` y su
 
 ---
 
+### `GET /api/overview`
+
+Una sola consulta de **solo lectura** (feature "money-overview", 2026-09-05) que
+responde de un vistazo: cuánto dinero hay en total, cómo está repartido entre
+las cuentas, y cuánto entró, salió y quedó (entradas menos salidas) en un mes.
+
+No calcula nada propio — ese es el punto del endpoint:
+
+- El saldo de cada cuenta (y por tanto el total) sale de **la misma fórmula**
+  que publica [`GET /api/accounts`](#get-apiaccounts) (el ancla de la cuenta más
+  los movimientos posteriores, feature 31). Los dos endpoints dicen siempre el
+  mismo número para la misma cuenta.
+- Los totales del mes salen de **la misma suma** que los `totals` de
+  [`GET /api/movements`](#get-apimovements) (feature 36), con sus mismas
+  exclusiones: quedan fuera los `neutral`, las dos piernas de un traspaso
+  (`transferId != null`) y las aportaciones a un producto de inversión
+  (`productId != null`).
+
+Las **inversiones no aparecen aquí**: tendrán su propia consulta (feature 39).
+
+**Parámetros de querystring**
+
+| Parámetro | Tipo               | Qué hace                                                                 |
+| --------- | ------------------ | ------------------------------------------------------------------------ |
+| `month`   | string (`YYYY-MM`) | El mes del que se quieren los totales. **Opcional**: sin él, el mes en curso (UTC). Un valor mal formado (`2026-13`, una fecha completa) → **400 `VALIDATION_ERROR`**, nunca se adivina un mes. |
+
+**Respuesta 200**
+```json
+{
+  "totalBalance": "1275.50",
+  "accounts": [
+    {
+      "id": 1,
+      "iban": "ES9820385778983000760236",
+      "bank": "bankinter",
+      "alias": "bankinter ···0236",
+      "type": "checking",
+      "balance": "1200.00"
+    },
+    {
+      "id": 2,
+      "iban": "ES9121000418450200051332",
+      "bank": "n26",
+      "alias": "n26 ···1332",
+      "type": "checking",
+      "balance": "75.50"
+    }
+  ],
+  "period": {
+    "month": "2026-06",
+    "from": "2026-06-01",
+    "to": "2026-06-30",
+    "totals": { "income": "1500.00", "expense": "400.25", "net": "1099.75" }
+  }
+}
+```
+
+- `totalBalance`: la suma del `balance` de todas las cuentas. String decimal,
+  como todos los importes del contrato.
+- `accounts`: una entrada por cuenta, con la misma forma embebida que el
+  `account` de cada movimiento en `GET /api/movements` más su `balance`.
+- `period.month`: el mes sobre el que se calcularon los totales — el pedido, o
+  el mes en curso si no se pidió ninguno. `from`/`to` son su primer y último
+  día, **ambos incluidos**.
+- `period.totals`: la misma forma que los `totals` de `GET /api/movements`
+  (`income` = lo que entró, `expense` = lo que salió, `net` = `income −
+  expense`, que es el ahorro del mes). Los saldos (`totalBalance`, `balance`)
+  **no dependen del mes pedido**: el dinero sigue ahí sea cual sea el periodo.
+
+Un mes **sin movimientos no es un error**: responde 200 con los tres totales a
+`"0.00"`. Un parámetro de querystring **desconocido se ignora** (el esquema lo
+descarta antes del handler), igual que en `GET /api/movements`.
+
+**Errores**
+
+| Código HTTP | `code`             | Cuándo                                              |
+| ----------- | ------------------ | --------------------------------------------------- |
+| 400         | `VALIDATION_ERROR` | `month` no tiene la forma `YYYY-MM` (mes 01–12).    |
+
+> Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
+> `PATCH`, ni `DELETE` bajo `/api/overview`).
+
+---
+
 ## Ingesta desde Google Drive
 
 > **Feature "drive-read" (2026-08-03).** Primera lectura de archivos de banco

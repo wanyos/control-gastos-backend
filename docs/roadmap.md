@@ -60,7 +60,7 @@ en esa sesión y en este orden:
 | **36** | `movements-filters-and-totals` | Filtrar por cuenta, fechas, tipo y estado; paginar; y los totales del filtro pedido | no |
 | **37** | `categories-and-tagging` ✅ (2026-09-02) | Crear categorías y ponérselas a un movimiento, con una lista genérica de arranque, y dar un movimiento por revisado | **sí** |
 | **40** | `transfer-detection` ✅ (2026-09-03) | Reconocer los traspasos entre cuentas propias (el escritor de `transferId` que el modelo dejó previsto) para que no cuenten ni como gasto ni como ingreso | **sí** |
-| **38** | `money-overview` | Cuánto dinero hay en total, cómo está repartido y qué se ahorró en el mes | no |
+| **38** | `money-overview` ✅ (2026-09-05) | Cuánto dinero hay en total, cómo está repartido y qué se ahorró en el mes (`GET /api/overview`) | no |
 | **39** | `investments-overview` | Qué valen los productos, si suben o bajan y cuánto se ganó en el mes | **sí** |
 
 **Por qué en ese orden.** La 36 va primera porque hoy `GET /api/movements`
@@ -93,7 +93,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 | E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 **5 de 6 bancos**, **contrato ✅** · inventario ✅ (2026-08-17); solo queda **Revolut**, aparcado sin datos (Trade Republic entró por `.json` escrito a mano, sin parser de PDF: provisional) | F6, F7, F11, F10, F13, **F18**, **F19**, **F20** |
 | E5 | **La importación** — del fichero parseado a la base de datos | ✅ | **F12** |
 | E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **empezada**: categorías a mano y confirmación ✅ (**F37**, 2026-09-02), traspasos ✅ (**F40** + **F41**, 2026-09-03); faltan aportación (`productId`) y reglas automáticas | **F37**, **F40**, **F41** |
-| E7 | **Consultar** — filtros, saldos, totales, patrimonio | 🟡 **empezada**: saldo real ✅ (F31) y su comprobación ✅ (F32); los filtros, los totales y el patrimonio son las **F36, F38 y F39**, escritas y sin empezar | **F31**, **F32**, F36, F38, F39 |
+| E7 | **Consultar** — filtros, saldos, totales, patrimonio | 🟡 **empezada**: saldo real ✅ (F31), su comprobación ✅ (F32), filtros y totales ✅ (F36), resumen del dinero ✅ (**F38**, 2026-09-05, `GET /api/overview`); queda el patrimonio de inversiones (**F39**) | **F31**, **F32**, **F36**, **F38**, F39 |
 | E8 | **Ver** — el frontend | ⬜ | otro proyecto |
 | E9 | **Que esto viva en algún sitio** — despliegue y acceso | ⬜ | *sin etapa hasta hoy* |
 
@@ -349,7 +349,7 @@ tiene etapa, es que se va a perder.
 | ~~1~~ | ~~«Procesado» significa «descargado», no «guardado»~~ | ✅ **cerrado por la F12** (2026-08-12): mover a `procesados/` es consecuencia de guardar, y `POST /api/ingestion/process` ya no mueve |
 | ~~2~~ | ~~Importe 0: el parser de Bankinter lo trata como `income`~~ | ✅ **cerrado por la F11** (2026-08-11): sale `neutral` |
 | ~~7~~ | ~~`ParsedMovement` vive dentro de `bankinter/`; `deriveMovementTypeFromAmount` reimplementado~~ | ✅ **cerrado por la F11**: contrato en [`src/lib/parsed-statement.ts`](../src/lib/parsed-statement.ts), helper único |
-| 8 | `computeTotals` **no excluye** `productId != null`. Hoy da igual (la columna es siempre `null`), pero en cuanto exista quien la escriba, las aportaciones mensuales contarán como gasto del mes | **E6** (con su escritor) |
+| ~~8~~ | ~~`computeTotals` **no excluye** `productId != null`~~ | ✅ **ya estaba cerrado por la F36** y esta tabla no se enteró: la exclusión existe en `computeTotals` junto a la de `transferId` (comprobado el 2026-09-05 por la F38 leyendo la función y ejecutando sus tests, [movements.service.ts:335](../src/modules/movements/movements.service.ts#L335)) |
 | ~~9~~ | ~~`InvestmentProduct.openedAt` nace **sin escritor previsto**~~ | ✅ **cerrado del todo por la F26** (2026-08-20): la F15 puso la fecha en el JSON y la F26 le puso el escritor — `persistSavingsSnapshot` la guarda en la columna. Para los productos de MyInvestor sigue pendiente su feature hermana |
 | ~~11~~ | ~~Lo que el humano deja en Drive **no llega a la base de datos**: los `.json` de producto morían en `var/parsed/`~~ | ✅ **cerrado del todo**: para Trade Republic por la **F26** (2026-08-20, ADR-026) y para los 5 `.json` de MyInvestor por la **F29** (2026-08-21). Los dos entran por `POST /api/import` y se guardan como `InvestmentProduct` (+ `SavingsSnapshot` o `Valuation`); sus dos parsers están en el registro de productos de [`src/app.ts`](../src/app.ts). ⚠️ Esta fila siguió diciendo «sigue abierto para MyInvestor» **diez días después de cerrarse**, hasta el 2026-09-01 |
 | 12 | **Nada LEE la capa de inversiones.** La F26 le puso escritor, pero no hay ningún `GET` de patrimonio ni de la serie de un producto, y la cuenta remunerada no aparece en ningún total | **E7** |

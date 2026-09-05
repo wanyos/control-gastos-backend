@@ -1010,3 +1010,23 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   emparejar sus 3 grupos aprobados (6 parejas nuevas); el de 2×500 con una
   entrada seguirá dudoso hasta que exista marcado manual (aplazado). Siguiente
   según el orden acordado: F38 `money-overview`.
+
+## 2026-09-05 — Feature 38: money-overview
+
+- **Agente:** leader (orquestando) + implementer + reviewer (sin spec: sdd false).
+- **Plan:** endpoint nuevo de solo lectura `GET /api/overview` en su propio
+  módulo: total de dinero y desglose por cuenta con el saldo real de la F31
+  (via listAccounts, sin segunda fórmula), y entradas/salidas/ahorro del mes
+  pedido con `?month=YYYY-MM` (sin él, el mes en curso UTC) reutilizando
+  computeTotals/serializeTotals de la F36.
+- **Cambios:** `src/modules/overview/` (routes/schema/service/types/test),
+  registro en `src/app.ts`, guardianes de `src/architecture.test.ts`,
+  sección nueva en `docs/api-contract.md`. Cero cambios de esquema. Detalle:
+  `progress/summaries/money-overview.md`.
+- **Verificación:** `./init.sh` completo en verde (reviewer lo relanzó): 55
+  archivos, 1080 tests. Veredicto APROBADO en
+  `progress/reviews/money-overview.md`.
+- **Cierre:** done. De paso se descubrió que el cabo suelto 8 del roadmap ya
+  estaba cerrado por la F36 (la exclusión de productId en computeTotals
+  existía); la tabla queda corregida. Siguiente y última de la tanda: F39
+  `investments-overview` (con spec).
