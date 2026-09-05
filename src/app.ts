@@ -8,6 +8,7 @@ import categoriesRoutes from './modules/categories/categories.routes.js'
 import healthRoutes from './modules/health/health.routes.js'
 import importRoutes from './modules/import/import.routes.js'
 import type { BankParserRegistry } from './modules/import/import.types.js'
+import investmentsRoutes from './modules/investments/investments.routes.js'
 import type { ProductParserRegistry } from './modules/investments/investments.types.js'
 import ingestionRoutes from './modules/ingestion/ingestion.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
@@ -85,6 +86,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(categoriesRoutes, { prefix: '/api/categories' })
   app.register(movementsRoutes, { prefix: '/api/movements' })
   app.register(overviewRoutes, { prefix: '/api/overview' })
+  app.register(investmentsRoutes, { prefix: '/api/investments' })
   app.register(ingestionRoutes, { prefix: '/api/ingestion' })
   app.register(importRoutes, { prefix: '/api/import', parsers: bankParsers, productParsers })
   app.register(bankinterRoutes, { prefix: '/api/parser' })

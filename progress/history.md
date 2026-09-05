@@ -1030,3 +1030,27 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   estaba cerrado por la F36 (la exclusión de productId en computeTotals
   existía); la tabla queda corregida. Siguiente y última de la tanda: F39
   `investments-overview` (con spec).
+
+## 2026-09-05 — Feature 39: investments-overview
+
+- **Agente:** leader (orquestando) + spec-author + implementer + reviewer.
+- **Plan:** spec SDD aprobado por el humano el mismo día (6 decisiones: un solo
+  endpoint GET /api/investments/overview con ?month como la F38 y filtros solo
+  por producto y tipo; la variación se mide con el gain/gainPercent que escribe
+  el humano, nunca sobre marketValue; lo no calculable sale como hueco con
+  lista de excluidos y motivo, jamás cero silencioso; foto que falta = null;
+  producto cerrado antes del mes no aparece; sin mes pedido, el mes en curso).
+- **Cambios:** lectura nueva en `src/modules/investments/` (los escritores de
+  la importación intactos), registro en `src/app.ts`, sección nueva en
+  `docs/api-contract.md` (y su nota de inversiones ya no dice «todavía no se
+  leen»). Cero cambios de esquema. Dos desviaciones del design documentadas y
+  validadas por el reviewer. Detalle:
+  `progress/summaries/investments-overview.md`.
+- **Verificación:** `./init.sh` completo en verde (reviewer lo relanzó): 56
+  archivos, 1098 tests; la suite nueva 18/18 vista pasar por nombre. Veredicto
+  APROBADO en `progress/reviews/investments-overview.md`, con dos hallazgos de
+  severidad baja anotados (la ruta nueva no está en el guardián de rutas, y el
+  caso combinado productId+cerrado-antes sin test dedicado).
+- **Cierre:** done. Cierra el cabo suelto 12 del roadmap; la consulta de
+  patrimonio neto total queda fuera a propósito y anotada en la fila E7. Con
+  esta, las 6 features de la tanda del 2026-09-01 (36-41) están cerradas.

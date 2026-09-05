@@ -8,6 +8,8 @@
  * registry that binds slug to parser is built in `src/app.ts` (ADR-015).
  */
 
+import type { InvestmentProductType } from '../../generated/prisma/client.js'
+
 /**
  * What EVERY product file contributes, whatever its type (feature 29). It is the
  * part the writer needs before it knows which photo it is storing: the identity
@@ -109,6 +111,167 @@ export interface ProductParserAdapter {
 }
 
 export type ProductParserRegistry = ProductParserAdapter[]
+
+// ---------------------------------------------------------------------------
+// Read side (feature 39): the shapes `GET /api/investments/overview` answers
+// with. The write side above stays untouched -- this is the first reader of
+// the layer features 26 and 29 only wrote.
+// ---------------------------------------------------------------------------
+
+/**
+ * Querystring of `GET /api/investments/overview` (feature 39). All three are
+ * optional and combinable; a missing `month` falls back to the current month
+ * (UTC), same as `GET /api/overview`.
+ */
+export interface InvestmentsOverviewQuery {
+  month?: string
+  productId?: number
+  type?: InvestmentProductType
+}
+
+/** The month the view was computed over, with its resolved date range. */
+export interface InvestmentsOverviewPeriod {
+  /** `YYYY-MM`, either the one asked for or the current month. */
+  month: string
+  /** `YYYY-MM-DD`, first day of the month (inclusive). */
+  from: string
+  /** `YYYY-MM-DD`, last day of the month (inclusive). */
+  to: string
+}
+
+/**
+ * A `Valuation` row exactly as stored: the five amounts are serialized
+ * verbatim (rule 4 of ADR-012 -- `gain` is NEVER derived from
+ * `marketValue - invested`, and nothing is rounded).
+ */
+export interface SerializedValuation {
+  /** `YYYY-MM-DD` of the photo. */
+  date: string
+  invested: string
+  marketValue: string
+  gain: string | null
+  gainPercent: string | null
+  /** APART from `marketValue`: never added into anything (ADR-012). */
+  uninvestedCash: string | null
+}
+
+/**
+ * How much the product moved between two photos, measured on the `gain` /
+ * `gainPercent` the human writes -- never on `marketValue`, which would count
+ * a monthly contribution as a market rise (decisions.md 🔴 2). Each component
+ * is `null` when one of its two inputs is missing (R4): a gap is a gap.
+ */
+export interface ValuationChange {
+  /** Euros, signed: `gain` of the period photo minus the previous one. */
+  amount: string | null
+  /** Percent POINTS, signed: difference of the two `gainPercent`. */
+  percentPoints: string | null
+}
+
+/** Identity every product of the view carries, whatever its type. */
+export interface InvestmentProductCommon {
+  id: number
+  bank: string
+  name: string
+  currency: string
+  /** `YYYY-MM-DD`, or `null` when unknown. */
+  openedAt: string | null
+  /** `YYYY-MM-DD`; `null` means alive. */
+  closedAt: string | null
+}
+
+/**
+ * A product that FLUCTUATES (fund / ETF / managed portfolio). `valuation` is
+ * the photo of the period or `null` when that month's file was never uploaded;
+ * the previous photo, when shown, always carries its own date -- it never
+ * stands in for the missing one (R7).
+ */
+export interface FluctuatingProductOverview extends InvestmentProductCommon {
+  type: 'fund' | 'etf' | 'managed_portfolio'
+  valuation: SerializedValuation | null
+  previousValuation: SerializedValuation | null
+  change: ValuationChange | null
+}
+
+/** The four conditions a deposit was signed with, exactly as stored. */
+export interface DepositConditions {
+  principal: string | null
+  /** The APR that applies, AS A PERCENTAGE (`2.75` is 2,75 %). */
+  interestRate: string | null
+  expectedGain: string | null
+  /** `YYYY-MM-DD`. */
+  maturityDate: string | null
+}
+
+/**
+ * A deposit does not fluctuate and keeps no series (ADR-012): it has NO
+ * `valuation`, `previousValuation` or `change` fields at all, so a `null`
+ * can never be misread as "its photo is missing".
+ */
+export interface DepositProductOverview extends InvestmentProductCommon {
+  type: 'deposit'
+  conditions: DepositConditions
+}
+
+/** A `SavingsSnapshot` row exactly as stored (its five amounts are NOT NULL). */
+export interface SerializedSavingsSnapshot {
+  /** `YYYY-MM-DD` of the photo (the day the interest was paid). */
+  date: string
+  openingBalance: string
+  moneyIn: string
+  moneyOut: string
+  interest: string
+  balance: string
+}
+
+/**
+ * A remunerated account: its photo of the period, or `null` when that month's
+ * file was never uploaded. Its `interest` counts as gain of the month the
+ * photo's `date` falls in -- the month it was paid.
+ */
+export interface SavingsProductOverview extends InvestmentProductCommon {
+  type: 'savings_account'
+  snapshot: SerializedSavingsSnapshot | null
+}
+
+/** The shape of each product depends on its type (design §6). */
+export type InvestmentProductOverview =
+  FluctuatingProductOverview | DepositProductOverview | SavingsProductOverview
+
+/**
+ * Why a product with a series could not enter the sum of the period (R8).
+ * Closed enum, part of the contract; a deposit never gets one -- it has no
+ * series to miss.
+ */
+export type PeriodGainExclusionReason =
+  'no_photo_in_period' | 'no_previous_photo' | 'gain_not_reported'
+
+/** One product left out of the sum, with its machine-readable reason. */
+export interface ExcludedFromPeriodGain {
+  productId: number
+  name: string
+  reason: PeriodGainExclusionReason
+}
+
+/**
+ * What was gained in the period: the sum of the computable changes of the
+ * fluctuating products plus the interest paid inside it. `excluded` is what
+ * keeps the sum honest -- what could not be counted is listed, never silently
+ * counted as zero (decisions.md 🔴 3).
+ */
+export interface PeriodGain {
+  total: string
+  fluctuation: string
+  interest: string
+  excluded: ExcludedFromPeriodGain[]
+}
+
+/** Shape of the `GET /api/investments/overview` response (feature 39). */
+export interface InvestmentsOverviewResponse {
+  period: InvestmentsOverviewPeriod
+  products: InvestmentProductOverview[]
+  periodGain: PeriodGain
+}
 
 /**
  * What one product file left in the database. `created` is what tells "it has

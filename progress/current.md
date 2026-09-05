@@ -24,7 +24,7 @@
 
 ## Feature en curso
 
-_Ninguna._ Última cerrada: **F38 `money-overview`** (2026-09-05, aprobada) — [veredicto](reviews/money-overview.md) · [resumen](summaries/money-overview.md). Esta línea se **sustituye** en el siguiente cierre; aquí no se acumula nada.
+_Ninguna._ Última cerrada: **F39 `investments-overview`** (2026-09-05, aprobada) — [veredicto](reviews/investments-overview.md) · [resumen](summaries/investments-overview.md). Con ella quedan cerradas las 6 features de la tanda del 2026-09-01 (36–41). El trabajo de la F39 está **sin commitear**, esperando la prueba real del humano. Esta línea se **sustituye** en el siguiente cierre; aquí no se acumula nada.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
@@ -39,6 +39,11 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 
 ## Lo que le toca al humano
 
+- **De la F39 (2026-09-05):** probarla en real con el backend reiniciado:
+  `curl.exe http://localhost:3000/api/investments/overview` (mes en curso; a
+  mitad de mes casi todo saldrá como «falta la foto», es lo esperado) y
+  `curl.exe "http://localhost:3000/api/investments/overview?month=2026-08"`
+  (agosto, que sí tiene fotos). Si cuadra, se commitea.
 - ~~**De la F41:** volver a lanzar `POST /api/import/local`~~ ✅ **hecho por el
   humano el 2026-09-05** (prueba real): `pairsCreated: 7` — los 3 grupos
   aprobados resueltos (3 parejas del 3×1000, 2 del cruce de 1000, 2 del

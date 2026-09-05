@@ -1,11 +1,28 @@
-import { ValidationError } from '../../errors/app-error.js'
+import type { FastifyInstance } from 'fastify'
+
+import { Prisma } from '../../generated/prisma/client.js'
+import type {
+  InvestmentProduct,
+  SavingsSnapshot,
+  Valuation,
+} from '../../generated/prisma/client.js'
+
+import { NotFoundError, ValidationError } from '../../errors/app-error.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
+import { currentMonth, monthRange } from '../overview/overview.service.js'
 import type {
   DepositInput,
+  ExcludedFromPeriodGain,
+  InvestmentProductOverview,
+  InvestmentsOverviewQuery,
+  InvestmentsOverviewResponse,
   ProductFileCommon,
   ProductFileInput,
   ProductImportResult,
   SavingsSnapshotInput,
+  SerializedSavingsSnapshot,
+  SerializedValuation,
+  ValuationChange,
   ValuationInput,
 } from './investments.types.js'
 
@@ -303,4 +320,215 @@ function toProductReport(product: ProductRow, created: boolean): ProductImportRe
  */
 function toDateOnly(isoDate: string): Date {
   return new Date(`${isoDate}T00:00:00.000Z`)
+}
+
+// ---------------------------------------------------------------------------
+// Read side (feature 39): the first reader of the layer the writers above
+// fill. Everything below is `find*` only -- this view writes NOTHING.
+// ---------------------------------------------------------------------------
+
+/**
+ * Single point where the module obtains its data client, twin of `overviewDb`.
+ * Keeps the routes layer free of any data-access reference.
+ */
+export function investmentsDb(app: FastifyInstance): AppPrismaClient {
+  return app.prisma
+}
+
+/**
+ * The one read of feature 39: each investment product with its photo of the
+ * period, how much it moved since the previous photo, and what was gained in
+ * total in that month (fluctuation of the funds plus the interest paid into
+ * the remunerated accounts).
+ *
+ * It derives at read time and NOTHING else: every stored amount is serialized
+ * exactly as the human wrote it (rule 4 of ADR-012 -- `gain` is never
+ * re-derived from `marketValue - invested`, nothing is rounded), and the only
+ * arithmetic is the difference between two of his numbers and their sum.
+ * The variation is measured on `gain` / `gainPercent`, never on `marketValue`,
+ * so a monthly contribution does not read as a market rise (decisions.md 🔴 2).
+ *
+ * What cannot be computed comes out as a gap: `null` in its place plus an
+ * entry in `periodGain.excluded` with the reason -- never a silent zero, and
+ * never a previous photo standing in for the missing one (decisions.md 🔴 3/4).
+ */
+export async function getInvestmentsOverview(
+  prisma: AppPrismaClient,
+  query: InvestmentsOverviewQuery,
+): Promise<InvestmentsOverviewResponse> {
+  const month = query.month ?? currentMonth()
+  const { from, to } = monthRange(month)
+  const fromDate = toDateOnly(from)
+  const toDate = toDateOnly(to)
+
+  // R11: a productId that does not exist is a 404, same as the accountId of
+  // GET /api/movements. Existence is checked WITHOUT the period filter: a
+  // product closed before the period exists -- it is simply not listed (R9).
+  if (query.productId !== undefined) {
+    const product = await prisma.investmentProduct.findUnique({
+      where: { id: query.productId },
+      select: { id: true },
+    })
+    if (product === null) throw new NotFoundError('Investment product not found')
+  }
+
+  const products = await prisma.investmentProduct.findMany({
+    where: {
+      ...(query.productId === undefined ? {} : { id: query.productId }),
+      ...(query.type === undefined ? {} : { type: query.type }),
+      // R9: closed before the first day of the period -> out of the view.
+      // Closed inside the period or later (or still open) -> in.
+      OR: [{ closedAt: null }, { closedAt: { gte: fromDate } }],
+    },
+    orderBy: { id: 'asc' },
+  })
+
+  const productIds = products.map((product) => product.id)
+  // Newest first and capped at `to`: per product, the first row with
+  // `date >= from` is the photo of the period (the greatest date, should a
+  // month ever hold two), and the first row older than it -- or older than
+  // `from` when the period has none -- is the previous photo.
+  const [valuations, snapshots] = await Promise.all([
+    prisma.valuation.findMany({
+      where: { productId: { in: productIds }, date: { lte: toDate } },
+      orderBy: { date: 'desc' },
+    }),
+    prisma.savingsSnapshot.findMany({
+      where: { productId: { in: productIds }, date: { lte: toDate } },
+      orderBy: { date: 'desc' },
+    }),
+  ])
+
+  let fluctuation = new Prisma.Decimal(0)
+  let interest = new Prisma.Decimal(0)
+  const excluded: ExcludedFromPeriodGain[] = []
+  const overviewProducts: InvestmentProductOverview[] = []
+
+  for (const product of products) {
+    const common = {
+      id: product.id,
+      bank: product.bank,
+      name: product.name,
+      currency: product.currency,
+      openedAt: product.openedAt === null ? null : serializeDateOnly(product.openedAt),
+      closedAt: product.closedAt === null ? null : serializeDateOnly(product.closedAt),
+    }
+
+    if (product.type === 'deposit') {
+      // A deposit does not fluctuate and keeps no series (ADR-012): its four
+      // conditions ARE its view, and it can never be "excluded" -- there is
+      // no photo of it to miss.
+      overviewProducts.push({ ...common, type: 'deposit', conditions: depositConditions(product) })
+      continue
+    }
+
+    if (product.type === 'savings_account') {
+      const snapshot = snapshots.find((row) => row.productId === product.id && row.date >= fromDate)
+      if (snapshot === undefined) {
+        excluded.push({ productId: product.id, name: product.name, reason: 'no_photo_in_period' })
+      } else {
+        // The interest counts as gain of the month it was PAID, which is the
+        // month of the photo's date (R8).
+        interest = interest.plus(snapshot.interest)
+      }
+      overviewProducts.push({
+        ...common,
+        type: 'savings_account',
+        snapshot: snapshot === undefined ? null : serializeSavingsSnapshot(snapshot),
+      })
+      continue
+    }
+
+    const series = valuations.filter((row) => row.productId === product.id)
+    const periodPhoto = series.find((row) => row.date >= fromDate)
+    const previousPhoto = series.find((row) => row.date < (periodPhoto?.date ?? fromDate))
+
+    let change: ValuationChange | null = null
+    if (periodPhoto === undefined) {
+      excluded.push({ productId: product.id, name: product.name, reason: 'no_photo_in_period' })
+    } else if (previousPhoto === undefined) {
+      excluded.push({ productId: product.id, name: product.name, reason: 'no_previous_photo' })
+    } else {
+      // Both numbers of each difference are the human's own; when one of the
+      // two is missing, that COMPONENT is null (R4). The product enters the
+      // euro sum only when the euro component is computable (R8).
+      const amount =
+        periodPhoto.gain === null || previousPhoto.gain === null
+          ? null
+          : periodPhoto.gain.minus(previousPhoto.gain)
+      const percentPoints =
+        periodPhoto.gainPercent === null || previousPhoto.gainPercent === null
+          ? null
+          : periodPhoto.gainPercent.minus(previousPhoto.gainPercent)
+      change = {
+        amount: amount === null ? null : amount.toFixed(2),
+        percentPoints: percentPoints === null ? null : percentPoints.toString(),
+      }
+      if (amount === null) {
+        excluded.push({ productId: product.id, name: product.name, reason: 'gain_not_reported' })
+      } else {
+        fluctuation = fluctuation.plus(amount)
+      }
+    }
+
+    overviewProducts.push({
+      ...common,
+      type: product.type,
+      valuation: periodPhoto === undefined ? null : serializeValuation(periodPhoto),
+      previousValuation: previousPhoto === undefined ? null : serializeValuation(previousPhoto),
+      change,
+    })
+  }
+
+  return {
+    period: { month, from, to },
+    products: overviewProducts,
+    periodGain: {
+      total: fluctuation.plus(interest).toFixed(2),
+      fluctuation: fluctuation.toFixed(2),
+      interest: interest.toFixed(2),
+      excluded,
+    },
+  }
+}
+
+/** `YYYY-MM-DD` of a date-only column (stored at midnight UTC). */
+function serializeDateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10)
+}
+
+/**
+ * A monetary `Decimal(10,2)` travels as `toFixed(2)` (the convention of the
+ * whole contract: the human writes two decimals) and a percentage as
+ * `toString()` -- a `toFixed(4)` would pad with zeros digits he never typed.
+ */
+function serializeValuation(row: Valuation): SerializedValuation {
+  return {
+    date: serializeDateOnly(row.date),
+    invested: row.invested.toFixed(2),
+    marketValue: row.marketValue.toFixed(2),
+    gain: row.gain === null ? null : row.gain.toFixed(2),
+    gainPercent: row.gainPercent === null ? null : row.gainPercent.toString(),
+    uninvestedCash: row.uninvestedCash === null ? null : row.uninvestedCash.toFixed(2),
+  }
+}
+
+function serializeSavingsSnapshot(row: SavingsSnapshot): SerializedSavingsSnapshot {
+  return {
+    date: serializeDateOnly(row.date),
+    openingBalance: row.openingBalance.toFixed(2),
+    moneyIn: row.moneyIn.toFixed(2),
+    moneyOut: row.moneyOut.toFixed(2),
+    interest: row.interest.toFixed(2),
+    balance: row.balance.toFixed(2),
+  }
+}
+
+function depositConditions(product: InvestmentProduct) {
+  return {
+    principal: product.principal === null ? null : product.principal.toFixed(2),
+    interestRate: product.interestRate === null ? null : product.interestRate.toString(),
+    expectedGain: product.expectedGain === null ? null : product.expectedGain.toFixed(2),
+    maturityDate: product.maturityDate === null ? null : serializeDateOnly(product.maturityDate),
+  }
 }

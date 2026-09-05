@@ -267,19 +267,22 @@ Un apunte del extracto. **Solo entra por importación** (ver
 > que no cumple ni una cosa ni la otra sale en el campo `transfers` del informe de
 > la pasada, sin emparejarse.
 
-### Inversiones — se ESCRIBEN, todavía no se LEEN
+### Inversiones — quién las escribe y quién las lee
 
 La capa de inversiones (`InvestmentProduct`, `Valuation` y, desde la feature 26,
 `SavingsSnapshot`) existe en la base de datos desde la feature 9
 (`docs/data-model.md` §Parte 2, ADR-012). **Desde la feature 26 tiene un escritor**:
 `POST /api/import` guarda las cuentas remuneradas de Trade Republic (ver §Importación,
 «Archivos de producto»), y **desde la feature 29 también `Valuation`**, con los
-productos de MyInvestor (fondo, ETF, cartera gestionada y depósito). **Ya no queda
-ninguna de las tres tablas de inversión sin escritor.** Lo que **sigue sin existir es
-una ruta que las LEA**: no hay `GET` de patrimonio ni de la serie de un producto, y
-ningún endpoint devuelve todavía un `InvestmentProduct`, una `Valuation` ni un
-`SavingsSnapshot` como recurso propio. Escribirlos son las features 26 y 29; leerlos es
-la siguiente.
+productos de MyInvestor (fondo, ETF, cartera gestionada y depósito). **Y desde la
+feature 39 tiene un lector**:
+[`GET /api/investments/overview`](#get-apiinvestmentsoverview), la vista de solo
+lectura que devuelve cada producto con su foto del mes, la variación frente a la
+foto anterior y la ganancia total del periodo. Es el **único** endpoint bajo
+`/api/investments`: no hay `POST`, `PATCH` ni `DELETE` — los datos entran
+solamente por la importación. Lo que sigue sin existir es una consulta de
+patrimonio neto (`marketValue` + `uninvestedCash`): es una feature posterior, ya
+prevista en `docs/data-model.md` §Patrimonio.
 
 **`SavingsSnapshot`** — la foto mensual de una cuenta remunerada. Gemela de `Valuation`
 en oficio (una fila por producto y fecha, recargar sobrescribe, nada se calcula) y
@@ -712,6 +715,149 @@ descarta antes del handler), igual que en `GET /api/movements`.
 
 > Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
 > `PATCH`, ni `DELETE` bajo `/api/overview`).
+
+---
+
+### `GET /api/investments/overview`
+
+La vista de **solo lectura** de las inversiones (feature "investments-overview",
+2026-09-05): cada producto con su foto del mes, cuánto cambió desde la foto
+anterior (en euros y en puntos porcentuales) y cuánto se ganó en total en el
+periodo, sumando la fluctuación de los productos que fluctúan y los intereses
+abonados en las cuentas remuneradas. Es el primer lector de la capa que
+escriben las features 26 y 29, y el **único** endpoint bajo `/api/investments`.
+
+Reglas que gobiernan toda la respuesta:
+
+- **Ningún importe escrito por el humano se recalcula ni se redondea** (regla 4
+  del modelo, ADR-012): los cinco importes de una `Valuation` y los cinco de un
+  `SavingsSnapshot` salen tal como están guardados. Nunca se deriva
+  `gain = marketValue − invested`.
+- **La variación se mide sobre `gain`/`gainPercent`**, nunca sobre
+  `marketValue`: así una aportación mensual no cuenta como subida del mercado.
+  `change.amount` = `gain` de la foto del periodo − `gain` de la anterior
+  (euros, con signo); `change.percentPoints` = diferencia de los dos
+  `gainPercent`, en **puntos porcentuales** (no es un ratio nuevo).
+- **Lo no computable sale como hueco, jamás como cero**: `null` en su sitio, y
+  el producto listado en `periodGain.excluded` con su motivo. Una foto anterior
+  puede verse, pero siempre en `previousValuation` con su propia fecha — nunca
+  haciéndose pasar por la del periodo.
+- **No hay patrimonio total**: `marketValue` y `uninvestedCash` van como campos
+  separados y no se suman (aviso de la feature 9). La consulta de patrimonio
+  neto es otra feature.
+- **Solo lectura**: la consulta no ejecuta ninguna escritura, y
+  [`GET /api/accounts`](#get-apiaccounts) queda exactamente igual que antes de
+  esta feature.
+
+**Parámetros de querystring** (los tres opcionales y combinables)
+
+| Parámetro   | Tipo               | Qué hace                                                                 |
+| ----------- | ------------------ | ------------------------------------------------------------------------ |
+| `month`     | string (`YYYY-MM`) | El mes del que se quiere la vista. **Opcional**: sin él, el mes en curso (UTC). Mal formado → **400 `VALIDATION_ERROR`**, nunca se adivina un mes. |
+| `productId` | int ≥ 1            | Limita `products` y `periodGain` a ese producto. Si no existe → **404 `NOT_FOUND`**. |
+| `type`      | enum               | Limita a un tipo: `fund`, `etf`, `managed_portfolio`, `deposit`, `savings_account`. Otro valor → **400 `VALIDATION_ERROR`**. |
+
+Un producto con `closedAt` **anterior al primer día del periodo** no aparece ni
+suma; cerrado dentro del periodo o después, sí aparece.
+
+**Respuesta 200** (cifras inventadas)
+
+```json
+{
+  "period": { "month": "2026-08", "from": "2026-08-01", "to": "2026-08-31" },
+  "products": [
+    {
+      "id": 1, "bank": "myinvestor", "name": "Fondo Global", "type": "fund",
+      "currency": "EUR", "openedAt": "2025-11-03", "closedAt": null,
+      "valuation": {
+        "date": "2026-08-29", "invested": "12300.00", "marketValue": "12800.50",
+        "gain": "500.50", "gainPercent": "4.07", "uninvestedCash": "10.25"
+      },
+      "previousValuation": {
+        "date": "2026-07-30", "invested": "12000.00", "marketValue": "12380.00",
+        "gain": "380.00", "gainPercent": "3.17", "uninvestedCash": "10.25"
+      },
+      "change": { "amount": "120.50", "percentPoints": "0.9" }
+    },
+    {
+      "id": 4, "bank": "myinvestor", "name": "Deposito 12m", "type": "deposit",
+      "currency": "EUR", "openedAt": "2026-03-02", "closedAt": null,
+      "conditions": {
+        "principal": "10000.00", "interestRate": "2.75",
+        "expectedGain": "275.00", "maturityDate": "2027-03-02"
+      }
+    },
+    {
+      "id": 5, "bank": "trade-republic", "name": "Cuenta remunerada",
+      "type": "savings_account", "currency": "EUR",
+      "openedAt": "2026-01-10", "closedAt": null,
+      "snapshot": {
+        "date": "2026-08-31", "openingBalance": "5000.00", "moneyIn": "200.00",
+        "moneyOut": "0.00", "interest": "8.40", "balance": "5208.40"
+      }
+    }
+  ],
+  "periodGain": {
+    "total": "128.90",
+    "fluctuation": "120.50",
+    "interest": "8.40",
+    "excluded": [{ "productId": 2, "name": "ETF Mundo", "reason": "no_photo_in_period" }]
+  }
+}
+```
+
+**La forma de cada producto depende de su `type`** — así un `null` nunca es
+ambiguo: el campo solo existe en los tipos que pueden tener ese dato.
+
+- `fund` / `etf` / `managed_portfolio` (los que fluctúan): llevan `valuation`
+  (la foto del periodo, o `null` si ese mes no se subió su archivo),
+  `previousValuation` (la foto más reciente anterior a la del periodo — o
+  anterior al periodo, si este no tiene foto — o `null` si no hay ninguna) y
+  `change` (`null` si falta cualquiera de las dos fotos; cada componente a
+  `null` si el `gain`/`gainPercent` implicado es `NULL` en alguna de las dos).
+- `deposit`: lleva `conditions` (las cuatro condiciones con las que se firmó) y
+  **no tiene** `valuation`, `previousValuation` ni `change` — un depósito no
+  fluctúa y no guarda valoraciones a propósito (ADR-012).
+- `savings_account`: lleva `snapshot` (la foto del periodo, o `null` si falta).
+  Su `interest` cuenta como ganancia del mes de la `date` de su foto — el mes
+  en que se abonó.
+
+`periodGain`:
+
+- `fluctuation`: Σ de los `change.amount` computables de los productos que
+  fluctúan.
+- `interest`: Σ del `interest` de los `SavingsSnapshot` con `date` dentro del
+  periodo.
+- `total` = `fluctuation + interest`.
+- `excluded`: una entrada `{ productId, name, reason }` por cada producto con
+  serie que no pudo entrar en la suma. Motivos (enum cerrado):
+
+| `reason`             | Qué significa                                                        |
+| -------------------- | -------------------------------------------------------------------- |
+| `no_photo_in_period` | El producto no tiene foto con `date` dentro del periodo.              |
+| `no_previous_photo`  | La foto del periodo es la primera de su serie: no hay contra qué variar. |
+| `gain_not_reported`  | El `gain` es `NULL` en la foto del periodo o en la anterior.          |
+
+Un `deposit` jamás aparece en `excluded`: no tiene serie que echar en falta.
+
+Formato de los importes: los monetarios (`Decimal(10,2)`) como string decimal
+con dos decimales, igual que en todo el contrato; los porcentajes
+(`gainPercent`, `interestRate`) y `change.percentPoints` **sin relleno de
+ceros** (`"4.07"`, `"0.9"`): no se inventan dígitos que el humano no tecleó.
+
+Un periodo sin ninguna foto **no** es un error: 200 con los huecos a `null`,
+`excluded` poblado y los tres importes de `periodGain` a `"0.00"`. Un parámetro
+de querystring **desconocido se ignora**, igual que en `GET /api/overview`.
+
+**Errores**
+
+| Código HTTP | `code`             | Cuándo                                                              |
+| ----------- | ------------------ | ------------------------------------------------------------------- |
+| 400         | `VALIDATION_ERROR` | `month` mal formado, `type` fuera del enum, `productId` no entero ≥ 1. |
+| 404         | `NOT_FOUND`        | El `productId` pedido no corresponde a ningún producto.              |
+
+> Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
+> `PATCH`, ni `DELETE` bajo `/api/investments`).
 
 ---
 

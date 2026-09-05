@@ -1655,7 +1655,7 @@
         "docs/api-contract.md actualizado; GET /api/accounts no cambia."
       ],
       "sdd": true,
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": 40,
