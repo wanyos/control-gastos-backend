@@ -58,8 +58,8 @@ en esa sesión y en este orden:
 | # | Feature | Qué trae | Spec |
 |---|---|---|---|
 | **36** | `movements-filters-and-totals` | Filtrar por cuenta, fechas, tipo y estado; paginar; y los totales del filtro pedido | no |
-| **37** | `categories-and-tagging` | Crear categorías y ponérselas a un movimiento, con una lista genérica de arranque, y dar un movimiento por revisado | **sí** |
-| **40** | `transfer-detection` | Reconocer los traspasos entre cuentas propias (el escritor de `transferId` que el modelo dejó previsto) para que no cuenten ni como gasto ni como ingreso | **sí** |
+| **37** | `categories-and-tagging` ✅ (2026-09-02) | Crear categorías y ponérselas a un movimiento, con una lista genérica de arranque, y dar un movimiento por revisado | **sí** |
+| **40** | `transfer-detection` ✅ (2026-09-03) | Reconocer los traspasos entre cuentas propias (el escritor de `transferId` que el modelo dejó previsto) para que no cuenten ni como gasto ni como ingreso | **sí** |
 | **38** | `money-overview` | Cuánto dinero hay en total, cómo está repartido y qué se ahorró en el mes | no |
 | **39** | `investments-overview` | Qué valen los productos, si suben o bajan y cuánto se ganó en el mes | **sí** |
 
@@ -72,9 +72,10 @@ resumen contaría como entradas y salidas los traspasos entre sus propias cuenta
 totales de la 36 para no escribir dos sumas distintas del mismo dinero. La 39 no
 depende de ninguna y puede adelantarse si apetece.
 
-**Lo que cierran de esta tabla:** la 36 el cabo 8, la 37 el cabo 3, la 39 el
-cabo 12, y la 40 le pone por fin escritor a `Movement.transferId` (reservado
-desde la F8).
+**Lo que cierran de esta tabla:** la 36 el cabo 8, la 37 el cabo 3 ✅, la 39 el
+cabo 12, y la 40 ✅ le puso por fin escritor a `Movement.transferId` (reservado
+desde la F8): desde el 2026-09-03 cada importación cruza los movimientos sin
+marcar y enlaza las parejas inequívocas.
 
 **La E4 sigue con Revolut pendiente**, aparcado por decisión del humano hasta que
 ese banco tenga movimientos.
@@ -91,7 +92,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
 | E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 **5 de 6 bancos**, **contrato ✅** · inventario ✅ (2026-08-17); solo queda **Revolut**, aparcado sin datos (Trade Republic entró por `.json` escrito a mano, sin parser de PDF: provisional) | F6, F7, F11, F10, F13, **F18**, **F19**, **F20** |
 | E5 | **La importación** — del fichero parseado a la base de datos | ✅ | **F12** |
-| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **feature escrita, sin empezar** | **F37** |
+| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **empezada**: categorías a mano y confirmación ✅ (**F37**, 2026-09-02), traspasos ✅ (**F40** + **F41**, 2026-09-03); faltan aportación (`productId`) y reglas automáticas | **F37**, **F40**, **F41** |
 | E7 | **Consultar** — filtros, saldos, totales, patrimonio | 🟡 **empezada**: saldo real ✅ (F31) y su comprobación ✅ (F32); los filtros, los totales y el patrimonio son las **F36, F38 y F39**, escritas y sin empezar | **F31**, **F32**, F36, F38, F39 |
 | E8 | **Ver** — el frontend | ⬜ | otro proyecto |
 | E9 | **Que esto viva en algún sitio** — despliegue y acceso | ⬜ | *sin etapa hasta hoy* |
@@ -354,7 +355,7 @@ tiene etapa, es que se va a perder.
 | 12 | **Nada LEE la capa de inversiones.** La F26 le puso escritor, pero no hay ningún `GET` de patrimonio ni de la serie de un producto, y la cuenta remunerada no aparece en ningún total | **E7** |
 | 13 | **Los contadores de `POST /api/import` cuentan movimientos, no productos.** Un archivo de producto que ha entrado bien sale con `status: "imported"` y su `product`/`snapshot` creados, pero el resumen de arriba dice `importedCount: 0` — y el resumen es lo primero que se lee, así que un mes bien guardado se lee como «0 importados». Encontrado en la **prueba real de la F26** ([informe](../progress/explorations/prueba-real-cuenta-remunerada-2026-08-20.md)); misma familia que el mensaje falso de la F22 y que el del `.pdf`: la respuesta dice algo que no es. Se arregla haciendo que los contadores distingan movimientos de productos, o que cuenten las dos cosas | **candidato, sin abrir** |
 | 14 | **Los dos inquilinos de `var/drive-read/` no saben volver a Drive.** Esa carpeta es una **caché**: la importación no la necesita (descarga a memoria, escribe la copia y parsea el buffer), pero **el ensayo** (`POST /api/parser/<banco>`) y **la reimportación local** (`POST /api/import/local`, F25) leen SOLO de ella. En producción la caché es efímera —se pierde en cada despliegue— y los dos dejan de funcionar en cuanto no está. El almacén duradero ya existe y es Drive: los ficheros ya importados viven en `procesados/`, que **hoy no lee ningún endpoint**. Anotado el 2026-08-22 a petición del humano, «para que no se me olvide», con la decisión explícita de **no construirlo todavía**: la forma del arreglo depende de cómo se despliegue y de si esas dos rutas tienen sentido en producción | **sin abrir, hasta que haya despliegue** |
-| 3 | Todo lo importado nace `pending_review` y **nada lo pasa a `confirmed`** | **E6** |
+| ~~3~~ | ~~Todo lo importado nace `pending_review` y **nada lo pasa a `confirmed`**~~ | ✅ **cerrado por la F37** (2026-09-02): `PATCH /api/movements/:id` cambia `status` en los dos sentidos |
 | ~~4~~ | ~~`src/modules/ingesta/` y `/api/ingesta/*` están en español~~ | ✅ **cerrado por la F12** (2026-08-12): `src/modules/ingestion/` y `/api/ingestion/*`; las rutas viejas responden 404 |
 | 10 | `daySequence` numera solo las filas parseadas: reimportar un fichero tras arreglar su parser puede renumerar ese día y dejar duplicados **visibles** | sin dueño |
 | 15 | **`bankinter.routes.test.ts` es el único banco que NO comprueba que su ruta esté registrada en la app real.** No es un agujero de datos —no invoca nada—, pero sí de cobertura: si alguien quitara su línea de `src/app.ts`, ningún test lo diría. Una línea con `hasRoute` lo cierra. Encontrado en la **F33** (2026-08-26) al arreglar el test hermano de Trade Republic | **sin abrir, una línea** |

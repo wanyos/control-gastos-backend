@@ -24,7 +24,11 @@
 
 ## Feature en curso
 
-_Ninguna._ Última cerrada: **F36 `movements-filters-and-totals`** (2026-09-02, aprobada) — [veredicto](reviews/movements-filters-and-totals.md) · [resumen](summaries/movements-filters-and-totals.md). Esta línea se **sustituye** en el siguiente cierre; aquí no se acumula nada.
+_Ninguna._ Última cerrada: **F41 `transfer-batch-pairing`** (2026-09-03, aprobada) — [veredicto](reviews/transfer-batch-pairing.md) · [resumen](summaries/transfer-batch-pairing.md). Esta línea se **sustituye** en el siguiente cierre; aquí no se acumula nada.
+
+✅ **«Lote igualado» aprobado por el humano el 2026-09-05** y anotado en
+[`docs/vocabulario.md`](../docs/vocabulario.md): ya puede usarse con ese único
+significado.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
@@ -39,7 +43,34 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 
 ## Lo que le toca al humano
 
-_Nada de esta sesión._ Sus deberes pendientes viven en
+- ~~**De la F41:** volver a lanzar `POST /api/import/local`~~ ✅ **hecho por el
+  humano el 2026-09-05** (prueba real): `pairsCreated: 7` — los 3 grupos
+  aprobados resueltos (3 parejas del 3×1000, 2 del cruce de 1000, 2 del
+  2×3000; el «6» que se estimó en decisions.md contaba mal el cruce) — y como
+  único dudoso queda el de 2×500 con una sola entrada, tal y como debía. En
+  total, con la pasada de la F40: 35 parejas de traspasos enlazadas.
+- ~~**Responder a la propuesta de vocabulario «lote igualado»**~~ ✅ **aprobada
+  el 2026-09-05** y anotada en `docs/vocabulario.md`.
+- ~~**De la F40:** lanzar una vez `POST /api/import/local`~~ ✅ **hecho por el
+  humano el 2026-09-03** (prueba real): `pairsCreated: 28` y 4 grupos dudosos
+  (14 movimientos) sin marcar a propósito, sin fallos, 1735 duplicados y 0
+  importados como se esperaba. Los 4 dudosos son traspasos reales suyos que el
+  emparejamiento no puede resolver sin ambigüedad (varias transferencias del
+  mismo importe en la misma ventana: 3×1000 EUR Openbank↔Bankinter de julio
+  2026, un cruce de 1000 EUR con Bankinter→Openbank y Bankinter→N26 el mismo
+  día de diciembre 2025, 2×3000 EUR Bankinter→MyInvestor en días consecutivos,
+  y 2×500 EUR Bankinter→N26 con una sola pierna espejo). Quedan sin marcar por
+  decisión 2 del spec, y no hay marcado manual por decisión 4: si molestan en
+  los totales, es una feature nueva.
+- **Nada nuevo que ejecutar de la F37:** el único deber que traía
+  (`pnpm run seed:categories` una vez) **ya quedó hecho** — el implementer lo
+  ejecutó por accidente contra la base real al verificar el comando, y las 16
+  categorías están sembradas (idempotencia comprobada: segunda pasada
+  `created 0`). Recuerda el aviso de `specs/37-categories-and-tagging/decisions.md`
+  §📌: no vuelvas a ejecutarlo tras renombrar una sembrada, o el nombre viejo
+  reaparecerá.
+
+El resto de sus deberes pendientes vive en
 [`docs/roadmap.md`](../docs/roadmap.md) §Deberes tuyos pendientes, y los cabos
 sueltos en la tabla §Cabos sueltos con dueño del mismo archivo. Aquí solo se
 escribe lo que sale de la sesión **en curso**.

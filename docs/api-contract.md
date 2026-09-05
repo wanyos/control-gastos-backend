@@ -52,7 +52,7 @@ Códigos estables:
 | `UNSUPPORTED_MEDIA_TYPE`| 415  | El `Content-Type` enviado no lo sabe leer ningún parser del servidor (la API habla `application/json`). Desde la feature 35 (2026-08-30). |
 | `VALIDATION_ERROR`      | 400  | El body o los params no cumplen el esquema de la ruta, o la operación es incoherente (p. ej. subcategoría de una subcategoría). |
 | `NOT_FOUND`             | 404  | El recurso pedido no existe, o la ruta no existe.          |
-| `CONFLICT`              | 409  | El recurso ya existe: `iban` de cuenta duplicado, o categoría raíz duplicada `(kind, name)`. |
+| `CONFLICT`              | 409  | El recurso ya existe (`iban` de cuenta duplicado, o categoría duplicada `(parentId, kind, name)` al crearla o renombrarla), o la operación chocaría con lo que hay: borrar una categoría **en uso** (con movimientos o con subcategorías) responde 409 sin borrar nada. |
 | `NOT_UTF8`              | 422  | Los **bytes** de un fichero no son UTF-8 válido (típicamente guardado en cp1252/ANSI por el editor). El fichero se **rechaza entero**; nunca se decodifica ni se repara. Como `MISSING_ACCOUNT_DATA`, viaja **dentro del informe de un fichero** en una respuesta 200, no como cuerpo de error HTTP. |
 | `INVALID_IBAN`          | 422  | El IBAN recibido no es un IBAN: forma incorrecta, longitud que no es la de su país, o **dígito de control mod-97 que no cuadra** (un dígito mal tecleado). Lo aplican por igual `POST /api/accounts` —donde sí es cuerpo de error HTTP— y los tres parsers de banco, donde **rechaza el fichero entero** y viaja dentro del informe de ese fichero en un 200. Nunca se crea una cuenta con él. Desde la feature 21 (2026-08-18). |
 | `UNEXPECTED_ENCODING`   | 422  | Un fichero **no llega en la codificación que emite su banco**, y es el propio fichero el que lo dice: o no declara ninguna, o declara otra distinta. Se **rechaza entero**; nunca se lee «por si acaso». No es `NOT_UTF8`: allí el fichero está mal guardado y la solución es volver a guardarlo, aquí puede estar perfecto y venir en otra codificación. Viaja **dentro del informe de un fichero** en un 200. Desde la feature 19 (2026-08-19). **Desde la feature 22 (2026-08-19) cubre también el caso inverso:** el fichero declara una codificación y sus bytes **son de otra** (un editor lo reabrió y lo reguardó en UTF-8). Mismo código y mismo 422 porque la familia del fallo y el remedio son los mismos —se rechaza entero—; lo que cambia es el **motivo**, que dice si los caracteres siguen ahí (guárdalo con Western/Windows-1252) o si ya se han perdido (vuelve a descargarlo del banco). Ver ADR-023. |
@@ -240,12 +240,12 @@ Un apunte del extracto. **Solo entra por importación** (ver
 | `note`          | string \| null                                              | Anotación manual. Hoy siempre `null`.                            |
 | `accountId`     | number                                                      | Id de la cuenta.                                                 |
 | `account`       | objeto                                                      | Cuenta embebida: `{ id, iban, bank, alias, type }` (sin `balance`). |
-| `categoryId`    | number \| null                                              | Id de la categoría, o `null`.                                    |
-| `category`      | objeto \| null                                              | Categoría embebida: `{ id, name, kind, parentId }`. Hoy siempre `null`: la asignación automática por reglas es una feature posterior. |
+| `categoryId`    | number \| null                                              | Id de la categoría, o `null` (no tener categoría no es una categoría). Se escribe a mano con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37); la asignación automática por reglas es una feature posterior. |
+| `category`      | objeto \| null                                              | Categoría embebida: `{ id, name, kind, parentId }`, o `null` si el movimiento no tiene categoría. |
 | `paymentMethod` | `"card"` \| `"cash"` \| `"bank_transfer"` \| `"direct_debit"` \| null | Forma de pago. Hoy siempre `null` (la derivará la feature de reglas). |
 | `origin`        | `"imported"` \| `"manual"`                                  | Procedencia. Los movimientos nacen `"imported"`.                 |
-| `status`        | `"confirmed"` \| `"pending_review"`                         | Estado de revisión. Nacen `"pending_review"`.                    |
-| `transferId`    | string \| null                                              | Enlace lógico entre las **dos piernas** de un traspaso entre cuentas propias. **No hay endpoint de traspasos** (ver la nota de abajo); hoy viaja siempre `null`. |
+| `status`        | `"confirmed"` \| `"pending_review"`                         | Estado de revisión. Nacen `"pending_review"`; se pasa a `"confirmed"` (y se vuelve atrás) con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37). |
+| `transferId`    | string \| null                                              | Enlace lógico entre las **dos piernas** de un traspaso entre cuentas propias. **No hay endpoint de traspasos** (ver la nota de abajo); lo escribe la **detección de traspasos** que corre al final de cada importación (feature 40): compartido por las dos piernas de cada pareja, `null` en todo lo demás. |
 | `daySequence`   | number \| null                                              | Posición del movimiento **dentro de su `bookingDate`** (`1` = el primero del día). Fija el orden intradía y forma parte de la clave de deduplicación de importados. |
 | `createdAt`     | string (ISO)                                                | Fecha de creación del registro.                                  |
 | `updatedAt`     | string (ISO)                                                | Fecha de última modificación.                                    |
@@ -255,8 +255,17 @@ Un apunte del extracto. **Solo entra por importación** (ver
 > cuenta origen y un `income` en la destino). Lo único propio de un traspaso es
 > que ambas piernas comparten un `transferId` y que **no cuentan como gasto ni
 > como ingreso** en los totales globales. El `type` que reportó el banco **no se
-> muta** al identificarlo. Quién rellena `transferId` es una feature posterior;
-> hoy la columna existe y viaja siempre `null`.
+> muta** al identificarlo. `transferId` lo escribe la **detección de traspasos**
+> (feature 40), que corre sola al final de cada pasada de `POST /api/import` y de
+> `POST /api/import/local`: empareja las parejas inequívocas (mismo importe,
+> `type` opuesto, cuentas distintas, fechas contables a ≤ 3 días naturales, y cada
+> pierna es el único candidato posible de la otra) y, desde la feature 41, también
+> los grupos dudosos con el **mismo número de salidas que de entradas** en los que
+> **cada** salida podría casar con **cada** entrada (todas las combinaciones cruzan
+> cuentas y caben en los 3 días): ahí empareja por orden de fecha contable, luego
+> posición dentro del día (`daySequence`, ausente ordena como 0), luego `id`. Lo
+> que no cumple ni una cosa ni la otra sale en el campo `transfers` del informe de
+> la pasada, sin emparejarse.
 
 ### Inversiones — se ESCRIBEN, todavía no se LEEN
 
@@ -432,6 +441,56 @@ Crea una categoría raíz (sin `parentId`) o una subcategoría (con `parentId`).
 | 404         | `NOT_FOUND`        | El `parentId` indicado no existe.                                 |
 | 409         | `CONFLICT`         | Ya existe una categoría con ese `(parentId, kind, name)`; en particular, otra **raíz** con el mismo `kind` y `name`. |
 
+> **Lista de arranque.** El comando `pnpm run seed:categories` (feature 37) da de
+> alta las 16 categorías de arranque (13 de gasto, 3 de ingreso, todas raíz). Es
+> **idempotente**: crea solo las que faltan y no toca jamás una fila existente
+> (una segunda ejecución crea 0). Lo lanza el humano a mano, **una vez**: nada se
+> siembra solo, ni al arrancar ni al migrar. ⚠️ Si se renombra una sembrada y se
+> vuelve a ejecutar, el nombre viejo reaparece como categoría nueva.
+
+---
+
+### `PATCH /api/categories/:id`
+
+Renombra una categoría. **Solo cambia el `name`**: el `kind` y el `parentId` son
+inmutables por esta vía (convertir una categoría de gasto en una de ingreso con
+movimientos colgando las volvería incoherentes).
+
+**Body**
+| Campo  | Tipo   | Obligatorio | Reglas                     |
+| ------ | ------ | ----------- | -------------------------- |
+| `name` | string | sí          | No vacío (`minLength: 1`). |
+
+> Cualquier otra propiedad en el body (incluido `kind` o `parentId`) responde
+> **400 `VALIDATION_ERROR`**: no se ignora ni se descarta en silencio.
+
+**Respuesta 200** — objeto `Category` actualizado.
+
+**Errores**
+| Código HTTP | `code`             | Cuándo                                                            |
+| ----------- | ------------------ | ----------------------------------------------------------------- |
+| 400         | `VALIDATION_ERROR` | El body no cumple el esquema: `name` vacío (o solo espacios), body vacío, o propiedades distintas de `name`. |
+| 404         | `NOT_FOUND`        | La categoría no existe.                                           |
+| 409         | `CONFLICT`         | El nombre nuevo colisiona con otra categoría del mismo `(parentId, kind)`. No se modifica nada. |
+
+---
+
+### `DELETE /api/categories/:id`
+
+Borra una categoría **solo si está libre**: sin movimientos que la usen y sin
+subcategorías. Borrar una categoría **jamás borra ni modifica un movimiento**:
+si está en uso, la petición se rechaza y hay que quitarla antes de los
+movimientos que la llevan (un acto explícito, nunca una des-categorización
+masiva en silencio).
+
+**Respuesta 204** — sin cuerpo.
+
+**Errores**
+| Código HTTP | `code`      | Cuándo                                                            |
+| ----------- | ----------- | ----------------------------------------------------------------- |
+| 404         | `NOT_FOUND` | La categoría no existe.                                           |
+| 409         | `CONFLICT`  | La categoría tiene movimientos asignados (el `message` dice cuántos) o subcategorías. No se borra ni se modifica nada. |
+
 ---
 
 ### `GET /api/movements`
@@ -506,9 +565,10 @@ la página trae el **total de coincidencias** y los **totales del filtro pedido*
   totales** (aunque sí se listan como movimientos): los `neutral`, las dos
   piernas de un traspaso (`transferId != null`) y las aportaciones a un producto
   de inversión (`productId != null`) — en los tres casos el dinero sigue siendo
-  del usuario (ver `docs/data-model.md` §Totales). Hoy ninguna fila lleva
-  `transferId` ni `productId` (sus escritores son features posteriores), así que
-  ningún número visible cambia todavía.
+  del usuario (ver `docs/data-model.md` §Totales). Desde la feature 40,
+  `transferId` lo escribe la detección de traspasos al final de cada importación,
+  así que los traspasos emparejados **ya no inflan** estos totales; `productId`
+  sigue sin escritor (feature posterior).
 
 **Errores**
 
@@ -530,12 +590,44 @@ resultado.
 > movimiento serializado no cambia. Aún **NO** consumido por el frontend; su
 > feature correspondiente se planifica contra esta forma nueva.
 
-> ⚠️ **Es el único endpoint de movimientos: son de SOLO LECTURA.** No hay
+> ⚠️ **El hecho bancario es de SOLO LECTURA.** Sigue sin haber
 > `POST /api/movements` ni `DELETE /api/movements/:id`, y tampoco endpoint de
 > traspasos. Los movimientos entran **únicamente por importación** desde los
 > ficheros del banco: si un movimiento existe, existe en el
 > banco y llegará en su extracto; y darlos de alta o borrarlos a mano
-> descuadraría el saldo contra el banco.
+> descuadraría el saldo contra el banco. Lo único editable de un movimiento
+> existente son sus **dos campos de anotación** — `categoryId` y `status` — vía
+> [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37).
+
+---
+
+### `PATCH /api/movements/:id`
+
+Actualiza **exclusivamente** la categoría y/o el estado de revisión de un
+movimiento existente. Ningún otro campo puede viajar por aquí: el importe, el
+tipo, las fechas, la descripción, el `balanceAfter`… son el hecho bancario y no
+se tocan; el saldo de la cuenta y los `totals` de `GET /api/movements` no
+cambian por categorizar ni por confirmar.
+
+**Body** (al menos una de las dos; pueden ir juntas en la misma petición)
+| Campo        | Tipo                                    | Reglas                                                            |
+| ------------ | --------------------------------------- | ----------------------------------------------------------------- |
+| `categoryId` | number (entero ≥ 1) \| null             | Id de una categoría existente cuyo `kind` **coincida con el `type`** del movimiento (`expense`↔`expense`, `income`↔`income`). `null` **quita** la categoría. Un movimiento `neutral` (importe 0) no se categoriza. |
+| `status`     | `"confirmed"` \| `"pending_review"`     | Funciona en los dos sentidos: dar por revisado y volver atrás.    |
+
+> Un body vacío (`{}`) o con cualquier otra propiedad (`amount`,
+> `description`…) responde **400 `VALIDATION_ERROR`**: no se ignora ni se
+> descarta en silencio.
+
+**Respuesta 200** — el movimiento serializado completo (la misma forma que cada
+elemento de `movements` en `GET /api/movements`), con su `account` y su
+`category` embebidos.
+
+**Errores**
+| Código HTTP | `code`             | Cuándo                                                            |
+| ----------- | ------------------ | ----------------------------------------------------------------- |
+| 400         | `VALIDATION_ERROR` | El body no cumple el esquema (vacío, propiedades no admitidas, valores fuera de tipo/enumeración); el `kind` de la categoría no coincide con el `type` del movimiento; o el movimiento es `neutral` y se le manda una categoría. No se modifica nada. |
+| 404         | `NOT_FOUND`        | El movimiento no existe, o el `categoryId` enviado no existe.     |
 
 ---
 
@@ -815,7 +907,24 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
       "snapshot": { "date": "2026-08-31", "created": true },
       "movedToProcessed": true
     }
-  ]
+  ],
+  "transfers": {
+    "pairsCreated": 2,
+    "ambiguousCount": 1,
+    "ambiguous": [
+      {
+        "amount": "500.00",
+        "movements": [
+          { "id": 12, "accountId": 1, "accountAlias": "bankinter ···0236",
+            "type": "expense", "bookingDate": "2026-08-01", "description": "TRANSFERENCIA" },
+          { "id": 40, "accountId": 2, "accountAlias": "openbank ···1111",
+            "type": "income", "bookingDate": "2026-08-01", "description": "TRANSFERENCIA RECIBIDA" },
+          { "id": 41, "accountId": 3, "accountAlias": "n26 ···2222",
+            "type": "income", "bookingDate": "2026-08-02", "description": "ABONO" }
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -899,6 +1008,24 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 - `balanceMismatchCount` (feature 32): cuántos descuadres ha habido en **toda la
   ejecución**, sumando los de todos los archivos. Un `0` cierra el tema de un vistazo
   sin leerse archivo por archivo.
+- `transfers` (feature 40): qué hizo la **detección de traspasos**, que corre una vez
+  **al final de la pasada** (después de todos los archivos) sobre **todos** los
+  movimientos guardados con `transferId` a `null` y `type` distinto de `neutral` — no
+  solo sobre lo importado en esta pasada, que es lo que hace que una pierna que llega
+  semanas después encuentre a la vieja. **Siempre presente**, con `pairsCreated: 0` y
+  `ambiguous: []` cuando no hay nada (misma regla que `balanceMismatches`).
+
+  | Campo | Qué es |
+  | --- | --- |
+  | `pairsCreated` | Parejas escritas en **esta** pasada. Cada pareja recibe un `transferId` nuevo, compartido solo por sus dos piernas, escritas juntas o ninguna. |
+  | `ambiguousCount` | Grupos dudosos (grupos, no movimientos). |
+  | `ambiguous` | Los grupos que tienen candidatos válidos pero no se resuelven: ni forman pareja inequívoca ni (desde la feature 41) son un grupo con el mismo número de salidas que de entradas donde cada salida podría casar con cada entrada. Un grupo con distinto número de salidas que de entradas, o con alguna combinación salida–entrada que comparte cuenta o se sale de los 3 días, sale aquí **entero** —nadie de él se empareja, ni parcialmente— con `amount` y los datos de cada movimiento (`id`, `accountId`, `accountAlias`, `type`, `bookingDate`, `description`) para localizarlos. Un movimiento **sin ningún candidato** (un Bizum, una transferencia a un tercero) ni se marca ni se lista. |
+  | `error` | Solo presente si la detección falló: `{ code, message }` saneado. Los movimientos importados **no se pierden** —los informes por archivo y el código HTTP no cambian— y `pairsCreated` cuenta las parejas que sí llegaron a escribirse antes del fallo. |
+
+  Correr la detección dos veces deja exactamente las mismas parejas: una pierna ya
+  emparejada (`transferId != null`) no se reevalúa, no se reempareja y no se
+  desempareja. Desde que las dos piernas comparten `transferId`, los `totals` de
+  `GET /api/movements` las dejan fuera de `income` y `expense` (feature 36).
 
 > 🔴 **`GET /api/accounts` NO cambia.** El descuadre se ve **solo aquí**, en el informe
 > de la importación. Ni `GET /api/accounts` ni `GET /api/accounts/:id` ganan campo
@@ -1024,7 +1151,8 @@ es **siempre `false`**.
       "balanceMismatches": [],
       "movedToProcessed": false
     }
-  ]
+  ],
+  "transfers": { "pairsCreated": 0, "ambiguousCount": 0, "ambiguous": [] }
 }
 ```
 
@@ -1043,6 +1171,13 @@ es **siempre `false`**.
   `POST /api/import`. No es una copia: las dos vías comparten el mismo importador,
   así que **esta es la forma de mirar los descuadres sin tocar Drive**. Aquí
   tampoco cambia `GET /api/accounts`.
+- **La detección de traspasos corre aquí exactamente igual que por Drive**
+  (feature 40): al final de la pasada, sobre todos los movimientos sin marcar, con
+  el mismo campo `transfers` descrito en `POST /api/import`. No es una copia: las
+  dos vías llaman a la misma detección. **Esta llamada sin cuerpo es, además, la
+  forma de emparejar lo que ya está guardado** sin esperar a la siguiente
+  importación mensual: reimporta las copias (todo sale `duplicates`) y al final
+  corre la detección.
 - **Esta es la vía que repara lo que ya está dentro** (feature 31). Como pasa por
   el mismo importador, una reimportación local **ancla** las cuentas cuyos archivos
   traen saldo y **rellena** los saldos por línea que falten, sin crear un solo

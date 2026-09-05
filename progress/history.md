@@ -947,3 +947,66 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 - 2026-08-30 — F32 `balance-reconciliation`: **al importar, la app contrasta sus propias sumas contra lo que dice el archivo y canta el descuadre** — línea a línea donde el archivo trae saldo por movimiento (Bankinter, Openbank) y contra el saldo del preámbulo donde no lo trae (N26, MyInvestor, Openbank), decidiendo cuál toca por lo que el archivo trae y no por el banco que sea. Si la diferencia **no es exactamente 0,00** (tolerancia cero), la respuesta de esa importación te lo dice con la cuenta, la fecha, el número que calcula la app, el número del archivo, la diferencia y cuál de las dos comprobaciones lo encontró, más un contador de la ejecución entera. Y **no cambia nada más**: un descuadre **no tumba el archivo** (entra igual y la ejecución sigue), **no mueve ningún saldo ni el ancla de la F31**, `GET /api/accounts` **no gana ni un campo** y no hay migración —el aviso viaja en el informe de esa importación y desaparece con ella—. Donde no hay dos números que comparar no se dice nada, y eso es «esta vez no hubo comprobación», no «está bien» → [resumen](summaries/balance-reconciliation.md)
 
 - 2026-09-02 — F36 `movements-filters-and-totals`: **por fin puedes preguntarle algo a tus movimientos en vez de recibirlos todos** — `GET /api/movements` acepta filtros combinables por cuenta, rango de fechas (extremos incluidos), tipo y estado; responde siempre paginado (50 por página por defecto, nunca más los 1520 de golpe) con el total de coincidencias, y trae los totales de lo pedido: cuánto entró, cuánto salió y la diferencia. Un filtro imposible responde 400/404, nunca 500 ni lista vacía silenciosa. De paso `computeTotals` deja fuera las aportaciones a productos de inversión (`productId != null`), como ya hacía con los traspasos — cabo suelto 8 cerrado, sin efecto visible hasta que esas columnas tengan escritor → [resumen](summaries/movements-filters-and-totals.md)
+
+## 2026-09-02 — Feature 37: categories-and-tagging
+
+- **Agente:** leader (orquestando) + spec-author + implementer + reviewer.
+- **Plan:** spec SDD aprobado por el humano el mismo día (4 decisiones: borrar
+  categoría en uso se impide con 409; siembra por comando manual idempotente
+  `pnpm run seed:categories`; categoría y revisado juntos en un PATCH acotado;
+  el kind de la categoría debe casar con el type del movimiento).
+- **Cambios:** renombrar/borrar categorías por API, `PATCH /api/movements/:id`
+  (solo `categoryId`/`status`, resto rechazado con 400 vía
+  `src/lib/strict-body.ts`), siembra de las 16 categorías de arranque,
+  `docs/api-contract.md` y `docs/data-model.md` actualizados. Cero cambios de
+  esquema. Detalle: `progress/summaries/categories-and-tagging.md`.
+- **Verificación:** `./init.sh` completo en verde (reviewer lo relanzó): 53
+  archivos, 1041 tests, lint y formato OK. Veredicto APROBADO en
+  `progress/reviews/categories-and-tagging.md`.
+- **Cierre:** done. Cierra el cabo suelto 3 del roadmap. La siembra contra la
+  base real quedó ejecutada (incidente del implementer, coincide con el deber
+  del humano; idempotencia comprobada: segunda pasada `created 0`). Siguiente
+  según el orden acordado: F40 `transfer-detection`.
+
+## 2026-09-03 — Feature 40: transfer-detection
+
+- **Agente:** leader (orquestando) + spec-author + implementer + reviewer.
+- **Plan:** spec SDD aprobado por el humano el mismo día (4 decisiones: ventana
+  de 3 días naturales; con más de un candidato nadie se empareja y los dudosos
+  salen en el informe; corre al final de cada importación sin endpoint propio;
+  deshacer una pareja queda fuera, sería feature propia).
+- **Cambios:** módulo nuevo `src/modules/transfers/` (types + service + tests);
+  las dos vías de importación llaman a la detección al terminar y su informe
+  gana el campo `transfers`; `docs/api-contract.md` y `docs/data-model.md`
+  actualizados (el segundo deja de decir que nada escribe `transferId`). Cero
+  cambios de esquema. Detalle: `progress/summaries/transfer-detection.md`.
+- **Verificación:** `./init.sh` completo en verde (reviewer lo relanzó): 54
+  archivos, 1060 tests, lint y formato OK. Veredicto APROBADO en
+  `progress/reviews/transfer-detection.md`.
+- **Cierre:** done. `Movement.transferId` tiene por fin su escritor (reservado
+  desde la F8). Deber del humano: lanzar una vez `POST /api/import/local` para
+  emparejar los ~1520 movimientos ya guardados (~36 parejas, 44.550 EUR) y
+  revisar los dudosos del informe. Siguiente según el orden acordado: F38
+  `money-overview`.
+
+## 2026-09-03 — Feature 41: transfer-batch-pairing
+
+- **Agente:** leader (orquestando) + spec-author + implementer + reviewer.
+- **Plan:** feature dictada por el humano tras la prueba real de la F40 (4
+  grupos dudosos): cuando un grupo dudoso tiene el mismo número de salidas que
+  de entradas y cualquier salida podría casar con cualquier entrada, se
+  empareja por orden fecha → daySequence (null=0) → id. Un grupo desigualado o
+  encadenado fuera de la ventana sigue dudoso entero. La propuesta de
+  vocabulario «lote igualado» quedó SIN respuesta del humano: se describe
+  literalmente en todas partes.
+- **Cambios:** solo el módulo de traspasos existente
+  (`src/modules/transfers/`), cero archivos nuevos de producción, cero
+  migraciones; fixtures sintéticos de los 3 casos reales aprobados y del que
+  debe seguir dudoso. Detalle: `progress/summaries/transfer-batch-pairing.md`.
+- **Verificación:** `./init.sh` completo en verde (reviewer lo relanzó): 54
+  archivos, 1068 tests. Suite de traspasos 22/22 (14 de la F40 intactos + 8
+  nuevos). Veredicto APROBADO en `progress/reviews/transfer-batch-pairing.md`.
+- **Cierre:** done. Deber del humano: relanzar `POST /api/import/local` para
+  emparejar sus 3 grupos aprobados (6 parejas nuevas); el de 2×500 con una
+  entrada seguirá dudoso hasta que exista marcado manual (aplazado). Siguiente
+  según el orden acordado: F38 `money-overview`.

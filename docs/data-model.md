@@ -228,11 +228,11 @@ model Movement {
 
 | Columna | Quién la rellenará |
 | --- | --- |
-| `transferId` | la feature de **detección de traspasos**, posterior a la importación |
-| `categoryId` | la feature de **categorización por reglas** sobre el `description` |
+| ~~`transferId`~~ | 🔄 **ya lo escribe la detección de traspasos** (F40): corre al final de cada pasada de importación (las dos vías), empareja las parejas inequívocas —y desde la F41 también los grupos dudosos con el mismo número de salidas que de entradas en los que cada salida podría casar con cada entrada— y escribe el mismo `transferId` en las dos piernas, en una transacción por pareja. **Cero migración**: la columna y su índice existen desde la F8 |
+| ~~`categoryId`~~ | 🔄 **ya tiene escritor manual** (F37): `PATCH /api/movements/:id` la escribe (y la pone a `NULL` para quitar la categoría). El escritor **automático** —la feature de **categorización por reglas** sobre el `description`— sigue pendiente |
 | `paymentMethod` | la misma feature de reglas (`RECIBO` → `direct_debit`, `PAGO TARJETA` → `card`…) |
 | `note` | anotación manual sobre un movimiento, cuando exista pantalla |
-| `status` | lo escribe el **importer** (F12): nace `pending_review` y lo pasará a `confirmed` la revisión |
+| ~~`status`~~ | 🔄 **ya tiene quien lo revise** (F37): nace `pending_review` al importar (F12) y `PATCH /api/movements/:id` lo pasa a `confirmed` — y de vuelta — a mano |
 | `balanceAfter`, `origin` | el **importer** (F12) |
 | `daySequence` | 🔄 **lo emite el parser de cada banco**, ya normalizado (F11); el importer solo lo copia |
 | `Movement.productId` | la feature de **enlace de aportaciones**, sobre el parser del fichero de inversiones (regla 5; el `model Movement` real lo lleva desde la F9, ver [Parte 2](#parte-2--inversiones)) |
@@ -302,9 +302,16 @@ model Movement {
   del índice de dedup: mutarlo (p. ej. para marcar un traspaso) haría que una
   reimportación del mismo extracto ya no colisionara → duplicado silencioso.
 - **Categorías:** un solo nivel (el padre de una subcategoría debe ser raíz) y el
-  `kind` de la hija debe coincidir con el del padre. El catálogo lo crea el
-  usuario (`POST /api/categories`); asignarlo a los movimientos será automático
-  por reglas, en una feature posterior.
+  `kind` de la hija debe coincidir con el del padre. El catálogo lo crea y lo
+  mantiene el usuario (`POST`/`PATCH`/`DELETE /api/categories`, F37; hay una
+  lista de arranque de 16 que siembra a mano `pnpm run seed:categories`, de
+  forma idempotente). Asignar una categoría a un movimiento es manual
+  (`PATCH /api/movements/:id`, F37): el `kind` de la categoría debe coincidir
+  con el `type` del movimiento y un `neutral` no se categoriza; una categoría
+  **en uso no se puede borrar** (409), así que borrar una categoría jamás borra
+  ni des-categoriza un movimiento. La asignación automática por reglas será una
+  feature posterior. Categorizar o confirmar no toca ningún otro campo, ni el
+  saldo, ni los totales.
 - **Origen / estado:** lo importado entra como `imported` / `pending_review` y
   alimenta la pantalla de revisión (idea #1).
 
@@ -364,11 +371,23 @@ Fabricarlos por API los duplicaría (4 filas por traspaso). El modelo solo aport
 - **La regla de agregación:** no cuentan como gasto ni como ingreso en los
   totales globales.
 
-Quién rellena `transferId` es una **feature posterior** a la importación
-(detección automática: mismo importe, signo opuesto, fechas próximas, dos cuentas
-propias distintas; sin marcado manual). Hasta entonces la columna está vacía y un
-traspaso interno cuenta en los totales — asumido, porque todavía no hay
-dashboards que los consuman.
+`transferId` **lo escribe la detección de traspasos** (F40,
+`src/modules/transfers/transfers.service.ts`), que corre sola al final de cada
+pasada de importación —`POST /api/import` y `POST /api/import/local`— sobre todos
+los movimientos sin marcar. Empareja las parejas inequívocas —mismo importe,
+`type` opuesto, cuentas distintas, fechas contables a ≤ 3 días naturales, y cada
+pierna es el **único** candidato posible de la otra— y, desde la F41, también los
+grupos dudosos con el **mismo número de salidas que de entradas** en los que
+**cada** salida podría casar con **cada** entrada (todas las combinaciones cruzan
+cuentas y caben en los 3 días): ahí cada lado se ordena por fecha contable, luego
+posición dentro del día (`daySequence`, ausente ordena como 0), luego `id`, y se
+empareja posición a posición. Un grupo con distinto número de salidas que de
+entradas, o con alguna combinación fuera de esas condiciones, no se empareja
+**ni parcialmente** y sale entero en el campo `transfers` del informe de la
+pasada; un movimiento sin pierna espejo (un Bizum, un tercero) ni se marca ni se
+lista. La detección escribe **únicamente** `transferId` (las dos piernas juntas o
+ninguna) y no toca el ancla, ningún saldo ni el dedup. Sin marcado manual, como
+se decidió.
 
 > **Por qué hace falta emparejar y no basta con leer el concepto:** el banco pone
 > "TRANSFERENCIA" tanto cuando te pagas a ti mismo como cuando pagas a un tercero,

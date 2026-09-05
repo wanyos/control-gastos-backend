@@ -1573,7 +1573,7 @@
         "docs/api-contract.md y docs/data-model.md actualizados."
       ],
       "sdd": true,
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": 38,
@@ -1701,7 +1701,45 @@
         "docs/api-contract.md y docs/data-model.md actualizados (el segundo deja de decir que nada escribe transferId)."
       ],
       "sdd": true,
-      "status": "pending"
+      "status": "done"
+    },
+    {
+      "id": 41,
+      "name": "transfer-batch-pairing",
+      "title": "Emparejar los traspasos que hoy quedan dudosos cuando el lote sale igualado",
+      "intent": {
+        "_procedencia": "Dictado por el humano el 2026-09-03, tras la primera pasada real de la F40 (28 parejas hechas, 4 grupos dudosos con 14 movimientos). Literal: «sobre los puntos 1, 2 y 3 me parece bien hagamos la regla, lo que queda pendiente de anotar a mano lo que no se puede emparejar lo dejamos para mas adelante». Los puntos 1, 2 y 3 son tres de los cuatro grupos dudosos de esa pasada: tres transferencias de 1000 EUR Bankinter→Openbank el mismo día, un cruce de 1000 EUR el mismo día hacia Openbank y hacia N26, y dos de 3000 EUR Bankinter→MyInvestor en días consecutivos. El punto 4 (dos salidas de 500 EUR y una sola entrada) debe seguir dudoso: no hay regla que lo resuelva.",
+        "que_quiero": "Que la detección de traspasos de la F40 resuelva sola los grupos dudosos que en realidad sí tienen solución: cuando entre dos cuentas mías hay el mismo número de salidas que de entradas del mismo importe dentro de la ventana, que las empareje (por orden de fecha); y cuando un grupo dudoso mezcla destinos distintos, que primero lo separe por pareja de cuentas y resuelva cada parte. Lo que aun así quede igualado de verdad (más salidas que entradas, o al revés) sigue sin marcarse y sale en el informe como hasta ahora.",
+        "por_que": "La primera pasada real dejó 4 grupos sin marcar y 3 de ellos son traspasos míos evidentes que solo un exceso de prudencia deja fuera: la regla actual exige candidato único y estos lotes tienen varios candidatos idénticos, pero al ser el lote igualado da igual cuál se empareja con cuál. Mientras queden sin marcar, ese dinero infla las entradas y salidas de los totales y del resumen de la F38.",
+        "como_se_que_esta_bien": [
+          "Después de una pasada, los tres grupos que aprobé (los puntos 1, 2 y 3 del informe del 2026-09-03) quedan emparejados sin que yo escriba nada.",
+          "El grupo del punto 4 (dos salidas de 500 EUR y una sola entrada) sigue dudoso en el informe: no se inventa pareja.",
+          "Todo lo que la F40 ya emparejaba se sigue emparejando igual; ninguna pareja ya hecha cambia.",
+          "Correr la pasada dos veces deja exactamente las mismas parejas (sigue siendo idempotente).",
+          "Ningún otro campo de ningún movimiento cambia."
+        ],
+        "que_no_quiero": [
+          "No quiero marcado manual de traspasos: eso queda para más adelante, lo decidí el 2026-09-03.",
+          "No quiero que un lote desigualado (distinto número de salidas que de entradas) se empareje parcialmente adivinando: sigue dudoso entero.",
+          "No quiero tocar el esquema de la base de datos ni el informe más allá de que los grupos resueltos dejen de salir como dudosos.",
+          "No quiero cambiar la ventana de 3 días ni el resto de reglas de la F40."
+        ],
+        "delego_en_agente": [
+          "El criterio exacto de orden al emparejar dentro de un lote igualado (por fecha, y qué pasa con empates de fecha).",
+          "Cómo se separa un grupo dudoso por pareja de cuentas antes de decidir, y si el punto 2 (cruce hacia dos bancos distintos) se resuelve solo con eso.",
+          "Cómo probar los tres casos reales del 2026-09-03 como fixtures sintéticos sin datos personales."
+        ]
+      },
+      "acceptance": [
+        "Un lote igualado (N salidas y N entradas del mismo importe, misma pareja de cuentas, dentro de la ventana) queda emparejado por orden de fecha, con test que reproduce el caso de las 3x1000 EUR.",
+        "Un grupo dudoso que mezcla varias parejas de cuentas se separa primero por pareja de cuentas y cada parte se resuelve por su lado, con test que reproduce el cruce del punto 2.",
+        "Un lote desigualado no se empareja ni parcialmente y sigue saliendo como dudoso, con test que reproduce el punto 4 (2 salidas, 1 entrada).",
+        "Las parejas que la F40 ya hacía no cambian, y las ya escritas en la base de datos no se tocan.",
+        "La pasada sigue siendo idempotente y sigue sin cambiar ningún otro campo de ningún movimiento.",
+        "docs/api-contract.md y docs/data-model.md actualizados si cambia algo visible del informe."
+      ],
+      "sdd": true,
+      "status": "done"
     }
   ]
 }
