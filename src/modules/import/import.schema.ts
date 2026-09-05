@@ -11,6 +11,10 @@
  *
  * `pattern` keeps a path separator out of the names before they ever reach the
  * filesystem: these values become a path under `var/drive-read/`.
+ *
+ * There is NO response schema here, on purpose: neither import route declares
+ * one, so Fastify serializes the report untouched and the `transfers` field of
+ * feature 40 (like every field before it) travels whole with nothing to add.
  */
 export const localImportSchema = {
   body: {

@@ -14,6 +14,7 @@ import { loadConfig } from '../../config/env.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
 import type { ParsedStatement } from '../../lib/parsed-statement.js'
+import { createPrismaClient, type AppPrismaClient } from '../../lib/prisma.js'
 import errorHandlerPlugin from '../../plugins/error-handler.js'
 import prismaPlugin from '../../plugins/prisma.js'
 import importRoutes from './import.routes.js'
@@ -69,12 +70,20 @@ function driveSpy() {
 let rawCopyBaseDir: string
 let app: FastifyInstance
 
-async function buildTestApp(drive: AppDriveClient) {
+async function buildTestApp(drive: AppDriveClient, prismaOverride?: AppPrismaClient) {
   const instance = Fastify()
   instance.decorate('config', { ...loadConfig(), driveRootFolderId: 'root' })
   instance.decorate('drive', drive)
   instance.register(errorHandlerPlugin)
-  instance.register(prismaPlugin)
+  if (prismaOverride === undefined) {
+    instance.register(prismaPlugin)
+  } else {
+    // A test that needs to fail ONE query decorates its own wrapped client.
+    instance.decorate('prisma', prismaOverride)
+    instance.addHook('onClose', async () => {
+      await prismaOverride.$disconnect()
+    })
+  }
   instance.register(importRoutes, {
     prefix: '/api/import',
     rawCopyBaseDir,
@@ -118,6 +127,8 @@ describe('POST /api/import/local', () => {
       unparsedCount: 0,
       failedCount: 0,
       skippedCount: 0,
+      // Feature 40: always present, with zeros and [] when nothing pairs.
+      transfers: { pairsCreated: 0, ambiguousCount: 0, ambiguous: [] },
     })
     expect(body.files).toHaveLength(1)
     expect(body.files[0]).toMatchObject({
@@ -197,6 +208,143 @@ describe('POST /api/import/local', () => {
 
     expect(response.statusCode).toBe(400)
     expect(response.json<{ code: string }>().code).toBe('VALIDATION_ERROR')
+  })
+
+  it('pairs the imported leg with its stored mirror, and a reimport changes nothing (feature 40, R1, R8)', async () => {
+    const drive = driveSpy()
+    app = await buildTestApp(drive.client)
+    const mirrorAccount = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank, alias: 'Mirror account' },
+    })
+    const mirror = await app.prisma.movement.create({
+      data: {
+        accountId: mirrorAccount.id,
+        type: 'income',
+        amount: '10.00',
+        description: 'TRANSFERENCIA RECIBIDA',
+        bookingDate: new Date('2026-07-25T00:00:00.000Z'),
+        valueDate: new Date('2026-07-25T00:00:00.000Z'),
+        daySequence: 1,
+        origin: 'imported',
+      },
+    })
+    const call = () => app.inject({ method: 'POST', url: '/api/import/local' })
+
+    const first = await call()
+
+    expect(first.statusCode).toBe(200)
+    expect(first.json<LocalImportRunResult>().transfers).toMatchObject({
+      pairsCreated: 1,
+      ambiguousCount: 0,
+      ambiguous: [],
+    })
+    const legsAfterFirst = await app.prisma.movement.findMany({
+      where: { OR: [{ id: mirror.id }, { description: 'LOCAL ROUTE FIRST' }] },
+      orderBy: { id: 'asc' },
+    })
+    expect(legsAfterFirst).toHaveLength(2)
+    expect(legsAfterFirst[0]?.transferId).toBeTruthy()
+    expect(legsAfterFirst[0]?.transferId).toBe(legsAfterFirst[1]?.transferId)
+
+    // Reimporting the same copy re-runs the detection and changes NOTHING:
+    // the linked legs are no candidates anymore (R8).
+    const second = await call()
+    expect(second.json<LocalImportRunResult>().transfers).toMatchObject({ pairsCreated: 0 })
+    const legsAfterSecond = await app.prisma.movement.findMany({
+      where: { id: { in: legsAfterFirst.map((leg) => leg.id) } },
+      orderBy: { id: 'asc' },
+    })
+    expect(legsAfterSecond.map((leg) => leg.transferId)).toEqual(
+      legsAfterFirst.map((leg) => leg.transferId),
+    )
+  })
+
+  it('links nobody when two mirrors compete, and lists the group in the report (feature 40, R5, R6)', async () => {
+    const drive = driveSpy()
+    app = await buildTestApp(drive.client)
+    for (const day of ['2026-07-24', '2026-07-25']) {
+      const account = await app.prisma.account.create({
+        data: { iban: syntheticIban(), bank, alias: `Mirror of ${day}` },
+      })
+      await app.prisma.movement.create({
+        data: {
+          accountId: account.id,
+          type: 'income',
+          amount: '10.00',
+          description: 'TRANSFERENCIA RECIBIDA',
+          bookingDate: new Date(`${day}T00:00:00.000Z`),
+          valueDate: new Date(`${day}T00:00:00.000Z`),
+          daySequence: 1,
+          origin: 'imported',
+        },
+      })
+    }
+
+    const response = await app.inject({ method: 'POST', url: '/api/import/local' })
+
+    expect(response.statusCode).toBe(200)
+    const transfers = response.json<LocalImportRunResult>().transfers
+    expect(transfers.pairsCreated).toBe(0)
+    expect(transfers.ambiguousCount).toBe(1)
+    expect(transfers.ambiguous[0]?.amount).toBe('10.00')
+    expect(transfers.ambiguous[0]?.movements).toHaveLength(3)
+    expect(transfers.ambiguous[0]?.movements.map((movement) => movement.description)).toContain(
+      'LOCAL ROUTE FIRST',
+    )
+    // Nobody was linked: the doubtful case stays unmarked on purpose.
+    const marked = await app.prisma.movement.count({
+      where: { transferId: { not: null }, account: { bank } },
+    })
+    expect(marked).toBe(0)
+  })
+
+  it('reports a detection failure inside the 200, with the import intact (feature 40, R15)', async () => {
+    const real = createPrismaClient(process.env.DATABASE_URL ?? '')
+    // Fails ONLY the read of the detection (the one that filters by
+    // `transferId`); every query of the import itself passes through.
+    const bound = (holder: object, property: string | symbol): unknown => {
+      const value = Reflect.get(holder, property)
+      return typeof value === 'function' ? value.bind(holder) : value
+    }
+    const wrapped = new Proxy(real, {
+      get(target, property) {
+        if (property === 'movement') {
+          const movement = target.movement
+          return new Proxy(movement, {
+            get(movementTarget, movementProperty) {
+              if (movementProperty === 'findMany') {
+                return (args: { where?: Record<string, unknown> }) => {
+                  if (args?.where !== undefined && 'transferId' in args.where) {
+                    throw new Error('synthetic detection failure')
+                  }
+                  return movementTarget.findMany(args)
+                }
+              }
+              return bound(movementTarget, movementProperty)
+            },
+          })
+        }
+        return bound(target, property)
+      },
+    }) as AppPrismaClient
+    const drive = driveSpy()
+    app = await buildTestApp(drive.client, wrapped)
+
+    const response = await app.inject({ method: 'POST', url: '/api/import/local' })
+
+    // The HTTP status and the per-file report do not change: the movements are
+    // stored and only the detection reports its own failure.
+    expect(response.statusCode).toBe(200)
+    const body = response.json<LocalImportRunResult>()
+    expect(body.importedCount).toBe(2)
+    expect(body.failedCount).toBe(0)
+    expect((body.files[0] as AttemptedLocalFileReport).status).toBe('imported')
+    expect(body.transfers).toEqual({
+      pairsCreated: 0,
+      ambiguousCount: 0,
+      ambiguous: [],
+      error: { code: 'INTERNAL_SERVER_ERROR', message: 'synthetic detection failure' },
+    })
   })
 
   it('drops an unknown field and behaves as if nothing had been asked for (C5)', async () => {

@@ -736,6 +736,9 @@ describe('importPending', () => {
       skippedCount: 0,
       balanceMismatchCount: 0,
       files: [],
+      // The detection runs even on an empty run (feature 40): "nothing was
+      // looked at" would be indistinguishable from this otherwise.
+      transfers: { pairsCreated: 0, ambiguousCount: 0, ambiguous: [] },
     })
     expect(get).not.toHaveBeenCalled()
     expect(update).not.toHaveBeenCalled()

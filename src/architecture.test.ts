@@ -193,6 +193,12 @@ describe('architecture invariants', () => {
       // the database through the REAL registry of app.ts. It lives in the bank
       // module because it is that bank's entry, not a second importer.
       'modules/myinvestor/myinvestor.import.test.ts',
+      // Feature 40: the transfer detection. No routes file on purpose -- the
+      // detection has no endpoint; both import ways call it after their file
+      // loop and its result travels inside the import report.
+      'modules/transfers/transfers.types.ts',
+      'modules/transfers/transfers.service.ts',
+      'modules/transfers/transfers.service.test.ts',
     ]
 
     const missing = expected.filter((file) => !existsSync(join(srcDir, file)))

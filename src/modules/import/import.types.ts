@@ -2,6 +2,7 @@ import type { AccountType } from '../../generated/prisma/client.js'
 
 import type { ParsedStatement, UnparsedRow } from '../../lib/parsed-statement.js'
 import type { ProductImportResult } from '../investments/investments.types.js'
+import type { TransferDetectionResult } from '../transfers/transfers.types.js'
 import type { BalanceMismatch } from './import.balance.service.js'
 
 /**
@@ -109,6 +110,12 @@ export interface ImportRunResult {
   /** Descuadres found in the WHOLE run, so a zero closes the matter at a glance. */
   balanceMismatchCount: number
   files: ImportedFileReport[]
+  /**
+   * What the transfer detection did after the file loop (feature 40). Always
+   * present, with zeros and `[]` when there was nothing: "nothing was found"
+   * and "nothing was looked at" must not read the same (like `balanceMismatches`).
+   */
+  transfers: TransferDetectionResult
 }
 
 /**
@@ -205,4 +212,6 @@ export interface LocalImportRunResult {
   /** Same counter and same meaning as the Drive way in (feature 32, R11). */
   balanceMismatchCount: number
   files: LocalFileReport[]
+  /** Same detection and same shape as the Drive way in (feature 40). */
+  transfers: TransferDetectionResult
 }

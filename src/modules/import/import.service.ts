@@ -37,6 +37,7 @@ import {
   readAnchor,
 } from '../movements/movements.service.js'
 import type { BalanceAnchor, RecencyPoint } from '../movements/movements.types.js'
+import { detectTransfers } from '../transfers/transfers.service.js'
 import { findPerLineMismatches, findStatementBalanceMismatch } from './import.balance.service.js'
 import type {
   AccountReport,
@@ -113,8 +114,9 @@ export function toMovementRows(
     daySequence: movement.daySequence,
     origin: 'imported',
     status: 'pending_review',
-    // The importer does not enrich: categorizing, pairing transfers and marking
-    // an investment contribution are later features (R16).
+    // The importer does not enrich a row: a movement is born unlinked and the
+    // transfer detection (feature 40) pairs it AFTER the file loop; categorizing
+    // and marking an investment contribution are later features (R16).
     categoryId: null,
     paymentMethod: null,
     transferId: null,
@@ -424,7 +426,10 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
     }
   }
 
-  return { ...totals(files), files }
+  // After the whole file loop (feature 40, R1): the movements are already
+  // stored, so a detection failure can lose nothing -- it travels in
+  // `transfers.error` and the per-file reports stand untouched (R15).
+  return { ...totals(files), files, transfers: await detectTransfers(prisma) }
 }
 
 interface FileLocation {

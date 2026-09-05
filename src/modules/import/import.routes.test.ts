@@ -136,6 +136,9 @@ describe('POST /api/import', () => {
       unparsedCount: 1,
       failedCount: 0,
       skippedCount: 0,
+      // Feature 40: the report always says what the detection did, with zeros
+      // and [] when nothing paired -- never an absent field.
+      transfers: { pairsCreated: 0, ambiguousCount: 0, ambiguous: [] },
     })
     expect(body.files).toHaveLength(1)
     expect(body.files[0]).toMatchObject({
@@ -170,6 +173,42 @@ describe('POST /api/import', () => {
       'MOST RECENT',
       'OLDEST OF THE DAY',
     ])
+  })
+
+  it('pairs an imported leg with its stored mirror and reports it (feature 40, R1)', async () => {
+    const { client } = driveDouble()
+    app = await buildTestApp(client, rawCopyBaseDir)
+    // The mirror of the file's expense (10.00 on 2026-07-24) already stored in
+    // ANOTHER account of the human: the detection reads the whole table, so an
+    // import is what links the two.
+    const mirrorAccount = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank, alias: 'Mirror account' },
+    })
+    const mirror = await app.prisma.movement.create({
+      data: {
+        accountId: mirrorAccount.id,
+        type: 'income',
+        amount: '10.00',
+        description: 'TRANSFERENCIA RECIBIDA',
+        bookingDate: new Date('2026-07-25T00:00:00.000Z'),
+        valueDate: new Date('2026-07-25T00:00:00.000Z'),
+        daySequence: 1,
+        origin: 'imported',
+      },
+    })
+
+    const response = await app.inject({ method: 'POST', url: '/api/import' })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<ImportRunResult>()
+    expect(body.transfers).toMatchObject({ pairsCreated: 1, ambiguousCount: 0, ambiguous: [] })
+
+    const legs = await app.prisma.movement.findMany({
+      where: { OR: [{ id: mirror.id }, { description: 'OLDEST OF THE DAY' }] },
+    })
+    expect(legs).toHaveLength(2)
+    expect(legs[0]?.transferId).toBeTruthy()
+    expect(legs[0]?.transferId).toBe(legs[1]?.transferId)
   })
 
   it('exposes no way to create or delete a movement by API (R16)', async () => {
