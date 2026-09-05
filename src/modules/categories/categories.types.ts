@@ -6,6 +6,15 @@ export interface CreateCategoryBody {
   parentId?: number
 }
 
+/** `PATCH /api/categories/:id` renames and nothing else: kind and parentId are immutable. */
+export interface RenameCategoryBody {
+  name: string
+}
+
+export interface CategoryIdParams {
+  id: number
+}
+
 /** A root category with its (single level of) subcategories. */
 export interface CategoryWithChildren extends Category {
   children: Category[]

@@ -72,6 +72,20 @@ export interface MovementListQuery {
   pageSize: number
 }
 
+/**
+ * The body of `PATCH /api/movements/:id` (feature 37): the ONLY two writable
+ * fields of a movement. `categoryId: null` removes the category; every other
+ * column belongs to the bank fact and cannot travel through this type.
+ */
+export interface UpdateMovementBody {
+  categoryId?: number | null
+  status?: MovementStatus
+}
+
+export interface MovementIdParams {
+  id: number
+}
+
 export interface MovementListPagination {
   page: number
   pageSize: number

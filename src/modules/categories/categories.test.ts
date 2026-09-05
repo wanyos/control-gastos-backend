@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
+import { syntheticIban } from '../../lib/iban.fixture.js'
 import { buildApp } from '../../app.js'
 import type { SerializedCategory } from './categories.types.js'
 
@@ -199,5 +200,231 @@ describe('category routes', () => {
 
     expect(response.statusCode).toBe(400)
     expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+  })
+})
+
+describe('rename and delete category routes (feature 37)', () => {
+  let app: FastifyInstance
+  const createdCategoryIds: number[] = []
+  const createdAccountIds: number[] = []
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    if (createdAccountIds.length > 0) {
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: createdAccountIds } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: createdAccountIds } } })
+      createdAccountIds.length = 0
+    }
+    if (createdCategoryIds.length > 0) {
+      // Children first: the self-relation restricts deleting a parent in use.
+      await app.prisma.category.deleteMany({
+        where: { id: { in: createdCategoryIds }, parentId: { not: null } },
+      })
+      await app.prisma.category.deleteMany({ where: { id: { in: createdCategoryIds } } })
+      createdCategoryIds.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  async function createCategory(body: Record<string, unknown>): Promise<SerializedCategory> {
+    const response = await app.inject({ method: 'POST', url: '/api/categories', payload: body })
+    expect(response.statusCode).toBe(201)
+    const category = response.json<SerializedCategory>()
+    createdCategoryIds.push(category.id)
+    return category
+  }
+
+  async function createAccount() {
+    const account = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank: 'bankinter', alias: 'Test account' },
+    })
+    createdAccountIds.push(account.id)
+    return account
+  }
+
+  async function seedMovement(accountId: number, categoryId: number | null) {
+    const bookingDate = new Date('2026-07-24T00:00:00.000Z')
+    return app.prisma.movement.create({
+      data: {
+        accountId,
+        type: 'expense',
+        amount: '34.15',
+        description: 'RECIBO /Recibo GIMNASIO',
+        bookingDate,
+        valueDate: bookingDate,
+        daySequence: 1,
+        categoryId,
+      },
+    })
+  }
+
+  function patchCategory(id: number | string, body: unknown) {
+    return app.inject({ method: 'PATCH', url: `/api/categories/${id}`, payload: body as object })
+  }
+
+  function deleteCategory(id: number | string) {
+    return app.inject({ method: 'DELETE', url: `/api/categories/${id}` })
+  }
+
+  it('PATCH /api/categories/:id renames and changes nothing else (R3)', async () => {
+    const category = await createCategory({ name: uniqueName('Leisure'), kind: 'expense' })
+    const newName = uniqueName('Leisure and culture')
+
+    const response = await patchCategory(category.id, { name: `  ${newName}  ` })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      id: category.id,
+      name: newName,
+      kind: 'expense',
+      parentId: null,
+    })
+    const stored = await app.prisma.category.findUniqueOrThrow({ where: { id: category.id } })
+    expect(stored.name).toBe(newName)
+    expect(stored.kind).toBe('expense')
+    expect(stored.parentId).toBeNull()
+  })
+
+  it('PATCH /api/categories/:id colliding with a sibling name returns 409 untouched (R4)', async () => {
+    const takenName = uniqueName('Housing')
+    await createCategory({ name: takenName, kind: 'expense' })
+    const victim = await createCategory({ name: uniqueName('Bills'), kind: 'expense' })
+
+    const response = await patchCategory(victim.id, { name: takenName })
+
+    expect(response.statusCode).toBe(409)
+    expect(response.json()).toMatchObject({ statusCode: 409, code: 'CONFLICT' })
+    const stored = await app.prisma.category.findUniqueOrThrow({ where: { id: victim.id } })
+    expect(stored.name).toBe(victim.name)
+  })
+
+  it('allows the same name again for a different kind when renaming (R4)', async () => {
+    const name = uniqueName('Other')
+    await createCategory({ name, kind: 'expense' })
+    const income = await createCategory({ name: uniqueName('Misc'), kind: 'income' })
+
+    const response = await patchCategory(income.id, { name })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({ name, kind: 'income' })
+  })
+
+  it('PATCH /api/categories/:id of an unknown id returns 404 (R11)', async () => {
+    const response = await patchCategory(99999999, { name: uniqueName('Ghost') })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('PATCH /api/categories/:id rejects kind, extra properties and an empty body (R12)', async () => {
+    const category = await createCategory({ name: uniqueName('Transport'), kind: 'expense' })
+
+    const withKind = await patchCategory(category.id, {
+      name: uniqueName('Vehicle'),
+      kind: 'income',
+    })
+    const withExtra = await patchCategory(category.id, {
+      name: uniqueName('Vehicle'),
+      parentId: null,
+    })
+    const empty = await patchCategory(category.id, {})
+
+    for (const response of [withKind, withExtra, empty]) {
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+    }
+    const stored = await app.prisma.category.findUniqueOrThrow({ where: { id: category.id } })
+    expect(stored.name).toBe(category.name)
+    expect(stored.kind).toBe('expense')
+  })
+
+  it('PATCH /api/categories/:id rejects an empty and a whitespace-only name (R12)', async () => {
+    const category = await createCategory({ name: uniqueName('Health'), kind: 'expense' })
+
+    const emptyName = await patchCategory(category.id, { name: '' })
+    const blankName = await patchCategory(category.id, { name: '   ' })
+
+    for (const response of [emptyName, blankName]) {
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+    }
+  })
+
+  it('DELETE /api/categories/:id removes a free category and no movement (R5)', async () => {
+    const doomed = await createCategory({ name: uniqueName('Unused'), kind: 'expense' })
+    const kept = await createCategory({ name: uniqueName('Groceries'), kind: 'expense' })
+    const account = await createAccount()
+    const movement = await seedMovement(account.id, kept.id)
+
+    const response = await deleteCategory(doomed.id)
+
+    expect(response.statusCode).toBe(204)
+    expect(response.body).toBe('')
+    expect(await app.prisma.category.findUnique({ where: { id: doomed.id } })).toBeNull()
+    const storedMovement = await app.prisma.movement.findUniqueOrThrow({
+      where: { id: movement.id },
+    })
+    expect(storedMovement.categoryId).toBe(kept.id)
+  })
+
+  it('DELETE /api/categories/:id with movements returns 409 with their count (R6)', async () => {
+    const category = await createCategory({ name: uniqueName('Supermarket'), kind: 'expense' })
+    const account = await createAccount()
+    const movement = await seedMovement(account.id, category.id)
+
+    const response = await deleteCategory(category.id)
+
+    expect(response.statusCode).toBe(409)
+    const body = response.json<{ code: string; message: string }>()
+    expect(body.code).toBe('CONFLICT')
+    expect(body.message).toContain('1 movement(s)')
+    // Nothing was deleted nor modified.
+    expect(await app.prisma.category.findUnique({ where: { id: category.id } })).not.toBeNull()
+    const storedMovement = await app.prisma.movement.findUniqueOrThrow({
+      where: { id: movement.id },
+    })
+    expect(storedMovement.categoryId).toBe(category.id)
+  })
+
+  it('DELETE /api/categories/:id with subcategories returns 409 (R6)', async () => {
+    const parent = await createCategory({ name: uniqueName('Home'), kind: 'expense' })
+    await createCategory({ name: uniqueName('Utilities'), kind: 'expense', parentId: parent.id })
+
+    const response = await deleteCategory(parent.id)
+
+    expect(response.statusCode).toBe(409)
+    expect(response.json()).toMatchObject({ statusCode: 409, code: 'CONFLICT' })
+    expect(await app.prisma.category.findUnique({ where: { id: parent.id } })).not.toBeNull()
+  })
+
+  it('DELETE /api/categories/:id of an unknown id returns 404 (R11)', async () => {
+    const response = await deleteCategory(99999999)
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('keeps POST 201 and GET 200 responding exactly as before (R1, R2)', async () => {
+    const name = uniqueName('Taxes')
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/categories',
+      payload: { name, kind: 'expense' },
+    })
+    expect(created.statusCode).toBe(201)
+    const category = created.json<SerializedCategory>()
+    createdCategoryIds.push(category.id)
+    expect(category).toMatchObject({ name, kind: 'expense', parentId: null, children: [] })
+
+    const listed = await app.inject({ method: 'GET', url: '/api/categories' })
+    expect(listed.statusCode).toBe(200)
+    expect(listed.json<SerializedCategory[]>().some((entry) => entry.id === category.id)).toBe(true)
   })
 })

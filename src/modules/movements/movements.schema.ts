@@ -24,3 +24,35 @@ export const listMovementsSchema = {
     },
   },
 } as const
+
+/**
+ * Body of `PATCH /api/movements/:id` (feature 37). Only `categoryId` and
+ * `status` can travel: `additionalProperties: false` is what technically
+ * guarantees that no other field of the movement can be touched this way, and
+ * `minProperties: 1` makes an empty `{}` a 400 instead of a silent no-op.
+ */
+export const updateMovementSchema = {
+  params: {
+    type: 'object',
+    required: ['id'],
+    additionalProperties: false,
+    properties: {
+      id: { type: 'integer', minimum: 1 },
+    },
+  },
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    minProperties: 1,
+    properties: {
+      // null removes the category ("no category" is not a category, it is none).
+      categoryId: { type: ['integer', 'null'], minimum: 1 },
+      status: { type: 'string', enum: ['confirmed', 'pending_review'] },
+    },
+  },
+} as const
+
+/** Derived from the schema so the allow-list and the schema cannot diverge. */
+export const updateMovementBodyProperties: ReadonlySet<string> = new Set(
+  Object.keys(updateMovementSchema.body.properties),
+)

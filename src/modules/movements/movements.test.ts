@@ -12,6 +12,7 @@ import {
   PaymentMethod,
   Prisma,
 } from '../../generated/prisma/client.js'
+import { detectTransfers } from '../transfers/transfers.service.js'
 import {
   computeAccountBalance,
   computeTotals,
@@ -26,6 +27,7 @@ import type {
   BalanceAnchor,
   BalanceMovement,
   MovementListResponse,
+  SerializedMovement,
   TotalsMovement,
 } from './movements.types.js'
 
@@ -721,6 +723,50 @@ describe('movement routes (read-only) and database indexes', () => {
     expect(legs.every((leg) => leg.transferId === transferId)).toBe(true)
   })
 
+  it('leaves both legs out of the totals once detectTransfers pairs them (feature 40, R12)', async () => {
+    // End to end: the detection writes the mark, and the totals of feature 36
+    // exclude what carries it. The two features are proved together on purpose.
+    const source = await createAccount()
+    const target = await createAccount()
+    await seedMovement({
+      accountId: source.id,
+      type: 'expense',
+      amount: '640.00',
+      description: 'TRANS INM/ own pocket',
+      bookingDate: '2033-01-12',
+    })
+    await seedMovement({
+      accountId: target.id,
+      type: 'income',
+      amount: '640.00',
+      description: 'TRANSFERENCIA RECIBIDA',
+      bookingDate: '2033-01-13',
+    })
+    await seedMovement({
+      accountId: source.id,
+      type: 'expense',
+      amount: '18.35',
+      description: 'REAL SPEND',
+      bookingDate: '2033-01-14',
+    })
+
+    const detection = await detectTransfers(app.prisma)
+    expect(detection.pairsCreated).toBe(1)
+    expect(detection.error).toBeUndefined()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ from: '2033-01-10', to: '2033-01-20' }),
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json<MovementListResponse>().totals).toEqual({
+      income: '0.00',
+      expense: '18.35',
+      net: '-18.35',
+    })
+  })
+
   it('GET /api/accounts reports each transfer leg balance from the statement (R19)', async () => {
     const source = await createAccount(9999)
     const target = await createAccount(9999)
@@ -1199,6 +1245,250 @@ describe('movement routes (read-only) and database indexes', () => {
     expect(body.movements).toEqual([])
     expect(body.pagination).toEqual({ page: 1, pageSize: 50, total: 0, totalPages: 0 })
     expect(body.totals).toEqual({ income: '0.00', expense: '0.00', net: '0.00' })
+  })
+})
+
+describe('PATCH /api/movements/:id — category and status of a movement (feature 37)', () => {
+  let app: FastifyInstance
+  const createdAccountIds: number[] = []
+  const createdCategoryIds: number[] = []
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    if (createdAccountIds.length > 0) {
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: createdAccountIds } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: createdAccountIds } } })
+      createdAccountIds.length = 0
+    }
+    if (createdCategoryIds.length > 0) {
+      await app.prisma.category.deleteMany({ where: { id: { in: createdCategoryIds } } })
+      createdCategoryIds.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  async function createAccount(initialBalance = 0) {
+    const account = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank: 'bankinter', alias: 'Test account', initialBalance },
+    })
+    createdAccountIds.push(account.id)
+    return account
+  }
+
+  async function createCategory(name: string, kind: 'expense' | 'income' = 'expense') {
+    const suffix = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`
+    const category = await app.prisma.category.create({
+      data: { name: `${name}-${suffix}`, kind },
+    })
+    createdCategoryIds.push(category.id)
+    return category
+  }
+
+  async function seedMovement(
+    accountId: number,
+    overrides: { type?: 'expense' | 'income' | 'neutral'; amount?: string } = {},
+  ) {
+    const bookingDate = new Date('2026-07-24T00:00:00.000Z')
+    return app.prisma.movement.create({
+      data: {
+        accountId,
+        type: overrides.type ?? 'expense',
+        amount: overrides.amount ?? '34.15',
+        description: 'RECIBO /Recibo GIMNASIO',
+        bookingDate,
+        valueDate: bookingDate,
+        daySequence: 1,
+      },
+    })
+  }
+
+  function patchMovement(id: number | string, body: unknown) {
+    return app.inject({ method: 'PATCH', url: `/api/movements/${id}`, payload: body as object })
+  }
+
+  it('assigns a compatible category and embeds it in the response (R7)', async () => {
+    const account = await createAccount()
+    const category = await createCategory('Sport')
+    const movement = await seedMovement(account.id)
+
+    const response = await patchMovement(movement.id, { categoryId: category.id })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<SerializedMovement>()
+    expect(body.id).toBe(movement.id)
+    expect(body.categoryId).toBe(category.id)
+    expect(body.category).toEqual({
+      id: category.id,
+      name: category.name,
+      kind: 'expense',
+      parentId: null,
+    })
+  })
+
+  it('removes the category with categoryId: null (R8)', async () => {
+    const account = await createAccount()
+    const category = await createCategory('Sport')
+    const movement = await seedMovement(account.id)
+    await patchMovement(movement.id, { categoryId: category.id })
+
+    const response = await patchMovement(movement.id, { categoryId: null })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<SerializedMovement>()
+    expect(body.categoryId).toBeNull()
+    expect(body.category).toBeNull()
+  })
+
+  it('answers 404 for a categoryId that does not exist, without modifying (R11)', async () => {
+    const account = await createAccount()
+    const movement = await seedMovement(account.id)
+
+    const response = await patchMovement(movement.id, { categoryId: 99999999 })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+    const stored = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+    expect(stored.categoryId).toBeNull()
+  })
+
+  it('answers 404 for a movement that does not exist (R11)', async () => {
+    const response = await patchMovement(99999999, { status: 'confirmed' })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('rejects an income category on an expense movement with 400 (R9)', async () => {
+    const account = await createAccount()
+    const incomeCategory = await createCategory('Payroll', 'income')
+    const movement = await seedMovement(account.id, { type: 'expense' })
+
+    const response = await patchMovement(movement.id, { categoryId: incomeCategory.id })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+    const stored = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+    expect(stored.categoryId).toBeNull()
+  })
+
+  it('rejects any category on a neutral movement with 400 (R9)', async () => {
+    const account = await createAccount()
+    const category = await createCategory('Sport')
+    const movement = await seedMovement(account.id, { type: 'neutral', amount: '0.00' })
+
+    const response = await patchMovement(movement.id, { categoryId: category.id })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+  })
+
+  it('confirms a movement and takes it back to pending_review (R10)', async () => {
+    const account = await createAccount()
+    const movement = await seedMovement(account.id)
+    expect(movement.status).toBe('pending_review')
+
+    const confirmed = await patchMovement(movement.id, { status: 'confirmed' })
+    expect(confirmed.statusCode).toBe(200)
+    expect(confirmed.json<SerializedMovement>().status).toBe('confirmed')
+
+    const reverted = await patchMovement(movement.id, { status: 'pending_review' })
+    expect(reverted.statusCode).toBe(200)
+    expect(reverted.json<SerializedMovement>().status).toBe('pending_review')
+  })
+
+  it('takes categoryId and status together in one request (R7, R10)', async () => {
+    const account = await createAccount()
+    const category = await createCategory('Sport')
+    const movement = await seedMovement(account.id)
+
+    const response = await patchMovement(movement.id, {
+      categoryId: category.id,
+      status: 'confirmed',
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<SerializedMovement>()
+    expect(body.categoryId).toBe(category.id)
+    expect(body.status).toBe('confirmed')
+  })
+
+  it('rejects an empty body and an unknown status with 400 (R12)', async () => {
+    const account = await createAccount()
+    const movement = await seedMovement(account.id)
+
+    const empty = await patchMovement(movement.id, {})
+    const badStatus = await patchMovement(movement.id, { status: 'reviewed' })
+    const badCategory = await patchMovement(movement.id, { categoryId: 0 })
+
+    for (const response of [empty, badStatus, badCategory]) {
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+    }
+  })
+
+  it('rejects amount or any other property of the bank fact with 400 (R12, R15)', async () => {
+    const account = await createAccount()
+    const movement = await seedMovement(account.id)
+
+    const withAmount = await patchMovement(movement.id, { amount: '1.00', status: 'confirmed' })
+    const withDescription = await patchMovement(movement.id, { description: 'edited' })
+
+    for (const response of [withAmount, withDescription]) {
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+    }
+    const stored = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+    expect(stored.amount.toFixed(2)).toBe('34.15')
+    expect(stored.status).toBe('pending_review')
+  })
+
+  it('changes nothing else: fields, account balance and totals stay identical (R15)', async () => {
+    const account = await createAccount(1000)
+    const category = await createCategory('Sport')
+    const movement = await seedMovement(account.id)
+
+    async function snapshot() {
+      const accountResponse = await app.inject({
+        method: 'GET',
+        url: `/api/accounts/${account.id}`,
+      })
+      const listResponse = await app.inject({
+        method: 'GET',
+        url: `/api/movements?accountId=${account.id}`,
+      })
+      return {
+        balance: accountResponse.json<{ balance: string }>().balance,
+        totals: listResponse.json<MovementListResponse>().totals,
+        movement: listResponse.json<MovementListResponse>().movements[0],
+      }
+    }
+
+    const before = await snapshot()
+    const patched = await patchMovement(movement.id, {
+      categoryId: category.id,
+      status: 'confirmed',
+    })
+    expect(patched.statusCode).toBe(200)
+    const after = await snapshot()
+
+    expect(after.balance).toBe(before.balance)
+    expect(after.totals).toEqual(before.totals)
+    // Every field except the two written ones (and updatedAt) is untouched.
+    const untouched = (full: SerializedMovement | undefined) => {
+      if (!full) throw new Error('movement missing from the listing')
+      const { categoryId: _c, category: _e, status: _s, updatedAt: _u, ...rest } = full
+      return rest
+    }
+    expect(untouched(after.movement)).toEqual(untouched(before.movement))
+    expect(after.movement?.categoryId).toBe(category.id)
+    expect(after.movement?.status).toBe('confirmed')
   })
 })
 

@@ -18,6 +18,7 @@ import type {
   SerializedMovement,
   SerializedMovementTotals,
   TotalsMovement,
+  UpdateMovementBody,
 } from './movements.types.js'
 
 /**
@@ -228,6 +229,51 @@ export async function listMovements(
   }
 }
 
+/**
+ * Updates the ONLY two writable fields of a movement: `categoryId` and/or
+ * `status` (feature 37). The bank fact — amount, type, dates, description,
+ * balanceAfter… — cannot change here: the input type does not admit it and the
+ * route schema rejects it before this runs (R15).
+ *
+ * A category must match the movement: an `expense` category only goes on an
+ * `expense` movement, an `income` one only on an `income`; a `neutral`
+ * movement (zero amount) takes no category at all (R9).
+ */
+export async function updateMovement(
+  prisma: AppPrismaClient,
+  id: number,
+  input: UpdateMovementBody,
+): Promise<SerializedMovement> {
+  const movement = await prisma.movement.findUnique({ where: { id } })
+  if (movement === null) throw new NotFoundError('Movement not found')
+
+  if (typeof input.categoryId === 'number') {
+    const category = await prisma.category.findUnique({ where: { id: input.categoryId } })
+    if (category === null) throw new NotFoundError('Category not found')
+
+    if (movement.type === 'neutral') {
+      throw new ValidationError('A neutral movement (zero amount) cannot take a category')
+    }
+    if (category.kind !== movement.type) {
+      throw new ValidationError(
+        `Category kind '${category.kind}' does not match movement type '${movement.type}'`,
+      )
+    }
+  }
+
+  const data: { categoryId?: number | null; status?: UpdateMovementBody['status'] } = {}
+  if (input.categoryId !== undefined) data.categoryId = input.categoryId
+  if (input.status !== undefined) data.status = input.status
+
+  const updated = await prisma.movement.update({
+    where: { id },
+    data,
+    include: { account: true, category: true },
+  })
+
+  return serializeMovement(updated)
+}
+
 /** Maps the domain object to the API contract shape. */
 export function serializeMovement(movement: MovementWithRelations): SerializedMovement {
   return {
@@ -279,8 +325,8 @@ function toDateOnly(date: Date): string {
  * `neutral` movements (R20). A contribution to an investment product
  * (`productId != null`) is excluded too: the money is still yours, it just
  * changed shape (docs/data-model.md §Totales; feature 36 closes roadmap
- * loose end 8). Today no row carries either column — their writers are later
- * features — so no visible number changes yet.
+ * loose end 8). Since feature 40 the transfer detection writes `transferId`
+ * after every import run; `productId` still has no writer (a later feature).
  */
 export function computeTotals(movements: TotalsMovement[]): MovementTotals {
   return movements.reduce<MovementTotals>(
