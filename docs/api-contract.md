@@ -245,17 +245,22 @@ Un apunte del extracto. **Solo entra por importación** (ver
 | `paymentMethod` | `"card"` \| `"cash"` \| `"bank_transfer"` \| `"direct_debit"` \| null | Forma de pago. Hoy siempre `null` (la derivará la feature de reglas). |
 | `origin`        | `"imported"` \| `"manual"`                                  | Procedencia. Los movimientos nacen `"imported"`.                 |
 | `status`        | `"confirmed"` \| `"pending_review"`                         | Estado de revisión. Nacen `"pending_review"`; se pasa a `"confirmed"` (y se vuelve atrás) con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37). |
-| `transferId`    | string \| null                                              | Enlace lógico entre las **dos piernas** de un traspaso entre cuentas propias. **No hay endpoint de traspasos** (ver la nota de abajo); lo escribe la **detección de traspasos** que corre al final de cada importación (feature 40): compartido por las dos piernas de cada pareja, `null` en todo lo demás. |
+| `transferId`    | string \| null                                              | Enlace lógico entre las **dos piernas** de un traspaso entre cuentas propias. Lo escriben dos cosas (ver la nota de abajo): la **detección de traspasos** que corre al final de cada importación (feature 40) y, desde la feature 44, el **enlace manual** `POST /api/transfers` (se deshace con `DELETE /api/transfers/:transferId`). Siempre lo fabrica el servidor: compartido por las dos piernas de cada pareja, `null` en todo lo demás. |
 | `daySequence`   | number \| null                                              | Posición del movimiento **dentro de su `bookingDate`** (`1` = el primero del día). Fija el orden intradía y forma parte de la clave de deduplicación de importados. |
 | `createdAt`     | string (ISO)                                                | Fecha de creación del registro.                                  |
 | `updatedAt`     | string (ISO)                                                | Fecha de última modificación.                                    |
 
-> **Traspasos entre cuentas propias.** No se crean desde la app y **no tienen
-> endpoint**: sus dos apuntes ya llegan en los extractos (un `expense` en la
-> cuenta origen y un `income` en la destino). Lo único propio de un traspaso es
+> **Traspasos entre cuentas propias.** No se crean desde la app: sus dos
+> apuntes ya llegan en los extractos (un `expense` en la cuenta origen y un
+> `income` en la destino). La **detección** sigue sin endpoint; lo que sí tiene
+> endpoint desde la feature 44 es el **enlace manual** entre dos movimientos ya
+> existentes ([`POST /api/transfers`](#post-apitransfers)) y su deshecho
+> ([`DELETE /api/transfers/:transferId`](#delete-apitransferstransferid)).
+> Lo único propio de un traspaso es
 > que ambas piernas comparten un `transferId` y que **no cuentan como gasto ni
 > como ingreso** en los totales globales. El `type` que reportó el banco **no se
-> muta** al identificarlo. `transferId` lo escribe la **detección de traspasos**
+> muta** al identificarlo. Además del enlace manual, `transferId` lo escribe la
+> **detección de traspasos**
 > (feature 40), que corre sola al final de cada pasada de `POST /api/import` y de
 > `POST /api/import/local`: empareja las parejas inequívocas (mismo importe,
 > `type` opuesto, cuentas distintas, fechas contables a ≤ 3 días naturales, y cada
@@ -631,6 +636,69 @@ elemento de `movements` en `GET /api/movements`), con su `account` y su
 | ----------- | ------------------ | ----------------------------------------------------------------- |
 | 400         | `VALIDATION_ERROR` | El body no cumple el esquema (vacío, propiedades no admitidas, valores fuera de tipo/enumeración); el `kind` de la categoría no coincide con el `type` del movimiento; o el movimiento es `neutral` y se le manda una categoría. No se modifica nada. |
 | 404         | `NOT_FOUND`        | El movimiento no existe, o el `categoryId` enviado no existe.     |
+
+---
+
+### `POST /api/transfers`
+
+Enlaza **a mano** dos movimientos existentes como las dos piernas de un
+traspaso entre cuentas propias (feature 44). Es el remiendo para lo que la
+detección automática no puede resolver (un grupo dudoso, un traspaso que tardó
+más de 3 días); no sustituye a la detección, que sigue corriendo sola tras cada
+importación. **No crea ni borra movimientos**: solo escribe el mismo
+`transferId` —fabricado por el servidor, nunca por el cliente— en las dos
+piernas, juntas o ninguna (una transacción). Ningún otro campo cambia.
+
+**Body**
+| Campo         | Tipo                        | Reglas                                             |
+| ------------- | --------------------------- | -------------------------------------------------- |
+| `movementIds` | `[number, number]` (enteros ≥ 1, **distintos**) | Los ids de las dos piernas. Exactamente dos; cualquier otra propiedad en el body es un 400, nunca se descarta en silencio. |
+
+La compatibilidad es obligatoria: **importe igual**, un `expense` y un `income`
+(`neutral` nunca es pierna), y **cuentas distintas**. Lo que NO se exige es la
+ventana de 3 días de la detección: aquí manda el humano aunque las fechas estén
+lejos. Tampoco se consulta la memoria de un deshecho anterior: volver a enlazar
+a mano una pareja que tú mismo deshiciste es legítimo.
+
+**Respuesta 201**
+
+```json
+{
+  "transferId": "3b6c1c4e-…",
+  "movements": [ { "id": 210, "transferId": "3b6c1c4e-…", "…": "…" },
+                 { "id": 587, "transferId": "3b6c1c4e-…", "…": "…" } ]
+}
+```
+
+`movements` son los dos movimientos serializados completos (la misma forma que
+en `GET /api/movements`), en el orden en que llegaron los ids.
+
+**Errores**
+| Código HTTP | `code`             | Cuándo                                                            |
+| ----------- | ------------------ | ----------------------------------------------------------------- |
+| 400         | `VALIDATION_ERROR` | El body no es exactamente `movementIds` con dos enteros ≥ 1 distintos (menos o más elementos, ids repetidos, propiedades desconocidas, body vacío); los importes difieren (el mensaje nombra los dos); los tipos no son un `expense` y un `income`; o las dos piernas son de la misma cuenta. No se escribe nada. |
+| 404         | `NOT_FOUND`        | Alguno de los dos ids no corresponde a un movimiento existente.   |
+| 409         | `CONFLICT`         | Alguna de las dos piernas ya tiene `transferId` (deshaz esa pareja primero), o otra escritura llegó antes durante la transacción. No se escribe nada. |
+
+---
+
+### `DELETE /api/transfers/:transferId`
+
+Deshace una pareja de traspaso —**manual o de la detección, misma regla**— y
+apunta en cada pierna la memoria del enlace deshecho, de forma que la siguiente
+pasada de la detección **no vuelva a juntar a esas dos** (el veto es de la
+pareja, no del movimiento: cada pierna sigue siendo candidata para emparejarse
+con otros). Esa memoria es maquinaria interna: **no** aparece en
+`GET /api/movements` ni en ningún otro endpoint. Una sola sentencia escribe las
+dos piernas a la vez: `transferId` a `null` y la memoria con el valor que
+acaban de perder. Nada más cambia y nada se borra.
+
+**Respuesta 204** — sin cuerpo.
+
+**Errores**
+| Código HTTP | `code`      | Cuándo                                            |
+| ----------- | ----------- | ------------------------------------------------- |
+| 404         | `NOT_FOUND` | Ningún movimiento lleva ese `transferId`.         |
 
 ---
 

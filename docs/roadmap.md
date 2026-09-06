@@ -77,6 +77,18 @@ cabo 12, y la 40 ✅ le puso por fin escritor a `Movement.transferId` (reservado
 desde la F8): desde el 2026-09-03 cada importación cruza los movimientos sin
 marcar y enlaza las parejas inequívocas.
 
+✅ **La tanda entera (36–41) quedó cerrada, probada en real y commiteada el
+2026-09-05.** Ese mismo día el humano pidió «dejar arreglado lo que falta» y hay
+**tres features nuevas escritas y `pending`, esperando su aprobación del intent**
+(los redactó el leader a partir de decisiones previas del humano; ninguna
+arranca sin su visto bueno):
+
+| # | Feature | Qué traería | Spec |
+|---|---|---|---|
+| **42** | `net-worth` | El patrimonio total: cuentas + inversiones en una consulta, con desglose | sí |
+| **43** | `auto-categorization` | Categorías automáticas por reglas sobre el concepto (el 75% ya salía en el análisis del 2026-09-01) | sí |
+| **44** | `manual-transfer-marking` ✅ (2026-09-06) | Enlazar y desenlazar a mano un traspaso que la detección no puede resolver (`POST/DELETE /api/transfers`, con la memoria de «estos dos no» que anticipó la decisión 4 de la F41; primera migración desde la F9: `Movement.undoneTransferId`) | sí |
+
 **La E4 sigue con Revolut pendiente**, aparcado por decisión del humano hasta que
 ese banco tenga movimientos.
 
@@ -373,14 +385,13 @@ tiene etapa, es que se va a perder.
 
 ## Deberes tuyos pendientes (no son código)
 
-- 🔴 **Comparar los cuatro saldos con la web de tu banco** — es el paso que queda
-  del checkpoint **C4 bis** de la F31, y es tuyo porque nadie más puede hacerlo:
-  la suite en verde dice que la app cuadra **consigo misma**, no que el número sea
-  el que tienes en el banco. Los otros dos pasos ya están hechos
-  ([informe de la pasada del 2026-08-31](../progress/explorations/prueba-real-f31-2026-08-31.md)):
-  las cuatro cuentas tienen su punto de partida guardado y hay extracto con la
-  línea `saldo;` en MyInvestor y en N26. Las dos veces anteriores que hiciste esta
-  prueba, con la suite entera en verde, salieron **dos features nuevas**.
+- ~~🔴 **Comparar los cuatro saldos con la web de tu banco**~~ — **retirado de
+  los pendientes por decisión del humano el 2026-09-05** («no lo volvamos a
+  mostrar como una cosa que falta por hacer»). Era el paso que quedaba del
+  checkpoint C4 bis de la F31; los otros dos están hechos
+  ([informe](../progress/explorations/prueba-real-f31-2026-08-31.md)). No se
+  vuelve a listar: si algún día un saldo no cuadra con el banco, se trata como
+  un problema nuevo, no como este deber.
 
 - **El IBAN, una vez, en el fichero.** En el CSV de MyInvestor, una línea
   `iban;ES30…` **encima** de la fila de cabecera. Con ponerlo en uno de sus

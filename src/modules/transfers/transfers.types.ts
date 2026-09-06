@@ -1,10 +1,14 @@
 /**
- * Types of the transfer detection (feature 40): the candidates the pairing
- * works on and the report every import run carries back.
+ * Types of the transfer detection (feature 40) and of the manual link (F44):
+ * the candidates the pairing works on, the report every import run carries
+ * back, and the shapes of the manual link endpoints.
  *
- * The detection has NO endpoint: both import ways call it after their file
- * loop, and its result travels inside the import report (design §1, §4).
+ * The detection itself still has NO endpoint: both import ways call it after
+ * their file loop, and its result travels inside the import report. What DOES
+ * have an endpoint since F44 is the manual writer of the link
+ * (`POST /api/transfers`, `DELETE /api/transfers/:transferId`).
  */
+import type { SerializedMovement } from '../movements/movements.types.js'
 
 /** One movement the pairing may link: `transferId` still null, type not neutral. */
 export interface TransferCandidate {
@@ -18,6 +22,28 @@ export interface TransferCandidate {
   /** Position inside its `bookingDate` (1 = first); breaks date ties in the pairing order (F41). */
   daySequence: number | null
   description: string
+  /**
+   * The transferId this movement carried until its pair was undone by hand
+   * (F44), or null. Two candidates sharing the same non-null value are never
+   * linked again by the detection; each stays eligible for anyone else.
+   */
+  undoneTransferId: string | null
+}
+
+/** Body of `POST /api/transfers`: the two legs to link, by id (F44). */
+export interface LinkTransferBody {
+  movementIds: [number, number]
+}
+
+/** Params of `DELETE /api/transfers/:transferId` (F44). */
+export interface TransferIdParams {
+  transferId: string
+}
+
+/** What `POST /api/transfers` answers with a 201 (F44). */
+export interface LinkTransferResult {
+  transferId: string
+  movements: [SerializedMovement, SerializedMovement]
 }
 
 /**

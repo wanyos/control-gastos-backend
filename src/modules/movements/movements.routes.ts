@@ -16,9 +16,11 @@ import type { MovementIdParams, MovementListQuery, UpdateMovementBody } from './
  *   PATCH /api/movements/:id
  *
  * The bank fact is read-only: a movement that does not come from the bank must
- * not exist, so there is still no create nor delete endpoint (and no transfer
- * endpoint: both legs of a transfer already arrive in their statements). The
- * importer writes the table (see specs/08-data-model/design.md §5 and §2.1).
+ * not exist, so there is still no create nor delete endpoint — both legs of a
+ * transfer already arrive in their statements; what F44 added under
+ * `/api/transfers` writes only the LINK between two existing movements, never
+ * a movement. The importer writes the table (see specs/08-data-model/design.md
+ * §5 and §2.1).
  * What CAN be edited (feature 37) are the two annotation fields of an existing
  * movement — `categoryId` and `status` — and nothing else: the PATCH schema
  * rejects any other property.

@@ -200,12 +200,16 @@ describe('architecture invariants', () => {
       'modules/overview/overview.schema.ts',
       'modules/overview/overview.types.ts',
       'modules/overview/overview.test.ts',
-      // Feature 40: the transfer detection. No routes file on purpose -- the
-      // detection has no endpoint; both import ways call it after their file
-      // loop and its result travels inside the import report.
+      // Feature 40: the transfer detection. The detection itself has no
+      // endpoint -- both import ways call it after their file loop and its
+      // result travels inside the import report. The routes/schema files are
+      // of feature 44: the MANUAL writer of the link, which does have one.
       'modules/transfers/transfers.types.ts',
       'modules/transfers/transfers.service.ts',
       'modules/transfers/transfers.service.test.ts',
+      'modules/transfers/transfers.schema.ts',
+      'modules/transfers/transfers.routes.ts',
+      'modules/transfers/transfers.routes.test.ts',
     ]
 
     const missing = expected.filter((file) => !existsSync(join(srcDir, file)))

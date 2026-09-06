@@ -24,7 +24,21 @@
 
 ## Feature en curso
 
-_Ninguna._ Última cerrada: **F39 `investments-overview`** (2026-09-05, aprobada) — [veredicto](reviews/investments-overview.md) · [resumen](summaries/investments-overview.md). Con ella quedan cerradas las 6 features de la tanda del 2026-09-01 (36–41). El trabajo de la F39 está **sin commitear**, esperando la prueba real del humano. Esta línea se **sustituye** en el siguiente cierre; aquí no se acumula nada.
+_Ninguna._ Última cerrada: **F39 `investments-overview`** (2026-09-05, aprobada, probada en real y commiteada en 3b2ed3b) — [veredicto](reviews/investments-overview.md) · [resumen](summaries/investments-overview.md). Con ella quedan cerradas las 6 features de la tanda del 2026-09-01 (36–41), todas commiteadas.
+
+**Planteamiento nuevo (2026-09-05):** las **F42, F43 y F44** quedaron escritas
+y el humano **aprobó los tres intents** («he leído las tres features, están
+correctas, podemos hacerlas»). Orden acordado: **44 → 42 → 43**. La pregunta
+abierta de la F43 (quién escribe las reglas de arranque) se resuelve en su
+puerta de spec. También pidió retirar de los pendientes la comparación de
+saldos con la web del banco (hecho en `docs/roadmap.md` §Deberes).
+
+**F44 `manual-transfer-marking` cerrada** (2026-09-06, aprobada) —
+[veredicto](reviews/manual-transfer-marking.md) ·
+[resumen](summaries/manual-transfer-marking.md). La implementación se
+interrumpió el 2026-09-05 por un apagado accidental y se terminó el
+2026-09-06. **Sin commitear**, esperando la prueba real del humano. Siguiente
+del orden acordado: **F42 `net-worth`**.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
@@ -39,11 +53,24 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 
 ## Lo que le toca al humano
 
-- **De la F39 (2026-09-05):** probarla en real con el backend reiniciado:
-  `curl.exe http://localhost:3000/api/investments/overview` (mes en curso; a
-  mitad de mes casi todo saldrá como «falta la foto», es lo esperado) y
-  `curl.exe "http://localhost:3000/api/investments/overview?month=2026-08"`
-  (agosto, que sí tiene fotos). Si cuadra, se commitea.
+- **De la F44 (2026-09-06):** la prueba real, en dos pasos con el backend
+  reiniciado y la migración aplicada (`pnpm run dev` la aplica; si no,
+  `npx prisma migrate deploy`). Primero busca los ids de las tres piernas del
+  caso vivo (las dos salidas de 500 de Bankinter del 2024-09-12 y la entrada
+  de N26 del 2024-09-13) en `GET /api/movements`, y luego enlaza la entrada
+  con UNA de las dos salidas (da igual cuál):
+  `curl.exe -X POST http://localhost:3000/api/transfers -H "Content-Type: application/json" -d "{\"movementIds\": [<salida>, <entrada>]}"`.
+  Comprobación: el resumen de septiembre… no cambia (los dos apuntes son de
+  2024); lo que sí cambia es que ese grupo deja de salir como dudoso en la
+  siguiente importación y esos 1000 EUR salen de los totales de sus meses. Si
+  cuadra, se commitea.
+- ~~**De la F39:** probarla en real~~ ✅ **hecho por el humano el 2026-09-05**:
+  agosto cuadra número a número (la ganancia del mes es exactamente la suma de
+  la fluctuación y los intereses, y las tres variaciones por producto
+  coinciden una a una con las fotos; las cifras concretas no se escriben aquí
+  porque son datos reales y este archivo se versiona) y septiembre sale con
+  huecos, los 4 fluctuantes excluidos con motivo y el depósito vencido el
+  31-08 fuera de la vista. Commiteada en 3b2ed3b.
 - ~~**De la F41:** volver a lanzar `POST /api/import/local`~~ ✅ **hecho por el
   humano el 2026-09-05** (prueba real): `pairsCreated: 7` — los 3 grupos
   aprobados resueltos (3 parejas del 3×1000, 2 del cruce de 1000, 2 del

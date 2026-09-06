@@ -1,12 +1,25 @@
 import { randomUUID } from 'node:crypto'
 
-import { AppError } from '../../errors/app-error.js'
+import type { FastifyInstance } from 'fastify'
+
+import { AppError, ConflictError, NotFoundError, ValidationError } from '../../errors/app-error.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
+import { serializeMovement } from '../movements/movements.service.js'
 import type {
   AmbiguousTransferGroup,
+  LinkTransferBody,
+  LinkTransferResult,
   TransferCandidate,
   TransferDetectionResult,
 } from './transfers.types.js'
+
+/**
+ * Single point where the module obtains its data client (same pattern as
+ * `movementsDb`). Keeps the routes layer free of any data-access reference.
+ */
+export function transfersDb(app: FastifyInstance): AppPrismaClient {
+  return app.prisma
+}
 
 /**
  * Window between the booking dates of the two legs of one transfer, in natural
@@ -21,6 +34,15 @@ const millisecondsPerDay = 86_400_000
 function withinWindow(a: TransferCandidate, b: TransferCandidate): boolean {
   const days = Math.abs(a.bookingDate.getTime() - b.bookingDate.getTime()) / millisecondsPerDay
   return days <= transferDateWindowDays
+}
+
+/**
+ * F44 R11: two movements sharing the same non-null `undoneTransferId` are the
+ * pair the human undid; the detection never links THEM again. The veto is of
+ * the pair, not of the movement: each leg stays eligible for anyone else (R12).
+ */
+function isUndonePair(a: TransferCandidate, b: TransferCandidate): boolean {
+  return a.undoneTransferId !== null && a.undoneTransferId === b.undoneTransferId
 }
 
 /**
@@ -91,6 +113,7 @@ export function pairTransferCandidates(candidates: TransferCandidate[]): {
       for (const income of incomes) {
         if (expense.accountId === income.accountId) continue
         if (!withinWindow(expense, income)) continue
+        if (isUndonePair(expense, income)) continue
         edges.push([expense, income])
         neighbours.set(expense.id, [...(neighbours.get(expense.id) ?? []), income])
         neighbours.set(income.id, [...(neighbours.get(income.id) ?? []), expense])
@@ -129,15 +152,20 @@ export function pairTransferCandidates(candidates: TransferCandidate[]): {
       // F41 R1: a component with as many expenses as incomes where EVERY
       // expense-income combination is a valid match (complete bipartite
       // subgraph) is resolved by pairing both sides position by position (R2).
-      // Any other component -- uneven counts (R3) or some combination outside
-      // the window / same account (R4) -- stays ambiguous whole.
+      // Any other component -- uneven counts (R3), some combination outside
+      // the window / same account (R4), or an undone combination inside it
+      // (F44 R11: where there is doubt nothing is chosen) -- stays ambiguous
+      // whole.
       const componentExpenses = component.filter((movement) => movement.type === 'expense')
       const componentIncomes = component.filter((movement) => movement.type === 'income')
       const isResolvable =
         componentExpenses.length === componentIncomes.length &&
         componentExpenses.every((expense) =>
           componentIncomes.every(
-            (income) => expense.accountId !== income.accountId && withinWindow(expense, income),
+            (income) =>
+              expense.accountId !== income.accountId &&
+              withinWindow(expense, income) &&
+              !isUndonePair(expense, income),
           ),
         )
       if (isResolvable) {
@@ -201,6 +229,7 @@ export async function detectTransfers(prisma: AppPrismaClient): Promise<Transfer
         bookingDate: true,
         daySequence: true,
         description: true,
+        undoneTransferId: true,
         account: { select: { alias: true } },
       },
     })
@@ -214,6 +243,7 @@ export async function detectTransfers(prisma: AppPrismaClient): Promise<Transfer
       bookingDate: row.bookingDate,
       daySequence: row.daySequence,
       description: row.description,
+      undoneTransferId: row.undoneTransferId,
     }))
 
     const { pairs, ambiguous } = pairTransferCandidates(candidates)
@@ -240,6 +270,113 @@ export async function detectTransfers(prisma: AppPrismaClient): Promise<Transfer
   } catch (error) {
     result.error = describeDetectionError(error)
     return result
+  }
+}
+
+/**
+ * Links two movements as the two legs of one transfer, by hand (F44). The
+ * compatibility the detection demands — same amount, one `expense` and one
+ * `income` (`neutral` is never a leg), different accounts — is mandatory here
+ * too; the 3-day window is NOT (R8): the manual link exists precisely for what
+ * the detection cannot resolve. `undoneTransferId` is never consulted either:
+ * the human outranks his own past undo, and only `transferId` is written (R13)
+ * — the old memory stays, harmless, vetoing only the automatic detection.
+ *
+ * Validation order: R6 (exists) → R5 (already linked) → R3 (types) → R4
+ * (accounts) → R2 (amounts). The write reuses the transaction/race pattern of
+ * `detectTransfers`: `WHERE transferId: null` on both legs, fewer than two
+ * rows means another write got there first and the whole link rolls back.
+ */
+export async function linkTransfer(
+  prisma: AppPrismaClient,
+  input: LinkTransferBody,
+): Promise<LinkTransferResult> {
+  const [firstId, secondId] = input.movementIds
+  if (firstId === secondId) {
+    throw new ValidationError(`movementIds must be two different ids, got ${firstId} twice`)
+  }
+
+  const rows = await prisma.movement.findMany({
+    where: { id: { in: [firstId, secondId] } },
+    include: { account: true, category: true },
+  })
+  const first = rows.find((row) => row.id === firstId)
+  const second = rows.find((row) => row.id === secondId)
+  if (first === undefined || second === undefined) {
+    const missing = [firstId, secondId].filter((id) => !rows.some((row) => row.id === id))
+    throw new NotFoundError(`Movement ${missing.join(' and ')} not found`)
+  }
+
+  const alreadyLinked = [first, second].filter((movement) => movement.transferId !== null)
+  if (alreadyLinked.length > 0) {
+    const ids = alreadyLinked.map((movement) => movement.id).join(' and ')
+    throw new ConflictError(`Movement ${ids} already belongs to a transfer; undo that pair first`)
+  }
+
+  const isOneExpenseOneIncome =
+    (first.type === 'expense' && second.type === 'income') ||
+    (first.type === 'income' && second.type === 'expense')
+  if (!isOneExpenseOneIncome) {
+    throw new ValidationError(
+      `the two legs must be exactly one expense and one income, got '${first.type}' and '${second.type}'`,
+    )
+  }
+
+  if (first.accountId === second.accountId) {
+    throw new ValidationError('the two legs belong to the same account; a transfer crosses two')
+  }
+
+  if (!first.amount.equals(second.amount)) {
+    throw new ValidationError(
+      `the two amounts differ: ${first.amount.toFixed(2)} vs ${second.amount.toFixed(2)}`,
+    )
+  }
+
+  const transferId = randomUUID()
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.movement.updateMany({
+      where: { id: { in: [firstId, secondId] }, transferId: null },
+      data: { transferId },
+    })
+    if (count !== 2) {
+      throw new ConflictError(
+        'another write linked one of the two movements first; nothing was written',
+      )
+    }
+  })
+
+  // Re-read after the write so the response carries what the database holds
+  // (fresh transferId and updatedAt), in the order the caller sent the ids.
+  const linked = await prisma.movement.findMany({
+    where: { id: { in: [firstId, secondId] } },
+    include: { account: true, category: true },
+  })
+  const linkedFirst = linked.find((row) => row.id === firstId)
+  const linkedSecond = linked.find((row) => row.id === secondId)
+  if (linkedFirst === undefined || linkedSecond === undefined) {
+    throw new NotFoundError(`Movement ${firstId} or ${secondId} disappeared while linking`)
+  }
+  return {
+    transferId,
+    movements: [serializeMovement(linkedFirst), serializeMovement(linkedSecond)],
+  }
+}
+
+/**
+ * Undoes one pair — manual or from the detection, one single rule (F44 R9) —
+ * in ONE statement over both legs at once: `transferId` back to null and the
+ * undone-link memory (`undoneTransferId`) set to the value they just lost, so
+ * the next detection run never re-links THEM (R11). Nothing else is written
+ * (R13). By construction a transferId sits on exactly 2 rows; the count is not
+ * re-checked against 2 so no impossible state gets invented.
+ */
+export async function unlinkTransfer(prisma: AppPrismaClient, transferId: string): Promise<void> {
+  const { count } = await prisma.movement.updateMany({
+    where: { transferId },
+    data: { transferId: null, undoneTransferId: transferId },
+  })
+  if (count === 0) {
+    throw new NotFoundError('No movement carries that transferId')
   }
 }
 

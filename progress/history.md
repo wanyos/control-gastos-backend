@@ -1054,3 +1054,29 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 - **Cierre:** done. Cierra el cabo suelto 12 del roadmap; la consulta de
   patrimonio neto total queda fuera a propósito y anotada en la fila E7. Con
   esta, las 6 features de la tanda del 2026-09-01 (36-41) están cerradas.
+
+## 2026-09-05 → 2026-09-06 — Feature 44: manual-transfer-marking
+
+- **Agente:** leader (orquestando) + spec-author + implementer (x2: el primero
+  interrumpido por un apagado accidental del ordenador, el segundo terminó) +
+  reviewer.
+- **Plan:** spec SDD aprobado por el humano el 2026-09-05 (5 decisiones:
+  endpoints propios POST /api/transfers y DELETE /api/transfers/:transferId;
+  enlazar a mano sin ventana de fechas pero con el resto de compatibilidad
+  obligatoria; la memoria del deshecho es la columna nueva
+  Movement.undoneTransferId, que guarda el último enlace deshecho; deshacer una
+  pareja manual también la apunta; el veto es de la pareja, no del movimiento).
+- **Cambios:** migración 20260905163246_movement_undone_transfer_id (la primera
+  desde la F9, solo esa columna), enlazar/deshacer en src/modules/transfers/
+  (routes/schema nuevos, service ampliado con el veto en la detección),
+  registro en src/app.ts, docs/api-contract.md y docs/data-model.md. La columna
+  no se expone en GET /api/movements. Detalle:
+  progress/summaries/manual-transfer-marking.md.
+- **Verificación:** ./init.sh completo en verde (reviewer lo relanzó): 57
+  archivos, 1125 tests; migrate status al día; los 14 R verificados uno a uno.
+  El único test roto tras la interrupción no era de la feature: el guardián de
+  datos reales cazó una nota del leader en progress/current.md con importes
+  reales, reescrita sin cifras. Veredicto APROBADO en
+  progress/reviews/manual-transfer-marking.md.
+- **Cierre:** done. Deber del humano: enlazar por fin el caso vivo de las 2x500
+  con POST /api/transfers. Siguiente del orden acordado: F42 net-worth.

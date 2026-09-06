@@ -121,9 +121,15 @@ model Movement {
   origin MovementOrigin @default(imported)
   status MovementStatus @default(pending_review)
 
-  // Both legs of a transfer share it. Nothing writes it yet: the pairing is a
-  // later feature, on top of the importer.
+  // Both legs of a transfer share it. Written by the transfer detection
+  // (feature 40) and, since feature 44, also by the manual link endpoint.
   transferId String?
+
+  // The transferId both legs carried until the human undid that pair (F44).
+  // Detection never re-links two movements sharing the same non-null value;
+  // everything else about them stays eligible. Overwritten by a later undo:
+  // one movement remembers only its LAST undone pair (decisions.md #3).
+  undoneTransferId String?
 
   // Position within its bookingDate (1 = first of the day). Fixes the intraday
   // order and is part of the dedup index key.

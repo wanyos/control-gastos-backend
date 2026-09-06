@@ -1740,6 +1740,117 @@
       ],
       "sdd": true,
       "status": "done"
+    },
+    {
+      "id": 42,
+      "name": "net-worth",
+      "title": "Patrimonio neto total: cuánto vale todo mi dinero junto",
+      "intent": {
+        "_procedencia": "Encargado por el humano el 2026-09-05 («dejar arreglado lo que falta... hagamos el planteamiento de los tres puntos»), como uno de los tres huecos que quedaron anotados al cerrar la tanda 36-41. La consulta quedó fuera de la F39 a propósito (decisión técnica 4 de su spec: 'la consulta de patrimonio neto es otra feature, ya prevista') y estaba en la fila E7 del roadmap. Es la idea nº3 de docs/ideas.md. INTENT REDACTADO POR EL LEADER a partir de esas decisiones previas: pendiente de que el humano lo apruebe o corrija antes de arrancar.",
+        "que_quiero": "Una consulta que me diga cuánto vale todo mi dinero junto: lo que hay en las cuentas corrientes más lo que valen las inversiones, con el desglose de cuánto aporta cada parte.",
+        "por_que": "Ya tengo la vista del dinero de las cuentas (F38) y la de las inversiones (F39), pero ninguna suma el total. Para saber cuánto tengo en realidad hoy tengo que sumar yo las dos pantallas.",
+        "como_se_que_esta_bien": [
+          "Una sola consulta me da el patrimonio total y el desglose: cuentas corrientes por un lado, inversiones por otro, y dentro de cada uno sus piezas.",
+          "El lado de las cuentas usa el mismo saldo real de la F31/F38, sin una segunda suma.",
+          "El lado de las inversiones vale lo que dicen mis últimas fotos: el patrimonio de un producto es marketValue más uninvestedCash (van aparte, regla de la F9), un depósito vale su capital mientras no venza, y la cuenta remunerada su último saldo.",
+          "Si a un producto le falta la foto, se ve qué parte del total está desactualizada o incompleta, en vez de sumar en silencio un dato viejo sin avisar."
+        ],
+        "que_no_quiero": [
+          "No quiero que escriba nada: solo lectura.",
+          "No quiero que recalcule ni redondee importes míos: se suman los que están guardados.",
+          "No quiero perder las vistas separadas: la F38 y la F39 siguen igual, esta es la de arriba del todo."
+        ],
+        "delego_en_agente": [
+          "Si es un endpoint nuevo o amplía GET /api/overview; que lo proponga con el trade-off.",
+          "Cómo se avisa de que una pieza del total está desactualizada (foto vieja) sin dejar de dar el total.",
+          "Cómo valorar exactamente el depósito y la cuenta remunerada con los datos que ya hay guardados; que lo proponga y lo marque.",
+          "Si el total se pide a una fecha o solo 'hoy'; que proponga lo más simple que sirva."
+        ]
+      },
+      "acceptance": [
+        "Una consulta devuelve el patrimonio total y el desglose cuentas/inversiones, reutilizando el saldo real (F31) y las valoraciones existentes, sin segundas sumas del mismo dinero.",
+        "El patrimonio de un producto fluctuante es marketValue + uninvestedCash; el del depósito y la cuenta remunerada, según la valoración que el spec proponga y el humano apruebe.",
+        "Una pieza con la foto desactualizada queda señalada sin ocultar el total, con test.",
+        "Solo lectura; GET /api/overview y GET /api/investments/overview no cambian su contrato salvo que el spec decida ampliar el primero.",
+        "docs/api-contract.md actualizado."
+      ],
+      "sdd": true,
+      "status": "pending"
+    },
+    {
+      "id": 43,
+      "name": "auto-categorization",
+      "title": "Categorías automáticas por reglas sobre el concepto",
+      "intent": {
+        "_procedencia": "Encargado por el humano el 2026-09-05, como el segundo de los tres huecos. La F37 lo dejó dicho ('no quiero categorías automáticas TODAVÍA: primero quiero poder ponerlas a mano y ver qué sale') y la tabla E6 del roadmap reservaba el hueco 'categorización por reglas sobre description' desde la F8. El análisis del 2026-09-01 clasificó sus 1520 movimientos reales con reglas sobre el concepto y cubrió el 75%. INTENT REDACTADO POR EL LEADER a partir de esas decisiones previas: pendiente de que el humano lo apruebe o corrija antes de arrancar. OJO: el humano aún no ha dicho cómo quiere definir las reglas (¿las escribe él?, ¿se proponen y él confirma?); es la primera pregunta de la puerta.",
+        "que_quiero": "Que la app ponga sola la categoría a los movimientos según reglas sobre el concepto (description), para no categorizar 1520 movimientos a mano; y que las reglas se puedan afinar sin tocar código.",
+        "por_que": "La F37 me dio la herramienta manual y sembró las 16 categorías, pero todos los movimientos siguen sin categoría: a mano por API es impracticable. Las reglas del análisis del 2026-09-01 ya cubrían el 75% de mis movimientos.",
+        "como_se_que_esta_bien": [
+          "Después de una pasada, la mayoría de mis movimientos tienen categoría sin que yo haya escrito nada.",
+          "Lo que ninguna regla reconoce se queda sin categoría, visible, en vez de meterse en un cajón de sastre.",
+          "Un movimiento que yo ya categoricé o confirmé a mano no me lo pisa una regla.",
+          "Puedo añadir o cambiar una regla sin tocar código, y volver a pasar las reglas sobre lo pendiente.",
+          "Los movimientos nuevos que entren por importación se categorizan solos en esa pasada."
+        ],
+        "que_no_quiero": [
+          "No quiero que categorizar cambie importes, saldos, totales ni la importación (igual que la F37).",
+          "No quiero que una regla dudosa acierte por casualidad: antes sin categoría que mal categorizado, el mismo principio que con los traspasos.",
+          "No quiero un editor de reglas con interfaz: eso es del frontend, otra sesión."
+        ],
+        "delego_en_agente": [
+          "Dónde viven las reglas (¿tabla en la base de datos con su API?, ¿archivo que escribo yo?) y su forma exacta (¿texto contenido en el concepto?, ¿algo más?); que lo proponga con el trade-off. PREGUNTA PREVIA para el humano en la puerta: ¿quién escribe las reglas de arranque, él o se derivan del análisis del 2026-09-01 y él las corrige?",
+          "Cuándo corre: al final de cada importación, bajo demanda, o ambos (el precedente de la F40 es 'al final de cada importación').",
+          "Qué pasa si dos reglas casan con el mismo movimiento; que proponga la política y la marque.",
+          "Cómo se protege lo confirmado/categorizado a mano; que proponga el criterio exacto con los campos que ya existen (status, categoryId)."
+        ]
+      },
+      "acceptance": [
+        "Existe una pasada de categorización por reglas sobre description que se puede ejecutar sobre lo ya importado y corre también para lo nuevo, según lo que el spec decida y el humano apruebe.",
+        "Un movimiento ya categorizado o confirmado a mano no se toca, con test.",
+        "Lo no reconocido queda sin categoría y visible; ninguna regla dudosa asigna en silencio.",
+        "Las reglas se pueden añadir o cambiar sin tocar código, y la pasada es idempotente.",
+        "Categorizar no cambia importes, saldos, totales ni la importación, con test.",
+        "docs/api-contract.md y docs/data-model.md actualizados según lo que la feature añada."
+      ],
+      "sdd": true,
+      "status": "pending"
+    },
+    {
+      "id": 44,
+      "name": "manual-transfer-marking",
+      "title": "Marcar (y desmarcar) a mano un traspaso que la detección no puede resolver",
+      "intent": {
+        "_procedencia": "Encargado por el humano el 2026-09-05, como el tercero de los tres huecos. Lo aplazó él mismo dos veces: el 2026-09-03 en la decisión 4 de la F40 ('deshacer una pareja NO entra en esta feature') y de nuevo tras la F41 ('lo que queda pendiente de anotar a mano lo que no se puede emparejar lo dejamos para mas adelante'). El caso vivo medido el 2026-09-05: un solo grupo dudoso, dos salidas de 500 EUR de Bankinter el 2024-09-12 y una sola entrada en N26 el 2024-09-13. La decisión 4 de la F41 ya dejó dicho el porqué del coste: un deshecho persistente necesita que la app recuerde 'estos dos no' (columna nueva, migración) para que la siguiente pasada no rehaga la pareja. INTENT REDACTADO POR EL LEADER a partir de esas decisiones previas: pendiente de que el humano lo apruebe o corrija antes de arrancar.",
+        "que_quiero": "Poder decirle yo a la app que dos movimientos concretos son las dos piernas de un traspaso (cuando la detección no puede saberlo), y poder deshacer una pareja —mía o de la detección— de forma que no se rehaga sola en la siguiente pasada.",
+        "por_que": "Queda un traspaso real sin enlazar (las 2x500 con una sola entrada) que ninguna regla puede resolver, y hoy no existe ninguna forma de marcarlo: esos 1000 EUR siguen contando como gasto e ingreso en los totales. Y si algún día la detección enlazara mal, tampoco habría forma de corregirla.",
+        "como_se_que_esta_bien": [
+          "Puedo enlazar a mano dos movimientos como traspaso y desde ese momento quedan fuera de los totales, como cualquier pareja de la detección.",
+          "Puedo deshacer una pareja y la siguiente pasada de detección NO la rehace.",
+          "La app no me deja enlazar cualquier cosa: las dos piernas tienen que ser compatibles (importe igual, direcciones opuestas, cuentas distintas mías).",
+          "Ningún otro campo de los movimientos cambia, igual que en la detección."
+        ],
+        "que_no_quiero": [
+          "No quiero que esto sustituya a la detección automática: es el remiendo para los casos que ella no puede, no el camino normal.",
+          "No quiero borrar ni modificar movimientos, solo el enlace.",
+          "No quiero pantalla: el frontend llegará después; aquí solo la API."
+        ],
+        "delego_en_agente": [
+          "La forma del endpoint o endpoints (enlazar y desenlazar) y cómo encaja con el PATCH acotado de movimientos de la F37; que lo proponga.",
+          "La forma exacta de la memoria de 'estos dos no' (la columna nueva y su migración que la decisión 4 de la F41 ya anticipó) y si desenlazar una pareja manual también la apunta.",
+          "Si enlazar a mano exige la misma ventana de 3 días o el humano manda aunque las fechas estén lejos; que lo proponga y lo marque.",
+          "Qué validaciones exactas rechazan un enlace incompatible y con qué errores."
+        ]
+      },
+      "acceptance": [
+        "Se puede enlazar a mano dos movimientos compatibles como traspaso (mismo importe, direcciones opuestas, cuentas distintas) y quedan fuera de los totales, con test.",
+        "Un enlace incompatible se rechaza con error claro y tipado, con test.",
+        "Se puede deshacer una pareja (manual o de la detección) y la siguiente pasada de detección no la rehace, con test.",
+        "Solo se escribe el enlace y su memoria de deshecho: ningún otro campo de ningún movimiento cambia, con test.",
+        "La detección automática de las F40/F41 sigue funcionando exactamente igual sobre lo no tocado a mano.",
+        "docs/api-contract.md y docs/data-model.md actualizados (incluida la columna nueva y su migración)."
+      ],
+      "sdd": true,
+      "status": "done"
     }
   ]
 }

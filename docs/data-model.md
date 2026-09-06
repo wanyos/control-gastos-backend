@@ -107,6 +107,7 @@ erDiagram
         MovementOrigin origin
         MovementStatus status
         string transferId
+        string undoneTransferId
         int daySequence
     }
 ```
@@ -213,6 +214,7 @@ model Movement {
   status MovementStatus @default(pending_review)  // y nace pendiente de revisar
 
   transferId  String?   // enlace lógico entre las dos piernas de un traspaso
+  undoneTransferId String? // el transferId que las dos piernas llevaban hasta que el humano deshizo esa pareja (F44)
   daySequence Int?      // posición dentro de su bookingDate (1 = el primero del día)
 
   createdAt DateTime @default(now())
@@ -228,7 +230,7 @@ model Movement {
 
 | Columna | Quién la rellenará |
 | --- | --- |
-| ~~`transferId`~~ | 🔄 **ya lo escribe la detección de traspasos** (F40): corre al final de cada pasada de importación (las dos vías), empareja las parejas inequívocas —y desde la F41 también los grupos dudosos con el mismo número de salidas que de entradas en los que cada salida podría casar con cada entrada— y escribe el mismo `transferId` en las dos piernas, en una transacción por pareja. **Cero migración**: la columna y su índice existen desde la F8 |
+| ~~`transferId`~~ | 🔄 **ya lo escribe la detección de traspasos** (F40): corre al final de cada pasada de importación (las dos vías), empareja las parejas inequívocas —y desde la F41 también los grupos dudosos con el mismo número de salidas que de entradas en los que cada salida podría casar con cada entrada— y escribe el mismo `transferId` en las dos piernas, en una transacción por pareja. **Cero migración**: la columna y su índice existen desde la F8. Desde la **F44** tiene además **escritor manual**: `POST /api/transfers` enlaza dos movimientos por id y `DELETE /api/transfers/:transferId` deshace la pareja (manual o de la detección) apuntando la memoria del deshecho en `undoneTransferId` (esa sí trajo migración: una columna nullable, la primera desde la F9) |
 | ~~`categoryId`~~ | 🔄 **ya tiene escritor manual** (F37): `PATCH /api/movements/:id` la escribe (y la pone a `NULL` para quitar la categoría). El escritor **automático** —la feature de **categorización por reglas** sobre el `description`— sigue pendiente |
 | `paymentMethod` | la misma feature de reglas (`RECIBO` → `direct_debit`, `PAGO TARJETA` → `card`…) |
 | `note` | anotación manual sobre un movimiento, cuando exista pantalla |
@@ -363,15 +365,37 @@ global igual que antes del traspaso.
 
 #### Traspasos entre cuentas propias
 
-Un traspaso **no se crea desde la app y no tiene endpoint**: el banco de origen ya
+Un traspaso **no se crea desde la app**: el banco de origen ya
 lo reporta como un cargo (`expense`) y el de destino como un abono (`income`).
-Fabricarlos por API los duplicaría (4 filas por traspaso). El modelo solo aporta:
+Fabricarlos por API los duplicaría (4 filas por traspaso). El modelo aporta:
 
 - **`transferId` compartido** por las dos piernas — enlace lógico, indexado.
 - **La regla de agregación:** no cuentan como gasto ni como ingreso en los
   totales globales.
+- **`undoneTransferId`** (F44): el `transferId` que las dos piernas llevaban
+  hasta que el humano deshizo esa pareja — la memoria del enlace deshecho.
 
-`transferId` **lo escribe la detección de traspasos** (F40,
+Además de la detección, `transferId` tiene **escritor manual desde la F44**
+(`POST /api/transfers`): enlaza por id dos movimientos existentes con la misma
+compatibilidad que exige la detección —importe igual, un `expense` y un
+`income` (`neutral` nunca es pierna), cuentas distintas— pero **sin** la
+ventana de 3 días: el enlace manual existe justo para lo que la detección no
+puede resolver. El `transferId` lo fabrica siempre el servidor y las dos
+piernas se escriben en una transacción, juntas o ninguna.
+`DELETE /api/transfers/:transferId` **deshace** una pareja —manual o de la
+detección, misma regla— en una sola sentencia sobre las dos piernas:
+`transferId` a `null` y `undoneTransferId` con el valor que acaban de perder.
+Un deshecho posterior lo sobrescribe: cada movimiento recuerda solo su
+**último** enlace deshecho. La columna es maquinaria interna de la detección
+(no se expone en la API): dos candidatos que comparten el mismo valor no nulo
+son la pareja deshecha y la detección **no vuelve a juntarlos** — el veto es
+de la pareja, no del movimiento, así que cada pierna sigue siendo candidata
+para emparejarse con otros, y un grupo par que contiene una combinación
+deshecha deja de ser resoluble entero y sale dudoso, como manda la doctrina de
+la F41. El enlace manual, en cambio, **no consulta** esa memoria: el humano
+puede volver a enlazar a mano lo que él mismo deshizo.
+
+`transferId` **lo escribe también la detección de traspasos** (F40,
 `src/modules/transfers/transfers.service.ts`), que corre sola al final de cada
 pasada de importación —`POST /api/import` y `POST /api/import/local`— sobre todos
 los movimientos sin marcar. Empareja las parejas inequívocas —mismo importe,
@@ -386,8 +410,9 @@ entradas, o con alguna combinación fuera de esas condiciones, no se empareja
 **ni parcialmente** y sale entero en el campo `transfers` del informe de la
 pasada; un movimiento sin pierna espejo (un Bizum, un tercero) ni se marca ni se
 lista. La detección escribe **únicamente** `transferId` (las dos piernas juntas o
-ninguna) y no toca el ancla, ningún saldo ni el dedup. Sin marcado manual, como
-se decidió.
+ninguna) y no toca el ancla, ningún saldo ni el dedup. El marcado manual, que
+en la F40 se decidió no hacer todavía, **existe desde la F44** (párrafo de
+arriba).
 
 > **Por qué hace falta emparejar y no basta con leer el concepto:** el banco pone
 > "TRANSFERENCIA" tanto cuando te pagas a ti mismo como cuando pagas a un tercero,

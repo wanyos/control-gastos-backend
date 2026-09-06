@@ -22,6 +22,7 @@ import overviewRoutes from './modules/overview/overview.routes.js'
 import { parseOpenbankStatement } from './modules/openbank/openbank.statement.parser.js'
 import { parseTradeRepublicProductFile } from './modules/trade-republic/trade-republic.service.js'
 import tradeRepublicRoutes from './modules/trade-republic/trade-republic.routes.js'
+import transfersRoutes from './modules/transfers/transfers.routes.js'
 import drivePlugin from './plugins/drive.js'
 import errorHandlerPlugin from './plugins/error-handler.js'
 import prismaPlugin from './plugins/prisma.js'
@@ -88,6 +89,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(overviewRoutes, { prefix: '/api/overview' })
   app.register(investmentsRoutes, { prefix: '/api/investments' })
   app.register(ingestionRoutes, { prefix: '/api/ingestion' })
+  app.register(transfersRoutes, { prefix: '/api/transfers' })
   app.register(importRoutes, { prefix: '/api/import', parsers: bankParsers, productParsers })
   app.register(bankinterRoutes, { prefix: '/api/parser' })
   app.register(myinvestorRoutes, { prefix: '/api/parser' })

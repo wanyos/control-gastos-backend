@@ -10,7 +10,12 @@ import { buildApp } from '../../app.js'
 import { AppError } from '../../errors/app-error.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
-import { detectTransfers, pairTransferCandidates } from './transfers.service.js'
+import {
+  detectTransfers,
+  linkTransfer,
+  pairTransferCandidates,
+  unlinkTransfer,
+} from './transfers.service.js'
 import type { TransferCandidate } from './transfers.types.js'
 
 let nextId = 1
@@ -25,6 +30,7 @@ function candidate(overrides: Partial<TransferCandidate> = {}): TransferCandidat
     bookingDate: new Date('2031-03-10T00:00:00.000Z'),
     daySequence: null,
     description: 'SYNTHETIC TRANSFER LEG',
+    undoneTransferId: null,
     ...overrides,
   }
 }
@@ -709,6 +715,7 @@ describe('detectTransfers (database)', () => {
             bookingDate: new Date('2031-03-10T00:00:00.000Z'),
             daySequence: 1,
             description: 'SYNTHETIC TRANSFER LEG',
+            undoneTransferId: null,
             account: { alias: 'synthetic ···0001' },
           },
           {
@@ -719,6 +726,7 @@ describe('detectTransfers (database)', () => {
             bookingDate: new Date('2031-03-11T00:00:00.000Z'),
             daySequence: 1,
             description: 'SYNTHETIC TRANSFER LEG',
+            undoneTransferId: null,
             account: { alias: 'synthetic ···0001' },
           },
           {
@@ -729,6 +737,7 @@ describe('detectTransfers (database)', () => {
             bookingDate: new Date('2031-03-10T00:00:00.000Z'),
             daySequence: 1,
             description: 'SYNTHETIC TRANSFER LEG',
+            undoneTransferId: null,
             account: { alias: 'synthetic ···0002' },
           },
           {
@@ -739,6 +748,7 @@ describe('detectTransfers (database)', () => {
             bookingDate: new Date('2031-03-11T00:00:00.000Z'),
             daySequence: 1,
             description: 'SYNTHETIC TRANSFER LEG',
+            undoneTransferId: null,
             account: { alias: 'synthetic ···0002' },
           },
         ],
@@ -784,6 +794,7 @@ describe('detectTransfers (database)', () => {
             bookingDate: new Date('2031-03-10T00:00:00.000Z'),
             daySequence: 1,
             description: 'SYNTHETIC TRANSFER LEG',
+            undoneTransferId: null,
             account: { alias: 'synthetic ···0001' },
           },
           {
@@ -794,6 +805,7 @@ describe('detectTransfers (database)', () => {
             bookingDate: new Date('2031-03-10T00:00:00.000Z'),
             daySequence: 1,
             description: 'SYNTHETIC TRANSFER LEG',
+            undoneTransferId: null,
             account: { alias: 'synthetic ···0002' },
           },
         ],
@@ -848,5 +860,393 @@ describe('detectTransfers (database)', () => {
 
     expect(result.error).toEqual({ code: 'INTERNAL_SERVER_ERROR', message: 'connection lost' })
     expect(result.pairsCreated).toBe(0)
+  })
+})
+
+// F44: the undone-pair veto in the pure pairing. A case with no undo at all is
+// exactly the fixtures above: every candidate has `undoneTransferId: null` and
+// the whole F40/F41 suite runs unchanged on top of the veto code.
+describe('pairTransferCandidates — undone pairs (F44)', () => {
+  it('never re-links two movements sharing the same undone transferId, and reports nothing (R11)', () => {
+    const expense = candidate({ accountId: 1, type: 'expense', undoneTransferId: 'undone-u1' })
+    const income = candidate({ accountId: 2, type: 'income', undoneTransferId: 'undone-u1' })
+
+    const { pairs, ambiguous } = pairTransferCandidates([expense, income])
+
+    // No valid candidate left at all: same treatment as an out-of-window leg.
+    expect(pairs).toEqual([])
+    expect(ambiguous).toEqual([])
+  })
+
+  it('still pairs a movement with an undone pair against a compatible third (R12)', () => {
+    const expense = candidate({ accountId: 1, type: 'expense', undoneTransferId: 'undone-u2' })
+    const oldPartner = candidate({ accountId: 2, type: 'income', undoneTransferId: 'undone-u2' })
+    const third = candidate({ accountId: 3, type: 'income' })
+
+    const { pairs, ambiguous } = pairTransferCandidates([expense, oldPartner, third])
+
+    // The veto is of the PAIR: the expense finds the third leg on its own.
+    expect(pairs).toEqual([[expense, third]])
+    expect(ambiguous).toEqual([])
+  })
+
+  it('pairs two movements whose undone memories are different values (the veto needs the SAME one)', () => {
+    const expense = candidate({ accountId: 1, type: 'expense', undoneTransferId: 'undone-a' })
+    const income = candidate({ accountId: 2, type: 'income', undoneTransferId: 'undone-b' })
+
+    const { pairs, ambiguous } = pairTransferCandidates([expense, income])
+
+    expect(pairs).toEqual([[expense, income]])
+    expect(ambiguous).toEqual([])
+  })
+
+  it('leaves an even group containing one undone combination ambiguous whole (R11)', () => {
+    const day = new Date('2031-12-01T00:00:00.000Z')
+    const out1 = candidate({
+      accountId: 1,
+      type: 'expense',
+      bookingDate: day,
+      daySequence: 1,
+      undoneTransferId: 'undone-u3',
+    })
+    const out2 = candidate({ accountId: 1, type: 'expense', bookingDate: day, daySequence: 2 })
+    const in1 = candidate({
+      accountId: 2,
+      type: 'income',
+      bookingDate: day,
+      daySequence: 1,
+      undoneTransferId: 'undone-u3',
+    })
+    const in2 = candidate({ accountId: 2, type: 'income', bookingDate: day, daySequence: 2 })
+
+    const { pairs, ambiguous } = pairTransferCandidates([out1, out2, in1, in2])
+
+    // Without the undo this group resolves (F41). With one undone combination
+    // inside, choosing any assignment would be guessing: it stays whole.
+    expect(pairs).toEqual([])
+    expect(ambiguous).toHaveLength(1)
+    expect(ambiguous[0]?.movements.map((movement) => movement.id)).toEqual([
+      out1.id,
+      out2.id,
+      in1.id,
+      in2.id,
+    ])
+  })
+})
+
+describe('linkTransfer / unlinkTransfer (F44, database)', () => {
+  let app: FastifyInstance
+  const createdAccountIds: number[] = []
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    if (createdAccountIds.length > 0) {
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: createdAccountIds } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: createdAccountIds } } })
+      createdAccountIds.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  async function createAccount() {
+    const account = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank: 'bankinter', alias: 'Manual link test account' },
+    })
+    createdAccountIds.push(account.id)
+    return account
+  }
+
+  interface SeedMovement {
+    accountId: number
+    type?: 'expense' | 'income' | 'neutral'
+    amount?: string
+    description?: string
+    bookingDate?: string
+    transferId?: string | null
+  }
+
+  function seedMovement(movement: SeedMovement) {
+    const bookingDate = new Date(`${movement.bookingDate ?? '2031-03-10'}T00:00:00.000Z`)
+    return app.prisma.movement.create({
+      data: {
+        accountId: movement.accountId,
+        type: movement.type ?? 'expense',
+        amount: movement.amount ?? '512.44',
+        description: movement.description ?? 'SYNTHETIC MANUAL LINK LEG',
+        bookingDate,
+        valueDate: bookingDate,
+        daySequence: 1,
+        origin: 'imported',
+        transferId: movement.transferId ?? null,
+      },
+    })
+  }
+
+  it('links two compatible movements 60 days apart with one server-made transferId (R1, R8)', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const legOut = await seedMovement({
+      accountId: source.id,
+      type: 'expense',
+      bookingDate: '2031-03-10',
+    })
+    const legIn = await seedMovement({
+      accountId: target.id,
+      type: 'income',
+      bookingDate: '2031-05-09', // 60 days later: far outside the detection window.
+    })
+
+    const result = await linkTransfer(app.prisma, { movementIds: [legOut.id, legIn.id] })
+
+    expect(result.transferId).toBeTruthy()
+    expect(result.movements.map((movement) => movement.id)).toEqual([legOut.id, legIn.id])
+    expect(result.movements[0].transferId).toBe(result.transferId)
+    expect(result.movements[1].transferId).toBe(result.transferId)
+    const rows = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id] } },
+    })
+    expect(rows.every((row) => row.transferId === result.transferId)).toBe(true)
+  })
+
+  it('rejects different amounts with both of them in the message, writing nothing (R2)', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const legOut = await seedMovement({ accountId: source.id, type: 'expense', amount: '512.44' })
+    const legIn = await seedMovement({ accountId: target.id, type: 'income', amount: '512.45' })
+
+    await expect(
+      linkTransfer(app.prisma, { movementIds: [legOut.id, legIn.id] }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      message: expect.stringContaining('512.44'),
+    })
+    await expect(
+      linkTransfer(app.prisma, { movementIds: [legOut.id, legIn.id] }),
+    ).rejects.toMatchObject({ message: expect.stringContaining('512.45') })
+
+    const rows = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id] } },
+    })
+    expect(rows.every((row) => row.transferId === null)).toBe(true)
+  })
+
+  it('rejects two legs of the same type (R3)', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const first = await seedMovement({ accountId: source.id, type: 'expense' })
+    const second = await seedMovement({ accountId: target.id, type: 'expense' })
+
+    await expect(
+      linkTransfer(app.prisma, { movementIds: [first.id, second.id] }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 })
+  })
+
+  it('rejects a neutral leg: it is never a transfer leg (R3)', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const legOut = await seedMovement({ accountId: source.id, type: 'expense', amount: '0.00' })
+    const neutral = await seedMovement({ accountId: target.id, type: 'neutral', amount: '0.00' })
+
+    await expect(
+      linkTransfer(app.prisma, { movementIds: [legOut.id, neutral.id] }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 })
+  })
+
+  it('rejects two legs of the same account (R4)', async () => {
+    const account = await createAccount()
+    const legOut = await seedMovement({ accountId: account.id, type: 'expense' })
+    const legIn = await seedMovement({ accountId: account.id, type: 'income' })
+
+    await expect(
+      linkTransfer(app.prisma, { movementIds: [legOut.id, legIn.id] }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 })
+  })
+
+  it('answers 409 when one leg is already linked, writing nothing on either (R5)', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const linkedLeg = await seedMovement({
+      accountId: source.id,
+      type: 'expense',
+      transferId: 'synthetic-existing-link',
+    })
+    const freeLeg = await seedMovement({ accountId: target.id, type: 'income' })
+
+    await expect(
+      linkTransfer(app.prisma, { movementIds: [linkedLeg.id, freeLeg.id] }),
+    ).rejects.toMatchObject({ code: 'CONFLICT', statusCode: 409 })
+
+    const rows = await app.prisma.movement.findMany({
+      where: { id: { in: [linkedLeg.id, freeLeg.id] } },
+      orderBy: { id: 'asc' },
+    })
+    expect(rows[0]?.transferId).toBe('synthetic-existing-link')
+    expect(rows[1]?.transferId).toBeNull()
+  })
+
+  it('answers 404 when one of the ids does not exist (R6)', async () => {
+    const source = await createAccount()
+    const legOut = await seedMovement({ accountId: source.id, type: 'expense' })
+
+    await expect(
+      linkTransfer(app.prisma, { movementIds: [legOut.id, legOut.id + 999_983] }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 })
+  })
+
+  it('rejects the same id twice (R7, the half the schema cannot say clearly)', async () => {
+    const source = await createAccount()
+    const legOut = await seedMovement({ accountId: source.id, type: 'expense' })
+
+    await expect(
+      linkTransfer(app.prisma, { movementIds: [legOut.id, legOut.id] }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 })
+  })
+
+  it('links two movements the human himself undid before: the memory only vetoes the detection', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const legOut = await seedMovement({ accountId: source.id, type: 'expense' })
+    const legIn = await seedMovement({ accountId: target.id, type: 'income' })
+
+    const linked = await linkTransfer(app.prisma, { movementIds: [legOut.id, legIn.id] })
+    await unlinkTransfer(app.prisma, linked.transferId)
+    const relinked = await linkTransfer(app.prisma, { movementIds: [legOut.id, legIn.id] })
+
+    expect(relinked.transferId).toBeTruthy()
+    expect(relinked.transferId).not.toBe(linked.transferId)
+    const rows = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id] } },
+    })
+    // The link is back and the old memory stays where it was, harmless.
+    expect(rows.every((row) => row.transferId === relinked.transferId)).toBe(true)
+    expect(rows.every((row) => row.undoneTransferId === linked.transferId)).toBe(true)
+  })
+
+  it('writes nothing but transferId when linking (and updatedAt, which Prisma writes) (R13)', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const legOut = await seedMovement({ accountId: source.id, type: 'expense' })
+    const legIn = await seedMovement({ accountId: target.id, type: 'income' })
+
+    const before = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id] } },
+      orderBy: { id: 'asc' },
+    })
+
+    await linkTransfer(app.prisma, { movementIds: [legOut.id, legIn.id] })
+
+    const after = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id] } },
+      orderBy: { id: 'asc' },
+    })
+    const strip = (row: (typeof before)[number]) => {
+      const { transferId: _transferId, updatedAt: _updatedAt, ...rest } = row
+      return rest
+    }
+    expect(after.map(strip)).toEqual(before.map(strip))
+    expect(after.every((row) => row.transferId !== null)).toBe(true)
+    // No movement was created nor deleted.
+    expect(after).toHaveLength(before.length)
+  })
+
+  it('undoes a pair in one statement: transferId to null, the memory set to the value lost (R9)', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const legOut = await seedMovement({ accountId: source.id, type: 'expense' })
+    const legIn = await seedMovement({ accountId: target.id, type: 'income' })
+    const { transferId } = await linkTransfer(app.prisma, { movementIds: [legOut.id, legIn.id] })
+
+    await unlinkTransfer(app.prisma, transferId)
+
+    const rows = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id] } },
+    })
+    expect(rows.every((row) => row.transferId === null)).toBe(true)
+    expect(rows.every((row) => row.undoneTransferId === transferId)).toBe(true)
+  })
+
+  it('answers 404 when no movement carries that transferId (R10)', async () => {
+    await expect(
+      unlinkTransfer(app.prisma, 'synthetic-transfer-id-nobody-has'),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 })
+  })
+
+  it('writes nothing but transferId and the undone memory when undoing (R13)', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const legOut = await seedMovement({ accountId: source.id, type: 'expense' })
+    const legIn = await seedMovement({ accountId: target.id, type: 'income' })
+    const { transferId } = await linkTransfer(app.prisma, { movementIds: [legOut.id, legIn.id] })
+
+    const before = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id] } },
+      orderBy: { id: 'asc' },
+    })
+
+    await unlinkTransfer(app.prisma, transferId)
+
+    const after = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id] } },
+      orderBy: { id: 'asc' },
+    })
+    const strip = (row: (typeof before)[number]) => {
+      const {
+        transferId: _transferId,
+        undoneTransferId: _undoneTransferId,
+        updatedAt: _updatedAt,
+        ...rest
+      } = row
+      return rest
+    }
+    expect(after.map(strip)).toEqual(before.map(strip))
+    expect(after).toHaveLength(before.length)
+  })
+
+  it('keeps the undone pair apart on the next detection run, both still eligible for others (R11, R12)', async () => {
+    const source = await createAccount()
+    const target = await createAccount()
+    const legOut = await seedMovement({ accountId: source.id, type: 'expense' })
+    const legIn = await seedMovement({ accountId: target.id, type: 'income' })
+
+    const firstRun = await detectTransfers(app.prisma)
+    expect(firstRun.pairsCreated).toBe(1)
+    const linkedRow = await app.prisma.movement.findUniqueOrThrow({ where: { id: legOut.id } })
+    const detectedId = linkedRow.transferId
+    expect(detectedId).toBeTruthy()
+    if (detectedId === null) throw new Error('unreachable: just asserted')
+
+    await unlinkTransfer(app.prisma, detectedId)
+    const secondRun = await detectTransfers(app.prisma)
+
+    expect(secondRun.pairsCreated).toBe(0)
+    const rows = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id] } },
+    })
+    expect(rows.every((row) => row.transferId === null)).toBe(true)
+    expect(rows.every((row) => row.undoneTransferId === detectedId)).toBe(true)
+
+    // A third compatible leg in another account: the undone expense is still a
+    // candidate and pairs with it (R12).
+    const third = await createAccount()
+    const thirdLeg = await seedMovement({ accountId: third.id, type: 'income' })
+    const thirdRun = await detectTransfers(app.prisma)
+
+    expect(thirdRun.pairsCreated).toBe(1)
+    const afterThird = await app.prisma.movement.findMany({
+      where: { id: { in: [legOut.id, legIn.id, thirdLeg.id] } },
+      orderBy: { id: 'asc' },
+    })
+    const byId = new Map(afterThird.map((row) => [row.id, row]))
+    expect(byId.get(legOut.id)?.transferId).toBeTruthy()
+    expect(byId.get(legOut.id)?.transferId).toBe(byId.get(thirdLeg.id)?.transferId)
+    expect(byId.get(legIn.id)?.transferId).toBeNull()
   })
 })
