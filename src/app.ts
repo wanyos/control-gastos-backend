@@ -13,6 +13,7 @@ import type { ProductParserRegistry } from './modules/investments/investments.ty
 import ingestionRoutes from './modules/ingestion/ingestion.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
 import myinvestorRoutes from './modules/myinvestor/myinvestor.routes.js'
+import netWorthRoutes from './modules/net-worth/net-worth.routes.js'
 import { parseMyinvestorProductFile } from './modules/myinvestor/myinvestor.service.js'
 import { parseMyinvestorStatement } from './modules/myinvestor/myinvestor.statement.parser.js'
 import n26Routes from './modules/n26/n26.routes.js'
@@ -87,6 +88,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(categoriesRoutes, { prefix: '/api/categories' })
   app.register(movementsRoutes, { prefix: '/api/movements' })
   app.register(overviewRoutes, { prefix: '/api/overview' })
+  app.register(netWorthRoutes, { prefix: '/api/net-worth' })
   app.register(investmentsRoutes, { prefix: '/api/investments' })
   app.register(ingestionRoutes, { prefix: '/api/ingestion' })
   app.register(transfersRoutes, { prefix: '/api/transfers' })

@@ -10,6 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { buildApp } from '../../app.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
 import {
+  getInvestmentsNetWorth,
   persistDeposit,
   persistProductSnapshot,
   persistSavingsSnapshot,
@@ -630,5 +631,336 @@ describe('persistValuation: a product that fluctuates (feature 29)', () => {
 
     expect(await app.prisma.account.count()).toBe(accountsBefore)
     expect(await app.prisma.movement.count()).toBe(movementsBefore)
+  })
+})
+
+// ── Feature 42: the valuation of every live product for GET /api/net-worth ──
+//
+// 🔒 Every value here is invented (ADR-017): unique generated product names, a
+// bank slug of its own, and amounts built by hand. The clock is FIXED through
+// the `today` parameter, never read from the wall.
+
+describe('getInvestmentsNetWorth: what every live product is worth today (feature 42)', () => {
+  let app: FastifyInstance
+  const createdProductIds: number[] = []
+  let counter = 0
+
+  const bank42 = 'zz-net-worth-test-bank'
+  // Date-only midnight UTC, like every photo date. staleBefore derives from
+  // it: first day of the month before September = 2026-08-01.
+  const today = new Date('2026-09-15T00:00:00.000Z')
+
+  function uniqueName(): string {
+    counter += 1
+    return `Producto Patrimonio ${Date.now()}-${counter}-${Math.floor(Math.random() * 1_000_000)}`
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    if (createdProductIds.length > 0) {
+      await app.prisma.valuation.deleteMany({ where: { productId: { in: createdProductIds } } })
+      await app.prisma.savingsSnapshot.deleteMany({
+        where: { productId: { in: createdProductIds } },
+      })
+      await app.prisma.investmentProduct.deleteMany({ where: { id: { in: createdProductIds } } })
+      createdProductIds.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  interface SeedProduct {
+    type: 'fund' | 'etf' | 'managed_portfolio' | 'deposit' | 'savings_account'
+    closedAt?: string | null
+    principal?: string
+    expectedGain?: string
+    maturityDate?: string
+  }
+
+  async function createProduct(seed: SeedProduct) {
+    const product = await app.prisma.investmentProduct.create({
+      data: {
+        bank: bank42,
+        name: uniqueName(),
+        type: seed.type,
+        closedAt: seed.closedAt == null ? null : new Date(`${seed.closedAt}T00:00:00.000Z`),
+        principal: seed.principal ?? null,
+        expectedGain: seed.expectedGain ?? null,
+        maturityDate:
+          seed.maturityDate === undefined ? null : new Date(`${seed.maturityDate}T00:00:00.000Z`),
+      },
+    })
+    createdProductIds.push(product.id)
+    return product
+  }
+
+  interface SeedValuation {
+    productId: number
+    date: string
+    marketValue: string
+    uninvestedCash?: string | null
+  }
+
+  function seedValuation(seed: SeedValuation) {
+    return app.prisma.valuation.create({
+      data: {
+        productId: seed.productId,
+        date: new Date(`${seed.date}T00:00:00.000Z`),
+        invested: '100.00',
+        marketValue: seed.marketValue,
+        gain: null,
+        gainPercent: null,
+        uninvestedCash: seed.uninvestedCash ?? null,
+      },
+    })
+  }
+
+  function seedSnapshot(productId: number, date: string, balance: string) {
+    return app.prisma.savingsSnapshot.create({
+      data: {
+        productId,
+        date: new Date(`${date}T00:00:00.000Z`),
+        openingBalance: '0.00',
+        moneyIn: '0.00',
+        moneyOut: '0.00',
+        interest: '0.00',
+        balance,
+      },
+    })
+  }
+
+  it('values a fluctuating product as marketValue + uninvestedCash of its most recent photo (R3)', async () => {
+    const fund = await createProduct({ type: 'fund' })
+    // An older photo AND a photo later than today: neither may be the one used.
+    await seedValuation({ productId: fund.id, date: '2026-07-31', marketValue: '900.00' })
+    await seedValuation({
+      productId: fund.id,
+      date: '2026-08-31',
+      marketValue: '1000.40',
+      uninvestedCash: '12.10',
+    })
+    await seedValuation({ productId: fund.id, date: '2026-09-30', marketValue: '9999.99' })
+
+    const result = await getInvestmentsNetWorth(app.prisma, today)
+
+    const entry = result.products.find((product) => product.id === fund.id)
+    expect(entry).toMatchObject({
+      type: 'fund',
+      value: '1012.50',
+      marketValue: '1000.40',
+      uninvestedCash: '12.10',
+      valuedAt: '2026-08-31',
+      stale: false,
+    })
+    expect(result.total).toBe('1012.50')
+    expect(result.issues).toEqual([])
+  })
+
+  it('adds only marketValue when the photo carries no uninvestedCash — no invented zero (R3)', async () => {
+    const etf = await createProduct({ type: 'etf' })
+    await seedValuation({
+      productId: etf.id,
+      date: '2026-08-31',
+      marketValue: '500.25',
+      uninvestedCash: null,
+    })
+
+    const result = await getInvestmentsNetWorth(app.prisma, today)
+
+    const entry = result.products.find((product) => product.id === etf.id)
+    expect(entry).toMatchObject({ value: '500.25', marketValue: '500.25', uninvestedCash: null })
+    expect(result.total).toBe('500.25')
+  })
+
+  it('values a live deposit by its principal, without adding expectedGain (R4)', async () => {
+    const deposit = await createProduct({
+      type: 'deposit',
+      principal: '3000.00',
+      expectedGain: '82.50',
+      maturityDate: '2027-03-01',
+    })
+
+    const result = await getInvestmentsNetWorth(app.prisma, today)
+
+    const entry = result.products.find((product) => product.id === deposit.id)
+    expect(entry).toMatchObject({
+      type: 'deposit',
+      value: '3000.00',
+      principal: '3000.00',
+      expectedGain: '82.50',
+      maturityDate: '2027-03-01',
+      matured: false,
+    })
+    expect(result.total).toBe('3000.00')
+    expect(result.issues).toEqual([])
+  })
+
+  it('values a savings account by the balance of its most recent snapshot (R5)', async () => {
+    const savings = await createProduct({ type: 'savings_account' })
+    await seedSnapshot(savings.id, '2026-07-31', '4000.00')
+    await seedSnapshot(savings.id, '2026-08-31', '4006.40')
+
+    const result = await getInvestmentsNetWorth(app.prisma, today)
+
+    const entry = result.products.find((product) => product.id === savings.id)
+    expect(entry).toMatchObject({
+      type: 'savings_account',
+      value: '4006.40',
+      valuedAt: '2026-08-31',
+      stale: false,
+    })
+    expect(result.total).toBe('4006.40')
+  })
+
+  it('neither lists nor sums a closed product (R6)', async () => {
+    const closed = await createProduct({ type: 'fund', closedAt: '2026-08-15' })
+    await seedValuation({ productId: closed.id, date: '2026-07-31', marketValue: '700.00' })
+
+    const result = await getInvestmentsNetWorth(app.prisma, today)
+
+    expect(result.products.find((product) => product.id === closed.id)).toBeUndefined()
+    expect(result.issues.find((issue) => issue.productId === closed.id)).toBeUndefined()
+    expect(result.total).toBe('0.00')
+  })
+
+  it('lists a product without any photo as a null gap, out of the sum, with its reason (R7)', async () => {
+    const fund = await createProduct({ type: 'fund' })
+    const savings = await createProduct({ type: 'savings_account' })
+    const funded = await createProduct({ type: 'etf' })
+    await seedValuation({ productId: funded.id, date: '2026-08-31', marketValue: '100.00' })
+    // A photo LATER than today is not a photo of today: still a gap.
+    await seedValuation({ productId: fund.id, date: '2026-10-31', marketValue: '888.88' })
+
+    const result = await getInvestmentsNetWorth(app.prisma, today)
+
+    expect(result.products.find((product) => product.id === fund.id)).toMatchObject({
+      value: null,
+      marketValue: null,
+      uninvestedCash: null,
+      valuedAt: null,
+      stale: false,
+    })
+    expect(result.products.find((product) => product.id === savings.id)).toMatchObject({
+      value: null,
+      valuedAt: null,
+      stale: false,
+    })
+    expect(result.total).toBe('100.00')
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        { productId: fund.id, name: fund.name, reason: 'no_valuation', valuedAt: null },
+        { productId: savings.id, name: savings.name, reason: 'no_valuation', valuedAt: null },
+      ]),
+    )
+    expect(result.issues).toHaveLength(2)
+  })
+
+  it('still sums a photo older than the first day of last month, but warns with its date (R8)', async () => {
+    // today = 2026-09-15 → staleBefore = 2026-08-01. A 2026-07-31 photo is
+    // stale; a 2026-08-01 photo is not (the threshold is strict `<`).
+    const staleFund = await createProduct({ type: 'fund' })
+    await seedValuation({ productId: staleFund.id, date: '2026-07-31', marketValue: '250.00' })
+    const freshSavings = await createProduct({ type: 'savings_account' })
+    await seedSnapshot(freshSavings.id, '2026-08-01', '100.00')
+    const staleSavings = await createProduct({ type: 'savings_account' })
+    await seedSnapshot(staleSavings.id, '2026-06-30', '50.00')
+
+    const result = await getInvestmentsNetWorth(app.prisma, today)
+
+    expect(result.products.find((product) => product.id === staleFund.id)).toMatchObject({
+      value: '250.00',
+      valuedAt: '2026-07-31',
+      stale: true,
+    })
+    expect(result.products.find((product) => product.id === freshSavings.id)).toMatchObject({
+      stale: false,
+    })
+    expect(result.products.find((product) => product.id === staleSavings.id)).toMatchObject({
+      value: '50.00',
+      stale: true,
+    })
+    // The old values STILL sum: the warning marks them, it never hides money.
+    expect(result.total).toBe('400.00')
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        {
+          productId: staleFund.id,
+          name: staleFund.name,
+          reason: 'stale_valuation',
+          valuedAt: '2026-07-31',
+        },
+        {
+          productId: staleSavings.id,
+          name: staleSavings.name,
+          reason: 'stale_valuation',
+          valuedAt: '2026-06-30',
+        },
+      ]),
+    )
+    expect(result.issues).toHaveLength(2)
+  })
+
+  it('keeps summing a matured deposit that is still open, and warns about it (R9)', async () => {
+    const matured = await createProduct({
+      type: 'deposit',
+      principal: '2000.00',
+      expectedGain: '30.00',
+      maturityDate: '2026-08-31',
+    })
+
+    const result = await getInvestmentsNetWorth(app.prisma, today)
+
+    expect(result.products.find((product) => product.id === matured.id)).toMatchObject({
+      value: '2000.00',
+      matured: true,
+    })
+    expect(result.total).toBe('2000.00')
+    expect(result.issues).toEqual([
+      {
+        productId: matured.id,
+        name: matured.name,
+        reason: 'matured_not_closed',
+        valuedAt: '2026-08-31',
+      },
+    ])
+  })
+
+  it('serializes every amount exactly as stored and sums in Decimal, rounding nothing (R10)', async () => {
+    // Amounts chosen so a float sum would drift: 0.1 + 0.2 style cents.
+    const fund = await createProduct({ type: 'fund' })
+    await seedValuation({
+      productId: fund.id,
+      date: '2026-08-31',
+      marketValue: '1000.10',
+      uninvestedCash: '0.20',
+    })
+    const savings = await createProduct({ type: 'savings_account' })
+    await seedSnapshot(savings.id, '2026-08-31', '2000.30')
+    const deposit = await createProduct({
+      type: 'deposit',
+      principal: '3000.40',
+      maturityDate: '2027-01-01',
+    })
+
+    const result = await getInvestmentsNetWorth(app.prisma, today)
+
+    expect(result.products.find((product) => product.id === fund.id)).toMatchObject({
+      marketValue: '1000.10',
+      uninvestedCash: '0.20',
+      value: '1000.30',
+    })
+    expect(result.products.find((product) => product.id === savings.id)).toMatchObject({
+      value: '2000.30',
+    })
+    expect(result.products.find((product) => product.id === deposit.id)).toMatchObject({
+      value: '3000.40',
+    })
+    expect(result.total).toBe('6001.00')
   })
 })

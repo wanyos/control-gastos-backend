@@ -1080,3 +1080,25 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   progress/reviews/manual-transfer-marking.md.
 - **Cierre:** done. Deber del humano: enlazar por fin el caso vivo de las 2x500
   con POST /api/transfers. Siguiente del orden acordado: F42 net-worth.
+
+## 2026-09-06 — Feature 42: net-worth
+
+- **Agente:** leader (orquestando) + spec-author + implementer + reviewer.
+- **Plan:** spec SDD aprobado por el humano el mismo día (5 decisiones:
+  endpoint nuevo GET /api/net-worth solo «hoy»; foto vieja = anterior al
+  primer día del mes pasado, suma con aviso; depósito vencido sin closedAt
+  suma con aviso de posible doble conteo; producto cerrado no aparece).
+- **Cambios:** módulo nuevo `src/modules/net-worth/` que solo compone:
+  cuentas vía listAccounts (fórmula única de la F31) + inversiones leídas
+  desde investments.service (ADR-026 intacto); fluctuante = marketValue +
+  uninvestedCash de la última foto, depósito = principal, remunerada = balance
+  del último snapshot; huecos y avisos, jamás ceros silenciosos. Sección nueva
+  en docs/api-contract.md. Cero cambios de esquema. Detalle:
+  `progress/summaries/net-worth.md`.
+- **Verificación:** ./init.sh completo en verde (reviewer lo relanzó): 58
+  archivos, 1139 tests; los 14 de la F42 vistos pasar uno a uno. Veredicto
+  APROBADO en progress/reviews/net-worth.md; hallazgo único de severidad baja
+  anotado como cabo suelto 19 del roadmap.
+- **Cierre:** done. Queda la F43 auto-categorization, última del planteamiento
+  del 2026-09-05, con su pregunta de puerta (quién escribe las reglas de
+  arranque).

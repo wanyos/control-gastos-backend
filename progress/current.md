@@ -33,12 +33,16 @@ abierta de la F43 (quién escribe las reglas de arranque) se resuelve en su
 puerta de spec. También pidió retirar de los pendientes la comparación de
 saldos con la web del banco (hecho en `docs/roadmap.md` §Deberes).
 
-**F44 `manual-transfer-marking` cerrada** (2026-09-06, aprobada) —
-[veredicto](reviews/manual-transfer-marking.md) ·
-[resumen](summaries/manual-transfer-marking.md). La implementación se
-interrumpió el 2026-09-05 por un apagado accidental y se terminó el
-2026-09-06. **Sin commitear**, esperando la prueba real del humano. Siguiente
-del orden acordado: **F42 `net-worth`**.
+**F44 `manual-transfer-marking` cerrada** (2026-09-06, aprobada, probada en
+real y commiteada en ca8f824) — [veredicto](reviews/manual-transfer-marking.md) ·
+[resumen](summaries/manual-transfer-marking.md).
+
+**F42 `net-worth` cerrada** (2026-09-06, aprobada) —
+[veredicto](reviews/net-worth.md) · [resumen](summaries/net-worth.md).
+**Sin commitear**, esperando la prueba real del humano
+(`curl.exe http://localhost:3000/api/net-worth`). Queda la **F43
+`auto-categorization`**, última del planteamiento, con su pregunta de puerta
+(quién escribe las reglas de arranque).
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
@@ -53,17 +57,11 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 
 ## Lo que le toca al humano
 
-- **De la F44 (2026-09-06):** la prueba real, en dos pasos con el backend
-  reiniciado y la migración aplicada (`pnpm run dev` la aplica; si no,
-  `npx prisma migrate deploy`). Primero busca los ids de las tres piernas del
-  caso vivo (las dos salidas de 500 de Bankinter del 2024-09-12 y la entrada
-  de N26 del 2024-09-13) en `GET /api/movements`, y luego enlaza la entrada
-  con UNA de las dos salidas (da igual cuál):
-  `curl.exe -X POST http://localhost:3000/api/transfers -H "Content-Type: application/json" -d "{\"movementIds\": [<salida>, <entrada>]}"`.
-  Comprobación: el resumen de septiembre… no cambia (los dos apuntes son de
-  2024); lo que sí cambia es que ese grupo deja de salir como dudoso en la
-  siguiente importación y esos 1000 EUR salen de los totales de sus meses. Si
-  cuadra, se commitea.
+- ~~**De la F44:** la prueba real~~ ✅ **hecho por el humano el 2026-09-06**:
+  `POST /api/transfers` con la primera salida y la entrada devolvió 201 con el
+  enlace compartido, y en cada pierna solo cambiaron `transferId` y
+  `updatedAt`. El caso vivo de los traspasos queda resuelto: ya no hay ningún
+  grupo dudoso pendiente. Commiteada en ca8f824.
 - ~~**De la F39:** probarla en real~~ ✅ **hecho por el humano el 2026-09-05**:
   agosto cuadra número a número (la ganancia del mes es exactamente la suma de
   la fluctuación y los intereses, y las tres variaciones por producto

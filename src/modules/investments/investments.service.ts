@@ -14,8 +14,11 @@ import type {
   DepositInput,
   ExcludedFromPeriodGain,
   InvestmentProductOverview,
+  InvestmentsNetWorth,
   InvestmentsOverviewQuery,
   InvestmentsOverviewResponse,
+  NetWorthIssue,
+  NetWorthProduct,
   ProductFileCommon,
   ProductFileInput,
   ProductImportResult,
@@ -490,6 +493,162 @@ export async function getInvestmentsOverview(
       excluded,
     },
   }
+}
+
+/**
+ * The read of feature 42: what every LIVE investment product is worth today,
+ * for the `investments` block of `GET /api/net-worth`. It lives here and not
+ * in the net-worth module because this file is the only one of `src/` allowed
+ * to name the three investment tables (ADR-026, guarded by
+ * `src/architecture.test.ts`): the net-worth module composes, it never reads.
+ *
+ * `today` is injected (date-only, midnight UTC) so the tests can fix the
+ * clock; the threshold for a stale photo derives from it, never from the wall
+ * clock. Only `find*` in the whole path — this view writes NOTHING (R12).
+ *
+ * Valuation rules (decisions.md of feature 42, all approved):
+ *  - closed product (`closedAt` written): not listed, not summed — its money
+ *    is already in an account balance (R6);
+ *  - fluctuating: `marketValue + uninvestedCash` of the most recent photo
+ *    with `date <= today`; a `NULL` cash adds only `marketValue`, never an
+ *    invented zero (R3, ADR-012);
+ *  - deposit: its `principal` while it lives, `expectedGain` NEVER added
+ *    (R4); matured but still open → keeps summing, with a warning (R9);
+ *  - savings account: the `balance` of its most recent snapshot (R5);
+ *  - no photo at all → `value: null`, out of the sum, listed in `issues`
+ *    with `no_valuation` — never a silent zero (R7);
+ *  - photo older than the first day of LAST month → still sums, listed in
+ *    `issues` with `stale_valuation` and the date used (R8).
+ */
+export async function getInvestmentsNetWorth(
+  prisma: AppPrismaClient,
+  today: Date,
+): Promise<InvestmentsNetWorth> {
+  // First day of the month BEFORE today's month (UTC). The photos are monthly
+  // end-of-month files: mid-month, last month's photo is fresh; one from two
+  // months ago is not (decisions.md 🔴 3).
+  const staleBefore = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1))
+
+  const products = await prisma.investmentProduct.findMany({
+    where: { closedAt: null },
+    orderBy: { id: 'asc' },
+  })
+
+  const productIds = products.map((product) => product.id)
+  // Newest first and capped at `today`: per product, the first row is "the
+  // most recent photo with date <= today" (same pattern as feature 39).
+  const [valuations, snapshots] = await Promise.all([
+    prisma.valuation.findMany({
+      where: { productId: { in: productIds }, date: { lte: today } },
+      orderBy: { date: 'desc' },
+    }),
+    prisma.savingsSnapshot.findMany({
+      where: { productId: { in: productIds }, date: { lte: today } },
+      orderBy: { date: 'desc' },
+    }),
+  ])
+
+  let total = new Prisma.Decimal(0)
+  const netWorthProducts: NetWorthProduct[] = []
+  const issues: NetWorthIssue[] = []
+
+  for (const product of products) {
+    const identity = { productId: product.id, name: product.name }
+
+    if (product.type === 'deposit') {
+      // Worth its principal while it lives (should the column be NULL — the
+      // parser forbids it — the value is a gap and does NOT sum, no new issue).
+      if (product.principal !== null) total = total.plus(product.principal)
+      const matured = product.maturityDate !== null && product.maturityDate < today
+      if (matured && product.maturityDate !== null) {
+        issues.push({
+          ...identity,
+          reason: 'matured_not_closed',
+          valuedAt: serializeDateOnly(product.maturityDate),
+        })
+      }
+      netWorthProducts.push({
+        id: product.id,
+        bank: product.bank,
+        name: product.name,
+        type: 'deposit',
+        value: product.principal === null ? null : product.principal.toFixed(2),
+        principal: product.principal === null ? null : product.principal.toFixed(2),
+        expectedGain: product.expectedGain === null ? null : product.expectedGain.toFixed(2),
+        maturityDate:
+          product.maturityDate === null ? null : serializeDateOnly(product.maturityDate),
+        matured,
+      })
+      continue
+    }
+
+    if (product.type === 'savings_account') {
+      const snapshot = snapshots.find((row) => row.productId === product.id)
+      const value = snapshot === undefined ? null : snapshot.balance
+      const stale = snapshot !== undefined && snapshot.date < staleBefore
+      if (snapshot === undefined) {
+        issues.push({ ...identity, reason: 'no_valuation', valuedAt: null })
+      } else {
+        total = total.plus(snapshot.balance)
+        if (stale) {
+          issues.push({
+            ...identity,
+            reason: 'stale_valuation',
+            valuedAt: serializeDateOnly(snapshot.date),
+          })
+        }
+      }
+      netWorthProducts.push({
+        id: product.id,
+        bank: product.bank,
+        name: product.name,
+        type: 'savings_account',
+        value: value === null ? null : value.toFixed(2),
+        valuedAt: snapshot === undefined ? null : serializeDateOnly(snapshot.date),
+        stale,
+      })
+      continue
+    }
+
+    const photo = valuations.find((row) => row.productId === product.id)
+    // A NULL cash adds NOTHING: the sum is only performed when the cash is
+    // there, never over an invented zero (R3, ADR-012).
+    const value =
+      photo === undefined
+        ? null
+        : photo.uninvestedCash === null
+          ? photo.marketValue
+          : photo.marketValue.plus(photo.uninvestedCash)
+    const stale = photo !== undefined && photo.date < staleBefore
+    if (photo === undefined) {
+      issues.push({ ...identity, reason: 'no_valuation', valuedAt: null })
+    } else {
+      if (value !== null) total = total.plus(value)
+      if (stale) {
+        issues.push({
+          ...identity,
+          reason: 'stale_valuation',
+          valuedAt: serializeDateOnly(photo.date),
+        })
+      }
+    }
+    netWorthProducts.push({
+      id: product.id,
+      bank: product.bank,
+      name: product.name,
+      type: product.type,
+      value: value === null ? null : value.toFixed(2),
+      marketValue: photo === undefined ? null : photo.marketValue.toFixed(2),
+      uninvestedCash:
+        photo === undefined || photo.uninvestedCash === null
+          ? null
+          : photo.uninvestedCash.toFixed(2),
+      valuedAt: photo === undefined ? null : serializeDateOnly(photo.date),
+      stale,
+    })
+  }
+
+  return { total: total.toFixed(2), products: netWorthProducts, issues }
 }
 
 /** `YYYY-MM-DD` of a date-only column (stored at midnight UTC). */

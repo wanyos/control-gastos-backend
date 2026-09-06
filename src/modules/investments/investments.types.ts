@@ -273,6 +273,105 @@ export interface InvestmentsOverviewResponse {
   periodGain: PeriodGain
 }
 
+// ---------------------------------------------------------------------------
+// Read side (feature 42): the shapes `getInvestmentsNetWorth` answers with —
+// what every live product is worth TODAY, by its most recent photo, for the
+// `investments` block of `GET /api/net-worth`.
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a product needs a warning next to the total (R7, R8, R9 of feature 42).
+ * Closed enum, part of the contract, same pattern as `PeriodGainExclusionReason`.
+ */
+export type NetWorthIssueReason = 'no_valuation' | 'stale_valuation' | 'matured_not_closed'
+
+/** One warning of the net-worth view, with its machine-readable reason. */
+export interface NetWorthIssue {
+  productId: number
+  name: string
+  reason: NetWorthIssueReason
+  /**
+   * `date` of the photo the value came from; the `maturityDate` on
+   * `matured_not_closed`; `null` on `no_valuation` (there is no photo at all).
+   */
+  valuedAt: string | null
+}
+
+/**
+ * A product that FLUCTUATES, valued by its most recent `Valuation` with
+ * `date <= today`: `value = marketValue + uninvestedCash`, or only
+ * `marketValue` when the cash is `NULL` — a missing cash is never invented as
+ * zero (ADR-012). `value: null` means "no photo at all" (R7), never zero.
+ */
+export interface FluctuatingNetWorthProduct {
+  id: number
+  bank: string
+  name: string
+  type: 'fund' | 'etf' | 'managed_portfolio'
+  value: string | null
+  /** Exactly as stored, never recomputed. */
+  marketValue: string | null
+  /** Exactly as stored; `NULL` means the file does not carry it. */
+  uninvestedCash: string | null
+  /** `date` of the `Valuation` used, or `null` when there is none. */
+  valuedAt: string | null
+  /** `true` when the photo is older than the first day of last month (R8). */
+  stale: boolean
+}
+
+/**
+ * A deposit is worth its `principal` while it lives; `expectedGain` is shown
+ * but NEVER added — the gain only realizes at maturity (R4). `matured` warns
+ * that `maturityDate` is already behind and the money may be counted twice
+ * until the human writes the `closedAt` (R9).
+ */
+export interface DepositNetWorthProduct {
+  id: number
+  bank: string
+  name: string
+  type: 'deposit'
+  /** = `principal`; `null` only when the principal itself is `NULL`. */
+  value: string | null
+  principal: string | null
+  /** Informative only: NOT summed into anything. */
+  expectedGain: string | null
+  /** `YYYY-MM-DD`. */
+  maturityDate: string | null
+  /** `maturityDate < today` while the product is still open (R9). */
+  matured: boolean
+}
+
+/**
+ * A remunerated account, valued by the `balance` of its most recent
+ * `SavingsSnapshot` with `date <= today` (R5). Same gap rules as the
+ * fluctuating products: no photo → `value: null` plus a warning (R7).
+ */
+export interface SavingsNetWorthProduct {
+  id: number
+  bank: string
+  name: string
+  type: 'savings_account'
+  value: string | null
+  /** `date` of the `SavingsSnapshot` used, or `null` when there is none. */
+  valuedAt: string | null
+  stale: boolean
+}
+
+/** The shape of each product depends on its type: a `null` is never ambiguous. */
+export type NetWorthProduct =
+  FluctuatingNetWorthProduct | DepositNetWorthProduct | SavingsNetWorthProduct
+
+/**
+ * The `investments` block of `GET /api/net-worth`. `total` is the sum of the
+ * non-null `value`s; `issues` is what keeps that sum honest — what could not
+ * be counted, or is old, or may be double-counted, is listed with its reason.
+ */
+export interface InvestmentsNetWorth {
+  total: string
+  products: NetWorthProduct[]
+  issues: NetWorthIssue[]
+}
+
 /**
  * What one product file left in the database. `created` is what tells "it has
  * been stored" apart from "the same thing has been stored again", which is the

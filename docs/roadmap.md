@@ -85,7 +85,7 @@ arranca sin su visto bueno):
 
 | # | Feature | Qué traería | Spec |
 |---|---|---|---|
-| **42** | `net-worth` | El patrimonio total: cuentas + inversiones en una consulta, con desglose | sí |
+| **42** | `net-worth` ✅ (2026-09-06) | El patrimonio total: cuentas + inversiones en una consulta, con desglose (`GET /api/net-worth`) | sí |
 | **43** | `auto-categorization` | Categorías automáticas por reglas sobre el concepto (el 75% ya salía en el análisis del 2026-09-01) | sí |
 | **44** | `manual-transfer-marking` ✅ (2026-09-06) | Enlazar y desenlazar a mano un traspaso que la detección no puede resolver (`POST/DELETE /api/transfers`, con la memoria de «estos dos no» que anticipó la decisión 4 de la F41; primera migración desde la F9: `Movement.undoneTransferId`) | sí |
 
@@ -376,6 +376,7 @@ tiene etapa, es que se va a perder.
 | 17 | **Los contadores de `POST /api/import` no distinguen anclaje ni relleno en el total del run.** La F31 añadió `anchored` y `balancesFilled` por archivo, pero `ImportRunResult` no los agrega, así que no hay total de la pasada. Documentado a propósito en `docs/api-contract.md` para que nadie lo busque. Misma familia que el cabo 13 | **con el cabo 13** |
 | ~~5~~ | ~~El histórico del Excel de años~~ | ✅ **descartado (2026-08-22, reafirmado el 2026-08-23)**, ver `../../docs/ideas.md` §6. El vacío se llena con extractos de los bancos de varios años atrás, no con el Excel: una sola fuente, sin solape ni duplicados incasables |
 | 6 | La base de datos no tiene copia de seguridad; el crudo de Drive te salva los movimientos, **no** las categorías, alias ni `initialBalance` | sin dueño |
+| 19 | **`src/modules/net-worth/` no está en la lista de árbol esperado de `src/architecture.test.ts`** (overview y transfers sí están). Cumple la regla pero nadie la vigila; chore de una línea. Encontrado por el reviewer de la F42 (2026-09-06). Misma familia que el cabo 15 | **sin abrir, una línea** |
 
 > **Sobre el 6:** volver a parsear desde Drive te reconstruye lo importado, pero
 > solo si el importador de la E5 es determinista y re-ejecutable. Merece la pena

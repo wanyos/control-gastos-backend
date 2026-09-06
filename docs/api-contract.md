@@ -285,9 +285,11 @@ feature 39 tiene un lector**:
 lectura que devuelve cada producto con su foto del mes, la variación frente a la
 foto anterior y la ganancia total del periodo. Es el **único** endpoint bajo
 `/api/investments`: no hay `POST`, `PATCH` ni `DELETE` — los datos entran
-solamente por la importación. Lo que sigue sin existir es una consulta de
-patrimonio neto (`marketValue` + `uninvestedCash`): es una feature posterior, ya
-prevista en `docs/data-model.md` §Patrimonio.
+solamente por la importación. **Y desde la feature 42 existe la consulta de
+patrimonio neto**: [`GET /api/net-worth`](#get-apinet-worth), que suma el saldo
+real de las cuentas y el valor de las inversiones según sus últimas fotos
+(`marketValue` + `uninvestedCash` en los productos que fluctúan), sin tocar
+ninguna de las dos vistas anteriores.
 
 **`SavingsSnapshot`** — la foto mensual de una cuenta remunerada. Gemela de `Valuation`
 en oficio (una fila por producto y fecha, recargar sobrescribe, nada se calcula) y
@@ -810,9 +812,10 @@ Reglas que gobiernan toda la respuesta:
   el producto listado en `periodGain.excluded` con su motivo. Una foto anterior
   puede verse, pero siempre en `previousValuation` con su propia fecha — nunca
   haciéndose pasar por la del periodo.
-- **No hay patrimonio total**: `marketValue` y `uninvestedCash` van como campos
-  separados y no se suman (aviso de la feature 9). La consulta de patrimonio
-  neto es otra feature.
+- **No hay patrimonio total en esta vista**: `marketValue` y `uninvestedCash`
+  van como campos separados y no se suman (aviso de la feature 9). La consulta
+  de patrimonio neto es [`GET /api/net-worth`](#get-apinet-worth) (feature 42),
+  que no cambia nada de esta respuesta.
 - **Solo lectura**: la consulta no ejecuta ninguna escritura, y
   [`GET /api/accounts`](#get-apiaccounts) queda exactamente igual que antes de
   esta feature.
@@ -926,6 +929,133 @@ de querystring **desconocido se ignora**, igual que en `GET /api/overview`.
 
 > Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
 > `PATCH`, ni `DELETE` bajo `/api/investments`).
+
+### `GET /api/net-worth`
+
+El patrimonio neto total (feature "net-worth", 2026-09-06): cuánto vale todo el
+dinero junto **hoy** — el saldo real de las cuentas más lo que valen las
+inversiones según sus últimas fotos — con el desglose de cada parte y avisos
+cuando una pieza está incompleta, vieja o puede estar contada dos veces. Es la
+vista de arriba del todo: [`GET /api/overview`](#get-apioverview) (el mes) y
+[`GET /api/investments/overview`](#get-apiinvestmentsoverview) (las inversiones
+del mes) siguen exactamente igual.
+
+**No tiene parámetros**: responde siempre a fecha de hoy (UTC). Un parámetro de
+querystring desconocido **se descarta antes del handler** — nunca es un 400.
+
+Reglas que gobiernan toda la respuesta:
+
+- **El lado de las cuentas es la misma fórmula de saldo de la feature 31** que
+  usan `GET /api/accounts` y `GET /api/overview`: cada cuenta muestra el mismo
+  `balance` que esas vistas en el mismo instante, y `accounts.total` es su suma.
+  No hay una segunda suma del mismo dinero.
+- **Cada producto de inversión vivo se valora por su regla**:
+  - `fund` / `etf` / `managed_portfolio`: `marketValue + uninvestedCash` de su
+    `Valuation` más reciente con `date` ≤ hoy. Si `uninvestedCash` es `NULL`,
+    vale solo `marketValue` — no se inventa un cero (regla de la feature 9).
+  - `deposit`: su `principal` mientras viva. `expectedGain` se muestra pero
+    **no se suma**: la ganancia solo se realiza al vencimiento.
+  - `savings_account`: el `balance` de su `SavingsSnapshot` más reciente con
+    `date` ≤ hoy.
+- **Un producto cerrado (`closedAt` escrito) no aparece ni suma**: su dinero ya
+  volvió a una cuenta corriente y sumarlo lo contaría dos veces.
+- **Lo no computable sale como hueco, jamás como cero**: un producto vivo sin
+  ninguna foto sale con `value: null`, fuera de `investments.total` y listado
+  en `investments.issues` con su motivo.
+- **Ningún importe escrito por el humano se recalcula ni se redondea**
+  (ADR-012): `marketValue`, `uninvestedCash`, `principal` y `balance` salen tal
+  como están guardados; la única aritmética es sumarlos, en decimal exacto.
+- **Solo lectura**: la consulta no ejecuta ninguna escritura.
+
+**Respuesta 200** (cifras inventadas)
+
+```json
+{
+  "asOf": "2026-09-06",
+  "total": "23708.90",
+  "accounts": {
+    "total": "5500.00",
+    "accounts": [
+      {
+        "id": 1, "iban": "ES9121000418450200051332", "bank": "bankinter",
+        "alias": "bankinter ···1332", "type": "checking", "balance": "5500.00"
+      }
+    ]
+  },
+  "investments": {
+    "total": "18208.90",
+    "products": [
+      {
+        "id": 1, "bank": "myinvestor", "name": "Fondo Global", "type": "fund",
+        "value": "12810.75", "marketValue": "12800.50", "uninvestedCash": "10.25",
+        "valuedAt": "2026-08-29", "stale": false
+      },
+      {
+        "id": 2, "bank": "myinvestor", "name": "ETF Mundo", "type": "etf",
+        "value": null, "marketValue": null, "uninvestedCash": null,
+        "valuedAt": null, "stale": false
+      },
+      {
+        "id": 4, "bank": "myinvestor", "name": "Deposito 12m", "type": "deposit",
+        "value": "10000.00", "principal": "10000.00", "expectedGain": "275.00",
+        "maturityDate": "2026-08-15", "matured": true
+      },
+      {
+        "id": 5, "bank": "trade-republic", "name": "Cuenta remunerada",
+        "type": "savings_account", "value": "5208.40",
+        "valuedAt": "2026-06-30", "stale": true
+      }
+    ],
+    "issues": [
+      { "productId": 2, "name": "ETF Mundo", "reason": "no_valuation", "valuedAt": null },
+      { "productId": 4, "name": "Deposito 12m", "reason": "matured_not_closed", "valuedAt": "2026-08-15" },
+      { "productId": 5, "name": "Cuenta remunerada", "reason": "stale_valuation", "valuedAt": "2026-06-30" }
+    ]
+  }
+}
+```
+
+En el ejemplo, `investments.total` = 12810.75 + 10000.00 + 5208.40 (el `value`
+a `null` del ETF no suma), y `total` = 5500.00 + 18208.90.
+
+**La forma de cada producto depende de su `type`** — así un `null` nunca es
+ambiguo:
+
+- `fund` / `etf` / `managed_portfolio`: llevan `value` (la suma de los dos
+  campos de al lado, o solo `marketValue` si `uninvestedCash` es `null`),
+  `marketValue` y `uninvestedCash` tal como están guardados, `valuedAt` (la
+  `date` de la `Valuation` usada) y `stale`.
+- `deposit`: lleva `value` (= `principal`), `principal`, `expectedGain`
+  (informativo, **no sumado**), `maturityDate` y `matured` (`true` si
+  `maturityDate` < hoy y el depósito sigue sin `closedAt`).
+- `savings_account`: lleva `value` (= `balance` del último snapshot),
+  `valuedAt` y `stale`.
+
+`investments.issues` — una entrada `{ productId, name, reason, valuedAt }` por
+cada aviso. Motivos (enum cerrado):
+
+| `reason`             | Qué significa                                                                 | `valuedAt` |
+| -------------------- | ----------------------------------------------------------------------------- | ---------- |
+| `no_valuation`       | Producto vivo sin ninguna foto con `date` ≤ hoy: `value: null`, fuera de la suma. | `null` |
+| `stale_valuation`    | La foto usada es **anterior al primer día del mes pasado** (UTC). El valor **sigue sumando**; el aviso señala con qué fecha. | La `date` de la foto usada. |
+| `matured_not_closed` | Depósito con `maturityDate` < hoy y sin `closedAt`: sigue sumando su `principal`, pero el dinero puede estar ya también en una cuenta — hasta que se escriba el cierre, el total puede contarlo dos veces. | El `maturityDate`. |
+
+El umbral de `stale_valuation` es exactamente ese: con hoy en septiembre, una
+foto del 31-07 o anterior avisa; una del 01-08 en adelante no. Las fotos son
+mensuales de fin de mes: a mitad de mes la del mes pasado es fresca, la de hace
+dos meses no.
+
+Los importes monetarios van como string decimal de dos decimales, como en todo
+el contrato. Una base sin cuentas ni productos no es un error: 200 con las
+listas vacías y los tres totales a `"0.00"`.
+
+**Errores**
+
+Ninguno propio: sin parámetros no hay 400 posible y no hay recurso
+direccionable que dé 404. Solo los genéricos (500) del handler central.
+
+> Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
+> `PATCH`, ni `DELETE` bajo `/api/net-worth`).
 
 ---
 
