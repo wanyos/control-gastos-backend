@@ -67,18 +67,18 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 
 ## Lo que le toca al humano
 
-- **De la F43 (2026-09-06), la prueba real en tres pasos** (con el backend
-  parado o recién reiniciado):
-  1. Aplicar la migración: `npx prisma migrate deploy` (o arrancar
-     `pnpm run dev`, que la aplica).
-  2. Sembrar el borrador de reglas: `pnpm run seed:category-rules` (61 reglas
-     de marcas públicas; esta vez NO se ejecutó por ti, aprendida la lección
-     de la F37).
-  3. Lanzar la primera pasada:
-     `curl.exe -X POST http://localhost:3000/api/category-rules/apply` y mirar
-     el resultado: cuántos categorizó, cuántos chocaron y cuántos quedaron sin
-     casar. El ajuste fino es por API (`/api/category-rules`) y se relanza
-     `apply` las veces que haga falta. Si cuadra, se commitea.
+- ~~**De la F43 (2026-09-06), la prueba real en tres pasos**~~ ✅ **hecho por el
+  humano el 2026-09-11**: la migración `20260906120000_category_rule` se
+  aplicó con `migrate deploy` (7 migraciones, todas aplicadas), el seed creó
+  las 61 reglas (`created 61, skipped 0`) y la primera pasada de
+  `POST /api/category-rules/apply` devolvió `categorized: 212`,
+  `conflictCount: 1` y `unmatched: 1307`. Los tres suman 1520, exactamente
+  los movimientos que la F37 dejó sin revisar y sin categoría: la pasada ha
+  mirado todo lo elegible. El único choque es un Bizum cuyo concepto casa a la
+  vez con la regla «bizum» (Transferencias a personas) y con «gimnasio» (Salud y
+  deporte); quedó sin categoría a propósito, como manda la decisión de choques.
+  Los 1307 sin casar son el ajuste fino que le toca a él por API
+  (`/api/category-rules`) relanzando `apply`. Ya estaba commiteada en 96f450a.
 - ~~**De la F44:** la prueba real~~ ✅ **hecho por el humano el 2026-09-06**:
   `POST /api/transfers` con la primera salida y la entrada devolvió 201 con el
   enlace compartido, y en cada pierna solo cambiaron `transferId` y
