@@ -1394,6 +1394,9 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   "failedCount": 1,
   "skippedCount": 1,
   "balanceMismatchCount": 1,
+  "importedProductCount": 1,
+  "anchoredCount": 1,
+  "balanceFilledCount": 0,
   "files": [
     {
       "bank": "bankinter", "year": "2026", "fileId": "1AbC...", "name": "movs.xlsx",
@@ -1509,13 +1512,24 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 >   ADR-012 evita; para saber si el depósito se ha creado o actualizado está
 >   `product.created`.
 > - Un archivo de producto **no suma** a `importedCount` ni a `duplicateCount` (esos
->   cuentan movimientos); si falla, sí suma a `failedCount`.
+>   cuentan movimientos). El que entra bien (`status: "imported"`) suma **1** a
+>   `importedProductCount` (feature 45), tanto si creó el producto como si volvió a
+>   escribir el mismo mes (`created: false` no es un descarte: la foto se pisa y se
+>   guarda). Si falla, suma a `failedCount` y a nada más.
 
 - **Totales:** `importedCount` movimientos guardados, `duplicateCount` descartados
   por ya existir, `unparsedCount` líneas que ningún parser supo interpretar,
   `failedCount` y `skippedCount` archivos, y `balanceMismatchCount` descuadres de
-  toda la ejecución (feature 32). **No hay total de run para `anchored`
-  ni para `balancesFilled`**: los dos son por archivo y ahí se leen.
+  toda la ejecución (feature 32). Desde la feature 45 hay además tres totales de
+  la pasada entera, sumados de los informes por archivo:
+  - `importedProductCount`: archivos de producto guardados (`status: "imported"`
+    con `product` presente). Un mes con solo archivos de producto ya no se lee
+    como «0 importados»: sale `importedCount: 0` e `importedProductCount: n`.
+  - `anchoredCount`: archivos con `anchored: true`, es decir, cuentas que **esta
+    pasada** ancló. Una cuenta ya anclada que recibe otro extracto no suma.
+  - `balanceFilledCount`: suma de `balancesFilled` de todos los archivos.
+  Un archivo `failed` o `skipped` no suma a ninguno de los tres. Los seis
+  contadores anteriores no cambian ni de nombre ni de significado.
 - `imported` / `duplicates`: movimientos **guardados** y **descartados por
   duplicado** de ese archivo. Reimportar el mismo archivo no duplica nada: sale
   `imported: 0` y `duplicates: n`. Dos líneas idénticas del mismo día **no** son
@@ -1711,6 +1725,9 @@ es **siempre `false`**.
   "failedCount": 0,
   "skippedCount": 0,
   "balanceMismatchCount": 0,
+  "importedProductCount": 0,
+  "anchoredCount": 0,
+  "balanceFilledCount": 12,
   "files": [
     {
       "bank": "MiBanco", "year": "2026", "name": "movs.xlsx",
@@ -1767,8 +1784,12 @@ es **siempre `false`**.
   el mismo importador, una reimportación local **ancla** las cuentas cuyos archivos
   traen saldo y **rellena** los saldos por línea que falten, sin crear un solo
   movimiento nuevo: por eso el ejemplo de arriba sale con `imported: 0`,
-  `duplicates: 39` y `balancesFilled: 12`. No hay script de migración de datos ni
-  hace falta volver a subir nada a Drive.
+  `duplicates: 39` y `balancesFilled: 12`, y en la raíz `balanceFilledCount: 12`
+  y `anchoredCount: 0` (la cuenta ya estaba anclada). Los tres totales de la
+  feature 45 (`importedProductCount`, `anchoredCount`, `balanceFilledCount`)
+  salen aquí con el mismo significado que en `POST /api/import`: es la misma
+  suma sobre los mismos informes por archivo. No hay script de migración de
+  datos ni hace falta volver a subir nada a Drive.
 
 **Errores**
 | Código HTTP | `code`                  | Cuándo                                                                 |

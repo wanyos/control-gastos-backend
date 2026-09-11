@@ -21,11 +21,13 @@ import {
   importPending,
   importStatement,
   toMovementRows,
+  totals,
 } from './import.service.js'
 import type {
   AttemptedFileReport,
   AttemptedProductFileReport,
   BankParserAdapter,
+  FileCounts,
 } from './import.types.js'
 
 const folderMime = 'application/vnd.google-apps.folder'
@@ -735,6 +737,9 @@ describe('importPending', () => {
       failedCount: 0,
       skippedCount: 0,
       balanceMismatchCount: 0,
+      importedProductCount: 0,
+      anchoredCount: 0,
+      balanceFilledCount: 0,
       files: [],
       // The detection runs even on an empty run (feature 40): "nothing was
       // looked at" would be indistinguishable from this otherwise. Same for
@@ -976,6 +981,63 @@ function fakeProductAdapter(bank: string, extensions = ['.json']): ProductParser
   }
 }
 
+describe('totals (feature 45: the three totals the per-file reports already carried)', () => {
+  const statementFile = (overrides: Partial<FileCounts> = {}): FileCounts => ({
+    status: 'imported',
+    imported: 3,
+    duplicates: 1,
+    unparsedCount: 0,
+    balanceMismatches: [],
+    anchored: false,
+    balancesFilled: 0,
+    ...overrides,
+  })
+  const storedProduct: FileCounts['product'] = {
+    id: 1,
+    bank: 'zz',
+    name: 'x',
+    type: 'savings_account',
+    created: true,
+  }
+
+  it('adds them up from the per-file reports without changing the existing counters', () => {
+    const files: FileCounts[] = [
+      statementFile({ anchored: true, balancesFilled: 2 }),
+      statementFile({ anchored: true, balancesFilled: 3, imported: 0, duplicates: 5 }),
+      statementFile({ anchored: false, balancesFilled: 0 }),
+      { status: 'imported', product: storedProduct },
+      { status: 'imported', product: storedProduct },
+      { status: 'skipped' },
+    ]
+
+    expect(totals(files)).toEqual({
+      importedCount: 6,
+      duplicateCount: 7,
+      unparsedCount: 0,
+      failedCount: 0,
+      skippedCount: 1,
+      balanceMismatchCount: 0,
+      importedProductCount: 2,
+      anchoredCount: 2,
+      balanceFilledCount: 5,
+    })
+  })
+
+  it('counts nothing from a failed file: it neither anchors, fills nor stores a product', () => {
+    const files: FileCounts[] = [
+      statementFile({ status: 'failed', imported: 0, duplicates: 0, anchored: false }),
+      { status: 'failed', product: null },
+    ]
+
+    expect(totals(files)).toMatchObject({
+      failedCount: 2,
+      importedProductCount: 0,
+      anchoredCount: 0,
+      balanceFilledCount: 0,
+    })
+  })
+})
+
 describe('importPending: the product files (feature 26)', () => {
   let app: FastifyInstance
   let rawCopyBaseDir: string
@@ -1133,6 +1195,61 @@ describe('importPending: the product files (feature 26)', () => {
     expect(productReport(second).snapshot?.created).toBe(false)
     expect(await productsOfTheBank(bank)).toHaveLength(1)
     expect(await app.prisma.savingsSnapshot.count({ where: { product: { bank } } })).toBe(1)
+  })
+
+  it('counts the stored product files of the run apart from the movements (feature 45)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const { client } = buildDrive(
+      treeWith(bank, [
+        { id: 'ok', name: 'cuenta-07.json' },
+        { id: 'bad', name: 'cuenta-08.json' },
+      ]),
+      {
+        get: vi.fn(async ({ fileId }: { fileId: string }) => ({
+          data: productBytes(
+            fileId === 'ok'
+              ? productFile({ name, date: '2026-07-31' })
+              : // A mistyped digit: 4106.40 where 4006.40 was due.
+                productFile({ name, date: '2026-08-31', balance: 4106.4 }),
+          ),
+        })),
+      },
+    )
+
+    const result = await run(client, [], [fakeProductAdapter(bank)])
+
+    expect(productReport(result, 0).status).toBe('imported')
+    expect(productReport(result, 1).status).toBe('failed')
+    // The stored one shows up in its own total; the failed one only in
+    // `failedCount`; and `importedCount` keeps counting movements, of which a
+    // product file brings none.
+    expect(result).toMatchObject({
+      importedProductCount: 1,
+      failedCount: 1,
+      importedCount: 0,
+      duplicateCount: 0,
+      anchoredCount: 0,
+      balanceFilledCount: 0,
+    })
+  })
+
+  it('counts a product written again as stored, like the per-file report does (feature 45)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const drive = () =>
+      buildDrive(treeWith(bank, [{ id: 'f1', name: 'cuenta.json' }]), {
+        get: vi.fn(async () => ({ data: productBytes(productFile({ name })) })),
+      })
+
+    await run(drive().client, [], [fakeProductAdapter(bank)])
+    const second = await run(drive().client, [], [fakeProductAdapter(bank)])
+
+    // Writing the same month again overwrites the photo instead of dropping it,
+    // so it is `imported` with `created: false`, and the total says so too.
+    expect(productReport(second).status).toBe('imported')
+    expect(productReport(second).snapshot?.created).toBe(false)
+    expect(second.importedProductCount).toBe(1)
   })
 
   it('keeps a file no registry reads as skipped, with the statement reason (R14)', async () => {
@@ -1509,6 +1626,66 @@ describe('the importer anchors the account and fills the balances it left empty'
     })
     expect(stored).toHaveLength(2)
     expect(stored.map((row) => row.balanceAfter?.toFixed(2) ?? null)).toEqual(['120.15', '300.30'])
+  })
+
+  it('totals the accounts anchored and the balances filled over the whole run (feature 45)', async () => {
+    const bank = uniqueBank()
+    const ibans = [syntheticIban(), syntheticIban()]
+    const rows = (balance: number | null) => (content: Buffer) => {
+      const index = content.toString('utf8').includes('second') ? 1 : 0
+      return statement(bank, {
+        accountIban: ibans[index],
+        accountBalance: 500 + index,
+        movements: [
+          movement({ description: `ROW ${index}`, amount: -10, daySequence: 1, balance }),
+        ],
+      })
+    }
+    const tree = () =>
+      buildDrive(
+        treeWith(bank, [
+          { id: 'first', name: 'primera.csv' },
+          { id: 'second', name: 'segunda.csv' },
+        ]),
+      )
+
+    // First pass: both files anchor their account and no row was there to fill.
+    const firstRun = await run(tree().client, [fakeAdapter(bank, rows(null))])
+    // Second pass: both accounts are already anchored (R3), and each file fills
+    // the one balance its first pass stored empty.
+    const secondRun = await run(tree().client, [fakeAdapter(bank, rows(87.31))])
+
+    expect(attempted(firstRun, 0).anchored).toBe(true)
+    expect(attempted(firstRun, 1).anchored).toBe(true)
+    expect(firstRun).toMatchObject({
+      importedCount: 2,
+      anchoredCount: 2,
+      balanceFilledCount: 0,
+      importedProductCount: 0,
+    })
+    expect(attempted(secondRun, 0)).toMatchObject({ anchored: false, balancesFilled: 1 })
+    expect(attempted(secondRun, 1)).toMatchObject({ anchored: false, balancesFilled: 1 })
+    expect(secondRun).toMatchObject({
+      importedCount: 0,
+      duplicateCount: 2,
+      anchoredCount: 0,
+      balanceFilledCount: 2,
+    })
+  })
+
+  it('does not count a failed file as anchored (feature 45)', async () => {
+    const bank = uniqueBank()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () => {
+        throw new NotUtf8Error('el archivo no se puede leer')
+      }),
+    ]
+
+    const result = await run(client, parsers)
+
+    expect(attempted(result).status).toBe('failed')
+    expect(result).toMatchObject({ failedCount: 1, anchoredCount: 0, balanceFilledCount: 0 })
   })
 
   it('fills nothing when the file brought no duplicate at all (R12)', async () => {

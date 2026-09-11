@@ -1131,3 +1131,29 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   (42, 43, 44). Deberes del humano: aplicar la migración, sembrar las reglas y
   lanzar la primera pasada real de apply. De la E6 solo queda el enlace
   aportación-producto (Movement.productId, sin feature).
+
+## 2026-09-11 — Feature 45: import-run-totals
+
+- **Agente:** leader (orquestando) + implementer + reviewer. Sin SDD.
+- **Plan:** cerrar los cabos 13 y 17 del roadmap: que el resumen de arriba de
+  `POST /api/import` y `POST /api/import/local` cuente también los archivos de
+  producto guardados, las cuentas ancladas y los saldos rellenados de la pasada
+  entera, sin renombrar ni cambiar de valor los seis contadores existentes ni
+  tocar los informes por archivo.
+- **Cambios:** tres contadores nuevos en `ImportRunResult` y
+  `LocalImportRunResult` (`importedProductCount`, `anchoredCount`,
+  `balanceFilledCount`), sumados en la `totals()` que ya compartían los dos
+  caminos desde la F25 (el local no cambió ni una línea); `FileCounts` gana
+  `anchored?`, `balancesFilled?` y `product?`. Un producto repetido cuenta como
+  guardado (se pisa la foto, no se descarta) y un fallido solo en `failedCount`.
+  Contrato actualizado (nota de «no hay total» sustituida, dos ejemplos) y cabos
+  13 y 17 tachados en el roadmap. Detalle: `progress/summaries/import-run-totals.md`.
+- **Verificación:** ./init.sh completo en verde: 60 archivos, 1176 tests, tsc,
+  lint y formato OK, exit 0. La primera pasada salió roja por el guardián de
+  datos reales (un importe de fixture que coincidía con una captura de `var/`);
+  se inventó otro y la segunda pasada quedó verde. Veredicto APROBADO en
+  `progress/reviews/import-run-totals.md`.
+- **Cierre:** done, pendiente de commit. En esta misma sesión (2026-09-11) se
+  cerraron también los cabos 15 y 19 del roadmap en el commit 83dc791
+  (`hasRoute` en el test de rutas de Bankinter y `net-worth` en el árbol
+  esperado de `src/architecture.test.ts`).

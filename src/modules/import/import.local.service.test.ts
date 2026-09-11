@@ -509,6 +509,12 @@ describe('importLocalCopies', () => {
     // one is stored; and the empty balance of the old one gets filled.
     expect(file).toMatchObject({ imported: 1, duplicates: 1, balancesFilled: 1, anchored: true })
     expect(file.movedToProcessed).toBe(false)
+    // Feature 45: the same totals as the Drive way in, from the same `totals()`.
+    expect(result).toMatchObject({
+      anchoredCount: 1,
+      balanceFilledCount: 1,
+      importedProductCount: 0,
+    })
 
     const stored = await app.prisma.account.findUniqueOrThrow({ where: { id: account.id } })
     expect(stored.balanceAnchor?.toFixed(2)).toBe('1800.40')
@@ -539,6 +545,7 @@ describe('importLocalCopies', () => {
     const result = await run(parsers)
 
     expect(attempted(result)).toMatchObject({ imported: 1, anchored: false, balancesFilled: 0 })
+    expect(result).toMatchObject({ anchoredCount: 0, balanceFilledCount: 0 })
     const stored = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
     expect(stored.balanceAnchor).toBeNull()
     expect(stored.balanceAnchorDate).toBeNull()
@@ -737,6 +744,9 @@ describe('importLocalCopies: the product files (feature 26, R11)', () => {
     expect(file.snapshot).toEqual({ date: '2026-08-31', created: true })
     // The copy is still exactly where it was: nothing is moved or deleted.
     expect(await readdir(join(rawCopyBaseDir, bank, '2026'))).toEqual(['cuenta-2026-08-31.json'])
+    // Feature 45: the stored product shows up in its own total, and the
+    // movement counters stay at zero because a product file brings none.
+    expect(result).toMatchObject({ importedProductCount: 1, importedCount: 0, duplicateCount: 0 })
   })
 
   it('does not duplicate anything on a second pass of the same month (R11, R6)', async () => {
@@ -780,6 +790,7 @@ describe('importLocalCopies: the product files (feature 26, R11)', () => {
     expect(result.files).toHaveLength(2)
     expect(productReport(result, 0).product?.created).toBe(true)
     expect(productReport(result, 1).product?.created).toBe(false)
+    expect(result.importedProductCount).toBe(2)
     expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(1)
     const photos = await app.prisma.savingsSnapshot.findMany({
       where: { product: { bank } },
@@ -801,6 +812,7 @@ describe('importLocalCopies: the product files (feature 26, R11)', () => {
     const file = productReport(result)
     expect(file.status).toBe('failed')
     expect(result.failedCount).toBe(1)
+    expect(result.importedProductCount).toBe(0)
     expect(file.error?.message).toContain('los importes no cuadran')
     expect(file.movedToProcessed).toBe(false)
     expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(0)

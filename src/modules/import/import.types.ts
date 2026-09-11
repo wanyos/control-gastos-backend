@@ -110,6 +110,17 @@ export interface ImportRunResult {
   skippedCount: number
   /** Descuadres found in the WHOLE run, so a zero closes the matter at a glance. */
   balanceMismatchCount: number
+  /**
+   * Product files stored in the WHOLE run (feature 45): every product file with
+   * `status: 'imported'`, whether it created the product or wrote it again.
+   * `importedCount` keeps counting movements only, so a month with nothing but
+   * product files no longer reads as "0 imported".
+   */
+  importedProductCount: number
+  /** Files of the WHOLE run that anchored their account (`anchored: true`). */
+  anchoredCount: number
+  /** Sum of `balancesFilled` over the WHOLE run. */
+  balanceFilledCount: number
   files: ImportedFileReport[]
   /**
    * What the transfer detection did after the file loop (feature 40). Always
@@ -142,6 +153,18 @@ export interface FileCounts {
    * statements.
    */
   balanceMismatches?: BalanceMismatch[]
+  /**
+   * Optional for the same reason (feature 45): only a statement report carries
+   * them, and a `failed` one carries `false` and `0` because a file that fails
+   * anchors and fills nothing.
+   */
+  anchored?: boolean
+  balancesFilled?: number
+  /**
+   * Only a product report carries it (feature 45). `null` when the product file
+   * failed, so "there is a product" is what tells a stored product file apart.
+   */
+  product?: ProductImportResult['product'] | null
 }
 
 /**
@@ -218,6 +241,10 @@ export interface LocalImportRunResult {
   skippedCount: number
   /** Same counter and same meaning as the Drive way in (feature 32, R11). */
   balanceMismatchCount: number
+  /** Same three counters and same meaning as the Drive way in (feature 45). */
+  importedProductCount: number
+  anchoredCount: number
+  balanceFilledCount: number
   files: LocalFileReport[]
   /** Same detection and same shape as the Drive way in (feature 40). */
   transfers: TransferDetectionResult

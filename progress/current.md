@@ -47,6 +47,13 @@ orden del humano) — [veredicto](reviews/net-worth.md) ·
 prueba real del humano (tres pasos, ver §Lo que le toca al humano). Con ella
 se cierra entero el planteamiento del 2026-09-05 (F42, F43, F44).
 
+**F45 `import-run-totals` cerrada** (2026-09-11, aprobada, `done`) —
+[veredicto](reviews/import-run-totals.md) ·
+[resumen](summaries/import-run-totals.md) ·
+[informe](implementations/import-run-totals.md). **Pendiente de commit.**
+Cierra los cabos 13 y 17 del roadmap; en la misma sesión se cerraron los cabos
+15 y 19 en el commit 83dc791.
+
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
 

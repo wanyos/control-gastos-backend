@@ -808,6 +808,13 @@ export function totals(files: FileCounts[]) {
     // Feature 32, R10 and R11: the local way in gains it without one line of its
     // own, because it already shares `importStatement` and this very function.
     balanceMismatchCount: sum(files.map((file) => file.balanceMismatches?.length ?? 0)),
+    // Feature 45: the three totals the per-file reports already carried. A
+    // `failed` file reports `anchored: false`, `balancesFilled: 0` and
+    // `product: null`, so it adds nothing to any of them without a special
+    // case; a product is only ever non-null on an `imported` product file.
+    importedProductCount: files.filter((file) => file.product != null).length,
+    anchoredCount: files.filter((file) => file.anchored === true).length,
+    balanceFilledCount: sum(files.map((file) => file.balancesFilled ?? 0)),
   }
 }
 

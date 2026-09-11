@@ -1813,7 +1813,7 @@
         "docs/api-contract.md y docs/data-model.md actualizados según lo que la feature añada."
       ],
       "sdd": true,
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": 44,
@@ -1850,6 +1850,37 @@
         "docs/api-contract.md y docs/data-model.md actualizados (incluida la columna nueva y su migración)."
       ],
       "sdd": true,
+      "status": "done"
+    },
+    {
+      "id": 45,
+      "name": "import-run-totals",
+      "title": "Que los totales de POST /api/import y /api/import/local cuenten también productos, anclajes y rellenos",
+      "intent": {
+        "_procedencia": "Cabos sueltos 13 y 17 de docs/roadmap.md. El 13 salió en la prueba real de la F26 (2026-08-20): un archivo de producto bien guardado sale con importedCount: 0 en el resumen. El 17 lo dejó la F31: anchored y balancesFilled existen por archivo pero ImportRunResult no los agrega. Encargado por el humano el 2026-09-11 junto con los cabos 15 y 19.",
+        "que_quiero": "Que el resumen de arriba de una importación (Drive y local) diga la verdad de la pasada entera: cuántos productos se han guardado, cuántas cuentas se han anclado y cuántos saldos se han rellenado, además de los movimientos que ya cuenta.",
+        "por_que": "El resumen es lo primero que se lee, y hoy un mes con solo archivos de producto se lee como cero importados. Misma familia que el mensaje falso de la F22: la respuesta dice algo que no es.",
+        "como_se_que_esta_bien": [
+          "Importo un archivo de producto que entra bien y el resumen de arriba lo refleja con un contador propio, sin que importedCount deje de contar solo movimientos.",
+          "El resumen trae el total de la pasada de cuentas ancladas y de saldos rellenados, igual a la suma de los valores por archivo.",
+          "El camino local (POST /api/import/local) da los mismos contadores con el mismo significado.",
+          "Nada de lo que ya contaba cambia de valor ni de nombre."
+        ],
+        "que_no_quiero": [
+          "No quiero renombrar ni cambiar el significado de los contadores existentes (importedCount, duplicateCount, unparsedCount, failedCount, skippedCount, balanceMismatchCount).",
+          "No quiero tocar los informes por archivo: solo los totales del run."
+        ],
+        "delego_en_agente": [
+          "El nombre exacto de los contadores nuevos, siguiendo el patrón de los existentes (xxxCount) y sin inventar términos nuevos; que lo marque en el informe.",
+          "Si un producto duplicado o fallido merece contador propio o basta con el de productos guardados; que lo decida mirando qué distingue hoy el informe por archivo."
+        ]
+      },
+      "acceptance": [
+        "ImportRunResult y LocalImportRunResult traen los contadores nuevos, con test de que se agregan desde los informes por archivo (Drive y local).",
+        "Los contadores existentes no cambian de nombre ni de valor, con los tests actuales en verde.",
+        "docs/api-contract.md actualizado: la nota que hoy dice que no hay total de run para anchored ni balancesFilled se sustituye por la descripción de los contadores nuevos, y el ejemplo de respuesta los incluye.",
+        "docs/roadmap.md: cabos 13 y 17 marcados como cerrados por esta feature."
+      ],
       "status": "done"
     }
   ]
