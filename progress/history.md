@@ -1102,3 +1102,32 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
 - **Cierre:** done. Queda la F43 auto-categorization, última del planteamiento
   del 2026-09-05, con su pregunta de puerta (quién escribe las reglas de
   arranque).
+
+## 2026-09-06 — Feature 43: auto-categorization
+
+- **Agente:** leader (orquestando) + spec-author + implementer + reviewer.
+- **Plan:** spec SDD aprobado por el humano el mismo día (6 decisiones: reglas
+  en tabla nueva CategoryRule con CRUD en /api/category-rules; regla = «el
+  concepto contiene este texto» sin mayúsculas ni tildes, mínimo 3 letras;
+  corre tras cada importación y bajo demanda con POST /api/category-rules/apply;
+  choque de reglas no asigna y sale en el informe; solo se toca lo sin
+  categoría y sin confirmar, neutral nunca, y solo se escribe categoryId;
+  borrador de arranque nuevo — se comprobó que las reglas del análisis del
+  2026-09-01 no quedaron escritas — con 61 reglas de marcas públicas sembrables
+  con pnpm run seed:category-rules). Antes, el humano respondió la pregunta de
+  puerta: reglas derivadas y él las corrige.
+- **Cambios:** migración 20260906120000_category_rule (solo la tabla de
+  reglas), módulo src/modules/category-rules/, guarda 409 al borrar categoría
+  con reglas, campo categorization en los dos informes de importación, docs
+  actualizados. El seed NO se ejecutó contra la base real (lección de la F37).
+  Detalle: progress/summaries/auto-categorization.md.
+- **Verificación:** ./init.sh completo en verde (reviewer lo relanzó): 60
+  archivos, 1169 tests; migración verificada con migrate deploy sobre la
+  plantilla de test y base real comprobada intacta; seed muestreado (61 reglas,
+  todas públicas). Veredicto APROBADO en
+  progress/reviews/auto-categorization.md (1 hallazgo menor fuera de scope:
+  POST /apply acepta cualquier body).
+- **Cierre:** done. Con esta se cierra el planteamiento del 2026-09-05 entero
+  (42, 43, 44). Deberes del humano: aplicar la migración, sembrar las reglas y
+  lanzar la primera pasada real de apply. De la E6 solo queda el enlace
+  aportación-producto (Movement.productId, sin feature).

@@ -26,6 +26,7 @@ import { normalizeIban } from '../../lib/iban.js'
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { findOrCreateAccountFromMetadata } from '../accounts/accounts.service.js'
+import { applyCategoryRules } from '../category-rules/category-rules.service.js'
 import { persistProductSnapshot } from '../investments/investments.service.js'
 import type {
   ProductParserAdapter,
@@ -429,7 +430,11 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
   // After the whole file loop (feature 40, R1): the movements are already
   // stored, so a detection failure can lose nothing -- it travels in
   // `transfers.error` and the per-file reports stand untouched (R15).
-  return { ...totals(files), files, transfers: await detectTransfers(prisma) }
+  // The categorization run goes AFTER the detection (feature 43, R12): the
+  // order matters little -- it never reads `transferId` -- but it is fixed so
+  // the report is stable, and its failure travels in `categorization.error`.
+  const transfers = await detectTransfers(prisma)
+  return { ...totals(files), files, transfers, categorization: await applyCategoryRules(prisma) }
 }
 
 interface FileLocation {

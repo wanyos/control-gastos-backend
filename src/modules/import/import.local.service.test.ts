@@ -806,3 +806,175 @@ describe('importLocalCopies: the product files (feature 26, R11)', () => {
     expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(0)
   })
 })
+
+describe('importLocalCopies: the categorization run of the report (feature 43, R12)', () => {
+  let app: FastifyInstance
+  let rawCopyBaseDir: string
+  const usedBanks: string[] = []
+  const createdCategoryIds: number[] = []
+  const createdRuleIds: number[] = []
+  let counter = 0
+
+  function uniqueBank(): string {
+    counter += 1
+    const slug = `zz-local-catrules-${Date.now()}-${counter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  async function writeCopy(bank: string, year: string, name: string) {
+    await mkdir(join(rawCopyBaseDir, bank, year), { recursive: true })
+    await writeFile(join(rawCopyBaseDir, bank, year, name), 'raw-bytes')
+  }
+
+  async function createRule(matchText: string) {
+    counter += 1
+    const category = await app.prisma.category.create({
+      data: { name: `Local import rules ${Date.now()}-${counter}`, kind: 'expense' },
+    })
+    createdCategoryIds.push(category.id)
+    const rule = await app.prisma.categoryRule.create({
+      data: { categoryId: category.id, matchText },
+    })
+    createdRuleIds.push(rule.id)
+    return { category, rule }
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  beforeEach(async () => {
+    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-local-catrules-'))
+  })
+
+  afterEach(async () => {
+    await rm(rawCopyBaseDir, { recursive: true, force: true })
+    await app.prisma.categoryRule.deleteMany({ where: { id: { in: createdRuleIds } } })
+    if (usedBanks.length > 0) {
+      const accounts = await app.prisma.account.findMany({
+        where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
+      })
+      const ids = accounts.map((account) => account.id)
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+    await app.prisma.category.deleteMany({ where: { id: { in: createdCategoryIds } } })
+    createdRuleIds.length = 0
+    createdCategoryIds.length = 0
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('always carries the categorization result, with zeros when there is no rule (R12)', async () => {
+    const bank = uniqueBank()
+    await writeCopy(bank, '2026', 'movs.csv')
+    const parsers = [fakeAdapter(bank, () => statement(bank, { accountIban: syntheticIban() }))]
+
+    const result = await importLocalCopies({
+      prisma: app.prisma,
+      rawCopyBaseDir,
+      parsers,
+      selection: {},
+    })
+
+    expect(result.categorization).toEqual({
+      categorized: 0,
+      conflictCount: 0,
+      conflicts: [],
+      unmatched: expect.any(Number),
+    })
+  })
+
+  it('categorizes the movements this run just imported, after the detection (R12)', async () => {
+    const bank = uniqueBank()
+    await writeCopy(bank, '2026', 'movs.csv')
+    const { category } = await createRule('sintetico importado')
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: syntheticIban(),
+          movements: [movement({ description: 'PAGO SINTETICO IMPORTADO 7' })],
+        }),
+      ),
+    ]
+
+    const result = await importLocalCopies({
+      prisma: app.prisma,
+      rawCopyBaseDir,
+      parsers,
+      selection: {},
+    })
+
+    expect(result.importedCount).toBe(1)
+    expect(result.categorization.categorized).toBeGreaterThanOrEqual(1)
+    expect(result.categorization.error).toBeUndefined()
+    const account = await app.prisma.account.findFirstOrThrow({
+      where: { bank: { equals: bank, mode: 'insensitive' } },
+    })
+    const stored = await app.prisma.movement.findFirstOrThrow({
+      where: { accountId: account.id },
+    })
+    expect(stored.categoryId).toBe(category.id)
+    // The run writes NOTHING else: the movement stays pending, no transfer link.
+    expect(stored.status).toBe('pending_review')
+    expect(stored.transferId).toBeNull()
+  })
+
+  it('reports a categorization failure inside the report, with the import intact (R12)', async () => {
+    const bank = uniqueBank()
+    await writeCopy(bank, '2026', 'movs.csv')
+    const parsers = [fakeAdapter(bank, () => statement(bank, { accountIban: syntheticIban() }))]
+    // Fails ONLY the eligible-movements read of the categorization run (the one
+    // that filters by `categoryId`); every other query passes through untouched.
+    const real = app.prisma
+    const bound = (holder: object, property: string | symbol): unknown => {
+      const value = Reflect.get(holder, property)
+      return typeof value === 'function' ? value.bind(holder) : value
+    }
+    const wrapped = new Proxy(real, {
+      get(target, property) {
+        if (property === 'movement') {
+          const movementDelegate = target.movement
+          return new Proxy(movementDelegate, {
+            get(movementTarget, movementProperty) {
+              if (movementProperty === 'findMany') {
+                return (args: { where?: Record<string, unknown> }) => {
+                  if (args?.where !== undefined && 'categoryId' in args.where) {
+                    throw new Error('synthetic categorization failure')
+                  }
+                  return movementTarget.findMany(args)
+                }
+              }
+              return bound(movementTarget, movementProperty)
+            },
+          })
+        }
+        return bound(target, property)
+      },
+    }) as typeof real
+
+    const result = await importLocalCopies({
+      prisma: wrapped,
+      rawCopyBaseDir,
+      parsers,
+      selection: {},
+    })
+
+    // The import itself stands, and so does the transfer detection.
+    expect(result.importedCount).toBe(1)
+    expect(result.failedCount).toBe(0)
+    expect(result.transfers.error).toBeUndefined()
+    expect(result.categorization).toEqual({
+      categorized: 0,
+      conflictCount: 0,
+      conflicts: [],
+      unmatched: 0,
+      error: { code: 'INTERNAL_SERVER_ERROR', message: 'synthetic categorization failure' },
+    })
+  })
+})

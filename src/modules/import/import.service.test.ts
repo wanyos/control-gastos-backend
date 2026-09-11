@@ -737,8 +737,10 @@ describe('importPending', () => {
       balanceMismatchCount: 0,
       files: [],
       // The detection runs even on an empty run (feature 40): "nothing was
-      // looked at" would be indistinguishable from this otherwise.
+      // looked at" would be indistinguishable from this otherwise. Same for
+      // the categorization run (feature 43, R12).
       transfers: { pairsCreated: 0, ambiguousCount: 0, ambiguous: [] },
+      categorization: { categorized: 0, conflictCount: 0, conflicts: [], unmatched: 0 },
     })
     expect(get).not.toHaveBeenCalled()
     expect(update).not.toHaveBeenCalled()

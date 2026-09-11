@@ -86,7 +86,7 @@ arranca sin su visto bueno):
 | # | Feature | Qué traería | Spec |
 |---|---|---|---|
 | **42** | `net-worth` ✅ (2026-09-06) | El patrimonio total: cuentas + inversiones en una consulta, con desglose (`GET /api/net-worth`) | sí |
-| **43** | `auto-categorization` | Categorías automáticas por reglas sobre el concepto (el 75% ya salía en el análisis del 2026-09-01) | sí |
+| **43** | `auto-categorization` ✅ (2026-09-06) | Categorías automáticas por reglas sobre el concepto (`/api/category-rules` + pasada tras cada importación y bajo demanda; borrador de 61 reglas sembrable) | sí |
 | **44** | `manual-transfer-marking` ✅ (2026-09-06) | Enlazar y desenlazar a mano un traspaso que la detección no puede resolver (`POST/DELETE /api/transfers`, con la memoria de «estos dos no» que anticipó la decisión 4 de la F41; primera migración desde la F9: `Movement.undoneTransferId`) | sí |
 
 **La E4 sigue con Revolut pendiente**, aparcado por decisión del humano hasta que
@@ -104,7 +104,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
 | E4 | **Entender los ficheros** — un parser por banco, con salida común | 🟡 **5 de 6 bancos**, **contrato ✅** · inventario ✅ (2026-08-17); solo queda **Revolut**, aparcado sin datos (Trade Republic entró por `.json` escrito a mano, sin parser de PDF: provisional) | F6, F7, F11, F10, F13, **F18**, **F19**, **F20** |
 | E5 | **La importación** — del fichero parseado a la base de datos | ✅ | **F12** |
-| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **empezada**: categorías a mano y confirmación ✅ (**F37**, 2026-09-02), traspasos ✅ (**F40** + **F41**, 2026-09-03); faltan aportación (`productId`) y reglas automáticas | **F37**, **F40**, **F41** |
+| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **casi entera**: categorías a mano y confirmación ✅ (**F37**), traspasos ✅ (**F40** + **F41** + marcado manual **F44**), reglas automáticas ✅ (**F43**, 2026-09-06); queda solo el enlace aportación ↔ producto (`Movement.productId`, sin escritor y sin feature) | **F37**, **F40**, **F41**, **F43**, **F44** |
 | E7 | **Consultar** — filtros, saldos, totales, patrimonio | 🟡 **casi entera**: saldo real ✅ (F31), su comprobación ✅ (F32), filtros y totales ✅ (F36), resumen del dinero ✅ (**F38**, `GET /api/overview`), vista de inversiones ✅ (**F39**, 2026-09-05, `GET /api/investments/overview`); queda la consulta de **patrimonio neto total** (valor de todo junto en una fecha), dejada fuera de la F39 a propósito y aún sin feature | **F31**, **F32**, **F36**, **F38**, **F39** |
 | E8 | **Ver** — el frontend | ⬜ | otro proyecto |
 | E9 | **Que esto viva en algún sitio** — despliegue y acceso | ⬜ | *sin etapa hasta hoy* |

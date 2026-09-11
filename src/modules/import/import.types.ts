@@ -1,6 +1,7 @@
 import type { AccountType } from '../../generated/prisma/client.js'
 
 import type { ParsedStatement, UnparsedRow } from '../../lib/parsed-statement.js'
+import type { CategorizationResult } from '../category-rules/category-rules.types.js'
 import type { ProductImportResult } from '../investments/investments.types.js'
 import type { TransferDetectionResult } from '../transfers/transfers.types.js'
 import type { BalanceMismatch } from './import.balance.service.js'
@@ -116,6 +117,12 @@ export interface ImportRunResult {
    * and "nothing was looked at" must not read the same (like `balanceMismatches`).
    */
   transfers: TransferDetectionResult
+  /**
+   * What the categorization run did after the transfer detection (feature 43,
+   * R12). Same rule as `transfers`: always present, with zeros and `[]` when
+   * nothing was eligible or nothing matched.
+   */
+  categorization: CategorizationResult
 }
 
 /**
@@ -214,4 +221,6 @@ export interface LocalImportRunResult {
   files: LocalFileReport[]
   /** Same detection and same shape as the Drive way in (feature 40). */
   transfers: TransferDetectionResult
+  /** Same categorization run and same shape as the Drive way in (feature 43). */
+  categorization: CategorizationResult
 }

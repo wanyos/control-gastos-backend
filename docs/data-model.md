@@ -188,9 +188,26 @@ model Category {
   parentId  Int?
   children  Category[]   @relation("Subcategories")
   movements Movement[]
+  rules     CategoryRule[]  // reglas de categorización que apuntan a ella (F43)
   createdAt DateTime     @default(now())
 
   @@unique([parentId, kind, name]) // re-creado NULLS NOT DISTINCT en la migración
+}
+
+// Una regla de categorización (F43): si el concepto del movimiento CONTIENE
+// `matchText` (los dos normalizados: minúsculas, sin tildes) y el `kind` de la
+// categoría casa con el `type` del movimiento, la pasada de categorización le
+// escribe `categoryId`. CRUD en /api/category-rules; el borrador de arranque se
+// siembra con `pnpm run seed:category-rules` (idempotente), nunca solo.
+// FK con el `Restrict` por defecto: la guarda amable (409 con el número de
+// reglas) la pone deleteCategory, como ya hacía con movimientos e hijas.
+model CategoryRule {
+  id         Int      @id @default(autoincrement())
+  category   Category @relation(fields: [categoryId], references: [id])
+  categoryId Int
+  matchText  String   @unique  // guardado YA normalizado; mínimo 3 caracteres
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Movement {
@@ -231,7 +248,7 @@ model Movement {
 | Columna | Quién la rellenará |
 | --- | --- |
 | ~~`transferId`~~ | 🔄 **ya lo escribe la detección de traspasos** (F40): corre al final de cada pasada de importación (las dos vías), empareja las parejas inequívocas —y desde la F41 también los grupos dudosos con el mismo número de salidas que de entradas en los que cada salida podría casar con cada entrada— y escribe el mismo `transferId` en las dos piernas, en una transacción por pareja. **Cero migración**: la columna y su índice existen desde la F8. Desde la **F44** tiene además **escritor manual**: `POST /api/transfers` enlaza dos movimientos por id y `DELETE /api/transfers/:transferId` deshace la pareja (manual o de la detección) apuntando la memoria del deshecho en `undoneTransferId` (esa sí trajo migración: una columna nullable, la primera desde la F9) |
-| ~~`categoryId`~~ | 🔄 **ya tiene escritor manual** (F37): `PATCH /api/movements/:id` la escribe (y la pone a `NULL` para quitar la categoría). El escritor **automático** —la feature de **categorización por reglas** sobre el `description`— sigue pendiente |
+| ~~`categoryId`~~ | 🔄 **ya tiene los dos escritores**: el **manual** desde la F37 (`PATCH /api/movements/:id` la escribe, y la pone a `NULL` para quitar la categoría) y el **automático** desde la F43 —la **pasada de categorización por reglas** sobre el `description` (tabla `CategoryRule`), que corre al final de cada importación y con `POST /api/category-rules/apply`, y solo toca movimientos sin categoría, sin confirmar y no neutrales. Esa sí trajo migración: la tabla `CategoryRule` |
 | `paymentMethod` | la misma feature de reglas (`RECIBO` → `direct_debit`, `PAGO TARJETA` → `card`…) |
 | `note` | anotación manual sobre un movimiento, cuando exista pantalla |
 | ~~`status`~~ | 🔄 **ya tiene quien lo revise** (F37): nace `pending_review` al importar (F12) y `PATCH /api/movements/:id` lo pasa a `confirmed` — y de vuelta — a mano |

@@ -240,7 +240,7 @@ Un apunte del extracto. **Solo entra por importación** (ver
 | `note`          | string \| null                                              | Anotación manual. Hoy siempre `null`.                            |
 | `accountId`     | number                                                      | Id de la cuenta.                                                 |
 | `account`       | objeto                                                      | Cuenta embebida: `{ id, iban, bank, alias, type }` (sin `balance`). |
-| `categoryId`    | number \| null                                              | Id de la categoría, o `null` (no tener categoría no es una categoría). Se escribe a mano con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37); la asignación automática por reglas es una feature posterior. |
+| `categoryId`    | number \| null                                              | Id de la categoría, o `null` (no tener categoría no es una categoría). Se escribe a mano con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37) y, desde la feature 43, también lo escribe la **categorización por reglas** ([`/api/category-rules`](#post-apicategory-rules)), que corre al final de cada importación y bajo demanda, y solo toca movimientos sin categoría, sin confirmar y no neutrales. |
 | `category`      | objeto \| null                                              | Categoría embebida: `{ id, name, kind, parentId }`, o `null` si el movimiento no tiene categoría. |
 | `paymentMethod` | `"card"` \| `"cash"` \| `"bank_transfer"` \| `"direct_debit"` \| null | Forma de pago. Hoy siempre `null` (la derivará la feature de reglas). |
 | `origin`        | `"imported"` \| `"manual"`                                  | Procedencia. Los movimientos nacen `"imported"`.                 |
@@ -487,11 +487,13 @@ movimientos colgando las volvería incoherentes).
 
 ### `DELETE /api/categories/:id`
 
-Borra una categoría **solo si está libre**: sin movimientos que la usen y sin
-subcategorías. Borrar una categoría **jamás borra ni modifica un movimiento**:
+Borra una categoría **solo si está libre**: sin movimientos que la usen, sin
+subcategorías y —desde la feature 43— sin **reglas de categorización** que la
+referencien. Borrar una categoría **jamás borra ni modifica un movimiento**:
 si está en uso, la petición se rechaza y hay que quitarla antes de los
 movimientos que la llevan (un acto explícito, nunca una des-categorización
-masiva en silencio).
+masiva en silencio). Con las reglas, igual: primero se borran o se cambian las
+reglas que la usan ([`/api/category-rules`](#post-apicategory-rules)).
 
 **Respuesta 204** — sin cuerpo.
 
@@ -499,7 +501,135 @@ masiva en silencio).
 | Código HTTP | `code`      | Cuándo                                                            |
 | ----------- | ----------- | ----------------------------------------------------------------- |
 | 404         | `NOT_FOUND` | La categoría no existe.                                           |
-| 409         | `CONFLICT`  | La categoría tiene movimientos asignados (el `message` dice cuántos) o subcategorías. No se borra ni se modifica nada. |
+| 409         | `CONFLICT`  | La categoría tiene movimientos asignados, subcategorías o reglas de categorización que la usan (el `message` dice cuántos de cada). No se borra ni se modifica nada. |
+
+---
+
+### `POST /api/category-rules`
+
+Crea una **regla de categorización** (feature 43): «si el concepto del
+movimiento **contiene** este texto, ponle esta categoría». La comparación no
+distingue mayúsculas ni tildes: `matchText` se guarda **ya normalizado**
+(minúsculas, sin tildes, sin espacios en los extremos) y la descripción del
+movimiento se normaliza igual al compararla. Además, el `kind` de la categoría
+de la regla debe coincidir con el `type` del movimiento: una regla de una
+categoría `income` jamás toca un gasto.
+
+Las reglas no categorizan nada por sí solas al crearse: lo hace la pasada de
+categorización, que corre al final de cada importación y con
+[`POST /api/category-rules/apply`](#post-apicategory-rulesapply).
+
+**Body**
+| Campo        | Tipo   | Reglas                                                              |
+| ------------ | ------ | ------------------------------------------------------------------- |
+| `categoryId` | number | Id de una categoría existente.                                       |
+| `matchText`  | string | Al menos **3 caracteres tras normalizar**; único (normalizado) entre todas las reglas. Cualquier otra propiedad en el body es un 400, nunca se descarta en silencio. |
+
+**Respuesta 201** — la regla con su categoría embebida:
+
+```json
+{
+  "id": 7,
+  "matchText": "mercadona",
+  "categoryId": 4,
+  "category": { "id": 4, "name": "Supermercado", "kind": "expense", "parentId": null },
+  "createdAt": "2026-09-06T10:00:00.000Z",
+  "updatedAt": "2026-09-06T10:00:00.000Z"
+}
+```
+
+**Errores**
+| Código HTTP | `code`             | Cuándo                                                            |
+| ----------- | ------------------ | ----------------------------------------------------------------- |
+| 400         | `VALIDATION_ERROR` | `matchText` queda con menos de 3 caracteres tras normalizar, falta un campo o sobra una propiedad. |
+| 404         | `NOT_FOUND`        | La categoría no existe.                                           |
+| 409         | `CONFLICT`         | Ya existe una regla con ese `matchText` normalizado. No se escribe nada. |
+
+---
+
+### `GET /api/category-rules`
+
+**Respuesta 200** — todas las reglas, cada una con su categoría embebida (la
+misma forma que la respuesta del `POST`), ordenadas por `id`.
+
+---
+
+### `PATCH /api/category-rules/:id`
+
+Cambia `matchText` y/o `categoryId` de una regla, **y nada más** (cualquier
+otra propiedad, o un body vacío, es un 400). Las validaciones son las del alta.
+Cambiar una regla **no des-categoriza nada**: lo que ya asignó se queda; se
+corrige movimiento a movimiento con `PATCH /api/movements/:id` si hace falta.
+
+**Respuesta 200** — la regla actualizada con su categoría embebida.
+
+**Errores** — los mismos del `POST`, más `404 NOT_FOUND` si la regla no existe.
+
+---
+
+### `DELETE /api/category-rules/:id`
+
+Borra la regla **sin modificar ningún movimiento**: lo que esa regla
+categorizó se queda como está.
+
+**Respuesta 204** — sin cuerpo.
+
+**Errores**
+| Código HTTP | `code`      | Cuándo                |
+| ----------- | ----------- | --------------------- |
+| 404         | `NOT_FOUND` | La regla no existe.   |
+
+---
+
+### `POST /api/category-rules/apply`
+
+Ejecuta **bajo demanda** la pasada de categorización: recorre los movimientos
+**elegibles** —sin categoría (`categoryId` a `null`), sin confirmar
+(`pending_review`) y de tipo `expense` o `income` (el `neutral`, importe 0,
+nunca se categoriza)— y a cada uno le aplica las reglas cuyo `kind` casa con su
+`type`. Es el gesto para repasar lo pendiente después de corregir una regla,
+sin reimportar nada. Sin body.
+
+- Si las reglas que casan apuntan todas a **una sola categoría**, se escribe
+  `categoryId` y **nada más**: importes, saldos, `status`, `transferId`, fechas
+  y los totales de `GET /api/movements` quedan idénticos.
+- Si casan reglas de **dos o más categorías distintas**, no se asigna nada y el
+  choque sale en `conflicts` (antes sin categoría que mal categorizado).
+- Si no casa ninguna, el movimiento queda sin categoría, visible, y suma a
+  `unmatched`.
+- La pasada es **idempotente**: ejecutarla dos veces seguidas deja la base
+  idéntica y la segunda vez responde `categorized: 0` sobre lo ya asignado.
+
+**Respuesta 200**
+
+```json
+{
+  "categorized": 12,
+  "conflictCount": 1,
+  "conflicts": [
+    {
+      "movementId": 210,
+      "description": "PAGO SINTETICO EJEMPLO",
+      "bookingDate": "2026-08-14",
+      "matches": [
+        { "ruleId": 3, "matchText": "sintetico", "categoryId": 4, "categoryName": "Supermercado" },
+        { "ruleId": 9, "matchText": "ejemplo", "categoryId": 6, "categoryName": "Compras" }
+      ]
+    }
+  ],
+  "unmatched": 5,
+  "error": { "code": "…", "message": "…  (solo presente si la pasada falló)" }
+}
+```
+
+Es el mismo objeto que viaja en el campo `categorization` del informe de
+`POST /api/import` y de `POST /api/import/local` (ver allí el detalle campo a
+campo).
+
+> **Reglas de arranque.** Existe un borrador de reglas iniciales que se siembra
+> con `pnpm run seed:category-rules` (idempotente: la segunda ejecución crea 0;
+> una regla cuya categoría ya no exista —renombrada— se lista en vez de
+> sembrarse). Nada siembra reglas por su cuenta: ni la migración ni el arranque.
 
 ---
 
@@ -1352,6 +1482,12 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
         ]
       }
     ]
+  },
+  "categorization": {
+    "categorized": 12,
+    "conflictCount": 0,
+    "conflicts": [],
+    "unmatched": 5
   }
 }
 ```
@@ -1454,6 +1590,21 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   emparejada (`transferId != null`) no se reevalúa, no se reempareja y no se
   desempareja. Desde que las dos piernas comparten `transferId`, los `totals` de
   `GET /api/movements` las dejan fuera de `income` y `expense` (feature 36).
+- `categorization` (feature 43): qué hizo la **pasada de categorización por reglas**,
+  que corre **después de la detección de traspasos** (orden fijo para que el informe
+  sea estable) sobre **todos** los movimientos elegibles —sin categoría, sin
+  confirmar y no neutrales—, no solo sobre lo importado en esta pasada. **Siempre
+  presente**, con ceros y `conflicts: []` cuando no hay nada (misma regla que
+  `transfers`). Es el mismo objeto que responde
+  [`POST /api/category-rules/apply`](#post-apicategory-rulesapply):
+
+  | Campo | Qué es |
+  | --- | --- |
+  | `categorized` | Movimientos a los que **esta** pasada escribió `categoryId`. Ningún otro campo cambia. |
+  | `conflictCount` | Movimientos con reglas de **categorías distintas** casando a la vez. |
+  | `conflicts` | Cada choque con su movimiento (`movementId`, `description`, `bookingDate`) y las reglas que compitieron (`ruleId`, `matchText`, `categoryId`, `categoryName`). Nadie asigna en el choque: el movimiento queda sin categoría, visible. |
+  | `unmatched` | Elegibles que ninguna regla reconoció: quedan con `categoryId` a `null`, pendientes. |
+  | `error` | Solo presente si la pasada falló: `{ code, message }` saneado. La importación **no se pierde**: los informes por archivo, el campo `transfers` y el código HTTP no cambian. |
 
 > 🔴 **`GET /api/accounts` NO cambia.** El descuadre se ve **solo aquí**, en el informe
 > de la importación. Ni `GET /api/accounts` ni `GET /api/accounts/:id` ganan campo
@@ -1580,7 +1731,8 @@ es **siempre `false`**.
       "movedToProcessed": false
     }
   ],
-  "transfers": { "pairsCreated": 0, "ambiguousCount": 0, "ambiguous": [] }
+  "transfers": { "pairsCreated": 0, "ambiguousCount": 0, "ambiguous": [] },
+  "categorization": { "categorized": 0, "conflictCount": 0, "conflicts": [], "unmatched": 0 }
 }
 ```
 
@@ -1606,6 +1758,11 @@ es **siempre `false`**.
   forma de emparejar lo que ya está guardado** sin esperar a la siguiente
   importación mensual: reimporta las copias (todo sale `duplicates`) y al final
   corre la detección.
+- **La pasada de categorización por reglas corre aquí exactamente igual que por
+  Drive** (feature 43): después de la detección de traspasos, con el mismo campo
+  `categorization` descrito en `POST /api/import`. Para categorizar lo pendiente
+  sin reimportar nada hay un gesto más directo:
+  [`POST /api/category-rules/apply`](#post-apicategory-rulesapply).
 - **Esta es la vía que repara lo que ya está dentro** (feature 31). Como pasa por
   el mismo importador, una reimportación local **ancla** las cuentas cuyos archivos
   traen saldo y **rellena** los saldos por línea que falten, sin crear un solo

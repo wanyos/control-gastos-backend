@@ -37,12 +37,15 @@ saldos con la web del banco (hecho en `docs/roadmap.md` §Deberes).
 real y commiteada en ca8f824) — [veredicto](reviews/manual-transfer-marking.md) ·
 [resumen](summaries/manual-transfer-marking.md).
 
-**F42 `net-worth` cerrada** (2026-09-06, aprobada) —
-[veredicto](reviews/net-worth.md) · [resumen](summaries/net-worth.md).
-**Sin commitear**, esperando la prueba real del humano
-(`curl.exe http://localhost:3000/api/net-worth`). Queda la **F43
-`auto-categorization`**, última del planteamiento, con su pregunta de puerta
-(quién escribe las reglas de arranque).
+**F42 `net-worth` cerrada** (2026-09-06, aprobada y commiteada en 5640905 por
+orden del humano) — [veredicto](reviews/net-worth.md) ·
+[resumen](summaries/net-worth.md).
+
+**F43 `auto-categorization` cerrada** (2026-09-06, aprobada) —
+[veredicto](reviews/auto-categorization.md) ·
+[resumen](summaries/auto-categorization.md). **Sin commitear**, esperando la
+prueba real del humano (tres pasos, ver §Lo que le toca al humano). Con ella
+se cierra entero el planteamiento del 2026-09-05 (F42, F43, F44).
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
@@ -57,6 +60,18 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 
 ## Lo que le toca al humano
 
+- **De la F43 (2026-09-06), la prueba real en tres pasos** (con el backend
+  parado o recién reiniciado):
+  1. Aplicar la migración: `npx prisma migrate deploy` (o arrancar
+     `pnpm run dev`, que la aplica).
+  2. Sembrar el borrador de reglas: `pnpm run seed:category-rules` (61 reglas
+     de marcas públicas; esta vez NO se ejecutó por ti, aprendida la lección
+     de la F37).
+  3. Lanzar la primera pasada:
+     `curl.exe -X POST http://localhost:3000/api/category-rules/apply` y mirar
+     el resultado: cuántos categorizó, cuántos chocaron y cuántos quedaron sin
+     casar. El ajuste fino es por API (`/api/category-rules`) y se relanza
+     `apply` las veces que haga falta. Si cuadra, se commitea.
 - ~~**De la F44:** la prueba real~~ ✅ **hecho por el humano el 2026-09-06**:
   `POST /api/transfers` con la primera salida y la entrada devolvió 201 con el
   enlace compartido, y en cada pierna solo cambiaron `transferId` y

@@ -95,18 +95,22 @@ export async function renameCategory(
  * Deletes a category only when nothing hangs from it. A category in use is a
  * 409, never a silent un-categorization of the movements pointing at it (R6):
  * the caller removes the category from those movements first, explicitly.
+ * Since feature 43 the check also counts categorization rules (F43 R16):
+ * without it, the `Restrict` FK of `CategoryRule` would answer a P2003 → 500
+ * with no actionable message.
  */
 export async function deleteCategory(prisma: AppPrismaClient, id: number): Promise<void> {
   const category = await prisma.category.findUnique({
     where: { id },
-    include: { _count: { select: { movements: true, children: true } } },
+    include: { _count: { select: { movements: true, children: true, rules: true } } },
   })
   if (!category) throw new NotFoundError('Category not found')
 
-  const { movements, children } = category._count
-  if (movements > 0 || children > 0) {
+  const { movements, children, rules } = category._count
+  if (movements > 0 || children > 0 || rules > 0) {
     throw new ConflictError(
-      `Category is in use: ${movements} movement(s) point at it and it has ${children} subcategory(ies)`,
+      `Category is in use: ${movements} movement(s) point at it, it has ` +
+        `${children} subcategory(ies) and ${rules} categorization rule(s) use it`,
     )
   }
 

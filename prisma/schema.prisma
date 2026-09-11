@@ -94,11 +94,27 @@ model Category {
   parentId  Int?
   children  Category[]   @relation("Subcategories")
   movements Movement[]
+  rules     CategoryRule[]
   createdAt DateTime     @default(now())
 
   // Re-created as NULLS NOT DISTINCT in the migration so two root categories
   // (parentId IS NULL) with the same kind and name cannot coexist.
   @@unique([parentId, kind, name])
+}
+
+/// One auto-categorization rule (feature 43): when a movement's description
+/// CONTAINS `matchText` (both normalized) and the category's kind matches the
+/// movement's type, the categorization run writes `categoryId` on it. FK left
+/// as the default `Restrict` on purpose: the friendly 409 lives in
+/// `deleteCategory` (R16).
+model CategoryRule {
+  id         Int      @id @default(autoincrement())
+  category   Category @relation(fields: [categoryId], references: [id])
+  categoryId Int
+  /// Stored ALREADY normalized (lowercase, no diacritics, trimmed).
+  matchText  String   @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Movement {

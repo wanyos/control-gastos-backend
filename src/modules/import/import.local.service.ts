@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { LocalCopyNotFoundError, ValidationError } from '../../errors/app-error.js'
 import { normalizeBankName } from '../../lib/drive-structure.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
+import { applyCategoryRules } from '../category-rules/category-rules.service.js'
 import type { ProductParserRegistry } from '../investments/investments.types.js'
 import { detectTransfers } from '../transfers/transfers.service.js'
 import {
@@ -123,7 +124,15 @@ export async function importLocalCopies(deps: ImportLocalDeps): Promise<LocalImp
 
   // Same point as the Drive way in (feature 40, R1): after the file loop,
   // never before, and a detection failure travels inside the report (R15).
-  return { ...totals(files), files, transfers: await detectTransfers(deps.prisma) }
+  // Categorization after the detection, same fixed order as the Drive way in
+  // (feature 43, R12); its failure travels in `categorization.error` too.
+  const transfers = await detectTransfers(deps.prisma)
+  return {
+    ...totals(files),
+    files,
+    transfers,
+    categorization: await applyCategoryRules(deps.prisma),
+  }
 }
 
 /**

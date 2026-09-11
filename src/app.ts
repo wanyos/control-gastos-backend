@@ -5,6 +5,7 @@ import accountsRoutes from './modules/accounts/accounts.routes.js'
 import { parseBankinterXlsx } from './modules/bankinter/bankinter.parser.js'
 import bankinterRoutes from './modules/bankinter/bankinter.routes.js'
 import categoriesRoutes from './modules/categories/categories.routes.js'
+import categoryRulesRoutes from './modules/category-rules/category-rules.routes.js'
 import healthRoutes from './modules/health/health.routes.js'
 import importRoutes from './modules/import/import.routes.js'
 import type { BankParserRegistry } from './modules/import/import.types.js'
@@ -86,6 +87,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(healthRoutes)
   app.register(accountsRoutes, { prefix: '/api/accounts' })
   app.register(categoriesRoutes, { prefix: '/api/categories' })
+  app.register(categoryRulesRoutes, { prefix: '/api/category-rules' })
   app.register(movementsRoutes, { prefix: '/api/movements' })
   app.register(overviewRoutes, { prefix: '/api/overview' })
   app.register(netWorthRoutes, { prefix: '/api/net-worth' })

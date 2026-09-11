@@ -404,6 +404,28 @@ describe('rename and delete category routes (feature 37)', () => {
     expect(await app.prisma.category.findUnique({ where: { id: parent.id } })).not.toBeNull()
   })
 
+  it('DELETE /api/categories/:id referenced by rules returns 409 with their count (F43 R16)', async () => {
+    const category = await createCategory({ name: uniqueName('Ruled'), kind: 'expense' })
+    const rule = await app.prisma.categoryRule.create({
+      data: { categoryId: category.id, matchText: `sintetico guarda ${Date.now()}` },
+    })
+
+    const response = await deleteCategory(category.id)
+
+    expect(response.statusCode).toBe(409)
+    const body = response.json<{ code: string; message: string }>()
+    expect(body.code).toBe('CONFLICT')
+    expect(body.message).toContain('1 categorization rule(s)')
+    // Nothing was deleted: neither the category nor the rule.
+    expect(await app.prisma.category.findUnique({ where: { id: category.id } })).not.toBeNull()
+    expect(await app.prisma.categoryRule.findUnique({ where: { id: rule.id } })).not.toBeNull()
+
+    // Without the rule, the same delete works exactly as before (F43 R16).
+    await app.prisma.categoryRule.delete({ where: { id: rule.id } })
+    const retried = await deleteCategory(category.id)
+    expect(retried.statusCode).toBe(204)
+  })
+
   it('DELETE /api/categories/:id of an unknown id returns 404 (R11)', async () => {
     const response = await deleteCategory(99999999)
 
