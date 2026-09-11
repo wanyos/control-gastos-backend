@@ -200,6 +200,13 @@ describe('architecture invariants', () => {
       'modules/overview/overview.schema.ts',
       'modules/overview/overview.types.ts',
       'modules/overview/overview.test.ts',
+      // Feature 42: the total net worth of today. One read-only endpoint, same
+      // shape as overview: it adds up what the other modules already compute.
+      'modules/net-worth/net-worth.routes.ts',
+      'modules/net-worth/net-worth.service.ts',
+      'modules/net-worth/net-worth.schema.ts',
+      'modules/net-worth/net-worth.types.ts',
+      'modules/net-worth/net-worth.test.ts',
       // Feature 40: the transfer detection. The detection itself has no
       // endpoint -- both import ways call it after their file loop and its
       // result travels inside the import report. The routes/schema files are

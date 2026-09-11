@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
+import { buildApp } from '../../app.js'
 import bankinterRoutes from './bankinter.routes.js'
 import { bankinterSampleFixture, buildStatementXlsx } from './bankinter.fixture.js'
 import errorHandlerPlugin from '../../plugins/error-handler.js'
@@ -73,6 +74,17 @@ describe('POST /api/parser/bankinter', () => {
 
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({ parsedCount: 0, failedCount: 0, parsed: [], failed: [] })
+
+    await app.close()
+  })
+
+  it('is registered in the real app under the /api/parser prefix', async () => {
+    // The route is only asserted as registered, never invoked here: the real app
+    // would read `var/drive-read/` of this machine, which holds real bank data.
+    const app = buildApp()
+    await app.ready()
+
+    expect(app.hasRoute({ method: 'POST', url: '/api/parser/bankinter' })).toBe(true)
 
     await app.close()
   })
