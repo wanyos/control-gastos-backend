@@ -125,14 +125,49 @@ contar dos veces el fondo inmobiliario. El ETF de oro y el fondo inmobiliario
 siguen valorados con su foto del **2026-08-15**, a la espera de que se
 reimporten los dos archivos corregidos.
 
+## Segunda pasada del mismo dia: los dos archivos corregidos
+
+El humano corrigio los dos `.json` —en el del oro solo faltaba el `type`, que
+decia `fund` y es `etf`— y los subio otra vez. Segunda
+`POST /api/import` → 200: `importedProductCount: 2`, 0 fallos, los dos
+`imported` y `movedToProcessed: true`, los dos sobre **su** producto de siempre
+(`created: false`) y con **foto nueva** del 2026-09-12 (`snapshot.created:
+true`):
+
+- `etf_gold-2026-09-12.json` → producto 12760, `"etf fondo fisical oro"`, `etf`.
+- `mobiliario_2026-09-12.json` → producto 12761, `"Fondo Inversión
+  inmobiliario"`, `fund`.
+
+Comprobado despues con `GET /api/net-worth`: los dos ya se valoran con su foto
+del **2026-09-12** (antes con la del 2026-08-15), quedan **6 productos**,
+`issues` vacio y `totalPending: 1` (solo Revolut). El patrimonio pasa de
+88.875,57 € a **88.850,64 €**: baja 24,93 €, que es exactamente lo que cambia al
+sustituir las dos valoraciones de agosto por las de septiembre.
+
+Antes de subirlos se comprobo, contra la tabla `InvestmentProduct`, que el
+`name`, el `type` y el `openedAt` de los cinco archivos de la carpeta local del
+humano apuntaban a un producto ya existente y que ninguno crearia uno nuevo.
+Dos de ellos, los dos depositos, llevaban `closedAt` con la fecha de
+vencimiento: se corrigieron a `null` **antes** de que llegaran a subirse, porque
+habrian sacado 30.000 € del patrimonio. No hizo falta subirlos: ya estaban bien
+guardados.
+
+**Las dos plantillas que el humano usa para escribir estos archivos se
+reescribieron el mismo dia** (fuera de este repositorio, en su escritorio): la
+de los productos de MyInvestor y la de la cuenta remunerada de Trade Republic.
+Las dos llevaban errores que reproducian el fallo: comentarios `//` dentro del
+JSON —que lo invalidan entero—, un deposito de ejemplo con `closedAt` puesto a
+su fecha de vencimiento y, en la de MyInvestor, `"Fondo Indexado Global"` como
+nombre de ejemplo, justo el que fusiono los dos productos. Ahora las dos llevan
+la identidad exacta de cada producto para copiar y los campos variables con el
+marcador `<…>`, que el parser ya sabe cazar sin sustituir (features 28 y 30).
+
 ## Estado en el que queda esto
 
-La importación **no se ha deshecho**. El arreglo pasa por corregir el `name` y
-el `type` de los dos `.json` y volver a importarlos, y por decidir qué se hace
-con el producto 13034 y su valoración. Los dos archivos ya están en
-`procesados/`, así que la reimportación es el caso de uso de
-`POST /api/import/local` (F25), que lee de `var/drive-read/`. **Queda a decisión
-del humano**; esta sesión no ha tocado ni borrado nada de eso.
+**Cerrado el mismo día.** El producto fantasma se borró, los dos archivos se
+corrigieron y se reimportaron, y las dos series recogieron su foto de
+septiembre. No hizo falta `POST /api/import/local`: el humano volvió a subir
+los archivos corregidos a Drive y entraron por la vía normal.
 
 **No comprobado:** el log del servidor. El proceso del backend ya estaba
 arrancado y no es de esta sesión, así que su salida no se ha podido leer. Para
