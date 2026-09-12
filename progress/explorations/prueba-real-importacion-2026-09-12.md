@@ -92,6 +92,39 @@ que existe con **otro** tipo; lo que no cubre es **dos archivos distintos de la
 misma pasada escribiendo la misma clave `(productId, date)`**. Es un
 sobreescrito silencioso: el dato se pierde y el informe sale en verde.
 
+## Los depósitos: revisados, nada que corregir
+
+El humano dudó de si les faltaba la fecha de vencimiento. **No falta**:
+`maturityDate` está escrito y guardado en los tres (comprobado leyendo la tabla
+`InvestmentProduct`). Lo que estaba confundido eran dos campos distintos:
+`maturityDate` es cuándo vence y `closedAt` es cuándo se da por cerrado. Que
+`closedAt` esté vacío en los dos depósitos vivos es **lo correcto**: es lo que
+hace que cuenten en el patrimonio. El archivo de agosto del de 3 meses llevaba
+`closedAt` con la fecha de vencimiento —una fecha futura—, y mientras eso estuvo
+escrito ese depósito no contaba; el archivo de septiembre lo corrigió.
+
+**Decisión del humano (2026-09-12):** cada depósito nuevo llevará la fecha en el
+`name` (`Depósito 1 mes 2026-10`) para que nunca choque con uno anterior. Un
+depósito no tiene serie de fotos: sus condiciones son columnas del propio
+producto, así que repetir un `name` ya usado reescribiría las condiciones del
+contrato anterior y le borraría su `closedAt`. Dijo además que más adelante se
+le dará una solución mejor a esto.
+
+## El producto fantasma, borrado a mano (2026-09-12)
+
+A petición del humano se borró de la base de datos el producto **13034**
+(`myinvestor` / `fund` / `"Fondo Indexado Global"`) y su única valoración
+(id 6562, del 2026-09-12). **No hay endpoint que borre productos ni
+valoraciones** —ninguna de las 31 rutas de la API lo hace—, así que se hizo con
+un script de una sola vez contra Prisma, en una transacción, tras comprobar que
+del producto no colgaba ningún movimiento ni ninguna `SavingsSnapshot`. El
+script no se ha dejado en el repositorio.
+
+Comprobado después: `GET /api/net-worth` ya no lo lista y el patrimonio deja de
+contar dos veces el fondo inmobiliario. El ETF de oro y el fondo inmobiliario
+siguen valorados con su foto del **2026-08-15**, a la espera de que se
+reimporten los dos archivos corregidos.
+
 ## Estado en el que queda esto
 
 La importación **no se ha deshecho**. El arreglo pasa por corregir el `name` y
