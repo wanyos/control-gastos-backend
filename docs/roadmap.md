@@ -254,13 +254,20 @@ Cada línea de esta tabla es, como mínimo, una feature:
 | `Movement.paymentMethod`, `note` | sin decidir | ⬜ |
 | `Movement.origin = manual` | sin productor a propósito (F8) | — |
 
-### E7 — Consultar ⬜
+### E7 — Consultar 🟡 (casi entera; **revisada el 2026-09-11**)
 
-Hoy existen `GET /api/accounts`, `/api/categories` y `/api/movements`, y son
-**listados planos: sin filtros, sin rango de fechas y sin paginación**. Valen
-para probar, no para un dashboard con años de movimientos. Falta:
+~~Hoy existen `GET /api/accounts`, `/api/categories` y `/api/movements`, y son
+**listados planos: sin filtros, sin rango de fechas y sin paginación**.~~
+✅ **Ya no.** La tanda 36–42 cubrió casi todo lo que pedía esta etapa; queda
+media línea de filtros y el patrimonio a una fecha. Lo que había y lo que falta:
 
 - Filtros por fecha, cuenta, categoría, forma de pago y texto del concepto.
+  🟡 **A medias por la F36** (2026-09-02): `GET /api/movements` filtra por
+  `accountId`, `from`, `to`, `type` y `status`, y pagina con `page`/`pageSize`.
+  **Siguen faltando** el filtro por **categoría** y la **búsqueda por texto del
+  concepto**, que son justo los dos que necesita la vista de Extracto del
+  frontend. El de forma de pago no tiene sentido pedirlo: `paymentMethod` se
+  quedó sin fuente al descartar el Excel (ver `../../docs/ideas.md` §6).
 - ~~Saldo por cuenta (del `balanceAfter` del movimiento más reciente).~~
   ✅ **hecho por la F31** (2026-08-26). Y la descripción de arriba se quedó corta:
   el saldo **no** es el `balanceAfter` más reciente a secas, sino el importe del
@@ -269,8 +276,14 @@ para probar, no para un dashboard con años de movimientos. Falta:
   archivo trae saldo por línea, ese sigue mandando: la precedencia **no** se
   invirtió. ✅ Y desde la **F32** (2026-08-30) la importación **comprueba** que ese
   número cuadra y escribe los descuadres en su informe.
-- Totales del mes **excluyendo los movimientos con `transferId`**.
+- ~~Totales del mes **excluyendo los movimientos con `transferId`**.~~
+  ✅ **hecho por la F36 y la F38** (2026-09-02 y 2026-09-05): `computeTotals`
+  excluye `transferId` y `productId`, y `GET /api/overview` da el mes.
 - Patrimonio en una fecha (`marketValue + uninvestedCash` por producto).
+  🟡 **A medias por la F42** (2026-09-06): `GET /api/net-worth` responde el
+  patrimonio **de hoy**, sin parámetros y a propósito. **Falta la misma consulta
+  a una fecha pasada y como serie** — ver el cabo suelto 20, que es lo que
+  bloquea dos bloques de la primera vista del frontend.
 
 ### E8 — Ver: el frontend ⬜
 
