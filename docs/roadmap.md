@@ -282,6 +282,19 @@ aviso de «N nuevos», la pantalla de revisión y los dashboards.
 > ⚠️ **Breaking change vigente:** `/api/expenses*` → 404. El contrato nuevo está
 > en [`docs/api-contract.md`](./api-contract.md) y **aún no lo consume nadie**.
 
+**2026-09-11 — por dónde arranca el frontend (decidido en una sesión de nivel
+workspace).** La primera pantalla es **Patrimonio**, y consume
+[`GET /api/net-worth`](./api-contract.md#get-apinet-worth). En desarrollo el
+frontend no llama al backend directamente: lo hace **a través del proxy de su
+servidor de desarrollo (Vite)**, porque el backend **no tiene CORS** y se
+decidió no ponérselo ahora. CORS de verdad se decide en la **E9**, cuando haya
+despliegue. **Aquí no se toca código por esto.** El primer corte de la pantalla
+usa solo lo que `GET /api/net-worth` ya devuelve: la cifra total, el reparto por
+naturaleza y por banco, el detalle por banco y producto, y los avisos de
+`investments.issues`. La cascada y la evolución del patrimonio **no caben
+todavía**: necesitan patrimonio a una fecha o como serie histórica, que hoy no
+existe — cabo suelto **20**.
+
 ### E9 — Que esto viva en algún sitio ⬜
 
 **Ninguna etapa lo cubría hasta hoy.** La app es web y se usa desde varios
@@ -377,6 +390,7 @@ tiene etapa, es que se va a perder.
 | ~~5~~ | ~~El histórico del Excel de años~~ | ✅ **descartado (2026-08-22, reafirmado el 2026-08-23)**, ver `../../docs/ideas.md` §6. El vacío se llena con extractos de los bancos de varios años atrás, no con el Excel: una sola fuente, sin solape ni duplicados incasables |
 | 6 | La base de datos no tiene copia de seguridad; el crudo de Drive te salva los movimientos, **no** las categorías, alias ni `initialBalance` | sin dueño |
 | ~~19~~ | ~~**`src/modules/net-worth/` no está en la lista de árbol esperado de `src/architecture.test.ts`.** Encontrado por el reviewer de la F42 (2026-09-06)~~ | ✅ **cerrado el 2026-09-11** (commit 83dc791, sin feature): los cinco archivos del módulo están en la lista de árbol esperado |
+| 20 | **`GET /api/net-worth` solo sabe decir el patrimonio de hoy.** No acepta fecha (`?asOf=`) ni devuelve una serie histórica, y las `Valuation`/`SavingsSnapshot` que necesitaría ya están en la base de datos. Eso deja fuera dos bloques de la pantalla de Patrimonio del frontend: **la cascada** (de qué se compone el cambio) y **la evolución** (cómo se movió el total mes a mes). Anotado el 2026-09-11 al decidir por dónde arranca el frontend (E8), con la decisión explícita de **no construirlo todavía**: la forma del parámetro y de la respuesta depende de qué necesite exactamente la vista | **sin abrir, hasta que el frontend lo pida** |
 
 > **Sobre el 6:** volver a parsear desde Drive te reconstruye lo importado, pero
 > solo si el importador de la E5 es determinista y re-ejecutable. Merece la pena
