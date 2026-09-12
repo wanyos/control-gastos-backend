@@ -7,8 +7,8 @@ backend ya arrancado: `GET /health` + `/health/db` + `/health/drive` →
 `GET /api/ingestion/pending` → `POST /api/import` →
 `GET /api/ingestion/pending` → dos pasadas de `POST /api/category-rules/apply`.
 Ejecutado por el leader a petición suya. Sin datos reales aquí (importes ni
-conceptos): solo contadores, nombres de archivo y nombres de producto, que son
-el hallazgo.
+conceptos, ni los `name` reales de los productos): solo contadores, nombres de
+archivo, ids y tipos de producto.
 
 **Antes.** `totalPending: 8`: los 6 de MyInvestor (5 `.json` de producto +
 `Movimientos_2026-09-12.csv`), el `.json` de Trade Republic y el
@@ -60,27 +60,27 @@ consultando `InvestmentProduct` en la base de datos (no deducido):
 
 | Archivo de hoy | `name` que lleva dentro | `type` | A qué producto fue |
 |---|---|---|---|
-| `etf_gold-2026-09-12.json` | `"Fondo Indexado Global"` | `fund` | creó el producto 13034 |
-| `mobiliario_2026-09-12.json` | `"Fondo Indexado Global"` | `fund` | **al mismo 13034**, y su foto del 2026-09-12 **sobrescribió** la del anterior (`snapshot.created: false`) |
+| `etf_gold-2026-09-12.json` | el mismo en los dos, y no era el de ninguno | `fund` | creó el producto 13034 |
+| `mobiliario_2026-09-12.json` | el mismo en los dos, y no era el de ninguno | `fund` | **al mismo 13034**, y su foto del 2026-09-12 **sobrescribió** la del anterior (`snapshot.created: false`) |
 
 Los dos archivos llevan **el mismo `name` y el mismo `type`**, así que el
 importador los tomó por el mismo producto. Consecuencias, todas comprobadas en
 la base de datos:
 
-1. Existe un producto nuevo `"Fondo Indexado Global"` (id 13034, `fund`) con
+1. Existe un producto nuevo (id 13034, `fund`) con ese `name` equivocado y
    **una sola** valoración, la del 2026-09-12, que es la del **segundo** archivo
    (`mobiliario`, que va después de `etf_gold` en el orden alfabético de Drive).
    La del ETF de oro **ya no está en ninguna parte**.
-2. El **ETF de oro real** —`"etf fondo fisical oro"`, id 12760, `type: etf`— se
+2. El **ETF de oro real** —id 12760, `type: etf`— se
    ha quedado **sin la foto de septiembre**: su serie sigue parando el
    2026-08-15. En agosto ese archivo se llamaba `etf_oro-2026-08-15.json` y
-   llevaba dentro ese `name` y `type: etf`.
-3. El **fondo inmobiliario real** —`"Fondo Inversión inmobiliario"`, id 12761—
+   llevaba dentro el `name` correcto y `type: etf`.
+3. El **fondo inmobiliario real** —id 12761, `type: fund`—
    igual: su serie sigue parando el 2026-08-15.
 
 **El depósito nuevo no es este problema.** `deposit-month_2026-09-12.json` creó
-`"Depósito 1 mes"` (id 13032, `openedAt: 2026-09-02`), y el de agosto
-—`"Depósito a 1 mes"`, id 12758— está **cerrado** (`closedAt: 2026-08-31`). Es
+el depósito de un mes (id 13032, `openedAt: 2026-09-02`), y el de agosto
+—el de un mes anterior, id 12758— está **cerrado** (`closedAt: 2026-08-31`). Es
 un depósito nuevo contratado en septiembre, no una serie rota.
 
 ## Lo que sí es del backend: nadie avisó
@@ -104,7 +104,7 @@ hace que cuenten en el patrimonio. El archivo de agosto del de 3 meses llevaba
 escrito ese depósito no contaba; el archivo de septiembre lo corrigió.
 
 **Decisión del humano (2026-09-12):** cada depósito nuevo llevará la fecha en el
-`name` (`Depósito 1 mes 2026-10`) para que nunca choque con uno anterior. Un
+`name` (el tipo de depósito seguido del año y el mes) para que nunca choque con uno anterior. Un
 depósito no tiene serie de fotos: sus condiciones son columnas del propio
 producto, así que repetir un `name` ya usado reescribiría las condiciones del
 contrato anterior y le borraría su `closedAt`. Dijo además que más adelante se
@@ -113,7 +113,7 @@ le dará una solución mejor a esto.
 ## El producto fantasma, borrado a mano (2026-09-12)
 
 A petición del humano se borró de la base de datos el producto **13034**
-(`myinvestor` / `fund` / `"Fondo Indexado Global"`) y su única valoración
+(`myinvestor` / `fund`, el del `name` equivocado) y su única valoración
 (id 6562, del 2026-09-12). **No hay endpoint que borre productos ni
 valoraciones** —ninguna de las 31 rutas de la API lo hace—, así que se hizo con
 un script de una sola vez contra Prisma, en una transacción, tras comprobar que
@@ -134,9 +134,8 @@ decia `fund` y es `etf`— y los subio otra vez. Segunda
 (`created: false`) y con **foto nueva** del 2026-09-12 (`snapshot.created:
 true`):
 
-- `etf_gold-2026-09-12.json` → producto 12760, `"etf fondo fisical oro"`, `etf`.
-- `mobiliario_2026-09-12.json` → producto 12761, `"Fondo Inversión
-  inmobiliario"`, `fund`.
+- `etf_gold-2026-09-12.json` → producto 12760, el ETF de oro, `etf`.
+- `mobiliario_2026-09-12.json` → producto 12761, el fondo inmobiliario, `fund`.
 
 Comprobado despues con `GET /api/net-worth`: los dos ya se valoran con su foto
 del **2026-09-12** (antes con la del 2026-08-15), quedan **6 productos**,
@@ -157,8 +156,8 @@ reescribieron el mismo dia** (fuera de este repositorio, en su escritorio): la
 de los productos de MyInvestor y la de la cuenta remunerada de Trade Republic.
 Las dos llevaban errores que reproducian el fallo: comentarios `//` dentro del
 JSON —que lo invalidan entero—, un deposito de ejemplo con `closedAt` puesto a
-su fecha de vencimiento y, en la de MyInvestor, `"Fondo Indexado Global"` como
-nombre de ejemplo, justo el que fusiono los dos productos. Ahora las dos llevan
+su fecha de vencimiento y, en la de MyInvestor, como `name` de ejemplo justo el
+que fusiono los dos productos. Ahora las dos llevan
 la identidad exacta de cada producto para copiar y los campos variables con el
 marcador `<…>`, que el parser ya sabe cazar sin sustituir (features 28 y 30).
 
