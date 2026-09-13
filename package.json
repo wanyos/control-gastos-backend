@@ -21,7 +21,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
   },
-  "packageManager": "pnpm@11.22.0",
+  "packageManager": "pnpm@12.4.1",
   "engines": {
     "node": ">=20"
   },
@@ -33,24 +33,24 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@googleapis/drive": "^21.0.0",
-    "@prisma/adapter-pg": "^7.9.1",
-    "@prisma/client": "^7.9.1",
+    "@googleapis/drive": "^25.0.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
-    "fastify": "^5.12.1",
+    "fastify": "^5.12.4",
     "fastify-plugin": "^6.0.0",
     "pg": "^8.23.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@types/pg": "^8.23.1",
-    "oxlint": "^1.79.0",
-    "pdfjs-dist": "^6.2.108",
+    "oxlint": "^1.82.0",
+    "pdfjs-dist": "^6.3.289",
     "prettier": "^3.9.6",
-    "prisma": "^7.9.1",
-    "tsx": "^4.23.12",
+    "prisma": "^7.10.0",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }
