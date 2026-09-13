@@ -15,7 +15,7 @@
 ## Framework / Runtime
 
 - **Framework:** Fastify `^5.11.3`.
-- **Runtime:** Node.js — probado con `v24.11.0`; `engines.node` exige `>=20`.
+- **Runtime:** Node.js — probado con `v24.18.0`; `engines.node` exige `>=24` (desde el 2026-09-13: vitest 5 pide `^22.12`, `@googleapis/drive` 25 pide `>=22` y `process.loadEnvFile()` es estable desde `24.10`).
 
 ## Librerías clave
 
@@ -31,7 +31,10 @@
   reexportado; **no** se declara `google-auth-library` aparte, ver ADR-007). Se
   eligió frente al monolito `googleapis` (~85x más pesado) por peso. Auth OAuth2
   con refresh token; el cliente se expone como `fastify.drive`.
-- **Carga de entorno:** `dotenv@^17.4.2` (Prisma 7 no autocarga `.env`).
+- **Carga de entorno:** sin dependencia. `process.loadEnvFile()` nativo de Node
+  (estable desde 24.10), llamado en `src/lib/load-env-file.ts`, que ignora solo un
+  `.env` inexistente (Prisma 7 no autocarga `.env`). El script `scripts/get-drive-refresh-token.mjs` hace la misma llamada
+  por su cuenta porque no puede importar TypeScript.
 - **Lectura de `.xlsx`:** `exceljs@^4.4.0` (MIT). Lee el extracto `.xlsx` de
   Bankinter (feature 6 `bankinter-parser`) desde un `Buffer` y **escribe** libros
   en memoria, lo que permite generar los fixtures sintéticos de test en código
@@ -71,7 +74,8 @@
   - `pnpm test` → `vitest run` (suite completa, la ejecuta también `./init.sh`).
   - `pnpm run test:watch` → `vitest` (modo watch en desarrollo).
 - **Config:** `vitest.config.ts` — `environment: 'node'`, `.env` cargado vía
-  `setupFiles: ['dotenv/config']` (mismo mecanismo que producción),
+  `setupFiles: ['./src/lib/load-env-file.ts', './vitest.setup.ts']` (el mismo
+  módulo que importa `src/server.ts`, y siempre antes de `./vitest.setup.ts`),
   `LOG_LEVEL=silent` para no ensuciar la salida. Desde la F27 hay además
   `./vitest.setup.ts` (por archivo de test) y `globalSetup: ['./vitest.global-setup.ts']`
   (una vez por pasada), y `maxWorkers` queda **fijado**: ver el punto siguiente.

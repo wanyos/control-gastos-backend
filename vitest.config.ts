@@ -8,12 +8,13 @@ export default defineConfig({
   test: {
     environment: 'node',
     // Prisma 7 does not autoload .env; tests need DATABASE_URL just like
-    // src/server.ts does (it imports 'dotenv/config' before building the app).
+    // src/server.ts does (its first import is src/lib/load-env-file.ts, which
+    // calls Node's process.loadEnvFile() before the app is built).
     //
     // `vitest.setup.ts` comes after on purpose: it REWRITES the DATABASE_URL
-    // that dotenv just loaded so the file can only reach this worker's
+    // loaded from .env just before, so the file can only reach this worker's
     // throwaway database, never the human's `gastos` (feature 27, ADR-027).
-    setupFiles: ['dotenv/config', './vitest.setup.ts'],
+    setupFiles: ['./src/lib/load-env-file.ts', './vitest.setup.ts'],
     // Prepares those databases before the suite and, when it ends, checks his
     // database is EXACTLY as it was.
     globalSetup: ['./vitest.global-setup.ts'],
@@ -23,9 +24,9 @@ export default defineConfig({
     // instead of the default (11 here): ~0.2s on a ~6s suite.
     maxWorkers: testWorkerCount(availableParallelism()),
     // Keep test output clean and make the suite hermetic: these are set before
-    // the `dotenv/config` setupFile runs, and dotenv does not override
-    // already-set vars, so they win over the real .env. The Drive placeholders
-    // let loadConfig() and buildApp() succeed without real credentials or
+    // the `./src/lib/load-env-file.ts` setupFile runs, and process.loadEnvFile()
+    // does not override already-set vars, so they win over the real .env. The
+    // Drive placeholders let loadConfig() and buildApp() succeed without real credentials or
     // network (the Drive client is built lazily, see src/plugins/drive.ts).
     env: {
       LOG_LEVEL: 'silent',

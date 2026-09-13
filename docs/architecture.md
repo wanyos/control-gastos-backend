@@ -181,7 +181,9 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   adapter `PrismaPg` con `DATABASE_URL` en `src/lib/prisma.ts`.
 - **Alternativas consideradas:** generador clásico `prisma-client-js` sin
   adapter — se descartó por estar en vía de deprecación en Prisma 7.
-- **Consecuencias:** `.env` debe cargarse manualmente (`dotenv/config`).
+- **Consecuencias:** `.env` debe cargarse manualmente. Lo hace
+  `src/lib/load-env-file.ts` con `process.loadEnvFile()` nativo de Node 24; un
+  `.env` ausente se ignora, cualquier otro error se lanza.
 
 ### ADR-003: Validación con JSON Schema nativo de Fastify
 

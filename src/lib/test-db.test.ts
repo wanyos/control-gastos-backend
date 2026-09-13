@@ -100,12 +100,13 @@ describe('the guardians are WIRED, not just written', () => {
     return readFileSync(new URL(`../../${name}`, import.meta.url), 'utf8')
   }
 
-  it('runs vitest.setup.ts in every test file, after dotenv', () => {
+  it('runs vitest.setup.ts in every test file, after the .env is loaded', () => {
     const config = repoFile('vitest.config.ts')
     const setups = config.match(/setupFiles:\s*\[([^\]]+)\]/)?.[1] ?? ''
+    const envLoader = "'./src/lib/load-env-file.ts'"
 
-    expect(setups.indexOf('dotenv/config')).toBeGreaterThanOrEqual(0)
-    expect(setups.indexOf('./vitest.setup.ts')).toBeGreaterThan(setups.indexOf('dotenv/config'))
+    expect(setups.indexOf(envLoader)).toBeGreaterThanOrEqual(0)
+    expect(setups.indexOf("'./vitest.setup.ts'")).toBeGreaterThan(setups.indexOf(envLoader))
     expect(config).toContain("globalSetup: ['./vitest.global-setup.ts']")
   })
 

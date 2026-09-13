@@ -1,5 +1,5 @@
 // Load .env BEFORE anything that depends on it, same as src/server.ts.
-import 'dotenv/config'
+import '../src/lib/load-env-file.js'
 
 import { createPrismaClient } from '../src/lib/prisma.js'
 import { seedDefaultCategories } from '../src/modules/categories/categories.seed.js'

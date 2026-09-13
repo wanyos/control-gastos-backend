@@ -23,7 +23,7 @@
 // It is deliberately thin: the logic it calls lives in `src/lib/test-db.ts`,
 // `src/lib/test-var.ts` and `src/lib/test-guard.ts`, type-checked by `tsc` and
 // each with its own tests.
-import 'dotenv/config'
+import './src/lib/load-env-file.js'
 import { availableParallelism } from 'node:os'
 
 import {

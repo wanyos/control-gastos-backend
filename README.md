@@ -6,7 +6,7 @@ sobre **PostgreSQL**.
 
 ## Requisitos
 
-- Node.js >= 20 (probado con Node 24)
+- Node.js >= 24 (probado con Node 24.18). vitest 5 exige `^22.12` y `@googleapis/drive` 25 exige `>=22`, y la carga del `.env` usa `process.loadEnvFile()`, estable desde Node 24.10
 - PostgreSQL (o Docker para levantarlo con `docker-compose.yml`)
 
 ## Puesta en marcha
@@ -164,8 +164,10 @@ Este proyecto usa la configuración moderna de **Prisma 7**:
   `studio`) se define en `prisma.config.ts`; en tiempo de ejecución se pasa a
   `PrismaClient` mediante un **driver adapter** (`@prisma/adapter-pg`) en
   [`src/lib/prisma.ts`](src/lib/prisma.ts).
-- El `.env` **no se carga automáticamente**: `prisma.config.ts` importa
-  `dotenv/config`, y el servidor lo hace en la primera línea de
+- El `.env` **no se carga automáticamente**: lo carga
+  [`src/lib/load-env-file.ts`](src/lib/load-env-file.ts), que llama a
+  `process.loadEnvFile()` de Node (sin dependencia externa) y no hace nada si el
+  archivo no existe. Lo importan en su primera línea `prisma.config.ts` y
   [`src/server.ts`](src/server.ts).
 - El cliente se genera con el generador `prisma-client` (ESM) en
   `src/generated/prisma`. El proyecto es **ESM** (`"type": "module"`), por lo

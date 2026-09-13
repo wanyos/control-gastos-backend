@@ -67,6 +67,11 @@ describe('architecture invariants', () => {
       // only thing standing between the suite and his data.
       'lib/test-db.ts',
       'lib/test-db.test.ts',
+      // Loads the .env with Node's process.loadEnvFile(), ignoring only a
+      // missing file. Imported first by src/server.ts, and first setupFile of
+      // vitest.config.ts: before vitest.setup.ts rewrites DATABASE_URL.
+      'lib/load-env-file.ts',
+      'lib/load-env-file.test.ts',
       'plugins/drive.ts',
       'plugins/error-handler.ts',
       'modules/accounts/accounts.routes.ts',

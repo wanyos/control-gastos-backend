@@ -2,14 +2,23 @@
 // outside src/ on purpose: it is NOT part of the app (see
 // specs/drive-connection/design.md §9). Run it once with:
 //   node scripts/get-drive-refresh-token.mjs
-import 'dotenv/config'
 import { createServer } from 'node:http'
+import { loadEnvFile } from 'node:process'
 
 import { auth } from '@googleapis/drive'
 
 // Repeated here because this plain .mjs is not compiled by tsc and cannot import
 // the .ts source. Source of truth: src/lib/drive.ts (driveScope).
 const driveScope = 'https://www.googleapis.com/auth/drive'
+
+// Loads .env with Node's process.loadEnvFile(), ignoring ONLY a missing file
+// (the variables may come from the environment). Same rule as
+// src/lib/load-env-file.ts, repeated for the same reason as driveScope.
+try {
+  loadEnvFile()
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error
+}
 
 const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID
 const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET

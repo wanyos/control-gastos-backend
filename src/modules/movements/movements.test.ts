@@ -617,7 +617,7 @@ describe('movement routes (read-only) and database indexes', () => {
 
   function listUrl(params: Record<string, string | number>): string {
     const search = new URLSearchParams(
-      Object.entries(params).map(([key, value]) => [key, String(value)]),
+      Object.entries(params).map(([key, value]): [string, string] => [key, String(value)]),
     )
     return `/api/movements?${search.toString()}`
   }

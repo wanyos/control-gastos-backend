@@ -1,6 +1,6 @@
 // Load .env environment variables BEFORE any other module that depends on
 // them (e.g. the Prisma connection).
-import 'dotenv/config'
+import './lib/load-env-file.js'
 
 import { buildApp } from './app.js'
 import { loadConfig, type AppConfig } from './config/env.js'
