@@ -169,6 +169,21 @@ describe('architecture invariants', () => {
       'modules/openbank/openbank.statement.parser.test.ts',
       'modules/openbank/openbank.service.test.ts',
       'modules/openbank/openbank.routes.test.ts',
+      // Sixth bank with its own parser module (feature 46): a CSV of commas that
+      // may carry quotes, so it brings its own reader inside its folder.
+      'modules/revolut/revolut.csv.ts',
+      'modules/revolut/revolut.format.ts',
+      'modules/revolut/revolut.statement.parser.ts',
+      'modules/revolut/revolut.service.ts',
+      'modules/revolut/revolut.routes.ts',
+      'modules/revolut/revolut.types.ts',
+      'modules/revolut/revolut.fixture.ts',
+      'modules/revolut/revolut.csv.test.ts',
+      'modules/revolut/revolut.format.test.ts',
+      'modules/revolut/revolut.statement.parser.test.ts',
+      'modules/revolut/revolut.service.test.ts',
+      'modules/revolut/revolut.routes.test.ts',
+      'modules/revolut/revolut.import.test.ts',
       // Fifth bank with its own module (feature 20, ADR-024), and the first one
       // that enters WITHOUT a parser of what the bank emits: its statement is a
       // `.pdf` that is never opened, and the entry is a `.json` the human writes.
@@ -417,6 +432,21 @@ describe('architecture invariants', () => {
     }
   })
 
+  it('keeps the revolut parser module free of data access (no "prisma" reference)', () => {
+    const files = [
+      'modules/revolut/revolut.csv.ts',
+      'modules/revolut/revolut.format.ts',
+      'modules/revolut/revolut.statement.parser.ts',
+      'modules/revolut/revolut.service.ts',
+      'modules/revolut/revolut.routes.ts',
+      'modules/revolut/revolut.types.ts',
+    ]
+
+    for (const file of files) {
+      expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
+    }
+  })
+
   it('keeps the trade-republic parser module free of data access (no "prisma" reference)', () => {
     // This bank does not touch the database AT ALL (R5, decision of the human:
     // «no quiero que esto toque la base de datos»), same as the MyInvestor
@@ -461,13 +491,20 @@ describe('architecture invariants', () => {
     for (const forbidden of ['drive', 'Drive', 'JSON.parse', 'readFile']) {
       expect(source).not.toContain(forbidden)
     }
-    for (const bank of ['bankinter', 'myinvestor', 'n26', 'openbank', 'trade-republic']) {
+    for (const bank of [
+      'bankinter',
+      'myinvestor',
+      'n26',
+      'openbank',
+      'revolut',
+      'trade-republic',
+    ]) {
       expect(source).not.toContain(bank)
     }
   })
 
   it('shares no parsing code between bank modules (one parser per bank)', () => {
-    const bankModules = ['bankinter', 'myinvestor', 'n26', 'openbank', 'trade-republic']
+    const bankModules = ['bankinter', 'myinvestor', 'n26', 'openbank', 'revolut', 'trade-republic']
     // What a bank module may import: vendor/node, its own files, the shared
     // error classes, `lib/` (the output contract) and the single sign helper of
     // `modules/movements/`, which is NOT a bank module.
@@ -536,6 +573,8 @@ describe('architecture invariants', () => {
     expect(existsSync(join(srcDir, 'modules', normalizeBankName('N26')))).toBe(true)
     expect(normalizeBankName('Openbank')).toBe('openbank')
     expect(existsSync(join(srcDir, 'modules', normalizeBankName('Openbank')))).toBe(true)
+    expect(normalizeBankName('Revolut')).toBe('revolut')
+    expect(existsSync(join(srcDir, 'modules', normalizeBankName('Revolut')))).toBe(true)
   })
 
   it('declares the parsed movement contract in ONE module only (feature 11)', () => {

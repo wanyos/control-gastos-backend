@@ -108,8 +108,10 @@ Tres reglas que no se negocian:
 
 Ejemplos vivos que se pueden copiar tal cual: `src/modules/bankinter/` (`.xlsx`,
 ADR-010), `src/modules/myinvestor/` (`.csv` con `;`, ADR-014) y
-`src/modules/n26/` (`.csv` con `,` **y comillas**, feature 18). «Copiar» quiere
-decir **copiar el patrón**, nunca importar: los tres módulos no comparten una
+`src/modules/n26/` (`.csv` con `,` **y comillas**, feature 18). El último que se
+dio de alta así es `src/modules/revolut/` (`.csv` con `,`, **saldo en cada línea**
+y un estado por fila, feature 46). «Copiar» quiere
+decir **copiar el patrón**, nunca importar: los módulos no comparten una
 sola línea de lectura de formato, y hay guardián en
 [`src/architecture.test.ts`](../src/architecture.test.ts) que lo comprueba.
 
@@ -207,6 +209,16 @@ importa y **no se mueve**: se corrige el fichero y se reintenta.
   escribirla con la coma del fichero, el parser de N26 también la entiende, pero
   la forma buena es esta.)
 
+- **Revolut tampoco lo trae** (feature 46). Se escribe a mano igual, **con `;`**
+  aunque el fichero separe por comas, y **solo esa línea**: el saldo no se
+  escribe, porque el archivo ya lo trae en cada línea (ver la sección del saldo,
+  abajo).
+
+  ```
+  iban;ES9121000418450200051332
+  <aquí, sin tocar, la fila de cabecera que exporta Revolut>
+  ```
+
 ### Si el fichero del banco es HTML: el IBAN va en un comentario de la primera línea
 
 > Añadido el 2026-08-19 con la feature 19 (`openbank-statement`). Es la decisión
@@ -293,6 +305,11 @@ Fecha de operación;Fecha de valor;Concepto;Importe;Divisa
   importes del propio banco, en cambio, se lee **estricta**: punto decimal y nada
   más.
 
+- **En Revolut NO se escribe esta línea** (feature 46): el archivo ya trae el saldo
+  **tras cada movimiento** en su columna `Saldo`, y de ahí se guarda y se ancla la
+  cuenta con la línea más reciente. Si se escribe una línea `saldo;` en ese
+  archivo, **no se lee**.
+
 Este saldo es **el de la cuenta**, no el saldo tras cada movimiento (`balance`),
 que MyInvestor no reporta y sigue vacío en todas las líneas. Son dos datos
 distintos y se guardan aparte a propósito. ~~Por ahora solo se parsea y se
@@ -362,9 +379,11 @@ rechazado se arregla en un minuto; un dato corrupto que entra callado, no.
 
 La comprobación vive en [`src/lib/utf8.ts`](../src/lib/utf8.ts) (`decodeUtf8Strict`),
 fuera del módulo de cualquier banco: la codificación no es un formato, así que se
-comparte. Hoy la usan los dos parsers de texto: el del extracto `.csv` de MyInvestor
-([`myinvestor.statement.parser.ts`](../src/modules/myinvestor/myinvestor.statement.parser.ts))
-y el de N26
+comparte. Hoy la usan el parser del extracto `.csv` de MyInvestor
+([`myinvestor.statement.parser.ts`](../src/modules/myinvestor/myinvestor.statement.parser.ts)),
+el de Revolut
+([`revolut.statement.parser.ts`](../src/modules/revolut/revolut.statement.parser.ts),
+feature 46) y el de N26
 ([`n26.statement.parser.ts`](../src/modules/n26/n26.statement.parser.ts)) — la muestra
 de N26 es ASCII puro hoy, pero eso es suerte del mes: en cuanto un comercio traiga
 una tilde, el problema es el mismo;

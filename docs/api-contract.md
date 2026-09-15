@@ -117,7 +117,8 @@ Códigos estables:
 > aprende cp1252** ni adivina codificaciones: el `message` dice qué byte y qué
 > línea, y pide volver a guardar el fichero en UTF-8. Aparece en
 > `files[].error.code` de `POST /api/import` y, como motivo de texto, en
-> `failed[].reason` de `POST /api/parser/myinvestor` y de `POST /api/parser/n26`.
+> `failed[].reason` de `POST /api/parser/myinvestor`, de `POST /api/parser/n26` y
+> de `POST /api/parser/revolut`.
 >
 > **Nota (`UNEXPECTED_ENCODING`, feature "openbank-statement", 2026-08-19):** la
 > regla de arriba se **acota, no se rompe** (ADR-022). Lo que escribe **el humano**
@@ -1312,7 +1313,8 @@ cada `<banco>/<año>/`, en el orden en que Drive los lista (por nombre):
 6. **solo entonces** mueve el original a `<banco>/<año>/procesados/`.
 
 > **Qué bancos lee hoy el importador:** `bankinter` (`.xlsx`), `myinvestor`
-> (`.csv`), `n26` (`.csv`) y `openbank` (`.xls`) como **extractos**; y, desde la
+> (`.csv`), `n26` (`.csv`), `openbank` (`.xls`) y, desde la feature 46, `revolut`
+> (`.csv`) como **extractos**; y, desde la
 > feature 26, `trade-republic` (`.json`) y, desde la feature 29, `myinvestor`
 > (`.json`) como **archivos de producto** —MyInvestor está en los **dos** registros, y
 > es seguro porque sus dos entradas nunca reclaman la misma extensión (`.csv` extracto,
@@ -1877,8 +1879,8 @@ Divisa`; un banco que no reporte saldo (o IBAN) deja esos campos en `null`.
 
 | Campo del resultado | Qué es | Quién lo trae hoy |
 | --- | --- | --- |
-| `accountBalance` (nivel **extracto**) | Saldo **de la cuenta** en la fecha del extracto. Un solo valor por archivo | MyInvestor y N26, de la línea de preámbulo `saldo;<importe>` que escribe el humano; **Openbank, de la fila `Saldo:` de su propio preámbulo**. Bankinter: `null` |
-| `balance` (dentro de cada **movimiento**) | Saldo **tras esa línea**. Uno por movimiento | Bankinter, de su columna `Saldo`, y **Openbank, de su quinta columna** (desde la feature 31, que revierte la decisión de la F19 de leerlo y tirarlo; ver ADR-028). MyInvestor, N26 y Trade Republic: `null` siempre, porque el archivo no lo trae (ADR-013) |
+| `accountBalance` (nivel **extracto**) | Saldo **de la cuenta** en la fecha del extracto. Un solo valor por archivo | MyInvestor y N26, de la línea de preámbulo `saldo;<importe>` que escribe el humano; **Openbank, de la fila `Saldo:` de su propio preámbulo**. Bankinter y Revolut: `null` |
+| `balance` (dentro de cada **movimiento**) | Saldo **tras esa línea**. Uno por movimiento | Bankinter, de su columna `Saldo`; **Openbank, de su quinta columna** (desde la feature 31, que revierte la decisión de la F19 de leerlo y tirarlo; ver ADR-028), y **Revolut, de su columna `Saldo`** (feature 46). MyInvestor, N26 y Trade Republic: `null` siempre, porque el archivo no lo trae (ADR-013) |
 
 Son **dos datos distintos y no comparten campo ni nombre**: sumarlos o usar uno
 como sustituto del otro es un error. `accountBalance` es `number | null`, con
@@ -2425,6 +2427,125 @@ Sin cuerpo de petición.
   dentro. Un fichero que no declare la codificación del banco, que no tenga
   cabecera reconocible o cuyo IBAN escrito no sea válido, cae aquí **entero** y
   **no** se escribe volcado.
+- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
+  no maneja. **No** son un fallo.
+
+---
+
+## Parser de Revolut (sin base de datos)
+
+> **Feature "revolut-statement" (2026-09-15).** Convierte el **extracto `.csv` de
+> la cuenta de Revolut** (la copia local que dejó la ingesta) en movimientos
+> estructurados, **sin base de datos, sin deduplicar y sin mover nada en Drive**.
+> Devuelve el **mismo contrato** `ParsedMovement` / `ParsedStatement` que los demás
+> bancos (ver §Modelo `ParsedMovement`). El volcado va al mismo `var/parsed/`
+> **gitignoreado**; el endpoint solo expone la ruta relativa
+> `<banco>/<año>/<archivo>.json`. Sin autenticación nueva. Desde esta feature el
+> banco está también en el registro de `src/app.ts`, así que `POST /api/import` y
+> `POST /api/import/local` **importan** sus `.csv` en vez de reportarlos como
+> `skipped`.
+
+**Qué tiene este fichero** (y por qué tiene su propio lector, en
+`src/modules/revolut/revolut.csv.ts`):
+
+- **Separador coma.** La muestra no trae comillas, pero se lee como **CSV de
+  verdad** (comillas, `""` como comilla literal y saltos de línea dentro de un
+  campo): una descripción con una coma dentro no parte la fila.
+- **Diez columnas**, mapeadas **por nombre** de cabecera y no por posición. Se
+  leen siete: las dos fechas; `Descripción` para el concepto; `Importe` para la
+  cantidad; la divisa; el estado —columna titulada `State`, en inglés, tal cual
+  la escribe el banco—, y `Saldo`. Si falta alguna de esas siete, el fichero se
+  rechaza entero (`VALIDATION_ERROR`).
+- **Fechas con hora** (`AAAA-MM-DD HH:MM:SS`). `bookingDate` es el **día** de
+  `Fecha de finalización` y `valueDate` el **día** de `Fecha de inicio`; **la hora
+  se descarta** y no se aplica zona horaria. Se valida que el día y la hora
+  existan; si no, la fila va a `unparsedRows`.
+- **Importes con punto decimal y el signo dentro** (`-42.40`, `1000.00`), leídos
+  **estrictos**. El tipo ingreso/gasto/neutral sale del signo.
+- **`Comisión` no se lee** ni se suma al importe.
+- **`Tipo` y `Producto` no se leen.** `Divisa` va a `currency`.
+
+> 🚦 **Cada fila se decide primero por su `State`:**
+>
+> - `COMPLETADO` → movimiento.
+> - `DEVUELTO` → **no** produce movimiento y **no** va a `unparsedRows`: no es una
+>   fila rota, es una operación devuelta, sin fecha de finalización ni saldo.
+> - **Cualquier otro estado** (p. ej. un pendiente) → `unparsedRows` con su nº de
+>   línea y el motivo `estado no importable ('<ESTADO>'): solo entra COMPLETADO`.
+>   No entra como firme ni se pierde callado.
+
+> 💶 **El saldo va en cada línea y se emite en `balance`.** El importador lo guarda
+> en `balanceAfter` y, si la cuenta no está anclada, la ancla con la línea más
+> reciente (ADR-028). `accountBalance` es **siempre `null`**: aquí **no se lee**
+> ninguna línea `saldo;`, porque el archivo ya trae el saldo. Un `Saldo` **vacío**
+> en una fila `COMPLETADO` sale como `balance: null`; uno escrito que no sea un
+> número va a `unparsedRows`.
+>
+> El fichero viene ordenado por `Fecha de finalización`, del **más antiguo** al
+> más reciente, así que `daySequence` se numera con `1` = el **más antiguo** del
+> día en el orden del propio fichero.
+
+> 📌 **El IBAN lo escribe el humano UNA SOLA VEZ**, como línea `iban;ES…` **encima**
+> de la cabecera, con `;` aunque el fichero separe por comas (con la coma del
+> fichero también se entiende; con `:` no). Se **normaliza y se valida** como en
+> todos los bancos (`INVALID_IBAN` rechaza el fichero entero). Es **opcional**: sin
+> ella, `accountIban` es `null` y la importación se apoya en el camino que ya
+> existe: la **única** cuenta registrada de ese banco, o `MISSING_ACCOUNT_DATA` si
+> hay cero o varias.
+
+> 🔴 **El extracto DEBE estar en UTF-8**: se descodifica con `decodeUtf8Strict` y un
+> byte que no sea UTF-8 válido **rechaza el fichero entero** (`NOT_UTF8`). El BOM
+> inicial se tolera.
+
+Otras reglas, idénticas a las de los demás bancos: **no** se deduplica (dos filas
+idénticas salen las dos), las líneas en blanco se ignoran, y una fila no
+interpretable va a `unparsedRows` (`{ row, reason }`, `row` 1-based contando la
+línea del IBAN y la cabecera) sin detener el resto y **sin consumir
+`daySequence`**.
+
+### `POST /api/parser/revolut`
+
+Acción **explícita** de parseo. Recorre las copias locales de Revolut
+(`var/drive-read/revolut/<año>/`), parsea los `.csv` (cualquier otra extensión →
+`ignored`) y escribe el resultado de cada uno en
+`var/parsed/revolut/<año>/<archivo>.json`. Read-only respecto a Drive y a la base
+de datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo sobre
+los mismos archivos produce **exactamente el mismo resultado**.
+
+Sin cuerpo de petición.
+
+**Respuesta 200**
+```json
+{
+  "parsedCount": 1,
+  "failedCount": 0,
+  "ignoredCount": 0,
+  "statements": [
+    {
+      "bank": "revolut",
+      "year": "2025",
+      "file": "extracto.csv",
+      "accountIban": "ES9121000418450200051332",
+      "accountBalance": null,
+      "movements": 6,
+      "unparsedRows": 3,
+      "dumpPath": "revolut/2025/extracto.csv.json"
+    }
+  ],
+  "failed": [],
+  "ignored": []
+}
+```
+
+- `accountIban`: `null` salvo que el archivo traiga la línea `iban;`. El del
+  ejemplo es el **público de la documentación**.
+- `accountBalance`: **siempre `null`** en este banco (el saldo va por línea).
+- `dumpPath`: ruta **relativa** a la carpeta de volcado local (nunca la absoluta
+  de la máquina).
+- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un fallo
+  por archivo **no** cambia el código HTTP: la respuesta es 200 con el fallo
+  dentro. Un fichero que no esté en UTF-8, sin cabecera reconocible o con un IBAN
+  escrito no válido cae aquí **entero** y **no** se escribe volcado.
 - `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
   no maneja. **No** son un fallo.
 

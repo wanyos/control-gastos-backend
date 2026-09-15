@@ -8,7 +8,7 @@
 > El detalle de cada uno vive en su documento, enlazado en la última columna; si
 > los dos se contradicen, manda el documento del formato.
 >
-> **Última revisión:** 2026-08-31.
+> **Última revisión:** 2026-09-15 (fila de Revolut, feature 46).
 
 ## Dónde van
 
@@ -33,7 +33,7 @@ se toma por un banco.
 | **N26** | `.csv` separado por **`,`** y **entrecomillado** | export del banco, punto decimal | `iban;…` y `Saldo;…` — **con `;`**, aunque el fichero use comas | **UTF-8** | [runbook](dar-de-alta-un-banco.md) |
 | **Openbank** | se llama `.xls` pero **es HTML** | una tabla HTML, no un Excel | solo el IBAN, en un **comentario HTML de la primera línea**: `<!-- iban;ES… -->`. El saldo lo trae el banco | **cp1252** 🔴 | [runbook](dar-de-alta-un-banco.md) |
 | **Trade Republic** | `.json`, **uno por abono de intereses** (mensual) | lo escribes tú entero; su `.pdf` **se ignora** | todo: plantilla `savings_account` | UTF-8 | [formato](trade-republic-product-files.md) |
-| **Revolut** | `.csv` con comas | export del banco | nada: **no hay parser**. Se descarga en cada ingesta y no lo lee nadie | — | aparcado (2026-08-20) |
+| **Revolut** | `.csv` separado por **`,`** (comillas solo si un campo las necesita) | export del banco, punto decimal; trae el **saldo en cada línea** | solo `iban;…` encima de la cabecera — **con `;`**, una vez. **Nada de `saldo;`**: el archivo ya lo trae. Las filas `DEVUELTO` no entran | **UTF-8** | [runbook](dar-de-alta-un-banco.md) · feature 46 |
 
 ## Las seis que se olvidan
 

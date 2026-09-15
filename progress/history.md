@@ -1157,3 +1157,5 @@ Funciones públicas de `src/lib/drive-structure.ts` (reciben `fastify.drive` y
   cerraron también los cabos 15 y 19 del roadmap en el commit 83dc791
   (`hasRoute` en el test de rutas de Bankinter y `net-worth` en el árbol
   esperado de `src/architecture.test.ts`).
+
+- 2026-09-15 — F46 `revolut-statement`: **la app lee por fin el `.csv` de Revolut y mete sus movimientos en la base de datos** por el mismo camino de importación que los otros cinco bancos — `POST /api/import` deja de saltar esos ficheros, la fecha contable sale de «Fecha de finalización» y la fecha valor de «Fecha de inicio», las filas `DEVUELTO` no entran, cualquier otro estado distinto de `COMPLETADO` va a `unparsedRows`, se guarda el saldo de cada línea y se ancla la cuenta; hay además `POST /api/parser/revolut` para la pasada local sin base de datos. Con el fichero real del 2025: 35 movimientos, 0 filas sin leer y los saldos cuadrando. Sin cambios de esquema → [resumen](summaries/revolut-statement.md)

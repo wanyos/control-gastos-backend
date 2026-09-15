@@ -1882,6 +1882,51 @@
         "docs/roadmap.md: cabos 13 y 17 marcados como cerrados por esta feature."
       ],
       "status": "done"
+    },
+    {
+      "id": 46,
+      "name": "revolut-statement",
+      "title": "Parser del extracto .csv de Revolut e importación a la base de datos",
+      "intent": {
+        "_procedencia": "Dictado por el humano en la sesión del 2026-09-15, tras revisar juntos el .csv exportado de Revolut ese día (36 filas, primera muestra con movimientos; la del 2026-08-17 venía vacía). Sus palabras: 'nos faltaba crear el flujo del parser de revolut, luego volcar los datos a la base de datos'. Las decisiones sobre la muestra son respuestas suyas a cinco puntos que le planteó el leader, recogidas abajo.",
+        "que_quiero": "Que el backend lea el .csv que exporta Revolut y lleve sus movimientos a la base de datos por el mismo camino de importación que los demás bancos. De mi parte escribo el iban en la primera línea del archivo, una vez; el resto se queda tal y como sale del banco. El archivo lo subo a notas-banco/revolut/2025/.",
+        "por_que": "Es la única de mis cuentas que falta en el sistema (E4, 5 de 6 bancos). Estaba aparcada desde el 2026-08-20 porque la muestra venía vacía; ya hay un archivo con datos.",
+        "como_se_que_esta_bien": [
+          "Subo el .csv de Revolut con mi línea del iban y sus movimientos entran en la base de datos con su fecha, su concepto y su importe.",
+          "Las filas con estado DEVUELTO no entran como movimiento.",
+          "La fecha contable es la de 'Fecha de finalización' y la fecha valor la de 'Fecha de inicio'.",
+          "Se guarda el saldo que el archivo trae en cada línea.",
+          "Un gasto sale como gasto y un ingreso como ingreso sin que yo toque el signo."
+        ],
+        "que_no_quiero": [
+          "No quiero editar el archivo del banco más allá de la línea del iban.",
+          "La columna 'Comisión' de momento no se usa para nada.",
+          "No quiero que el parser de Revolut toque los de los otros bancos.",
+          "No quiero escribir la línea del saldo: el archivo ya lo trae en cada línea."
+        ],
+        "delego_en_agente": [
+          "Cómo se lee el CSV (comas; la muestra no trae comillas, pero una descripción con coma podría traerlas).",
+          "Qué hacer con la hora que acompaña a las dos fechas."
+        ]
+      },
+      "acceptance": [
+        "Revolut tiene su PROPIO módulo en src/modules/revolut/ y no importa una línea de lectura de formato de otro banco (deriva de: 'no quiero que el parser de Revolut toque los de los otros bancos', y de docs/conventions.md §Parsers de banco)",
+        "El .csv se lee como CSV de verdad: separador coma, y un campo entrecomillado con comas dentro no parte la fila (deriva del delego_en_agente nº 1)",
+        "bookingDate sale de 'Fecha de finalización' y valueDate de 'Fecha de inicio', ambas como AAAA-MM-DD; la hora se descarta (deriva de: 'la fecha contable es la de Fecha de finalización y la fecha valor la de Fecha de inicio' + delego nº 2)",
+        "Las filas con estado DEVUELTO no producen movimiento. DECISIÓN DEL LEADER (apruébala o cámbiala): se ignoran sin ir a unparsedRows, porque no son filas rotas; cualquier OTRO estado distinto de COMPLETADO (p. ej. un pendiente, que la muestra no trae) va a unparsedRows con su nº de línea y el estado como motivo, para que no entre como firme ni se pierda callado (deriva de: 'las filas con estado DEVUELTO no entran como movimiento')",
+        "El saldo de cada línea ('Saldo') se emite en balance, de modo que el importador existente lo guarda en balanceAfter y ancla la cuenta con la línea más reciente; accountBalance es null y NO se lee ninguna línea 'saldo;' (deriva de: 'se guarda el saldo que el archivo trae en cada línea' + 'no quiero escribir la línea del saldo')",
+        "La columna 'Comisión' no se lee ni se suma al importe (deriva de: 'la columna Comisión de momento no se usa para nada')",
+        "El importe lleva punto decimal y el signo dentro; el tipo se decide con deriveMovementTypeFromAmount y la posición dentro del día con assignDaySequence (deriva de: 'un gasto sale como gasto y un ingreso como ingreso')",
+        "La línea 'iban;…' se lee con ';' como en MyInvestor y N26, y es opcional: sin ella el fichero entra por el camino que ya existe en el importador (única cuenta de ese banco o MISSING_ACCOUNT_DATA) (deriva de: 'escribo el iban en la primera línea del archivo, una vez')",
+        "El contenido se descodifica con decodeUtf8Strict, nunca con toString('utf8') (docs/dar-de-alta-un-banco.md §codificación)",
+        "La salida es el contrato común ParsedStatement<'revolut'>: no se redeclaran ParsedMovement, UnparsedRow ni ParsedMovementType",
+        "Existe POST /api/parser/revolut (misma forma que la de n26) y el banco queda en el registro de parsers de src/app.ts con la extensión .csv, de modo que POST /api/import deja de reportar sus ficheros como skipped y los importa; docs/api-contract.md y docs/archivos-por-banco.md actualizados",
+        "DECISIÓN DEL LEADER (apruébala o cámbiala): las listas de bancos escritas a mano en src/architecture.test.ts (hoy sin 'revolut') incluyen el módulo nuevo, para que los tests de aislamiento entre bancos, de no acceso a datos y de decodificador estricto lo cubran (hueco señalado en progress/explorations/auditoria-tests-huecos-2026-08-22.md)",
+        "🔒 El archivo real trae nombres de personas en las descripciones: los fixtures son SINTÉTICOS y ningún informe copia contenido real",
+        "Cada criterio tiene al menos un test mapeado en progress/implementations/revolut-statement.md; ./init.sh termina en verde con la suite completa"
+      ],
+      "sdd": false,
+      "status": "done"
     }
   ]
 }

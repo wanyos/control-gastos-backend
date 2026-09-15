@@ -22,6 +22,8 @@ import { parseN26Statement } from './modules/n26/n26.statement.parser.js'
 import openbankRoutes from './modules/openbank/openbank.routes.js'
 import overviewRoutes from './modules/overview/overview.routes.js'
 import { parseOpenbankStatement } from './modules/openbank/openbank.statement.parser.js'
+import revolutRoutes from './modules/revolut/revolut.routes.js'
+import { parseRevolutStatement } from './modules/revolut/revolut.statement.parser.js'
 import { parseTradeRepublicProductFile } from './modules/trade-republic/trade-republic.service.js'
 import tradeRepublicRoutes from './modules/trade-republic/trade-republic.routes.js'
 import transfersRoutes from './modules/transfers/transfers.routes.js'
@@ -48,6 +50,7 @@ export const bankParsers: BankParserRegistry = [
   { bank: 'myinvestor', extensions: ['.csv'], parse: parseMyinvestorStatement },
   { bank: 'n26', extensions: ['.csv'], parse: parseN26Statement },
   { bank: 'openbank', extensions: ['.xls'], parse: parseOpenbankStatement },
+  { bank: 'revolut', extensions: ['.csv'], parse: parseRevolutStatement },
 ]
 
 /**
@@ -99,6 +102,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(myinvestorRoutes, { prefix: '/api/parser' })
   app.register(n26Routes, { prefix: '/api/parser' })
   app.register(openbankRoutes, { prefix: '/api/parser' })
+  app.register(revolutRoutes, { prefix: '/api/parser' })
   // Trade Republic is a parser route and, since feature 26, an entry of the
   // PRODUCT registry -- never of the statement one: it has no statement to
   // import, only the hand-written account file (ADR-024). This route stays the

@@ -54,6 +54,12 @@ se cierra entero el planteamiento del 2026-09-05 (F42, F43, F44).
 Cierra los cabos 13 y 17 del roadmap; en la misma sesión se cerraron los cabos
 15 y 19 en el commit 83dc791.
 
+**F46 `revolut-statement` cerrada** (2026-09-15, aprobada en segunda pasada y
+probada en real) — [veredicto](reviews/revolut-statement.md) ·
+[resumen](summaries/revolut-statement.md) ·
+[prueba real](explorations/prueba-real-revolut-2026-09-15.md). Commiteada en
+el commit `feat(revolut)` del 2026-09-15. Cierra la E4 del roadmap (6 de 6 bancos).
+
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
 
