@@ -14,8 +14,8 @@
 
 ## Framework / Runtime
 
-- **Framework:** Fastify `^5.11.3`.
-- **Runtime:** Node.js — probado con `v24.18.0`; `engines.node` exige `>=24` (desde el 2026-09-13: vitest 5 pide `^22.12`, `@googleapis/drive` 25 pide `>=22` y `process.loadEnvFile()` es estable desde `24.10`).
+- **Framework:** Fastify `^5.12.5`.
+- **Runtime:** Node.js — probado con `v24.18.0`; `engines.node` exige `>=24` (desde el 2026-09-13: vitest 5 pide `^22.12`, `@googleapis/drive` 26 pide `>=22` y `process.loadEnvFile()` es estable desde `24.10`).
 
 ## Librerías clave
 
@@ -27,7 +27,7 @@
   módulo (ej. `createAccountSchema` en
   [`src/modules/accounts/accounts.schema.ts`](../src/modules/accounts/accounts.schema.ts)).
 - **Encapsulación de plugins:** `fastify-plugin@^6.0.0`.
-- **Google Drive:** `@googleapis/drive@^21.0.0` (cliente Drive v3 + `auth`
+- **Google Drive:** `@googleapis/drive@^26.0.0` (cliente Drive v3 + `auth`
   reexportado; **no** se declara `google-auth-library` aparte, ver ADR-007). Se
   eligió frente al monolito `googleapis` (~85x más pesado) por peso. Auth OAuth2
   con refresh token; el cliente se expone como `fastify.drive`.
@@ -48,7 +48,7 @@
 
 ## Build / Dev tooling
 
-- **Gestor de paquetes:** **pnpm** `11.21.0`, fijado en el campo
+- **Gestor de paquetes:** **pnpm** `12.4.2`, fijado en el campo
   `packageManager` de `package.json`. El lockfile versionado es
   `pnpm-lock.yaml`; `init.sh` detecta el gestor por el lockfile y corre
   `pnpm test`. **Usa siempre `pnpm`, nunca `npm`**: mezclarlos genera un
@@ -58,18 +58,18 @@
 - **Build:** `pnpm run build` → `prisma generate && tsc` (salida a `dist/`).
 - **Arranque producción:** `pnpm start` → `node dist/server.js`.
 - **Type check:** `pnpm run typecheck` → `tsc --noEmit`.
-- **Lint:** `pnpm run lint` → `oxlint` (`oxlint@^1.78.0`, config en
+- **Lint:** `pnpm run lint` → `oxlint` (`oxlint@^1.83.0`, config en
   `.oxlintrc.json`: categoría `correctness`, plugins `typescript`/`unicorn`/
   `oxc`; ignora `src/generated/`, `dist/` y `node_modules/`). `lint:fix` para
   autofix. No pelea con Prettier: `correctness` no trae reglas de formato.
-- **Format:** `pnpm run format:check` / `format` → Prettier `3.9.6`
+- **Format:** `pnpm run format:check` / `format` → Prettier `3.9.7`
   (`.prettierrc`: comillas simples, sin punto y coma, 2 espacios,
   100 columnas). `.prettierignore` excluye artefactos generados, el
   lockfile, los `.md` del harness y `feature_list.json`.
 
 ## Testing
 
-- **Test runner:** **Vitest** `^4.1.10` (elegido 2026-07-10; alternativa
+- **Test runner:** **Vitest** `^5.0.1` (elegido 2026-07-10; alternativa
   `node:test` descartada por requerir cablear el loader tsx a mano).
   - `pnpm test` → `vitest run` (suite completa, la ejecuta también `./init.sh`).
   - `pnpm run test:watch` → `vitest` (modo watch en desarrollo).

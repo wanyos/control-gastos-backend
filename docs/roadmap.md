@@ -416,6 +416,15 @@ tiene etapa, es que se va a perder.
 
 ## Deberes tuyos pendientes (no son código)
 
+- **A partir del 2026-09-17: borrar las dos líneas de `minimumReleaseAgeExclude`
+  de `pnpm-workspace.yaml`.** Al actualizar dependencias el 2026-09-16, pedir
+  `fastify@5.12.5` y `prettier@3.9.7` por su número exacto se saltó la espera de
+  un día que pnpm aplica por defecto a una versión recién publicada, y pnpm
+  escribió esa lista de excepciones. Las dos versiones cumplen el día el
+  2026-09-17 (07:37 y 08:23 UTC): a partir de ahí las líneas no excluyen de nada
+  y se quedarían como la lista vieja que este repositorio borró a propósito el
+  2026-08-21. Se comprueba con un `pnpm install` después de borrarlas.
+
 - ~~🔴 **Comparar los cuatro saldos con la web de tu banco**~~ — **retirado de
   los pendientes por decisión del humano el 2026-09-05** («no lo volvamos a
   mostrar como una cosa que falta por hacer»). Era el paso que quedaba del
