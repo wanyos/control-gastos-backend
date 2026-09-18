@@ -25,10 +25,10 @@
 ## Feature en curso
 
 _Ninguna._ Última cerrada: **F47 `movements-review-bulk`** (2026-09-18, aprobada
-en segunda pasada, `done`, sin commitear y pendiente de la prueba real del
+en segunda pasada, `done`, **commiteada en `00c6790`** y pendiente de la prueba real del
 humano) — ver su sección más abajo. Antes que ella, en la misma sesión,
-**F48 `import-warnings-persistence`** (2026-09-18, aprobada, `done`, sin
-commitear y pendiente de la prueba real del humano). Antes que ella, **F39 `investments-overview`** (2026-09-05, aprobada, probada en real y commiteada en 3b2ed3b) — [veredicto](reviews/investments-overview.md) · [resumen](summaries/investments-overview.md). Con ella quedan cerradas las 6 features de la tanda del 2026-09-01 (36–41), todas commiteadas.
+**F48 `import-warnings-persistence`** (2026-09-18, aprobada, `done`,
+commiteada en `9737af3`; su prueba real se hizo en lo que se podía probar). Antes que ella, **F39 `investments-overview`** (2026-09-05, aprobada, probada en real y commiteada en 3b2ed3b) — [veredicto](reviews/investments-overview.md) · [resumen](summaries/investments-overview.md). Con ella quedan cerradas las 6 features de la tanda del 2026-09-01 (36–41), todas commiteadas.
 
 **Planteamiento nuevo (2026-09-05):** las **F42, F43 y F44** quedaron escritas
 y el humano **aprobó los tres intents** («he leído las tres features, están
@@ -257,7 +257,8 @@ Plantilla mientras trabajas — borra este comentario y rellena:
      lista un ingreso junto a dos gastos y pide una categoría de gasto: tiene que
      responder **400** diciendo qué id falla, y al releerlos **ninguno de los
      tres** debe haber cambiado.
-  Mientras no la hagas, **sigue sin commitear**.
+  Ya está commiteada en `00c6790`: la prueba real sigue pendiente, pero no
+  bloquea nada.
 - ~~**De la F48 (2026-09-18), la prueba real**~~ ✅ **hecha por el leader el
   2026-09-18 a petición del humano**, con su archivo de Revolut de 2025 ya
   procesado antes ([informe](explorations/prueba-real-f48-2026-09-18.md)): la
@@ -267,7 +268,7 @@ Plantilla mientras trabajas — borra este comentario y rellena:
   demuestra que un aviso se guarde, porque ese extracto no trae ni una fila
   ilegible ni un descuadre. El humano decidió **esperar a un aviso de verdad**
   en vez de estropear una fila a propósito (borrarla después exigiría SQL, cabo
-  suelto 23). **Sigue sin commitear.**
+  suelto 23). Commiteada el 2026-09-18 en `9737af3`.
 - ~~**Responder a la propuesta de vocabulario «aviso»**~~ ✅ **aprobada por el
   humano el 2026-09-18** y subida a [`docs/vocabulario.md`](../docs/vocabulario.md)
   §Términos aprobados, con su definición y lo que NO abarca.
