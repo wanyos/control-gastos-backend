@@ -2421,6 +2421,16 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
      `GET /api/accounts` no cambia de forma. Viaja en el informe de la importación
      (`balanceMismatches` por archivo, `balanceMismatchCount` de la ejecución) y
      desaparece con la respuesta.
+
+     > ⚠️ **Esta decisión 3 queda SUPERADA por el ADR-031** (feature 48
+     > `import-warnings-persistence`, 2026-09-18): desde entonces el descuadre de
+     > un archivo que entró **sí** se guarda, en su propia tabla y como el hecho
+     > congelado que fue. Lo que sigue en pie es el motivo que la sostenía —el
+     > descuadre **no se recalcula nunca al leer**, y por eso no puede quedarse
+     > viejo diciendo algo falso—, y también su letra pequeña: no hay columna
+     > nueva en `Account` y `GET /api/accounts` sigue sin cambiar de forma. El
+     > resto de este ADR (las dos comprobaciones, la tolerancia cero, que un
+     > descuadre no tumba nada) sigue vigente tal cual.
   4. **Un descuadre no tumba nada.** El archivo sale `imported`, se guarda todo, el
      ancla no se toca, el saldo no se mueve y la ejecución sigue con el archivo
      siguiente.
@@ -2463,6 +2473,80 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   o el primer archivo de una cuenta, que es el que la ancla— **no se dice nada**: esa vez
   no hay comprobación, que no es lo mismo que estar bien. Y detectar no es corregir: qué
   hacer con un descuadre real es una decisión del humano el día que salga el primero.
+
+### ADR-031: Lo que una importación no puede resolver se guarda como el hecho congelado que fue, con su clave natural, y solo el humano lo cierra
+
+- **Fecha:** 2026-09-18
+- **Estado:** aceptada (implementada en la feature #48 `import-warnings-persistence`, SDD).
+  **Supera la decisión 3 del ADR-030.**
+- **Contexto:** una importación encuentra dos cosas que no sabe arreglar sola: filas
+  de un extracto que el parser no pudo leer y descuadres de saldo (ADR-030). Hasta
+  esta feature las dos solo viajaban en la respuesta de la importación, así que
+  **cerrar el informe las perdía**: no quedaba dónde mirar qué seguía sin resolver,
+  ni forma de decir «esta ya la he mirado». El ADR-030 decidió no persistir el
+  descuadre por una razón concreta —un aviso viejo que dice «hay descuadre» es peor
+  que no tenerlo—, no por no querer el dato.
+- **Decisión:**
+  1. **Se guarda el HECHO, no el estado actual.** Lo que entra en la base de datos
+     es «el día X, al importar el archivo Y, estos dos números no cuadraban», con
+     `computed` y `fromFile` **tal como los calculó la comprobación**. **Nunca se
+     recalculan al leer.** Por eso la objeción del ADR-030 no se le aplica: esto no
+     puede quedarse viejo diciendo algo falso, porque no afirma cómo están las cosas
+     hoy, sino lo que pasó aquel día.
+  2. **Dos tablas, no una con un discriminador**
+     ([`prisma/schema.prisma`](../prisma/schema.prisma)): `ImportUnparsedRow` y
+     `ImportBalanceMismatch`. Una fila ilegible y un descuadre no comparten **ni una**
+     columna de contenido (`rowNumber`/`reason` contra `accountId`/`computed`/
+     `fromFile`), así que una sola tabla dejaría media fila a `NULL` y la clave de
+     deduplicación no se podría escribir como un `@@unique` honesto.
+  3. **La identidad es una clave natural legible, no una huella calculada.** El
+     archivo del que salió (`bank`, `year`, `fileName`) más el contenido del propio
+     hallazgo: el número de fila en una fila ilegible, y la cuenta, la fecha, la
+     comprobación y los dos importes en un descuadre. Va como `@@unique` con `map:`
+     explícito (el nombre por defecto de un índice de ocho columnas se pasa del
+     límite de 63 caracteres de Postgres) y se escribe con `upsert`, así que
+     reimportar el mismo archivo **actualiza y no duplica**. Una huella opaca en una
+     sola columna daría el mismo efecto y haría imposible entender, mirando la tabla,
+     por qué dos filas son la misma.
+  4. **El sistema NUNCA borra ni cierra nada; lo cierra el humano.** Un descuadre
+     sale de la lista de lo abierto solo cuando él lo marca `reviewed` por
+     `PATCH /api/import/warnings/balance-mismatches/:id`, y el marcado es reversible.
+     Una reimportación **no** resucita lo ya revisado: el `update` del `upsert` toca
+     la marca de tiempo y nada más, nunca `status`, `note` ni la fecha de revisión.
+     Borrar lo que una importación posterior ya no encuentra queda descartado: sería
+     hacer desaparecer una señal sin que nadie la haya visto, y además el `per-line`
+     de un archivo reimportado da siempre el mismo resultado, así que «ya no está»
+     casi siempre significaría «ese archivo no se ha vuelto a importar».
+  5. **Solo se guarda lo de un archivo que entró, y guardarlo es parte de entrar.**
+     La escritura vive dentro del `try` de `importStatement`
+     ([`src/modules/import/import.service.ts`](../src/modules/import/import.service.ts)),
+     después de las dos comprobaciones de saldo y **antes** de marcar el archivo
+     `imported`: un archivo que falla entero nunca llega a esa línea (no deja nada
+     que se repetiría solo en el siguiente reintento) y un fallo al escribir deja el
+     archivo `failed` y sin mover a `procesados/`, en vez de importarlo perdiendo el
+     hallazgo en silencio. Las filas ilegibles y los descuadres de un mismo
+     archivo entran en **una**
+     transacción: o todos o ninguno. Un archivo sin nada raro no abre transacción.
+  6. **Un único módulo lee y escribe las dos tablas**
+     ([`src/modules/import/import.warnings.service.ts`](../src/modules/import/import.warnings.service.ts)),
+     y las dos rutas
+     ([`import.warnings.routes.ts`](../src/modules/import/import.warnings.routes.ts))
+     no tocan Prisma, como manda la estructura por módulos. Cuelgan del prefijo
+     `/api/import` que ya existía, así que `src/app.ts` no se toca.
+- **Consecuencias:**
+  - Hay una migración nueva y dos tablas más. `Account` gana la relación inversa que
+    exige Prisma; `GET /api/accounts` **no** cambia de forma.
+  - `difference` y `accountAlias` **no se guardan**: el primero se deriva al
+    serializar (`computed − fromFile`) para que no pueda divergir de sus sumandos, y
+    el segundo se lee de la cuenta, así que renombrarla cambia lo que se ve.
+  - La consulta **no pagina**: devuelve entero lo que queda por mirar, que se espera
+    corto. Si deja de serlo, es otra feature; queda dicho en el contrato.
+  - Una fila ilegible **no** tiene estado: hoy no hay forma de darla por resuelta.
+    Arreglarla o descartarla es trabajo aparte (cabo suelto 23 del roadmap).
+  - El informe de la importación **no cambia de forma**: `unparsedRows`,
+    `balanceMismatches` y `balanceMismatchCount` siguen viajando igual, sin `id` ni
+    `status`. Lo nuevo se lee por la ruta nueva, descrita en
+    [`docs/api-contract.md`](api-contract.md).
 
 
 ## Qué NO hacer

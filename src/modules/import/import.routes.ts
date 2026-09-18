@@ -7,6 +7,7 @@ import { importLocalCopies, type LocalImportSelection } from './import.local.ser
 import { localImportSchema } from './import.schema.js'
 import { importDb, importPending } from './import.service.js'
 import type { BankParserRegistry } from './import.types.js'
+import importWarningsRoutes from './import.warnings.routes.js'
 
 export interface ImportRoutesOptions {
   /**
@@ -33,6 +34,11 @@ export interface ImportRoutesOptions {
  * HTTP layer of the importer:
  *   POST /api/import        -> download + parse + store + move to procesados/
  *   POST /api/import/local  -> parse + store from the local copy, Drive untouched
+ *
+ * The two routes of what an import leaves unresolved (feature 48) hang from this
+ * same prefix and live in their own plugin, registered at the bottom:
+ *   GET   /api/import/warnings
+ *   PATCH /api/import/warnings/balance-mismatches/:id
  *
  * Registered under the `/api/import` prefix (see `src/app.ts`). No new
  * authentication (consistent with the current contract), and a per-file failure
@@ -71,4 +77,8 @@ export default async function importRoutes(
     const selection = (request.body ?? {}) as LocalImportSelection
     return importLocalCopies({ prisma, rawCopyBaseDir, parsers, productParsers, selection })
   })
+
+  // Reading and closing the warnings of past imports: no Drive, no parser and no
+  // option of its own, so it takes none of the injections above (feature 48).
+  await fastify.register(importWarningsRoutes)
 }

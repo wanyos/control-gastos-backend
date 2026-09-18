@@ -40,6 +40,8 @@ import {
 import type { BalanceAnchor, RecencyPoint } from '../movements/movements.types.js'
 import { detectTransfers } from '../transfers/transfers.service.js'
 import { findPerLineMismatches, findStatementBalanceMismatch } from './import.balance.service.js'
+import { persistImportWarnings } from './import.warnings.service.js'
+import type { WarningFileRef } from './import.warnings.types.js'
 import type {
   AccountReport,
   BankParserAdapter,
@@ -384,7 +386,13 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
               ...drive,
               empty: emptyStatementResult(),
               store: (content) =>
-                importStatement({ prisma, content, adapter: adapter.adapter, bankSlug }),
+                importStatement({
+                  prisma,
+                  content,
+                  adapter: adapter.adapter,
+                  bankSlug,
+                  file: { bank: bankSlug, year: year.name, name: file.name },
+                }),
             }),
           )
           continue
@@ -586,6 +594,12 @@ export interface ImportStatementDeps {
   adapter: BankParserAdapter
   /** Slug of the bank the file belongs to: its FOLDER says it, never its content. */
   bankSlug: string
+  /**
+   * Which file this is, to store the warnings it leaves behind (feature 48).
+   * Its `bank` is the SLUG, the same one the rest of the importer uses: the
+   * identity of a warning must not change because a folder was renamed in caps.
+   */
+  file: WarningFileRef
   content: Buffer
 }
 
@@ -649,6 +663,16 @@ export async function importStatement(deps: ImportStatementDeps): Promise<Statem
       ...perLine,
       ...(statementBalance === null ? [] : [statementBalance]),
     ]
+
+    // Feature 48: what this file leaves unresolved stops dying with the report.
+    // The line order IS the rule: after the two checks, so both kinds of warning
+    // are already known; before `imported`, and inside this `try`, so a write
+    // that fails reports the file as failed and it does NOT move (R5). A file
+    // that failed earlier never reaches this line, which is all R4 needs.
+    await persistImportWarnings(deps.prisma, deps.file, {
+      unparsedRows: statement.unparsedRows,
+      balanceMismatches: result.balanceMismatches,
+    })
 
     result.status = 'imported'
     return result

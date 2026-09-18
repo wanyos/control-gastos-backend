@@ -66,36 +66,45 @@ enum InvestmentProductType {
   savings_account
 }
 
+// Feature 48: the state of a warning left by an import. A row the parser could
+// not read has NO state (it can only be closed by fixing it, which is another
+// feature); only a mismatch can be given for reviewed, and by the human.
+enum ImportWarningStatus {
+  pending
+  reviewed
+}
+
 // ── Models ────────────────────────────────────────────────
 model Account {
-  id                       Int         @id @default(autoincrement())
-  iban                     String      @unique
+  id                       Int                     @id @default(autoincrement())
+  iban                     String                  @unique
   bank                     String
   alias                    String
-  type                     AccountType @default(checking)
-  initialBalance           Decimal     @default(0) @db.Decimal(10, 2)
+  type                     AccountType             @default(checking)
+  initialBalance           Decimal                 @default(0) @db.Decimal(10, 2)
   /// Feature 31: the balance the statement stated, kept as a FACT, with the
   /// point in history it belongs to. NULL = never anchored. Amount and date are
   /// both NULL or both set (CHECK Account_balance_anchor_pair).
-  balanceAnchor            Decimal?    @db.Decimal(10, 2)
-  balanceAnchorDate        DateTime?   @db.Date
+  balanceAnchor            Decimal?                @db.Decimal(10, 2)
+  balanceAnchorDate        DateTime?               @db.Date
   /// Position within that day, to break ties. NULL when the bank gives none.
   balanceAnchorDaySequence Int?
   movements                Movement[]
-  createdAt                DateTime    @default(now())
-  updatedAt                DateTime    @updatedAt
+  importBalanceMismatches  ImportBalanceMismatch[]
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
 }
 
 model Category {
-  id        Int          @id @default(autoincrement())
+  id        Int            @id @default(autoincrement())
   name      String
   kind      CategoryKind
-  parent    Category?    @relation("Subcategories", fields: [parentId], references: [id])
+  parent    Category?      @relation("Subcategories", fields: [parentId], references: [id])
   parentId  Int?
-  children  Category[]   @relation("Subcategories")
+  children  Category[]     @relation("Subcategories")
   movements Movement[]
   rules     CategoryRule[]
-  createdAt DateTime     @default(now())
+  createdAt DateTime       @default(now())
 
   // Re-created as NULLS NOT DISTINCT in the migration so two root categories
   // (parentId IS NULL) with the same kind and name cannot coexist.
@@ -258,4 +267,53 @@ model SavingsSnapshot {
   // One photo per product and date. Reloading the same month overwrites it
   // (upsert): the last load wins, like Valuation and unlike the flow.
   @@unique([productId, date])
+}
+
+/// A row of a statement file the parser could not interpret (feature 48).
+/// It is NOT a movement: nothing about it reaches the Movement table.
+model ImportUnparsedRow {
+  id        Int      @id @default(autoincrement())
+  bank      String
+  year      String
+  fileName  String
+  /// 1-based row number in the file, as UnparsedRow.row carries it.
+  rowNumber Int
+  reason    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Natural key: the file it came out of plus the row of that file. Reimporting
+  // the same file updates the reason, it never adds a second row (R6). The
+  // `map:` is mandatory: the default name goes past Postgres' 63-char limit.
+  @@unique([bank, year, fileName, rowNumber], map: "ImportUnparsedRow_identity_key")
+}
+
+/// A descuadre found by one of the two checks of feature 32, kept as the FACT
+/// it was when it was found: `computed` and `fromFile` are never recalculated,
+/// so a stored warning can never end up saying something false (ADR-031).
+model ImportBalanceMismatch {
+  id          Int                 @id @default(autoincrement())
+  bank        String
+  year        String
+  fileName    String
+  account     Account             @relation(fields: [accountId], references: [id])
+  accountId   Int
+  /// The compared point; serialized as `date`, the name the report already uses.
+  bookingDate DateTime            @db.Date
+  /// 'per-line' | 'statement-balance', verbatim as the report writes it. A
+  /// String and not an enum on purpose: the hyphen is not a valid Prisma enum
+  /// identifier and the contract value must not be re-mapped in two places.
+  check       String
+  computed    Decimal             @db.Decimal(10, 2)
+  fromFile    Decimal             @db.Decimal(10, 2)
+  status      ImportWarningStatus @default(pending)
+  note        String?
+  reviewedAt  DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  // `difference` is NOT stored: it is `computed − fromFile` and is derived when
+  // serializing, so it cannot diverge from its two operands.
+  @@unique([bank, year, fileName, accountId, bookingDate, check, computed, fromFile], map: "ImportBalanceMismatch_identity_key")
+  @@index([status])
 }

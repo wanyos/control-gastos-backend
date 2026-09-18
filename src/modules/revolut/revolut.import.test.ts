@@ -62,6 +62,13 @@ afterEach(async () => {
     where: { bank: { equals: bank, mode: 'insensitive' } },
   })
   const ids = accounts.map((account) => account.id)
+  // Feature 48: the warnings an import now stores are deleted FIRST, both
+  // because a descuadre holds a foreign key to the account and because a
+  // leftover row would turn up in the listing of another test.
+  await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+  await app.prisma.importUnparsedRow.deleteMany({
+    where: { bank: { equals: bank, mode: 'insensitive' } },
+  })
   await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
   await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
 })

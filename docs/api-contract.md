@@ -1538,7 +1538,10 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   duplicados (se distinguen por su posición dentro del día) y se guardan las dos.
 - `unparsedCount` / `unparsedRows`: cuántas líneas fallaron **y cuáles**, con su
   número de fila y su motivo. Una línea ilegible **no** retiene el archivo: lo bueno
-  se guarda y el archivo se mueve igual.
+  se guarda y el archivo se mueve igual. Desde la feature 48 esas líneas **también
+  quedan guardadas** y se consultan por
+  [`GET /api/import/warnings`](#get-apiimportwarnings); este campo del informe no
+  cambia de forma.
 - `account`: la cuenta usada. `created: true` significa que se dio de alta en esta
   llamada con el IBAN del archivo, y `appliedDefaults` dice qué valores se
   rellenaron solos (`alias` derivado de banco + últimos 4 del IBAN, `type`
@@ -1563,8 +1566,14 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   que «no se ha encontrado nada» y «no se ha comprobado nada» no se lean igual. Al
   importar, la app suma por su cuenta y compara el resultado contra lo que dice el
   archivo; si la diferencia **no es exactamente `0,00`**, lo escribe aquí. Un descuadre
-  **no** hace fallar el archivo (sale `imported` igual), **no** cambia ningún saldo y
-  **no** se guarda en ninguna parte: se cuenta en esta respuesta y ya.
+  **no** hace fallar el archivo (sale `imported` igual) y **no** cambia ningún saldo.
+
+  > **Cambio (feature 48, 2026-09-18):** hasta hoy el descuadre «se contaba en esta
+  > respuesta y ya», sin guardarse en ninguna parte. **Ahora se guarda** cuando el
+  > archivo sale `imported`, y se consulta y se cierra por
+  > [`GET /api/import/warnings`](#get-apiimportwarnings) y su `PATCH`. Este campo
+  > del informe **no cambia de forma**: sigue trayendo los mismos campos, sin `id`
+  > ni `status`; esos solo salen por la ruta nueva.
 
   | Campo | Qué es |
   | --- | --- |
@@ -1802,6 +1811,153 @@ es **siempre `false`**.
 > **Lo que esta vía NO hace:** no descarga nada, no mueve ni borra nada en Drive,
 > no crea la carpeta `procesados/` y no reemplaza a `POST /api/import`, que sigue
 > siendo la importación de cada mes y se comporta exactamente igual que antes.
+
+---
+
+## Lo que una importación deja sin resolver (feature 48)
+
+> **Feature 48 `import-warnings-persistence` (2026-09-18).** Hasta hoy las filas
+> que el parser no pudo leer y los descuadres de saldo **solo** viajaban en la
+> respuesta de la importación: al cerrar el informe se perdían. Ahora la
+> importación los **guarda**, y estas dos rutas son la forma de consultarlos y de
+> darlos por revisados. En la ruta y en el código se llaman `warnings`.
+>
+> **Qué se guarda y cuándo:** solo lo de un archivo que terminó en
+> `status: "imported"`, al terminar ese archivo. Un archivo `failed` no deja
+> nada, y si el guardado falla, ese archivo sale `failed` y **no** se mueve a
+> `procesados/`. Un archivo sin ninguna de las dos cosas no guarda nada.
+>
+> **Reimportar el mismo archivo no duplica.** Dos son el mismo cuando coinciden
+> el archivo del que salen (`bank`, `year`, `name`) y su contenido: el número de
+> fila en una fila ilegible; la cuenta, la fecha, la comprobación y los dos
+> importes comparados en un descuadre. La reimportación **actualiza** el
+> existente y **nunca** devuelve a pendiente uno ya marcado como revisado.
+>
+> **Nada se recalcula al leer.** `computed` y `fromFile` son los números tal como
+> los calculó la comprobación el día que la encontró (ADR-031).
+
+### `GET /api/import/warnings`
+
+Sin cuerpo de petición, sin parámetros y sin autenticación nueva. Devuelve **lo
+que sigue abierto**, de lo más reciente a lo más antiguo (`detectedAt`
+descendente; a igualdad, id descendente).
+
+**Respuesta 200**
+
+```json
+{
+  "unparsedRows": [
+    {
+      "id": 3,
+      "file": { "bank": "bankinter", "year": "2026", "name": "movs.xlsx" },
+      "row": 42,
+      "reason": "importe no interpretable",
+      "detectedAt": "2026-09-18T10:00:00.000Z"
+    }
+  ],
+  "balanceMismatches": [
+    {
+      "id": 7,
+      "file": { "bank": "bankinter", "year": "2026", "name": "movs.xlsx" },
+      "accountId": 3,
+      "accountAlias": "bankinter ···0236",
+      "date": "2026-07-21",
+      "computed": "-40.00",
+      "fromFile": "-20.00",
+      "difference": "-20.00",
+      "check": "per-line",
+      "status": "pending",
+      "note": null,
+      "detectedAt": "2026-09-18T10:00:00.000Z",
+      "lastSeenAt": "2026-09-18T10:00:00.000Z"
+    }
+  ],
+  "counts": { "unparsedRows": 1, "balanceMismatches": 1 }
+}
+```
+
+`unparsedRows[]` — una fila de un archivo de extracto que el parser no pudo leer:
+
+| Campo | Qué es |
+| --- | --- |
+| `id` | Identificador de la fila guardada. |
+| `file` | De dónde salió: `bank` (el slug de la carpeta), `year` y `name` del archivo. |
+| `row` | Número de fila dentro del archivo, 1-based. **Mismo campo y mismo valor** que el `row` de `unparsedRows` en el informe de `POST /api/import`. |
+| `reason` | El motivo, en castellano. Mismo campo que en el informe de la importación. |
+| `detectedAt` | Cuándo se guardó por primera vez. ISO 8601 UTC. |
+
+`balanceMismatches[]` — un descuadre de saldo de los que describe
+[`POST /api/import`](#post-apiimport):
+
+| Campo | Qué es |
+| --- | --- |
+| `id` | Identificador del descuadre guardado; es el `:id` del `PATCH` de abajo. |
+| `file` | El archivo del que salió: `bank`, `year`, `name`. |
+| `accountId` / `accountAlias` | La cuenta del descuadre. El alias se lee de la cuenta **al consultar**, así que si la renombras, aquí sale el nombre nuevo. |
+| `date` | `YYYY-MM-DD` del punto comparado. |
+| `computed` | El número que salió del cálculo de la app, string decimal, **congelado**. |
+| `fromFile` | El número que traía el archivo, string decimal, **congelado**. |
+| `difference` | `computed − fromFile`, con su signo. No se guarda: se calcula al serializar, para que no pueda divergir de sus dos sumandos. |
+| `check` | Cuál de las **dos** comprobaciones lo produjo: `"per-line"` o `"statement-balance"` (los mismos dos valores y el mismo significado que en el informe de la importación). |
+| `status` | `"pending"` o `"reviewed"`. Aquí **siempre** llega `"pending"`: ver abajo. |
+| `note` | La nota que escribió el humano al revisarlo, o `null`. Máximo 500 caracteres. |
+| `detectedAt` | Cuándo se guardó por primera vez. ISO 8601 UTC. |
+| `lastSeenAt` | La última importación que volvió a producirlo. ISO 8601 UTC. Igual a `detectedAt` si solo se ha visto una vez. |
+
+`counts` — el tamaño de **estas mismas dos listas** (`unparsedRows` y
+`balanceMismatches`), para pintar un contador sin recorrerlas.
+
+- **Un descuadre marcado como revisado no aparece aquí ni cuenta en `counts`.**
+  Es la única forma de que un descuadre salga de esta lista: el sistema **nunca**
+  lo quita solo, ni siquiera si una importación posterior ya no lo encuentra.
+- **Las filas ilegibles no tienen estado y salen todas.** Hoy no hay forma de dar
+  una por resuelta; arreglarla o descartarla es otra feature.
+- **No pagina.** Devuelve entero lo que queda por mirar, que se espera corto. No
+  admite `page`, `limit` ni filtros. Si un día deja de ser corto, será otra
+  feature y este contrato lo dirá.
+- Las dos listas vacías y los dos contadores a `0` significan que no queda nada
+  por mirar; nunca llega `undefined`.
+
+**Errores:** ninguno propio. Solo los genéricos de la API.
+
+---
+
+### `PATCH /api/import/warnings/balance-mismatches/:id`
+
+Marca un descuadre guardado como revisado, o lo devuelve a pendiente, y guarda
+la nota del humano. **Solo** aplica a los descuadres: una fila ilegible no se
+revisa por aquí (no tiene estado).
+
+**Params**
+| Campo | Tipo | Reglas |
+| --- | --- | --- |
+| `id` | number (entero ≥ 1) | El `id` de un descuadre de `balanceMismatches`. |
+
+**Body** (al menos una de las dos; pueden ir juntas en la misma petición)
+| Campo | Tipo | Reglas |
+| --- | --- | --- |
+| `status` | `"reviewed"` \| `"pending"` | Funciona en los **dos** sentidos: dar por revisado y volver atrás. Un clic equivocado no es irreversible. |
+| `note` | string (máx. 500) \| null | Texto libre del humano. `null` **borra** la nota; omitirla **conserva** la que hubiera, también al volver a pendiente. |
+
+> Ningún otro campo puede viajar por aquí: los dos importes, la fecha, la cuenta
+> y el archivo son el hecho que se encontró y no se tocan. Un body vacío (`{}`) o
+> con cualquier otra propiedad (`computed`, `fromFile`…) responde **400
+> `VALIDATION_ERROR`** y **no modifica nada**: no se ignora en silencio.
+
+**Respuesta 200** — **el descuadre** serializado, con exactamente la misma forma
+que un elemento de `balanceMismatches` en `GET /api/import/warnings` (incluidos
+`difference`, `detectedAt` y `lastSeenAt`). Con `status: "reviewed"` esa es la
+última vez que lo ves: deja de salir en la consulta. La marca de tiempo de la
+revisión se guarda pero **no** se serializa.
+
+**Errores**
+| Código HTTP | `code` | Cuándo |
+| ----------- | ------------------ | ----------------------------------------------------------------- |
+| 400 | `VALIDATION_ERROR` | El body está vacío, trae una propiedad no admitida, un `status` fuera de la enumeración, una `note` de más de 500 caracteres, o el `:id` no es un entero ≥ 1. No se modifica nada. |
+| 404 | `NOT_FOUND` | No hay ningún descuadre guardado con ese `id`. |
+
+**Ningún código de error nuevo:** los dos ya están en la tabla de
+[Errores](#errores).
 
 ---
 

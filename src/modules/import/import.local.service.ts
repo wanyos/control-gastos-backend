@@ -91,6 +91,10 @@ export async function importLocalCopies(deps: ImportLocalDeps): Promise<LocalImp
         prisma: deps.prisma,
         adapter: adapter.adapter,
         bankSlug: candidate.bankSlug,
+        // Feature 48: the same three data the Drive way in passes, and the bank
+        // as its SLUG, so reimporting the same copy updates its warnings
+        // instead of storing a second set under the folder's spelling.
+        file: { bank: candidate.bankSlug, year: candidate.year, name: candidate.name },
         content: await readFile(candidate.path),
       })
       files.push({ ...location, ...stored, movedToProcessed: false })

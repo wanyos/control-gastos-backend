@@ -116,6 +116,11 @@ describe('importLocalCopies', () => {
         where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
       })
       const ids = accounts.map((account) => account.id)
+      // Feature 48: the warnings an import now stores are deleted FIRST, both
+      // because a descuadre holds a foreign key to the account and because a
+      // leftover row would turn up in the listing of another test.
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
       await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
       await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
       usedBanks.length = 0
@@ -869,6 +874,11 @@ describe('importLocalCopies: the categorization run of the report (feature 43, R
         where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
       })
       const ids = accounts.map((account) => account.id)
+      // Feature 48: the warnings an import now stores are deleted FIRST, both
+      // because a descuadre holds a foreign key to the account and because a
+      // leftover row would turn up in the listing of another test.
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
       await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
       await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
       usedBanks.length = 0
@@ -988,5 +998,135 @@ describe('importLocalCopies: the categorization run of the report (feature 43, R
       unmatched: 0,
       error: { code: 'INTERNAL_SERVER_ERROR', message: 'synthetic categorization failure' },
     })
+  })
+})
+
+// ── Feature 48: the local way in stores the same warnings, and not twice ────
+
+describe('importLocalCopies stores the warnings of each copy (feature 48)', () => {
+  let app: FastifyInstance
+  let rawCopyBaseDir: string
+  const usedBanks: string[] = []
+  let bankCounter = 0
+
+  function uniqueBank(): string {
+    bankCounter += 1
+    const slug = `zz-local-warnings-${Date.now()}-${bankCounter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  async function writeCopy(bank: string, year: string, name: string, content = 'raw-bytes') {
+    await mkdir(join(rawCopyBaseDir, bank, year), { recursive: true })
+    await writeFile(join(rawCopyBaseDir, bank, year, name), content)
+  }
+
+  function run(parsers: BankParserAdapter[]): Promise<LocalImportRunResult> {
+    return importLocalCopies({ prisma: app.prisma, rawCopyBaseDir, parsers, selection: {} })
+  }
+
+  function storedWarningsOf(bank: string) {
+    return Promise.all([
+      app.prisma.importUnparsedRow.findMany({ where: { bank }, orderBy: { id: 'asc' } }),
+      app.prisma.importBalanceMismatch.findMany({ where: { bank }, orderBy: { id: 'asc' } }),
+    ])
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  beforeEach(async () => {
+    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-local-warnings-'))
+  })
+
+  afterEach(async () => {
+    await rm(rawCopyBaseDir, { recursive: true, force: true })
+    if (usedBanks.length > 0) {
+      const accounts = await app.prisma.account.findMany({
+        where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
+      })
+      const ids = accounts.map((account) => account.id)
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  // ── T11: reimporting the same copy updates, never duplicates (R1, R2, R6) ──
+
+  it('stores the warnings with the copy they came out of and does not duplicate them on a second run (R1, R2, R6)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    // The folder is spelled in capitals on purpose: what identifies a warning is
+    // the SLUG, so the same copy under a differently spelled folder is the same
+    // file and must not store a second set of warnings.
+    const folder = bank.toUpperCase()
+    await writeCopy(folder, '2026', 'reimportado.csv')
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          movements: [
+            movement({ bookingDate: '2026-07-20', daySequence: 1, amount: -10, balance: 100 }),
+            movement({ bookingDate: '2026-07-21', daySequence: 1, amount: -20, balance: 60 }),
+          ],
+          unparsedRows: [{ row: 11, reason: 'el importe trae dos separadores decimales' }],
+        }),
+      ),
+    ]
+
+    const first = await run(parsers)
+
+    const account = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    const firstFile = first.files[0] as AttemptedLocalFileReport
+    expect(firstFile.status).toBe('imported')
+    expect(firstFile.imported).toBe(2)
+    expect(firstFile.unparsedCount).toBe(1)
+    expect(firstFile.balanceMismatches).toHaveLength(1)
+
+    const [unparsed, mismatches] = await storedWarningsOf(bank)
+    expect(unparsed).toHaveLength(1)
+    expect(unparsed[0]).toMatchObject({
+      bank,
+      year: '2026',
+      fileName: 'reimportado.csv',
+      rowNumber: 11,
+      reason: 'el importe trae dos separadores decimales',
+    })
+    expect(mismatches).toHaveLength(1)
+    expect(mismatches[0]).toMatchObject({
+      bank,
+      year: '2026',
+      fileName: 'reimportado.csv',
+      accountId: account.id,
+      check: 'per-line',
+      status: 'pending',
+    })
+    expect(mismatches[0]?.computed.toFixed(2)).toBe('-40.00')
+    expect(mismatches[0]?.fromFile.toFixed(2)).toBe('-20.00')
+
+    const second = await run(parsers)
+
+    // The same copy again: every movement is a duplicate the database drops...
+    const secondFile = second.files[0] as AttemptedLocalFileReport
+    expect(secondFile.status).toBe('imported')
+    expect(secondFile.imported).toBe(0)
+    expect(secondFile.duplicates).toBe(2)
+    // ...and the two warnings are the SAME two rows, updated, not two more.
+    const [unparsedAgain, mismatchesAgain] = await storedWarningsOf(bank)
+    expect(unparsedAgain).toHaveLength(1)
+    expect(mismatchesAgain).toHaveLength(1)
+    expect(unparsedAgain[0]?.id).toBe(unparsed[0]?.id)
+    expect(mismatchesAgain[0]?.id).toBe(mismatches[0]?.id)
+    expect(unparsedAgain[0]?.createdAt).toEqual(unparsed[0]?.createdAt)
+    expect(mismatchesAgain[0]?.createdAt).toEqual(mismatches[0]?.createdAt)
   })
 })

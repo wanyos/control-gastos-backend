@@ -262,6 +262,11 @@ describe('importPending', () => {
         where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
       })
       const ids = accounts.map((account) => account.id)
+      // Feature 48: the warnings an import now stores are deleted FIRST, both
+      // because a descuadre holds a foreign key to the account and because a
+      // leftover row would turn up in the listing of another test.
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
       await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
       await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
       usedBanks.length = 0
@@ -1448,6 +1453,11 @@ describe('the importer anchors the account and fills the balances it left empty'
         where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
       })
       const ids = accounts.map((account) => account.id)
+      // Feature 48: the warnings an import now stores are deleted FIRST, both
+      // because a descuadre holds a foreign key to the account and because a
+      // leftover row would turn up in the listing of another test.
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
       await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
       await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
       usedBanks.length = 0
@@ -1817,6 +1827,11 @@ describe('the importer reports the descuadres of a file and lets nothing else ch
         where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
       })
       const ids = accounts.map((account) => account.id)
+      // Feature 48: the warnings an import now stores are deleted FIRST, both
+      // because a descuadre holds a foreign key to the account and because a
+      // leftover row would turn up in the listing of another test.
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
       await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
       await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
       usedBanks.length = 0
@@ -1979,6 +1994,7 @@ describe('the importer reports the descuadres of a file and lets nothing else ch
       content: Buffer.from('raw'),
       adapter,
       bankSlug: bank,
+      file: { bank, year: '2026', name: 'preambulo.csv' },
     })
 
     expect(stored.status).toBe('imported')
@@ -2057,5 +2073,254 @@ describe('the importer reports the descuadres of a file and lets nothing else ch
     expect(one.json<{ balance: string }>().balance).toBe('60.00')
     // And the account reports the very same anchor feature 31 left in it.
     expect(one.json<{ balanceAnchor: string | null }>().balanceAnchor).toBe('60.00')
+  })
+})
+
+// ── Feature 48: the warnings of an imported file stop dying with the report ──
+
+describe('the importer stores the warnings of the files that entered (feature 48)', () => {
+  let app: FastifyInstance
+  let rawCopyBaseDir: string
+  const usedBanks: string[] = []
+  let bankCounter = 0
+
+  function uniqueBank(): string {
+    bankCounter += 1
+    const slug = `zz-warnings-${Date.now()}-${bankCounter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function run(
+    client: AppDriveClient,
+    parsers: BankParserAdapter[],
+    prisma: AppPrismaClient = app.prisma,
+  ): ReturnType<typeof importPending> {
+    return importPending({ client, prisma, rootFolderId: 'root', rawCopyBaseDir, parsers })
+  }
+
+  function attempted(report: { files: unknown[] }, index = 0): AttemptedFileReport {
+    const file = report.files[index] as AttemptedFileReport
+    expect(file.status).not.toBe('skipped')
+    return file
+  }
+
+  /** Two lines whose balances jump 40 while the amount in between says 20. */
+  function chainThatDoesNotAddUp(): ParsedMovement[] {
+    return [
+      movement({ bookingDate: '2026-07-20', daySequence: 1, amount: -10, balance: 100 }),
+      movement({ bookingDate: '2026-07-21', daySequence: 1, amount: -20, balance: 60 }),
+    ]
+  }
+
+  /**
+   * A client whose ONLY difference is that storing a warning blows up. It is the
+   * single seam R5 needs: everything before it behaves exactly as in production,
+   * so what the test observes is the reaction to that one failure.
+   */
+  function prismaThatCannotStoreWarnings(prisma: AppPrismaClient): AppPrismaClient {
+    const broken = new Proxy(prisma.importUnparsedRow as unknown as Record<string, unknown>, {
+      get(target, property) {
+        if (property === 'upsert') {
+          return () => {
+            throw new Error('la escritura del aviso ha fallado')
+          }
+        }
+        const value = Reflect.get(target, property)
+        return typeof value === 'function' ? (value as () => unknown).bind(target) : value
+      },
+    })
+
+    return new Proxy(prisma, {
+      get(target, property) {
+        if (property === 'importUnparsedRow') return broken
+        const value = Reflect.get(target, property)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    }) as AppPrismaClient
+  }
+
+  function storedWarningsOf(bank: string) {
+    return Promise.all([
+      app.prisma.importUnparsedRow.findMany({ where: { bank }, orderBy: { rowNumber: 'asc' } }),
+      app.prisma.importBalanceMismatch.findMany({ where: { bank } }),
+    ])
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  beforeEach(async () => {
+    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-warnings-'))
+  })
+
+  afterEach(async () => {
+    await rm(rawCopyBaseDir, { recursive: true, force: true })
+    if (usedBanks.length > 0) {
+      const accounts = await app.prisma.account.findMany({
+        where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
+      })
+      const ids = accounts.map((account) => account.id)
+      // Feature 48: the warnings an import now stores are deleted FIRST, both
+      // because a descuadre holds a foreign key to the account and because a
+      // leftover row would turn up in the listing of another test.
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  // ── T10: what R3 protects does not move; what the file leaves is now kept ──
+
+  it('imports and moves a file with unreadable rows exactly as before, AND stores them (R1, R3)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'medio-legible.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          movements: [movement()],
+          unparsedRows: [
+            { row: 7, reason: 'la columna del importe viene vacía' },
+            { row: 9, reason: 'la fecha no se ha podido interpretar' },
+          ],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    // Every single thing the criterion protects, unchanged.
+    const file = attempted(result)
+    expect(file.status).toBe('imported')
+    expect(file.movedToProcessed).toBe(true)
+    expect(file.imported).toBe(1)
+    expect(file.duplicates).toBe(0)
+    expect(file.unparsedCount).toBe(2)
+    expect(file.unparsedRows).toEqual([
+      { row: 7, reason: 'la columna del importe viene vacía' },
+      { row: 9, reason: 'la fecha no se ha podido interpretar' },
+    ])
+    expect(result.importedCount).toBe(1)
+    expect(result.unparsedCount).toBe(2)
+    expect(result.failedCount).toBe(0)
+    expect(update).toHaveBeenCalledOnce()
+
+    // And the only thing that IS new: the two rows are now on the table, each
+    // with the file it came out of and the bank as its slug.
+    const [unparsed, mismatches] = await storedWarningsOf(bank)
+    expect(mismatches).toEqual([])
+    expect(unparsed).toHaveLength(2)
+    expect(unparsed[0]).toMatchObject({
+      bank,
+      year: '2026',
+      fileName: 'medio-legible.csv',
+      rowNumber: 7,
+      reason: 'la columna del importe viene vacía',
+    })
+    expect(unparsed[1]).toMatchObject({ rowNumber: 9, fileName: 'medio-legible.csv' })
+  })
+
+  it('stores the descuadre of an imported file with the file it came out of (R2)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'descuadra.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, { accountIban: iban, movements: chainThatDoesNotAddUp() }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('imported')
+    expect(file.balanceMismatches).toHaveLength(1)
+
+    const account = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    const [unparsed, mismatches] = await storedWarningsOf(bank)
+    expect(unparsed).toEqual([])
+    expect(mismatches).toHaveLength(1)
+    expect(mismatches[0]).toMatchObject({
+      bank,
+      year: '2026',
+      fileName: 'descuadra.csv',
+      accountId: account.id,
+      check: 'per-line',
+      status: 'pending',
+      note: null,
+    })
+    expect(mismatches[0]?.bookingDate).toEqual(new Date('2026-07-21T00:00:00.000Z'))
+    expect(mismatches[0]?.computed.toFixed(2)).toBe('-40.00')
+    expect(mismatches[0]?.fromFile.toFixed(2)).toBe('-20.00')
+  })
+
+  // ── T10: a file that did not enter leaves nothing behind (R4) ─────────────
+
+  it('stores no warning of a file that failed whole, which also does not move (R4)', async () => {
+    const bank = uniqueBank()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'ilegible.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          movements: [],
+          unparsedRows: [
+            { row: 1, reason: 'la cabecera no coincide con ninguna conocida' },
+            { row: 2, reason: 'la cabecera no coincide con ninguna conocida' },
+          ],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers)
+
+    const file = attempted(result)
+    expect(file.status).toBe('failed')
+    expect(file.error?.code).toBe('ALL_ROWS_UNPARSED')
+    expect(file.movedToProcessed).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+    // The two rows still travel in the report, and NONE of them is stored: the
+    // file will be retried, and a retried file would repeat its own warnings.
+    expect(file.unparsedCount).toBe(2)
+    expect(await storedWarningsOf(bank)).toEqual([[], []])
+  })
+
+  // ── T10: losing a warning in silence is what this feature forbids (R5) ────
+
+  it('reports the file as failed and does not move it when storing its warnings fails (R5)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'medio-legible.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          movements: [movement()],
+          unparsedRows: [{ row: 7, reason: 'la columna del importe viene vacía' }],
+        }),
+      ),
+    ]
+
+    const result = await run(client, parsers, prismaThatCannotStoreWarnings(app.prisma))
+
+    const file = attempted(result)
+    expect(file.status).toBe('failed')
+    expect(file.error).toEqual({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'la escritura del aviso ha fallado',
+    })
+    expect(file.movedToProcessed).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+    expect(result.failedCount).toBe(1)
+    expect(await storedWarningsOf(bank)).toEqual([[], []])
   })
 })
