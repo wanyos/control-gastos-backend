@@ -71,7 +71,8 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `PATCH`  | `/api/category-rules/:id`      | Cambia `matchText` y/o `categoryId` de una regla. **No des-categoriza** lo que ya asignó. |
 | `DELETE` | `/api/category-rules/:id`      | Borra la regla sin modificar ningún movimiento. |
 | `POST`   | `/api/category-rules/apply`    | Ejecuta **bajo demanda** la pasada de categorización sobre los movimientos elegibles (sin categoría y sin confirmar). |
-| `GET`    | `/api/movements`               | Lista los movimientos, del más reciente al más antiguo. |
+| `GET`    | `/api/movements`               | Lista los movimientos, del más reciente al más antiguo. Filtra por cuenta, fechas, tipo, estado, **categoría**, **«sin categoría»** y **texto de la descripción** (sin mayúsculas ni tildes). |
+| `PATCH`  | `/api/movements`               | Cambia la categoría y/o el estado de revisión de **varios movimientos a la vez** (hasta 200 ids por petición, todo o nada). |
 | `PATCH`  | `/api/movements/:id`           | Cambia **solo** la categoría y/o el estado de revisión. El hecho bancario (importe, fechas, descripción) no se toca. |
 | `POST`   | `/api/transfers`               | Enlaza **a mano** dos movimientos como las dos piernas de un traspaso entre cuentas propias. No crea ni borra movimientos. |
 | `DELETE` | `/api/transfers/:transferId`   | Deshace una pareja de traspaso y apunta el veto para que la detección no vuelva a juntar a esas dos. |
@@ -92,6 +93,11 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 > **ensayo**: lee el archivo, vuelca a `var/parsed/` lo que ha entendido y **no toca la
 > base de datos**. `POST /api/import` es el camino de verdad: parsea, **guarda** y solo
 > entonces mueve el archivo a `procesados/`.
+
+> **Los filtros por categoría y por texto de `GET /api/movements` y el
+> `PATCH /api/movements` en bloque (feature 47, 2026-09-18) son lo que el
+> frontend necesita** para su pantalla de revisión (su etapa E6) y para parte de
+> su vista de extracto (su etapa E7).
 
 > ⚠️ **`/api/movements` es de solo lectura.** No hay alta ni borrado de
 > movimientos por API: entran únicamente por importación desde los ficheros del

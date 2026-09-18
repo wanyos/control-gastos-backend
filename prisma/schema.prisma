@@ -127,15 +127,21 @@ model CategoryRule {
 }
 
 model Movement {
-  id           Int          @id @default(autoincrement())
-  type         MovementType
-  bookingDate  DateTime     @db.Date
-  valueDate    DateTime     @db.Date
-  amount       Decimal      @db.Decimal(10, 2)
-  description  String
-  balanceAfter Decimal?     @db.Decimal(10, 2)
-  currency     String       @default("EUR")
-  note         String?
+  id                Int          @id @default(autoincrement())
+  type              MovementType
+  bookingDate       DateTime     @db.Date
+  valueDate         DateTime     @db.Date
+  amount            Decimal      @db.Decimal(10, 2)
+  description       String
+  /// Feature 47: `description` in lowercase and without diacritics, to search
+  /// by text ignoring case and accents. It is a column GENERATED ALWAYS ...
+  /// STORED created with raw SQL in the migration (Prisma 7 cannot express it):
+  /// PostgreSQL computes it, so NO `data:` may ever write it -- an INSERT or an
+  /// UPDATE mentioning it is rejected by PostgreSQL.
+  descriptionSearch String?
+  balanceAfter      Decimal?     @db.Decimal(10, 2)
+  currency          String       @default("EUR")
+  note              String?
 
   account       Account        @relation(fields: [accountId], references: [id])
   accountId     Int
@@ -173,6 +179,9 @@ model Movement {
   @@index([accountId, bookingDate, daySequence])
   @@index([transferId])
   @@index([productId])
+  // Feature 47: filtering by category and by "uncategorized" is the main use of
+  // the review screen.
+  @@index([categoryId])
 }
 
 /// What every investment product has, whatever its type. One table only: the

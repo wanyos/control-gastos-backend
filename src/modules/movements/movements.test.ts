@@ -1246,6 +1246,248 @@ describe('movement routes (read-only) and database indexes', () => {
     expect(body.pagination).toEqual({ page: 1, pageSize: 50, total: 0, totalPages: 0 })
     expect(body.totals).toEqual({ income: '0.00', expense: '0.00', net: '0.00' })
   })
+
+  // ── Feature 47: filter by category, by "no category" and by text ──────────
+
+  it('GET /api/movements?categoryId= returns only the movements of that category (R1)', async () => {
+    const account = await createAccount()
+    const sport = await createCategory('Sport')
+    const other = await createCategory('Other')
+    const mine = await seedMovement({
+      accountId: account.id,
+      categoryId: sport.id,
+      daySequence: 1,
+      description: 'In the category',
+    })
+    await seedMovement({
+      accountId: account.id,
+      categoryId: other.id,
+      daySequence: 2,
+      description: 'Another category',
+    })
+    await seedMovement({ accountId: account.id, daySequence: 3, description: 'No category' })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, categoryId: sport.id }),
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<MovementListResponse>()
+    expect(body.movements.map((movement) => movement.id)).toEqual([mine.id])
+    expect(body.pagination.total).toBe(1)
+  })
+
+  it('GET /api/movements?uncategorized=true returns only the ones with no category (R2)', async () => {
+    const account = await createAccount()
+    const sport = await createCategory('Sport')
+    await seedMovement({ accountId: account.id, categoryId: sport.id, daySequence: 1 })
+    const pending = await seedMovement({
+      accountId: account.id,
+      daySequence: 2,
+      description: 'Still to be reviewed',
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, uncategorized: 'true' }),
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<MovementListResponse>()
+    expect(body.movements.map((movement) => movement.id)).toEqual([pending.id])
+    expect(body.movements[0]?.categoryId).toBeNull()
+    expect(body.pagination.total).toBe(1)
+  })
+
+  it('GET /api/movements?uncategorized=false does not filter anything out (R2)', async () => {
+    const account = await createAccount()
+    const sport = await createCategory('Sport')
+    await seedMovement({ accountId: account.id, categoryId: sport.id, daySequence: 1 })
+    await seedMovement({ accountId: account.id, daySequence: 2 })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, uncategorized: 'false' }),
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json<MovementListResponse>().pagination.total).toBe(2)
+  })
+
+  it('GET /api/movements?q= matches the description ignoring case and diacritics (R5)', async () => {
+    const account = await createAccount()
+    const match = await seedMovement({
+      accountId: account.id,
+      daySequence: 1,
+      description: 'CAFETERÍA DEL PUERTO',
+    })
+    await seedMovement({ accountId: account.id, daySequence: 2, description: 'GASÓLEO ÁVILA' })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, q: 'cafeteria' }),
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<MovementListResponse>()
+    expect(body.movements.map((movement) => movement.id)).toEqual([match.id])
+    expect(body.pagination.total).toBe(1)
+  })
+
+  it('GET /api/movements?q= also finds an accented word typed WITH its accent (R5)', async () => {
+    const account = await createAccount()
+    const match = await seedMovement({
+      accountId: account.id,
+      daySequence: 1,
+      description: 'peluqueria josé',
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, q: 'JOSÉ' }),
+    })
+
+    expect(response.json<MovementListResponse>().movements.map((m) => m.id)).toEqual([match.id])
+  })
+
+  it('GET /api/movements?q= treats % and _ as literal characters, not wildcards (R6)', async () => {
+    const account = await createAccount()
+    const percent = await seedMovement({
+      accountId: account.id,
+      daySequence: 1,
+      description: 'DESCUENTO 100% ONLINE',
+    })
+    await seedMovement({
+      accountId: account.id,
+      daySequence: 2,
+      description: 'DESCUENTO 100 ONLINE',
+    })
+    const underscore = await seedMovement({
+      accountId: account.id,
+      daySequence: 3,
+      description: 'PAGO A_B ONLINE',
+    })
+    await seedMovement({ accountId: account.id, daySequence: 4, description: 'PAGO AXB ONLINE' })
+
+    const byPercent = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, q: '100%' }),
+    })
+    const byUnderscore = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, q: 'a_b' }),
+    })
+
+    expect(byPercent.json<MovementListResponse>().movements.map((m) => m.id)).toEqual([percent.id])
+    expect(byUnderscore.json<MovementListResponse>().movements.map((m) => m.id)).toEqual([
+      underscore.id,
+    ])
+  })
+
+  it('GET /api/movements?q= with a backslash finds it literally, escaping the escape (R6)', async () => {
+    const account = await createAccount()
+    const match = await seedMovement({
+      accountId: account.id,
+      daySequence: 1,
+      description: 'RUTA C\\TMP ONLINE',
+    })
+    await seedMovement({ accountId: account.id, daySequence: 2, description: 'RUTA CTMP ONLINE' })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ accountId: account.id, q: 'c\\tmp' }),
+    })
+
+    expect(response.json<MovementListResponse>().movements.map((m) => m.id)).toEqual([match.id])
+  })
+
+  it('rejects categoryId and uncategorized together with 400 VALIDATION_ERROR (R3)', async () => {
+    const category = await createCategory('Sport')
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({ categoryId: category.id, uncategorized: 'true' }),
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+    expect(response.json<{ movements?: unknown }>().movements).toBeUndefined()
+  })
+
+  it('answers 404 NOT_FOUND for a categoryId that does not exist (R4)', async () => {
+    const category = await createCategory('Sport')
+    await app.prisma.category.delete({ where: { id: category.id } })
+    createdCategoryIds.length = 0
+
+    const response = await app.inject({ method: 'GET', url: listUrl({ categoryId: category.id }) })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('rejects a q shorter than 2 characters, also once trimmed, with 400 (R5)', async () => {
+    const tooShort = await app.inject({ method: 'GET', url: '/api/movements?q=a' })
+    const blank = await app.inject({ method: 'GET', url: listUrl({ q: '   a   ' }) })
+
+    for (const response of [tooShort, blank]) {
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+    }
+  })
+
+  it('combines the new filters with account, range, type, status and pagination (R7)', async () => {
+    const account = await createAccount()
+    const other = await createAccount()
+    const category = await createCategory('Sport')
+    const common = {
+      accountId: account.id,
+      bookingDate: '2026-08-10',
+      type: 'expense' as const,
+      categoryId: category.id,
+      description: 'CAFETERÍA DEL PUERTO',
+      amount: '10.00',
+    }
+    // Three rows match everything: the page shows one, the totals sum the three.
+    const first = await seedMovement({ ...common, daySequence: 1 })
+    const second = await seedMovement({ ...common, daySequence: 2 })
+    const third = await seedMovement({ ...common, daySequence: 3 })
+    // Each of these fails exactly ONE condition of the filter:
+    await seedMovement({ ...common, accountId: other.id, daySequence: 4 })
+    await seedMovement({ ...common, bookingDate: '2026-09-10', daySequence: 5 })
+    await seedMovement({ ...common, type: 'income', daySequence: 6 })
+    await seedMovement({ ...common, categoryId: null, daySequence: 7 })
+    await seedMovement({ ...common, description: 'GASÓLEO ÁVILA', daySequence: 8 })
+    const confirmed = await seedMovement({ ...common, daySequence: 9 })
+    await app.prisma.movement.update({
+      where: { id: confirmed.id },
+      data: { status: 'confirmed' },
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: listUrl({
+        accountId: account.id,
+        from: '2026-08-01',
+        to: '2026-08-31',
+        type: 'expense',
+        status: 'pending_review',
+        categoryId: category.id,
+        q: 'cafeteria',
+        page: 1,
+        pageSize: 1,
+      }),
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<MovementListResponse>()
+    // The page: one row, the most recent of the three.
+    expect(body.movements.map((movement) => movement.id)).toEqual([third.id])
+    // The count and the totals: the three matches, never the page and never the table.
+    expect(body.pagination).toEqual({ page: 1, pageSize: 1, total: 3, totalPages: 3 })
+    expect(body.totals).toEqual({ income: '0.00', expense: '30.00', net: '-30.00' })
+    expect([first.id, second.id, third.id]).toHaveLength(3)
+  })
 })
 
 describe('PATCH /api/movements/:id — category and status of a movement (feature 37)', () => {

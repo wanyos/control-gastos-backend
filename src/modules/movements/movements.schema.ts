@@ -19,6 +19,14 @@ export const listMovementsSchema = {
       to: { type: 'string', format: 'date' },
       type: { type: 'string', enum: ['expense', 'income', 'neutral'] },
       status: { type: 'string', enum: ['confirmed', 'pending_review'] },
+      // Feature 47. `categoryId` stays a plain integer and "no category" is a
+      // separate boolean, so the two never need a union type here; asking for
+      // both at once is rejected by the service (R3), not silently resolved.
+      categoryId: { type: 'integer', minimum: 1 },
+      uncategorized: { type: 'boolean' },
+      // Matched against the generated `descriptionSearch` column, so case and
+      // diacritics do not matter (R5). Trimmed by the service before use.
+      q: { type: 'string', minLength: 2, maxLength: 100 },
       page: { type: 'integer', minimum: 1, default: 1 },
       pageSize: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
     },
@@ -56,3 +64,48 @@ export const updateMovementSchema = {
 export const updateMovementBodyProperties: ReadonlySet<string> = new Set(
   Object.keys(updateMovementSchema.body.properties),
 )
+
+/**
+ * The most movements one `PATCH /api/movements` can carry (feature 47, R11):
+ * the same maximum a page of `GET /api/movements` can show, so "mark everything
+ * on this page" always fits in a single request.
+ */
+export const bulkUpdateMovementsMaxIds = 200
+
+/**
+ * Body of `PATCH /api/movements` (feature 47): the same two writable fields as
+ * the single-movement endpoint, applied to an explicit list of ids. An empty
+ * list, a repeated id or more than `bulkUpdateMovementsMaxIds` of them are a
+ * 400 (R11), never a 200 that did something else than what was asked.
+ *
+ * "At least one of `categoryId`/`status`" is NOT expressible with
+ * `minProperties` here — `ids` is always present — so the route checks it in
+ * the same `preValidation` that rejects unknown properties (R12).
+ */
+export const bulkUpdateMovementsSchema = {
+  body: {
+    type: 'object',
+    required: ['ids'],
+    additionalProperties: false,
+    properties: {
+      ids: {
+        type: 'array',
+        minItems: 1,
+        maxItems: bulkUpdateMovementsMaxIds,
+        uniqueItems: true,
+        items: { type: 'integer', minimum: 1 },
+      },
+      // null removes the category ("no category" is not a category, it is none).
+      categoryId: { type: ['integer', 'null'], minimum: 1 },
+      status: { type: 'string', enum: ['confirmed', 'pending_review'] },
+    },
+  },
+} as const
+
+/** Derived from the schema so the allow-list and the schema cannot diverge. */
+export const bulkUpdateMovementsBodyProperties: ReadonlySet<string> = new Set(
+  Object.keys(bulkUpdateMovementsSchema.body.properties),
+)
+
+/** The two fields a bulk update may write: at least one must travel (R12). */
+export const bulkUpdateMovementsWritableProperties: readonly string[] = ['categoryId', 'status']

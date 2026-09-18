@@ -9,6 +9,8 @@ import type {
   AnchorColumns,
   BalanceAnchor,
   BalanceMovement,
+  BulkUpdateMovementsBody,
+  BulkUpdateMovementsResult,
   DecimalLike,
   RecencyPoint,
   MovementListQuery,
@@ -158,6 +160,10 @@ function movementListWhere(query: MovementListQuery): Prisma.MovementWhereInput 
   if (query.accountId !== undefined) where.accountId = query.accountId
   if (query.type !== undefined) where.type = query.type
   if (query.status !== undefined) where.status = query.status
+  if (query.categoryId !== undefined) where.categoryId = query.categoryId
+  if (query.uncategorized === true) where.categoryId = null
+  const text = searchTerm(query.q)
+  if (text !== undefined) where.descriptionSearch = { contains: text }
   if (query.from !== undefined || query.to !== undefined) {
     where.bookingDate = {
       ...(query.from === undefined ? {} : { gte: dateOnlyToDate(query.from) }),
@@ -165,6 +171,36 @@ function movementListWhere(query: MovementListQuery): Prisma.MovementWhereInput 
     }
   }
   return where
+}
+
+/**
+ * The same transformation PostgreSQL applies to `descriptionSearch` (feature 47,
+ * design.md §3), done here in TypeScript so both sides of the comparison agree:
+ * decompose, drop the diacritics, lowercase.
+ */
+function normalizeDiacritics(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+}
+
+/**
+ * Turns the `q` of the querystring into what the `contains` filter needs (R5,
+ * R6): normalized like the generated column, and with the three LIKE
+ * metacharacters escaped — Prisma's `contains` builds a `LIKE '%…%'` and does
+ * NOT escape them, so without this a search for `100%` would match anything.
+ * The backslash goes first, or it would escape the escapes.
+ */
+export function normalizeForSearch(text: string): string {
+  return normalizeDiacritics(text).replace(/[\\%_]/g, (char) => `\\${char}`)
+}
+
+/** The trimmed, normalized `q`, or `undefined` when there is nothing to search. */
+function searchTerm(q: string | undefined): string | undefined {
+  if (q === undefined) return undefined
+  const trimmed = q.trim()
+  return trimmed === '' ? undefined : normalizeForSearch(trimmed)
 }
 
 /**
@@ -188,12 +224,30 @@ export async function listMovements(
     throw new ValidationError(`'from' (${query.from}) is after 'to' (${query.to})`)
   }
 
+  if (query.categoryId !== undefined && query.uncategorized === true) {
+    throw new ValidationError(
+      "'categoryId' and 'uncategorized' cannot be combined: they ask for opposite things",
+    )
+  }
+
+  if (query.q !== undefined && query.q.trim().length < 2) {
+    throw new ValidationError("'q' must have at least 2 characters once trimmed")
+  }
+
   if (query.accountId !== undefined) {
     const account = await prisma.account.findUnique({
       where: { id: query.accountId },
       select: { id: true },
     })
     if (account === null) throw new NotFoundError('Account not found')
+  }
+
+  if (query.categoryId !== undefined) {
+    const category = await prisma.category.findUnique({
+      where: { id: query.categoryId },
+      select: { id: true },
+    })
+    if (category === null) throw new NotFoundError('Category not found')
   }
 
   const where = movementListWhere(query)
@@ -272,6 +326,77 @@ export async function updateMovement(
   })
 
   return serializeMovement(updated)
+}
+
+/**
+ * The same two writable fields as `updateMovement`, applied to a set of
+ * movements in ONE request and as ONE atomic operation (feature 47): either
+ * every id in the list ends up changed or not a single row moves (R8-R10).
+ *
+ * Why it does not call `updateMovement` in a loop: that would be N validations
+ * and N `UPDATE`s, and its `NotFoundError` cannot say WHICH id of the batch
+ * failed. The rules it enforces are the very same ones, read over a set.
+ *
+ * Everything runs inside `prisma.$transaction`, so even a failure between the
+ * checks and the write leaves the table untouched. `updateMany` carries only
+ * `categoryId`/`status`: no other column of the bank fact can travel (R13).
+ */
+export async function bulkUpdateMovements(
+  prisma: AppPrismaClient,
+  input: BulkUpdateMovementsBody,
+): Promise<BulkUpdateMovementsResult> {
+  const { ids } = input
+
+  return prisma.$transaction(async (tx) => {
+    const found = await tx.movement.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, type: true },
+    })
+
+    const foundIds = new Set(found.map((movement) => movement.id))
+    const missing = ids.filter((id) => !foundIds.has(id))
+    if (missing.length > 0) {
+      throw new NotFoundError(`Movement not found: ${missing.join(', ')}`)
+    }
+
+    if (typeof input.categoryId === 'number') {
+      const category = await tx.category.findUnique({ where: { id: input.categoryId } })
+      if (category === null) throw new NotFoundError('Category not found')
+
+      const neutral = found.filter((movement) => movement.type === 'neutral')
+      if (neutral.length > 0) {
+        throw new ValidationError(
+          `A neutral movement (zero amount) cannot take a category: ${idList(neutral)}`,
+        )
+      }
+
+      const mismatched = found.filter((movement) => movement.type !== category.kind)
+      if (mismatched.length > 0) {
+        throw new ValidationError(
+          `Category kind '${category.kind}' does not match the type of movement(s): ${idList(mismatched)}`,
+        )
+      }
+    }
+
+    const data: { categoryId?: number | null; status?: BulkUpdateMovementsBody['status'] } = {}
+    if (input.categoryId !== undefined) data.categoryId = input.categoryId
+    if (input.status !== undefined) data.status = input.status
+
+    const { count } = await tx.movement.updateMany({ where: { id: { in: ids } }, data })
+
+    const movements = await tx.movement.findMany({
+      where: { id: { in: ids } },
+      orderBy: [{ bookingDate: 'desc' }, { daySequence: { sort: 'desc', nulls: 'last' } }],
+      include: { account: true, category: true },
+    })
+
+    return { updated: count, movements: movements.map(serializeMovement) }
+  })
+}
+
+/** The ids of a failing subset, so the message says exactly which ones broke. */
+function idList(movements: { id: number }[]): string {
+  return movements.map((movement) => movement.id).join(', ')
 }
 
 /** Maps the domain object to the API contract shape. */

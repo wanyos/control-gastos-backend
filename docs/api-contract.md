@@ -644,6 +644,13 @@ Desde la feature "movements-filters-and-totals" (2026-09-02) la respuesta viene
 la página trae el **total de coincidencias** y los **totales del filtro pedido**
 (cuánto entró, cuánto salió y la diferencia).
 
+Desde la feature 47 `movements-review-bulk` (2026-09-18) se filtra además por
+**categoría** (`categoryId`), por **«sin categoría»** (`uncategorized=true`) y
+por **texto de la descripción** (`q`, sin distinguir mayúsculas ni tildes). Son
+tres parámetros más de la misma lista: se combinan con los de antes y con la
+paginación, y `pagination.total` y `totals` se siguen calculando sobre **todas**
+las coincidencias del filtro. La respuesta **no cambia de forma**.
+
 **Parámetros de querystring** (todos opcionales, combinables entre sí):
 
 | Parámetro   | Tipo                                     | Qué filtra                                                       |
@@ -653,8 +660,32 @@ la página trae el **total de coincidencias** y los **totales del filtro pedido*
 | `to`        | string (`YYYY-MM-DD`)                    | Movimientos con `bookingDate` **≤ `to`**. Extremo **incluido**: `from=2026-08-01&to=2026-08-31` es agosto entero. |
 | `type`      | `"expense"` \| `"income"` \| `"neutral"` | Solo movimientos de ese tipo.                                    |
 | `status`    | `"confirmed"` \| `"pending_review"`      | Solo movimientos en ese estado.                                  |
+| `categoryId`| number (entero ≥ 1)                      | Solo los movimientos cuyo `categoryId` es **exactamente** ese. Una categoría padre **no** arrastra los movimientos de sus subcategorías: si quieres las dos cosas, pides las dos. Si la categoría no existe → **404 `NOT_FOUND`** (mismo criterio que `accountId`). |
+| `uncategorized` | boolean (`true` / `false`)           | `uncategorized=true` deja solo los movimientos **sin categoría** (`categoryId: null`). `uncategorized=false` **no filtra nada**, es igual que no mandarlo. Mandar `categoryId` y `uncategorized=true` en la misma petición → **400 `VALIDATION_ERROR`**. |
+| `q`         | string (2–100 caracteres)                | Solo los movimientos cuya `description` **contiene** ese texto, **ignorando mayúsculas y tildes**. Ver la nota de debajo de la tabla. |
 | `page`      | number (entero ≥ 1)                      | Página pedida. Def. `1`.                                         |
 | `pageSize`  | number (entero 1–200)                    | Movimientos por página. Def. `50`, máximo `200`.                 |
+
+**Cómo busca `q`** (feature 47, 2026-09-18):
+
+- Es una búsqueda **por trozo de texto**, no por palabra entera ni por prefijo:
+  `q=eter` encuentra `VETERINARIO`.
+- **No distingue mayúsculas ni tildes**, en los dos sentidos: `q=cafeteria`
+  encuentra `CAFETERÍA` y `q=CAFETERÍA` encuentra `cafeteria`. Se comparan las
+  dos partes sin acentos y en minúsculas (`á à ä â ã é è ë ê í ì ï î ó ò ö ô õ
+  ú ù ü û ñ ç` y sus mayúsculas).
+- `%` y `_` se buscan como **caracteres literales** de la descripción, no como
+  comodines: `q=100%` encuentra `PAGO 100% ONLINE` y no encuentra cualquier
+  cosa. No hay ningún comodín disponible.
+- Se le **recortan los espacios de los extremos** antes de buscar, y las dos
+  longitudes se miden en momentos distintos: el **máximo de 100 caracteres** se
+  mide sobre lo que llega **tal cual** (espacios incluidos), y el **mínimo de 2
+  caracteres** sobre lo que queda **después de recortar**. Pasarse por arriba o
+  no llegar por abajo es **400 `VALIDATION_ERROR`** en los dos casos, con
+  mensajes distintos. Así, `q=` con 99 letras y tres espacios al final son 102
+  caracteres y da 400, aunque recortada mida 99.
+- Busca **solo en `description`**. No mira el `note`, ni el nombre de la cuenta,
+  ni el de la categoría, ni el importe.
 
 **Respuesta 200**
 ```json
@@ -715,8 +746,8 @@ la página trae el **total de coincidencias** y los **totales del filtro pedido*
 
 | Código HTTP | `code`             | Cuándo                                                             |
 | ----------- | ------------------ | ------------------------------------------------------------------ |
-| 400         | `VALIDATION_ERROR` | Un parámetro no cumple el esquema (fecha que no es `YYYY-MM-DD`, `type`/`status` fuera de su enumeración, `page` < 1, `pageSize` fuera de 1–200, `accountId` no entero); `from` posterior a `to`; o `page` más allá de la última página con coincidencias. |
-| 404         | `NOT_FOUND`        | El `accountId` pedido no existe.                                    |
+| 400         | `VALIDATION_ERROR` | Un parámetro no cumple el esquema (fecha que no es `YYYY-MM-DD`, `type`/`status` fuera de su enumeración, `page` < 1, `pageSize` fuera de 1–200, `accountId` o `categoryId` no entero, `q` fuera de 2–100 caracteres); `from` posterior a `to`; o `page` más allá de la última página con coincidencias. **Desde la feature 47:** `categoryId` y `uncategorized=true` en la misma petición (se piden dos cosas incompatibles: los de una categoría **y** los que no tienen ninguna). |
+| 404         | `NOT_FOUND`        | El `accountId` pedido no existe. **Desde la feature 47:** o el `categoryId` pedido no existe. |
 
 Un filtro **válido sin coincidencias** (una cuenta que existe pero sin
 movimientos en el rango) **no es un error**: responde 200 con `movements: []`,
@@ -738,14 +769,84 @@ resultado.
 > banco y llegará en su extracto; y darlos de alta o borrarlos a mano
 > descuadraría el saldo contra el banco. Lo único editable de un movimiento
 > existente son sus **dos campos de anotación** — `categoryId` y `status` — vía
-> [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37).
+> [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37) o, para varios
+> movimientos a la vez, [`PATCH /api/movements`](#patch-apimovements) (feature
+> 47).
+
+---
+
+### `PATCH /api/movements`
+
+Aplica una categoría y/o un estado de revisión a **varios movimientos en una
+sola petición** (feature 47, 2026-09-18). Es la operación que permite vaciar la
+cola de pendientes sin mandar una petición por movimiento.
+
+Vale exactamente lo mismo que en
+[`PATCH /api/movements/:id`](#patch-apimovementsid): los únicos dos campos que se
+pueden tocar son `categoryId` y `status`. **Ningún otro campo del movimiento
+cambia** — importe, tipo, fechas, descripción, `balanceAfter`, `note`,
+`transferId`, `daySequence`, `origin`… quedan idénticos —, y los saldos de las
+cuentas y los `totals` de `GET /api/movements` tampoco se mueven.
+
+**Body** (`ids` siempre; además, **al menos una** de `categoryId` y `status`)
+
+| Campo        | Tipo                                | Reglas                                                                 |
+| ------------ | ----------------------------------- | ---------------------------------------------------------------------- |
+| `ids`        | array de number (entero ≥ 1)        | Los movimientos a cambiar. **Mínimo 1, máximo 200** y **sin repetidos**. Todos tienen que existir. |
+| `categoryId` | number (entero ≥ 1) \| null         | Id de una categoría existente cuyo `kind` **coincida con el `type`** de **cada uno** de los movimientos (`expense`↔`expense`, `income`↔`income`). `null` **quita** la categoría. Un movimiento `neutral` (importe 0) no se categoriza. |
+| `status`     | `"confirmed"` \| `"pending_review"` | Se aplica a todos. Funciona en los dos sentidos: dar por revisado y volver atrás. |
+
+```json
+{ "ids": [10, 11, 12], "categoryId": 4, "status": "confirmed" }
+```
+
+- **El tope es de 200 ids**, el mismo que el `pageSize` máximo de
+  `GET /api/movements`: «marcar todo lo de esta página» siempre cabe en una
+  petición. Para más, se mandan varias peticiones.
+- **No se admite pedirlo por filtro** («cambia todo lo que cumpla estas
+  condiciones»): el servidor cambia exactamente los ids que el cliente enumera.
+- Un cuerpo con **cualquier otra propiedad** (`amount`, `description`, `note`…),
+  o **sin `categoryId` ni `status`**, responde **400 `VALIDATION_ERROR`**: no se
+  ignora ni se descarta en silencio.
+
+**Respuesta 200**
+
+```json
+{
+  "updated": 3,
+  "movements": [ { "id": 10, "…": "…" } ]
+}
+```
+
+- `updated`: cuántos movimientos se modificaron. Con la petición aceptada es
+  siempre `ids.length` (los ids no se repiten y todos existen).
+- `movements`: **los movimientos ya cambiados**, serializados con la misma forma
+  que cada elemento de `movements` en `GET /api/movements` (con su `account` y su
+  `category` embebidos). Vienen para que la pantalla no tenga que releer la
+  lista después de cambiarlos.
+
+**Es todo o nada.** Las comprobaciones se hacen sobre el conjunto entero **antes**
+de escribir, y la escritura va en una transacción: si un solo movimiento de `ids`
+falla cualquier regla, la respuesta es el error correspondiente y **no se
+modifica ninguno de los demás**. No existe una respuesta parcial ni una lista de
+«estos sí y estos no». El `message` del error nombra los ids que fallaron (texto
+para humanos: **no programar lógica contra él**, ver [Errores](#errores)).
+
+**Errores**
+
+| Código HTTP | `code`             | Cuándo                                                            |
+| ----------- | ------------------ | ----------------------------------------------------------------- |
+| 400         | `VALIDATION_ERROR` | El body no cumple el esquema: `ids` vacío, con **ids repetidos**, con **más de 200** elementos o con algo que no es un entero ≥ 1; propiedades no admitidas; ni `categoryId` ni `status`; valores fuera de tipo o de enumeración. También si el `kind` de la categoría no coincide con el `type` de alguno de los movimientos, o si alguno es `neutral` y se manda categoría. **No se modifica nada.** |
+| 404         | `NOT_FOUND`        | Alguno de los `ids` no corresponde a un movimiento existente, o el `categoryId` enviado no existe. **No se modifica nada.** |
 
 ---
 
 ### `PATCH /api/movements/:id`
 
-Actualiza **exclusivamente** la categoría y/o el estado de revisión de un
-movimiento existente. Ningún otro campo puede viajar por aquí: el importe, el
+Actualiza **exclusivamente** la categoría y/o el estado de revisión de **un**
+movimiento existente (para varios a la vez, ver
+[`PATCH /api/movements`](#patch-apimovements)). Ningún otro campo puede viajar
+por aquí: el importe, el
 tipo, las fechas, la descripción, el `balanceAfter`… son el hecho bancario y no
 se tocan; el saldo de la cuenta y los `totals` de `GET /api/movements` no
 cambian por categorizar ni por confirmar.

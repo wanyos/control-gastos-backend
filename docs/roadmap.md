@@ -49,7 +49,10 @@ saldo, sigue mandando el archivo. Y desde el **2026-08-30**, al importar un
 archivo la app **compara sus propias sumas contra lo que dice el archivo** y
 escribe los descuadres en el informe de esa importación, con la cuenta, la fecha,
 los dos números y la diferencia (F32). Tolerancia cero, y un descuadre no tumba
-la importación ni cambia ningún saldo.
+la importación ni cambia ningún saldo. Y desde el **2026-09-18**, eso ya no se
+queda en el informe: los descuadres y las filas que el parser no pudo leer
+**quedan guardados** con el archivo del que salieron, se consultan cuando quieras
+y un descuadre se puede dar por revisado con una nota (F48).
 
 ✅ **El siguiente paso ya está elegido (2026-09-01).** Las 35 primeras features
 están `done` y hay **cinco nuevas escritas y `pending`**, dictadas por el humano
@@ -104,9 +107,9 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 | E2 | **Traer los ficheros** — detectar pendientes y descargarlos | ✅ (deuda saldada por la F12) | F5 |
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
 | E4 | **Entender los ficheros** — un parser por banco, con salida común | ✅ **6 de 6 bancos**, **contrato ✅** · inventario ✅ (2026-08-17); Revolut entró con la **F46** (2026-09-15) (Trade Republic entró por `.json` escrito a mano, sin parser de PDF: provisional) | F6, F7, F11, F10, F13, **F18**, **F19**, **F20**, **F46** |
-| E5 | **La importación** — del fichero parseado a la base de datos | ✅ | **F12** |
-| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **casi entera**: categorías a mano y confirmación ✅ (**F37**), traspasos ✅ (**F40** + **F41** + marcado manual **F44**), reglas automáticas ✅ (**F43**, 2026-09-06); queda solo el enlace aportación ↔ producto (`Movement.productId`, sin escritor y sin feature) | **F37**, **F40**, **F41**, **F43**, **F44** |
-| E7 | **Consultar** — filtros, saldos, totales, patrimonio | ✅ **entera** (2026-09-11): saldo real ✅ (F31), su comprobación ✅ (F32), filtros y totales ✅ (F36), resumen del dinero ✅ (**F38**, `GET /api/overview`), vista de inversiones ✅ (**F39**, 2026-09-05, `GET /api/investments/overview`); patrimonio neto total ✅ (**F42**, 2026-09-06, `GET /api/net-worth`). ⚠️ Esta fila siguió diciendo «aún sin feature» cinco días después de cerrarse la F42, hasta el 2026-09-11 | **F31**, **F32**, **F36**, **F38**, **F39**, **F42** |
+| E5 | **La importación** — del fichero parseado a la base de datos | ✅; ampliada después con los totales de la pasada (**F45**, 2026-09-11) y con lo que una importación deja sin resolver, que ya no se pierde (**F48**, 2026-09-18) | **F12**, **F45**, **F48** |
+| E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **casi entera**: categorías a mano y confirmación ✅ (**F37**), traspasos ✅ (**F40** + **F41** + marcado manual **F44**), reglas automáticas ✅ (**F43**, 2026-09-06), y confirmar y categorizar **varios movimientos en una sola petición** ✅ (**F47**, 2026-09-18, `PATCH /api/movements`); queda solo el enlace aportación ↔ producto (`Movement.productId`, sin escritor y sin feature) | **F37**, **F40**, **F41**, **F43**, **F44**, **F47** |
+| E7 | **Consultar** — filtros, saldos, totales, patrimonio | ✅ **entera** (2026-09-11): saldo real ✅ (F31), su comprobación ✅ (F32), filtros y totales ✅ (F36), resumen del dinero ✅ (**F38**, `GET /api/overview`), vista de inversiones ✅ (**F39**, 2026-09-05, `GET /api/investments/overview`); patrimonio neto total ✅ (**F42**, 2026-09-06, `GET /api/net-worth`); y los dos filtros que le faltaban al listado —por **categoría** / «sin categoría» y por **texto del concepto**— ✅ (**F47**, 2026-09-18). ⚠️ Esta fila siguió diciendo «aún sin feature» cinco días después de cerrarse la F42, hasta el 2026-09-11 | **F31**, **F32**, **F36**, **F38**, **F39**, **F42**, **F47** |
 | E8 | **Ver** — el frontend | ⬜ | otro proyecto |
 | E9 | **Que esto viva en algún sitio** — despliegue y acceso | ⬜ | *sin etapa hasta hoy* |
 
@@ -241,6 +244,23 @@ Decisiones en el **ADR-015** de [`docs/architecture.md`](./architecture.md).
 
 **Orden acordado (2026-08-11):** F9 → F11 → F10 → F12. Las cuatro ✅.
 
+**Lo que se le añadió después:**
+
+- **F45 `import-run-totals`** (2026-09-11): el resumen de arriba de una pasada
+  cuenta también los archivos de producto guardados, las cuentas ancladas y los
+  saldos rellenados. Cierra los cabos 13 y 17.
+- **F48 `import-warnings-persistence`** (2026-09-18): lo que una importación no
+  puede resolver —las filas que el parser no pudo leer y los descuadres de
+  saldo— **se guarda** con el archivo del que salió, en vez de morir en la
+  respuesta. Se consulta con `GET /api/import/warnings` y un descuadre se da por
+  revisado con `PATCH /api/import/warnings/balance-mismatches/:id`, con una nota.
+  La importación en sí no cambia: mismos contadores y el archivo se sigue
+  moviendo a `procesados/`. Decisión de fondo en el **ADR-031** (el hallazgo se
+  guarda congelado, con clave natural legible, y solo lo cierra el humano), que
+  deja **superada la decisión 3 del ADR-030**. Detalle:
+  [`../progress/summaries/import-warnings-persistence.md`](../progress/summaries/import-warnings-persistence.md).
+  Lo que **no** trae: arreglar o borrar una fila ilegible — es el cabo suelto 23.
+
 ### E6 — Enriquecer lo importado ⬜
 
 El modelo ya tiene los huecos reservados; lo que falta es **quién los llena**.
@@ -265,10 +285,16 @@ media línea de filtros y el patrimonio a una fecha. Lo que había y lo que falt
 - Filtros por fecha, cuenta, categoría, forma de pago y texto del concepto.
   🟡 **A medias por la F36** (2026-09-02): `GET /api/movements` filtra por
   `accountId`, `from`, `to`, `type` y `status`, y pagina con `page`/`pageSize`.
-  **Siguen faltando** el filtro por **categoría** y la **búsqueda por texto del
-  concepto**, que son justo los dos que necesita la vista de Extracto del
-  frontend. El de forma de pago no tiene sentido pedirlo: `paymentMethod` se
-  quedó sin fuente al descartar el Excel (ver `../../docs/ideas.md` §6).
+  Los dos que faltaban —el filtro por **categoría** (y «sin categoría») y la
+  **búsqueda por texto del concepto**— los añade la **F47
+  `movements-review-bulk`** (2026-09-18) como `categoryId`, `uncategorized` y
+  `q`, documentados en [`api-contract.md`](./api-contract.md#get-apimovements).
+  Junto con el `PATCH /api/movements` en bloque de esa misma feature, **son lo
+  que desbloquea la pantalla de revisión del frontend (su etapa E6) y parte de
+  su vista de extracto (su etapa E7)** — parte 1 de
+  `../../docs/handoff-pantalla-revision.md`. El filtro de forma de pago no tiene
+  sentido pedirlo: `paymentMethod` se quedó sin fuente al descartar el Excel
+  (ver `../../docs/ideas.md` §6).
 - ~~Saldo por cuenta (del `balanceAfter` del movimiento más reciente).~~
   ✅ **hecho por la F31** (2026-08-26). Y la descripción de arriba se quedó corta:
   el saldo **no** es el `balanceAfter` más reciente a secas, sino el importe del
@@ -407,6 +433,7 @@ tiene etapa, es que se va a perder.
 | 20 | **`GET /api/net-worth` solo sabe decir el patrimonio de hoy.** No acepta fecha (`?asOf=`) ni devuelve una serie histórica, y las `Valuation`/`SavingsSnapshot` que necesitaría ya están en la base de datos. Eso deja fuera dos bloques de la pantalla de Patrimonio del frontend: **la cascada** (de qué se compone el cambio) y **la evolución** (cómo se movió el total mes a mes). Anotado el 2026-09-11 al decidir por dónde arranca el frontend (E8), con la decisión explícita de **no construirlo todavía**: la forma del parámetro y de la respuesta depende de qué necesite exactamente la vista | **sin abrir, hasta que el frontend lo pida** |
 | 21 | **Dos archivos de producto de la misma pasada pueden pisarse la foto sin que nada avise.** El producto se identifica por `(bank, name)` y la foto por `(productId, date)`, las dos claves salen del **contenido** del archivo, y el importador no comprueba si dos archivos de la misma pasada escriben la misma. Pasó en real el 2026-09-12: dos `.json` de MyInvestor llevaban el mismo `name`, el segundo sobrescribió la valoración del primero y los **dos** salieron `status: "imported"` sumando a `importedProductCount`; el dato del primero se perdió y el informe salió en verde ([prueba real](../progress/explorations/prueba-real-importacion-2026-09-12.md)). El contrato ya rechaza un `name` que existe con **otro** `type`; esto es el hueco de al lado. Hay que decidir si el aviso va en el informe del run o si es un rechazo. Y hay un agujero hermano: **no existe endpoint para borrar un producto ni una valoración**, así que deshacerlo exigió tocar la base de datos a mano | **sin abrir**, el humano lo dio por anotado el 2026-09-12 («después buscaremos una solución para que esto no vuelva a ocurrir») |
 | 22 | **`exceljs` pesa 23 MB, no saca versión estable desde octubre de 2023 y trae 7 de los 8 avisos de subdependencias obsoletas de cada instalación.** Solo lo usan el parser de Bankinter (lee el `.xlsx`), su fixture de tests (escribe uno inventado) y dos scripts de un solo uso. Candidato revisado el 2026-09-13: `read-excel-file` (2,4 MB, actualizado en agosto de 2026) y `write-excel-file` para la fixture. **No es un cambio de una línea**: devuelven las celdas con otra forma, así que toca el parser y pide prueba real con un extracto de Bankinter de verdad. No se ha comprobado que lea bien esos archivos | **sin abrir**, el humano lo dejó para más adelante el 2026-09-13 |
+| 23 | **Una fila que el parser no sabe leer no se puede arreglar ni borrar.** Con la F48 esas filas quedan guardadas y se pueden consultar, pero ahí se acaba: no hay forma de meter a mano el movimiento que representan (el hecho bancario es de solo lectura, sin `POST` ni `DELETE` de movimientos) ni de descartar la fila cuando no importa. Anotado el 2026-09-17 al dictar la F48, con la decisión explícita del humano de dejarlo para después: «más adelante poder arreglarlas o borrarlas, para ello deberemos crear mecanismos que ahora no tenemos» | **sin abrir**, después de la F48 |
 
 > **Sobre el 6:** volver a parsear desde Drive te reconstruye lo importado, pero
 > solo si el importador de la E5 es determinista y re-ejecutable. Merece la pena

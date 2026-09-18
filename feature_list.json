@@ -1927,6 +1927,73 @@
       ],
       "sdd": false,
       "status": "done"
+    },
+    {
+      "id": 48,
+      "name": "import-warnings-persistence",
+      "title": "Guardar los avisos sin resolver de una importación (filas ilegibles y descuadres) y poder consultarlos y darlos por revisados",
+      "intent": {
+        "_procedencia": "Dictado por el humano el 2026-09-17 respondiendo a cuatro preguntas del leader, tras revisar juntos qué puede salir mal en una importación. Salió al mirar la parte 1 de ../docs/handoff-pantalla-revision.md: el frontend acaba de terminar el botón de importar y su modal de resultado, y lo siguiente que quiere es poder corregir lo que salga mal. Sus palabras: 'esto es una medida de seguridad para no llevar datos erroneos o datos que no llegan a la base de datos'.",
+        "que_quiero": "Que los avisos de una importación no se pierdan al cerrar el modal. Quiero poder pedirle al backend, cuando sea, qué avisos siguen sin resolver: las filas de un archivo que no se pudieron leer y los descuadres de saldo. Y quiero poder dar por revisado un descuadre para que deje de salir.",
+        "por_que": "Hoy los avisos solo viven en la respuesta de la importación. Si cierro el modal, ya no sé qué filas no entraron ni qué saldos no cuadraban. Un archivo con filas ilegibles se mueve igual a procesados/, así que esas filas se pierden sin rastro y yo no me entero.",
+        "como_se_que_esta_bien": [
+          "Importo un archivo con filas que no se pueden leer: las demás entran y el archivo se mueve a procesados/ como hasta ahora, pero esas filas quedan guardadas con el archivo del que salen y el motivo.",
+          "Cierro el modal, vuelvo a abrir la aplicación y puedo pedir los avisos que siguen sin resolver: las filas ilegibles y los descuadres.",
+          "De un descuadre puedo decir que lo he revisado, con una nota mía si quiero, y deja de aparecer entre los pendientes.",
+          "Importo dos veces el mismo archivo y no me salen los mismos avisos duplicados.",
+          "Una importación sin nada raro no deja ningún aviso pendiente.",
+          "docs/api-contract.md describe lo nuevo, para que el frontend construya contra él."
+        ],
+        "que_no_quiero": [
+          "No quiero guardar el histórico entero de cada importación: solo los avisos que siguen sin resolver.",
+          "No quiero que un archivo con filas ilegibles deje de entrar ni deje de moverse a procesados/: se comporta como hoy.",
+          "No quiero todavía poder arreglar ni borrar una fila ilegible: eso es otra feature (ver cabo suelto 23 del roadmap).",
+          "No quiero volver a pedir la lista de traspasos dudosos: queda fuera de esta feature.",
+          "No quiero tocar movimientos ya guardados, ni su importe, ni su fecha, ni su descripción."
+        ],
+        "delego_en_agente": [
+          "Cómo se guardan los avisos (tablas, columnas, nombres) y cómo se consultan (rutas y forma de la respuesta).",
+          "Qué hace que un aviso sea el mismo al reimportar el mismo archivo, para no duplicarlo.",
+          "Si un descuadre que una importación posterior cuadra sola debe desaparecer por su cuenta o quedarse hasta que yo lo marque."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "done"
+    },
+    {
+      "id": 47,
+      "name": "movements-review-bulk",
+      "title": "Filtros por categoría y por texto en GET /api/movements, y confirmación y categorización en bloque",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-09-17), redactado a partir de ../docs/handoff-pantalla-revision.md §Parte 1, plan acordado por el humano ese mismo día en una sesión del frontend. Pendiente de que el humano apruebe o corrija este intent antes de lanzar al spec-author.",
+        "que_quiero": "Que desde la web se pueda vaciar la cola de movimientos sin revisar sin ir de uno en uno: pedir los movimientos de una categoría o los que no tienen categoría, buscarlos por texto en la descripción, y confirmar y/o poner categoría a varios movimientos en una sola petición.",
+        "por_que": "Todo lo que se importa nace pending_review y hoy solo se confirma de uno en uno con PATCH /api/movements/:id. Con 1.378 movimientos sin categoría (informe del 2026-09-15) eso son 1.378 peticiones. Es lo que le falta al frontend para su pantalla de revisión (E6) y parte del extracto (E7).",
+        "como_se_que_esta_bien": [
+          "Pido GET /api/movements con una categoría y solo vienen los movimientos de esa categoría.",
+          "Pido GET /api/movements con la opción de 'sin categoría' y solo vienen los que no tienen.",
+          "Busco un texto y vienen los movimientos cuya descripción lo contiene, sin importar mayúsculas ni tildes si es viable.",
+          "Los filtros nuevos se combinan con los que ya existen (cuenta, fechas, tipo, estado) y con la paginación, y los totals salen de lo filtrado.",
+          "Mando varios movimientos marcados con un estado y/o una categoría y quedan todos cambiados en una sola petición.",
+          "Si uno de ellos no cumple las reglas del PATCH individual (la categoría no casa con su tipo, es neutral, no existe), no cambia ninguno.",
+          "docs/api-contract.md describe los parámetros, respuestas y errores nuevos, para que el frontend construya contra él."
+        ],
+        "que_no_quiero": [
+          "No quiero cambiar el significado de lo que ya devuelve GET /api/movements ni de PATCH /api/movements/:id.",
+          "No quiero poder editar importe, fecha ni descripción de un movimiento.",
+          "No quiero deshacer importaciones ni tocar el extracto (E7) ni los dashboards.",
+          "No quiero un endpoint nuevo para crear una regla desde un movimiento: POST /api/category-rules ya recibe categoryId y matchText y el frontend puede usarlo tal cual."
+        ],
+        "delego_en_agente": [
+          "Cómo se pide 'sin categoría' (categoryId=none, uncategorized=true u otra forma); que lo decida y lo documente.",
+          "El nombre del parámetro de búsqueda por texto y si se puede ignorar tildes de forma viable.",
+          "El tope de movimientos por petición en bloque."
+        ],
+        "_pendiente_del_humano": "Operación en bloque: ¿por lista de ids (propuesta por defecto del traspaso) o también por filtro ('confirma todo lo que cumpla estos filtros', más potente y más peligroso)? El borrador asume solo por lista de ids."
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "done"
     }
   ]
 }

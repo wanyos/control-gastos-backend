@@ -68,6 +68,12 @@ export interface MovementListQuery {
   to?: string
   type?: MovementType
   status?: MovementStatus
+  /** Feature 47: movements of one category (R1). */
+  categoryId?: number
+  /** Feature 47: movements with no category at all (R2). Excludes `categoryId`. */
+  uncategorized?: boolean
+  /** Feature 47: free text of the description, case- and accent-insensitive (R5). */
+  q?: string
   page: number
   pageSize: number
 }
@@ -84,6 +90,28 @@ export interface UpdateMovementBody {
 
 export interface MovementIdParams {
   id: number
+}
+
+/**
+ * The body of `PATCH /api/movements` (feature 47): the same two writable fields
+ * as the single-movement endpoint, plus the explicit list of movements they
+ * apply to. No filter travels here — the server changes exactly what the user
+ * saw and ticked (decisions.md #1).
+ */
+export interface BulkUpdateMovementsBody {
+  ids: number[]
+  categoryId?: number | null
+  status?: MovementStatus
+}
+
+/**
+ * What `PATCH /api/movements` answers: how many rows changed and the movements
+ * as they look now, so the screen that just changed them does not have to
+ * reload the list (decisions.md ⚙️ #4).
+ */
+export interface BulkUpdateMovementsResult {
+  updated: number
+  movements: SerializedMovement[]
 }
 
 export interface MovementListPagination {
