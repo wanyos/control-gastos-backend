@@ -12,3 +12,4 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - fastify@5.12.5
   - prettier@3.9.7
+  - tsx@4.23.15

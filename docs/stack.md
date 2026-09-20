@@ -48,13 +48,13 @@
 
 ## Build / Dev tooling
 
-- **Gestor de paquetes:** **pnpm** `12.4.2`, fijado en el campo
+- **Gestor de paquetes:** **pnpm** `12.5.1`, fijado en el campo
   `packageManager` de `package.json`. El lockfile versionado es
   `pnpm-lock.yaml`; `init.sh` detecta el gestor por el lockfile y corre
   `pnpm test`. **Usa siempre `pnpm`, nunca `npm`**: mezclarlos genera un
   `node_modules` distinto del que valida `init.sh`.
 - **Arranque dev (recarga en caliente):** `pnpm run dev` → `tsx watch src/server.ts`
-  (`tsx@^4.23.12`).
+  (`tsx@^4.23.15`).
 - **Build:** `pnpm run build` → `prisma generate && tsc` (salida a `dist/`).
 - **Arranque producción:** `pnpm start` → `node dist/server.js`.
 - **Type check:** `pnpm run typecheck` → `tsc --noEmit`.
@@ -62,7 +62,7 @@
   `.oxlintrc.json`: categoría `correctness`, plugins `typescript`/`unicorn`/
   `oxc`; ignora `src/generated/`, `dist/` y `node_modules/`). `lint:fix` para
   autofix. No pelea con Prettier: `correctness` no trae reglas de formato.
-- **Format:** `pnpm run format:check` / `format` → Prettier `3.9.7`
+- **Format:** `pnpm run format:check` / `format` → Prettier `3.9.8`
   (`.prettierrc`: comillas simples, sin punto y coma, 2 espacios,
   100 columnas). `.prettierignore` excluye artefactos generados, el
   lockfile, los `.md` del harness y `feature_list.json`.
