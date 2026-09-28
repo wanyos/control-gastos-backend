@@ -232,6 +232,7 @@ model Movement {
 
   transferId  String?   // enlace lógico entre las dos piernas de un traspaso
   undoneTransferId String? // el transferId que las dos piernas llevaban hasta que el humano deshizo esa pareja (F44)
+  excludedFromTotals Boolean @default(false) // F49: true = fuera de income/expense de los totales; el saldo no la mira
   daySequence Int?      // posición dentro de su bookingDate (1 = el primero del día)
 
   createdAt DateTime @default(now())
@@ -379,6 +380,34 @@ real de esa cuenta y ya está dentro del `balanceAfter` que dio el banco.
 gasto ni como ingreso, y un `neutral` tampoco. Como el par de un traspaso se
 compone de un cargo y un abono del mismo importe, excluirlo entero deja el total
 global igual que antes del traspaso.
+
+Además de los `neutral`, las exclusiones de los totales globales son **tres**
+(las aplica `computeTotals`, que alimenta los `totals` de `GET /api/movements` y
+los `period.totals` de `GET /api/overview`):
+
+1. `transferId != null` — las dos piernas de un traspaso (arriba).
+2. `productId != null` — una aportación a un producto de inversión (regla 5; la
+   columna sigue sin escritor).
+3. `excludedFromTotals = true` — **desde la F49 `honest-totals`** (2026-09-27): el
+   movimiento que el humano marca a mano como que **no cuenta en las sumas**
+   (`PATCH /api/movements/:id` o `PATCH /api/movements`), pensado para los
+   depósitos de MyInvestor, cuya apertura y cuyo vencimiento no son ni gasto ni
+   ingreso. Columna `Boolean NOT NULL DEFAULT false`: todo movimiento, existente
+   o nuevo, nace sin marcar, y el importador no la escribe. Quitar la marca lo
+   devuelve a las sumas tal como estaba. Es independiente de `transferId`:
+   enlazar, deshacer o detectar traspasos no la toca.
+
+**El saldo no mira ninguna de las tres.** `computeAccountBalance` suma y resta
+por `type`, sin consultar `transferId`, `productId` ni `excludedFromTotals`
+(ver el párrafo de arriba sobre `transferId`): marcar o desmarcar un movimiento
+no cambia su `amount`, su `balanceAfter` ni el `balance` de su cuenta. La marca
+decide **qué cuenta como gasto o ingreso**, nunca **cuánto dinero hay**.
+
+> Por qué una columna propia y no `productId`: `productId` es una FK a
+> `InvestmentProduct`, así que marcar exigiría un producto por movimiento (y no
+> todo depósito tiene su archivo de producto), y un movimiento que no va a ningún
+> producto no se podría marcar nunca. `productId` se queda como estaba, sin
+> escritor. Decisión del humano en `specs/49-honest-totals/decisions.md`.
 
 #### Traspasos entre cuentas propias
 

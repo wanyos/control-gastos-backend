@@ -64,6 +64,83 @@ probada en real) — [veredicto](reviews/revolut-statement.md) ·
 [prueba real](explorations/prueba-real-revolut-2026-09-15.md). Commiteada en
 el commit `feat(revolut)` del 2026-09-15. Cierra la E4 del roadmap (6 de 6 bancos).
 
+## F49 `honest-totals` — CERRADA (2026-09-27), prueba real hecha el 2026-09-28
+
+**Prueba real (leader, a petición del humano, 2026-09-28), contra la base real
+y el backend arrancado:** `GET /api/transfers` dio 40 parejas y las dos multas
+con sus `transferId`; `GET /api/transfers/ambiguous` dio 0. Se deshicieron las
+dos multas (`DELETE` → 204 las dos; quedan 38 parejas) y se marcaron con un
+`PATCH /api/movements` los 17 movimientos `APERTURA DEP` y `CANCELACION DEP` de
+myinvestor (`updated: 17`; `excluded=only` devuelve 17). En los meses de las
+multas, ingreso y gasto suben lo que valía cada multa y el neto no cambia.
+**Hallazgo:** con las aperturas fuera y los 12 vencimientos (`INTERESES DEP`)
+dentro, las sumas se desequilibran en sentido contrario: el principal devuelto
+cuenta como ingreso y el neto del histórico sale muy positivo. El humano
+decidió marcar también los 12 vencimientos (ver §Lo que le toca al humano):
+con los 29 fuera, los últimos seis meses quedan en cifras del orden de una
+nómina, como preveía el traspaso.
+
+**Qué se está haciendo:** parte 1 de `../docs/handoff-sumas-honestas.md`: poder
+sacar un movimiento de las sumas de ingreso y gasto (depósitos de myinvestor),
+filtrar `GET /api/movements` por traspaso emparejado, listar las parejas para
+deshacer las falsas y guardar los traspasos dudosos de una importación.
+**Estado:** intent redactado por el leader y **aprobado por el humano el
+2026-09-27**, con dos respuestas: el vencimiento de un depósito sale entero de
+las sumas y lo que generó se ve en la vista de inversiones (opción c); los
+traspasos dudosos entran en esta feature («creo que sería buena idea meterlos
+ahora, no estoy seguro»). El `spec-author` paró con «la feature no cabe»
+([informe](spec_honest-totals.md)); el humano aprobó el corte (lo que generó
+cada depósito pasa a la F50 `deposit-earnings`, en borrador) y que los traspasos
+dudosos se calculen al pedirlos. Spec escrito: **`spec_ready`, esperando la
+aprobación del humano** sobre `specs/49-honest-totals/decisions.md`.
+**Bloqueos:** ninguno.
+
+### Lote C — contrato y modelo de datos (implementer, 2026-09-27)
+
+**Feature en curso:** 49 — `honest-totals`, lote C (T17, T18).
+**Plan:** `docs/api-contract.md` (`excludedFromTotals` en §`Movement` y en los
+dos `PATCH` con su 400; `transfer` y `excluded` en §`GET /api/movements`; la
+exclusión nueva en los totales del listado y de §`GET /api/overview`; secciones
+nuevas `GET /api/transfers` y `GET /api/transfers/ambiguous`) y
+`docs/data-model.md` (§Totales globales: la tercera exclusión, y que el saldo no
+la mira). Solo esos dos archivos; se documenta por adelantado lo que fija
+`design.md`.
+**Estado:** T17 y T18 hechas. `./init.sh --fast` sale **exit 1** en tipos por
+14 errores en `src/modules/movements/movements.test.ts` (los tests antiguos de
+`computeTotals` no pasan `excludedFromTotals`, que el lote A ya exige): no es de
+este lote, y ese archivo no está en la cabecera del lote A.
+**Bloqueos:** ninguno propio.
+**Informe:** `implementations/honest-totals.md` §Lote C.
+
+### Lote A — la marca y el filtro por traspaso (implementer, 2026-09-27)
+
+**Feature en curso:** 49 — `honest-totals`, lote A (T1–T10).
+**Plan:** columna `excludedFromTotals` y su migración (SQL a mano, aplicada con
+`prisma migrate deploy`); tipos y `serializeMovement`; `computeTotals` y los dos
+`select`; escritura por los dos `PATCH` con booleano estricto; filtros `transfer`
+y `excluded`; tests en `movements.exclusion.test.ts` y `overview.test.ts`.
+**Estado:** T1–T10 hechas. Migración `20260927120000_movement_excluded_from_totals`
+aplicada con `prisma migrate deploy` sobre `gastos`: 1607 filas antes y después,
+las 1607 con `false`, ninguna fila cambiada. `movements.test.ts` añadido al lote
+por el leader (solo para que compile y la lista de claves de R4). 24 tests
+nuevos, todos verdes. `./init.sh` completo: exit 1 solo por `no-real-data.test.ts`
+sobre líneas de `feature_list.json`, `progress/spec_honest-totals.md` y
+`specs/49-honest-totals/decisions.md` (no son de este lote).
+**Bloqueos:** ninguno propio.
+**Informe:** `implementations/honest-totals.md` §Lote A.
+
+### Lote B — parejas y traspasos dudosos (implementer, 2026-09-27)
+
+**Feature en curso:** 49 — `honest-totals`, lote B (T11–T16).
+**Plan:** sacar `readTransferCandidates` de `detectTransfers` sin cambiar lo que
+lee; `listTransferPairs` + `GET /api/transfers`; `listAmbiguousTransfers` +
+`GET /api/transfers/ambiguous` (no escribe); tests de parejas, de marca y
+traspaso, y de dudosos en `transfers.routes.test.ts`.
+**Estado:** T11–T16 hechas; 11 tests nuevos. `./init.sh` completo en solitario:
+exit 0, 73 archivos, 1363 tests. El contrato casa con el código (sin tocarlo).
+**Bloqueos:** ninguno.
+**Informe:** `implementations/honest-totals.md` §Lote B.
+
 ## F48 `import-warnings-persistence` — CERRADA (2026-09-18)
 
 **Estado:** aprobada por el reviewer en segunda pasada y marcada `done` en
@@ -226,6 +303,13 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 -->
 
 ## Lo que le toca al humano
+
+- ~~**De la F49 (2026-09-28): decidir qué hacer con los 12 vencimientos de
+  depósito.**~~ ✅ **decidido por el humano el 2026-09-28: marcarlos también**
+  (opción 1), y hacer la F50 a continuación para recuperar lo que generó cada
+  depósito. Hecho por el leader: `PATCH /api/movements` con los 12 ids,
+  `updated: 12`; `excluded=only` devuelve ya los 29 movimientos de depósito.
+  Hasta la F50, los intereses de esos vencimientos no se ven en las sumas.
 
 - **De la F47 (2026-09-18), la prueba real.** ⚠️ **Escribe en tu base de datos
   real**: los dos últimos pasos cambian movimientos de verdad, así que hazlos con

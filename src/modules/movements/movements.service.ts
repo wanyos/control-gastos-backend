@@ -164,6 +164,12 @@ function movementListWhere(query: MovementListQuery): Prisma.MovementWhereInput 
   if (query.uncategorized === true) where.categoryId = null
   const text = searchTerm(query.q)
   if (text !== undefined) where.descriptionSearch = { contains: text }
+  // Feature 49 (R10, R16): inside the shared `where`, so the page, the count and
+  // the totals all see the same filtered set.
+  if (query.transfer === 'only') where.transferId = { not: null }
+  if (query.transfer === 'none') where.transferId = null
+  if (query.excluded === 'only') where.excludedFromTotals = true
+  if (query.excluded === 'none') where.excludedFromTotals = false
   if (query.from !== undefined || query.to !== undefined) {
     where.bookingDate = {
       ...(query.from === undefined ? {} : { gte: dateOnlyToDate(query.from) }),
@@ -272,7 +278,13 @@ export async function listMovements(
     // out in August" cannot depend on which page you happen to be reading.
     prisma.movement.findMany({
       where,
-      select: { type: true, amount: true, transferId: true, productId: true },
+      select: {
+        type: true,
+        amount: true,
+        transferId: true,
+        productId: true,
+        excludedFromTotals: true,
+      },
     }),
   ])
 
@@ -315,9 +327,12 @@ export async function updateMovement(
     }
   }
 
-  const data: { categoryId?: number | null; status?: UpdateMovementBody['status'] } = {}
+  const data: UpdateMovementBody = {}
   if (input.categoryId !== undefined) data.categoryId = input.categoryId
   if (input.status !== undefined) data.status = input.status
+  // Feature 49: no domain rule — any movement can be marked, a transfer leg or
+  // a neutral one included (R9). Only the mark travels; the amount never does.
+  if (input.excludedFromTotals !== undefined) data.excludedFromTotals = input.excludedFromTotals
 
   const updated = await prisma.movement.update({
     where: { id },
@@ -378,9 +393,12 @@ export async function bulkUpdateMovements(
       }
     }
 
-    const data: { categoryId?: number | null; status?: BulkUpdateMovementsBody['status'] } = {}
+    const data: Omit<BulkUpdateMovementsBody, 'ids'> = {}
     if (input.categoryId !== undefined) data.categoryId = input.categoryId
     if (input.status !== undefined) data.status = input.status
+    // Feature 49: the mark goes in the same `updateMany`, inside the same
+    // transaction — all or nothing like the other two fields (R2).
+    if (input.excludedFromTotals !== undefined) data.excludedFromTotals = input.excludedFromTotals
 
     const { count } = await tx.movement.updateMany({ where: { id: { in: ids } }, data })
 
@@ -418,6 +436,7 @@ export function serializeMovement(movement: MovementWithRelations): SerializedMo
     status: movement.status,
     transferId: movement.transferId,
     daySequence: movement.daySequence,
+    excludedFromTotals: movement.excludedFromTotals,
     createdAt: movement.createdAt.toISOString(),
     updatedAt: movement.updatedAt.toISOString(),
     account: {
@@ -452,10 +471,13 @@ function toDateOnly(date: Date): string {
  * changed shape (docs/data-model.md §Totales; feature 36 closes roadmap
  * loose end 8). Since feature 40 the transfer detection writes `transferId`
  * after every import run; `productId` still has no writer (a later feature).
+ * Since feature 49 a movement the human marked `excludedFromTotals` is left out
+ * too. None of these exclusions touch the account balance (`netOf`).
  */
 export function computeTotals(movements: TotalsMovement[]): MovementTotals {
   return movements.reduce<MovementTotals>(
     (totals, movement) => {
+      if (movement.excludedFromTotals) return totals
       if (movement.transferId !== null) return totals
       if (movement.productId !== null) return totals
       if (movement.type === 'income') {

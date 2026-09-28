@@ -450,11 +450,41 @@ describe('netOf (exported for the reconciliation checks, feature 32)', () => {
 
 describe('computeTotals', () => {
   const dataset: TotalsMovement[] = [
-    { type: 'expense', amount: '45.90', transferId: null, productId: null },
-    { type: 'income', amount: '1200.00', transferId: null, productId: null },
-    { type: 'expense', amount: '500.00', transferId: 'transfer-1', productId: null },
-    { type: 'income', amount: '500.00', transferId: 'transfer-1', productId: null },
-    { type: 'neutral', amount: '0.00', transferId: null, productId: null },
+    {
+      type: 'expense',
+      amount: '45.90',
+      transferId: null,
+      productId: null,
+      excludedFromTotals: false,
+    },
+    {
+      type: 'income',
+      amount: '1200.00',
+      transferId: null,
+      productId: null,
+      excludedFromTotals: false,
+    },
+    {
+      type: 'expense',
+      amount: '500.00',
+      transferId: 'transfer-1',
+      productId: null,
+      excludedFromTotals: false,
+    },
+    {
+      type: 'income',
+      amount: '500.00',
+      transferId: 'transfer-1',
+      productId: null,
+      excludedFromTotals: false,
+    },
+    {
+      type: 'neutral',
+      amount: '0.00',
+      transferId: null,
+      productId: null,
+      excludedFromTotals: false,
+    },
   ]
 
   it('excludes transfer legs and neutral movements from the totals', () => {
@@ -469,8 +499,20 @@ describe('computeTotals', () => {
   it('excludes movements with a productId from the totals', () => {
     const totals = computeTotals([
       ...dataset,
-      { type: 'expense', amount: '3000.00', transferId: null, productId: 7 },
-      { type: 'income', amount: '150.00', transferId: null, productId: 7 },
+      {
+        type: 'expense',
+        amount: '3000.00',
+        transferId: null,
+        productId: 7,
+        excludedFromTotals: false,
+      },
+      {
+        type: 'income',
+        amount: '150.00',
+        transferId: null,
+        productId: 7,
+        excludedFromTotals: false,
+      },
     ])
 
     expect(totals.expense.toFixed(2)).toBe('45.90')
@@ -479,8 +521,20 @@ describe('computeTotals', () => {
 
   it('excludes a movement carrying BOTH transferId and productId exactly once', () => {
     const totals = computeTotals([
-      { type: 'expense', amount: '10.00', transferId: null, productId: null },
-      { type: 'expense', amount: '99.00', transferId: 'transfer-2', productId: 3 },
+      {
+        type: 'expense',
+        amount: '10.00',
+        transferId: null,
+        productId: null,
+        excludedFromTotals: false,
+      },
+      {
+        type: 'expense',
+        amount: '99.00',
+        transferId: 'transfer-2',
+        productId: 3,
+        excludedFromTotals: false,
+      },
     ])
 
     expect(totals.expense.toFixed(2)).toBe('10.00')
@@ -498,8 +552,20 @@ describe('computeTotals', () => {
 describe('serializeTotals', () => {
   it('ships decimal strings with net = income minus expense', () => {
     const totals = computeTotals([
-      { type: 'income', amount: '1200.00', transferId: null, productId: null },
-      { type: 'expense', amount: '45.90', transferId: null, productId: null },
+      {
+        type: 'income',
+        amount: '1200.00',
+        transferId: null,
+        productId: null,
+        excludedFromTotals: false,
+      },
+      {
+        type: 'expense',
+        amount: '45.90',
+        transferId: null,
+        productId: null,
+        excludedFromTotals: false,
+      },
     ])
 
     expect(serializeTotals(totals)).toEqual({
@@ -511,8 +577,20 @@ describe('serializeTotals', () => {
 
   it('ships a negative net when more went out than came in', () => {
     const totals = computeTotals([
-      { type: 'income', amount: '100.00', transferId: null, productId: null },
-      { type: 'expense', amount: '250.50', transferId: null, productId: null },
+      {
+        type: 'income',
+        amount: '100.00',
+        transferId: null,
+        productId: null,
+        excludedFromTotals: false,
+      },
+      {
+        type: 'expense',
+        amount: '250.50',
+        transferId: null,
+        productId: null,
+        excludedFromTotals: false,
+      },
     ])
 
     expect(serializeTotals(totals).net).toBe('-150.50')
@@ -1158,6 +1236,8 @@ describe('movement routes (read-only) and database indexes', () => {
         'status',
         'transferId',
         'daySequence',
+        // Feature 49 (R4): the only key added since feature 36.
+        'excludedFromTotals',
         'createdAt',
         'updatedAt',
         'account',

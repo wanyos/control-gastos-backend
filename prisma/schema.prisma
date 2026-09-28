@@ -168,8 +168,16 @@ model Movement {
 
   // The investment product this money went to. Nothing writes it yet: marking
   // a contribution is a later feature. It is NOT a source for Valuation.invested.
+  // It still leaves the movement out of the income/expense totals, but the
+  // general way to do that is `excludedFromTotals` below (feature 49).
   product   InvestmentProduct? @relation(fields: [productId], references: [id])
   productId Int?
+
+  // Feature 49: the human marked this movement as not counting in the
+  // income/expense totals (e.g. money moved into a deposit). It changes
+  // neither the amount nor the account balance, and no importer, transfer
+  // link or transfer detection writes it: only the two PATCH endpoints.
+  excludedFromTotals Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

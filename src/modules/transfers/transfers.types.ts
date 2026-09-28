@@ -6,7 +6,9 @@
  * The detection itself still has NO endpoint: both import ways call it after
  * their file loop, and its result travels inside the import report. What DOES
  * have an endpoint since F44 is the manual writer of the link
- * (`POST /api/transfers`, `DELETE /api/transfers/:transferId`).
+ * (`POST /api/transfers`, `DELETE /api/transfers/:transferId`). Since F49 there
+ * are also two reads: the list of pairs (`GET /api/transfers`) and the doubtful
+ * groups computed on request (`GET /api/transfers/ambiguous`), which never writes.
  */
 import type { SerializedMovement } from '../movements/movements.types.js'
 
@@ -73,3 +75,27 @@ export interface TransferDetectionResult {
   /** R15: present only when the detection failed; the import itself stands. */
   error?: { code: string; message: string }
 }
+
+/**
+ * One pair of `GET /api/transfers` (F49 R12): the shared transferId and its two
+ * legs serialized like any movement, the `expense` first and the `income` after.
+ */
+export interface TransferPair {
+  transferId: string
+  movements: [SerializedMovement, SerializedMovement]
+}
+
+/** What `GET /api/transfers` answers (F49 R12): every pair, unpaginated. */
+export interface TransferPairsResponse {
+  pairs: TransferPair[]
+}
+
+/**
+ * What `GET /api/transfers/ambiguous` answers (F49 R14): the same two fields,
+ * with the same shape, that the import report carries in `transfers`, computed
+ * at the moment of the request.
+ */
+export type AmbiguousTransfersResponse = Pick<
+  TransferDetectionResult,
+  'ambiguousCount' | 'ambiguous'
+>

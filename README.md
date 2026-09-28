@@ -71,11 +71,13 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `PATCH`  | `/api/category-rules/:id`      | Cambia `matchText` y/o `categoryId` de una regla. **No des-categoriza** lo que ya asignó. |
 | `DELETE` | `/api/category-rules/:id`      | Borra la regla sin modificar ningún movimiento. |
 | `POST`   | `/api/category-rules/apply`    | Ejecuta **bajo demanda** la pasada de categorización sobre los movimientos elegibles (sin categoría y sin confirmar). |
-| `GET`    | `/api/movements`               | Lista los movimientos, del más reciente al más antiguo. Filtra por cuenta, fechas, tipo, estado, **categoría**, **«sin categoría»** y **texto de la descripción** (sin mayúsculas ni tildes). |
-| `PATCH`  | `/api/movements`               | Cambia la categoría y/o el estado de revisión de **varios movimientos a la vez** (hasta 200 ids por petición, todo o nada). |
-| `PATCH`  | `/api/movements/:id`           | Cambia **solo** la categoría y/o el estado de revisión. El hecho bancario (importe, fechas, descripción) no se toca. |
+| `GET`    | `/api/movements`               | Lista los movimientos, del más reciente al más antiguo. Filtra por cuenta, fechas, tipo, estado, **categoría**, **«sin categoría»**, **texto de la descripción** (sin mayúsculas ni tildes), **si es pierna de un traspaso** (`transfer`) y **si está marcado como que no cuenta en las sumas** (`excluded`). |
+| `PATCH`  | `/api/movements`               | Cambia la categoría, el estado de revisión y/o la marca `excludedFromTotals` de **varios movimientos a la vez** (hasta 200 ids por petición, todo o nada). |
+| `PATCH`  | `/api/movements/:id`           | Cambia **solo** la categoría, el estado de revisión y/o la marca `excludedFromTotals` (`true` saca el movimiento de las sumas de ingresos y gastos). El hecho bancario (importe, fechas, descripción) no se toca. |
 | `POST`   | `/api/transfers`               | Enlaza **a mano** dos movimientos como las dos piernas de un traspaso entre cuentas propias. No crea ni borra movimientos. |
 | `DELETE` | `/api/transfers/:transferId`   | Deshace una pareja de traspaso y apunta el veto para que la detección no vuelva a juntar a esas dos. |
+| `GET`    | `/api/transfers`               | Todas las parejas de traspaso enlazadas, con sus dos piernas. Sin paginar. Solo lectura. |
+| `GET`    | `/api/transfers/ambiguous`     | Los grupos de movimientos que parecen traspasos pero la detección no puede emparejar sin ambigüedad, calculados en el momento. Solo lectura. |
 | `GET`    | `/api/overview`                | Cuánto dinero hay en total, cómo se reparte entre las cuentas, y qué entró, salió y quedó en un mes. |
 | `GET`    | `/api/net-worth`               | El patrimonio neto **de hoy**: saldo de las cuentas más el valor de las inversiones, con su desglose y los avisos del dato incompleto. |
 | `GET`    | `/api/investments/overview`    | Las inversiones del mes: la foto de cada producto, cuánto cambió desde la anterior y la ganancia del periodo. |

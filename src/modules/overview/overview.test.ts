@@ -282,6 +282,56 @@ describe('GET /api/overview', () => {
     expect(overview.period.totals).toEqual({ income: '0.00', expense: '60.00', net: '-60.00' })
   })
 
+  // Feature 49: the same single sum as GET /api/movements, so a movement the
+  // human marked `excludedFromTotals` leaves the month too — and comes back
+  // exactly as it was when the mark is removed.
+  it('leaves a marked movement out of the period totals and counts it again when unmarked (R6, R8)', async () => {
+    const account = await createAccount()
+    await seedMovement({
+      accountId: account.id,
+      type: 'income',
+      amount: '1500.00',
+      bookingDate: '2026-06-01',
+    })
+    await seedMovement({
+      accountId: account.id,
+      type: 'expense',
+      amount: '60.00',
+      bookingDate: '2026-06-10',
+      daySequence: 2,
+    })
+    const deposit = await seedMovement({
+      accountId: account.id,
+      type: 'expense',
+      amount: '3000.00',
+      bookingDate: '2026-06-12',
+      daySequence: 3,
+    })
+
+    const before = (await getOverview('?month=2026-06')).period.totals
+    expect(before).toEqual({ income: '1500.00', expense: '3060.00', net: '-1560.00' })
+
+    const mark = await app.inject({
+      method: 'PATCH',
+      url: `/api/movements/${deposit.id}`,
+      payload: { excludedFromTotals: true },
+    })
+    expect(mark.statusCode).toBe(200)
+    expect((await getOverview('?month=2026-06')).period.totals).toEqual({
+      income: '1500.00',
+      expense: '60.00',
+      net: '1440.00',
+    })
+
+    const unmark = await app.inject({
+      method: 'PATCH',
+      url: `/api/movements/${deposit.id}`,
+      payload: { excludedFromTotals: false },
+    })
+    expect(unmark.statusCode).toBe(200)
+    expect((await getOverview('?month=2026-06')).period.totals).toEqual(before)
+  })
+
   it('rejects a malformed month with 400 VALIDATION_ERROR instead of guessing one', async () => {
     for (const month of ['2026-13', 'june', '2026-06-01']) {
       const response = await app.inject({ method: 'GET', url: `/api/overview?month=${month}` })

@@ -1994,6 +1994,82 @@
       "acceptance": [],
       "sdd": true,
       "status": "done"
+    },
+    {
+      "id": 49,
+      "name": "honest-totals",
+      "title": "Poder sacar un movimiento de las sumas de ingreso y gasto, listar y filtrar los traspasos emparejados para poder deshacer los falsos",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-09-27), redactado a partir de ../docs/handoff-sumas-honestas.md §Parte 1, encargo acordado por el humano el 2026-09-26 en una sesión del frontend tras medir sus datos reales (F20 del frontend: filtrando julio por n26 salen 221 € de entrada y 1.038 € de salida; sin filtrar, 57.948 € y 59.096 €). Aprobado por el humano el 2026-09-27 con sus respuestas a las dos preguntas abiertas (ver _respuestas_del_humano). Comprobado en el código el 2026-09-27: computeTotals descarta transferId y productId (src/modules/movements/movements.service.ts:456-471), el importador escribe productId: null (src/modules/import/import.service.ts:126) y nada más lo escribe; GET /api/movements ya devuelve transferId en cada movimiento pero no permite filtrar por él; /api/transfers solo tiene POST y DELETE.",
+        "que_quiero": "Poder decirle al backend que un movimiento concreto no cuenta para mis sumas de ingreso y gasto (las aperturas y vencimientos de depósitos de myinvestor, sobre todo), sin que cambie su importe, su fecha ni el saldo de su cuenta, y poder deshacerlo. Poder pedir los movimientos con o sin traspaso emparejado, para que el extracto pueda esconderlos o enseñarlos, y ver qué parejas hay para deshacer las que la detección emparejó mal.",
+        "por_que": "Las sumas de hoy no significan nada: de 446.014 € de ingreso y 439.372 € de gasto en todo el histórico, 285.000 € de gasto y 275.652 € de ingreso son 29 apuntes de depósitos que se abren y vencen, y nada puede sacarlos. En los últimos seis meses, 165.829 € / 168.376 € pasarían a unos 20.360 € / 23.376 €, que cuadran con una nómina. Además hay dos parejas de traspaso falsas (dos multas que pagué y me devolvieron por Bizum) que están fuera de las sumas y no deberían. Sin esto, los dashboards (E8) no tienen sentido.",
+        "como_se_que_esta_bien": [
+          "Marco una APERTURA DEP. de myinvestor como que no cuenta: deja de sumar en los totals de GET /api/movements y de GET /api/overview, y su importe, su fecha y el saldo de la cuenta siguen igual.",
+          "Quito la marca y vuelve a sumar como antes.",
+          "GET /api/movements me dice en cada movimiento si está marcado, para que la web lo enseñe y lo pueda corregir.",
+          "Pido GET /api/movements solo con traspasos emparejados, o solo sin ellos, y se combina con los filtros que ya existen y con la paginación; los totals salen de lo filtrado.",
+          "Puedo ver qué parejas de traspaso hay, con las dos piernas y su transferId, y deshacer una con el DELETE /api/transfers/:transferId que ya existe; al deshacerla, las dos piernas vuelven a sumar.",
+          "Las dos multas (33339/24377 y 33108/24441) se pueden deshacer así y vuelven a sumar.",
+          "Puedo pedir en cualquier momento los traspasos dudosos (los que la detección no pudo emparejar sin ambigüedad), en vez de perderlos al cerrar el informe de la importación.",
+          "docs/api-contract.md describe lo nuevo, para que el frontend construya contra él."
+        ],
+        "que_no_quiero": [
+          "No quiero que cambie el saldo de ninguna cuenta ni cómo se calcula.",
+          "No quiero poder editar importe, fecha ni descripción de un movimiento.",
+          "No quiero mejorar la detección automática de traspasos.",
+          "No quiero dar de alta las cuentas que no tengo (ING, Trade Republic, Criptan) para que sus traspasos tengan espejo: es otra conversación.",
+          "No quiero que una categoría decida si algo suma o no: computeTotals no mira categoryId y así se queda.",
+          "No quiero tocar el frontend: el interruptor en el extracto y la corrección desde la web son las partes 2 y 3 del traspaso, en sesiones del frontend.",
+          "Ver cuánto generó cada depósito queda fuera: va en la feature 50. Mientras no exista, un vencimiento marcado como que no cuenta deja de verse en las sumas (el movimiento no cambia)."
+        ],
+        "delego_en_agente": [
+          "Cómo se guarda la marca: dar escritor al productId que ya existe o una columna nueva; que lo decida, lo documente y me lo explique.",
+          "Si se marca de uno en uno, en bloque (como el PATCH /api/movements de la F47) o las dos cosas.",
+          "Cómo se pide el filtro de traspaso (nombre del parámetro y valores) y si el listado de parejas es un GET /api/transfers o sale del propio filtro de GET /api/movements.",
+          "Si un movimiento que es pierna de un traspaso se puede marcar también, y qué pasa si se empareja uno ya marcado."
+        ],
+        "_respuestas_del_humano": [
+          "2026-09-27, sobre el vencimiento con principal e intereses juntos: opción (c). Sus palabras: 'no es correcto perder nada, además en esos casos quiero saber cuánto me generó el depósito y eso es el dinero de más que va en la cantidad'. El apunte se saca entero de las sumas de ingreso y gasto, y lo que el depósito generó (la parte del importe por encima del principal) no se pierde: se ve en la vista de inversiones.",
+          "2026-09-27, sobre guardar los traspasos dudosos de una importación: entran en esta feature. Sus palabras: 'creo que sería buena idea meterlos ahora, no estoy seguro'. Si al redactar el spec la feature no cabe, el spec-author propone el corte en vez de meterlo todo.",
+          "2026-09-27: 'el resto me parece bien'. Intent aprobado.",
+          "2026-09-27, tras el bloqueo del spec-author (progress/spec_honest-totals.md): aprueba el corte en dos features; ver lo que generó cada depósito pasa a la F50. Y aprueba que los traspasos dudosos se calculen al pedirlos en vez de guardarse: «me vale calcular los traspasos dudosos al pedirlos, además estos serán muy pocos o casi ninguno»."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "done"
+    },
+    {
+      "id": 50,
+      "name": "deposit-earnings",
+      "title": "Ver cuánto generó cada depósito: la parte del vencimiento por encima del principal",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-09-27), sale del corte de la F49 aprobado por el humano ese día. Su respuesta de partida: «no es correcto perder nada, además en esos casos quiero saber cuánto me generó el depósito y eso es el dinero de más que va en la cantidad». Datos del spec-author en progress/spec_honest-totals.md. Pendiente de que el humano apruebe o corrija este intent. Depende de la F49.",
+        "que_quiero": "Poder ver, para cada depósito que he tenido, cuánto me generó: lo que me devolvieron al vencer menos lo que puse. Y un total de lo que me han generado los depósitos, sin que se pierda nada al sacar aperturas y vencimientos de las sumas de ingreso y gasto.",
+        "por_que": "Con la F49 las aperturas y los vencimientos de depósitos salen de las sumas porque inflan ingreso y gasto, pero el vencimiento lleva dentro el interés, que es dinero que gané de verdad. No quiero perderlo de vista.",
+        "como_se_que_esta_bien": [
+          "Para un depósito ya vencido cuya apertura está en la base, veo lo que me generó: lo que me devolvieron al vencer menos lo que puse.",
+          "Un depósito que sigue vivo no sale con una ganancia inventada ni negativa.",
+          "Una apertura cancelada y reabierta, o dos aperturas el mismo día con el mismo número, no dan cifras falsas.",
+          "Un vencimiento cuya apertura no está en la base no sale con una cifra inventada.",
+          "docs/api-contract.md describe lo nuevo, para que el frontend construya contra él."
+        ],
+        "que_no_quiero": [
+          "No quiero que cambie el saldo de ninguna cuenta ni el importe de ningún movimiento.",
+          "No quiero que se deduzca el principal emparejando por el número del concepto: se repite y da cifras falsas.",
+          "No quiero tocar cómo la F49 saca movimientos de las sumas."
+        ],
+        "delego_en_agente": [
+          "Dónde se ve: en la vista de inversiones o en otro sitio.",
+          "Cómo se enlaza cada vencimiento con su depósito."
+        ],
+        "_pendiente_del_humano": [
+          "De dónde sale el principal de cada depósito antiguo (unos 12, solo 3 dados de alta como producto): (a) doy de alta cada depósito como producto con un archivo, a mano (unos 9-11 archivos), y cada vencimiento se enlaza a su producto; (b) escribo el principal a mano al marcar cada vencimiento (unos 12 números), lo que pide una columna nueva cuyo nombre tendré que aprobar."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "pending"
     }
   ]
 }

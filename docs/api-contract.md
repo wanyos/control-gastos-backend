@@ -247,6 +247,7 @@ Un apunte del extracto. **Solo entra por importación** (ver
 | `origin`        | `"imported"` \| `"manual"`                                  | Procedencia. Los movimientos nacen `"imported"`.                 |
 | `status`        | `"confirmed"` \| `"pending_review"`                         | Estado de revisión. Nacen `"pending_review"`; se pasa a `"confirmed"` (y se vuelve atrás) con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37). |
 | `transferId`    | string \| null                                              | Enlace lógico entre las **dos piernas** de un traspaso entre cuentas propias. Lo escriben dos cosas (ver la nota de abajo): la **detección de traspasos** que corre al final de cada importación (feature 40) y, desde la feature 44, el **enlace manual** `POST /api/transfers` (se deshace con `DELETE /api/transfers/:transferId`). Siempre lo fabrica el servidor: compartido por las dos piernas de cada pareja, `null` en todo lo demás. |
+| `excludedFromTotals` | boolean                                                | **Desde la feature 49** (2026-09-27). `true` = el movimiento **no cuenta en las sumas** de `income` y `expense` (los `totals` de [`GET /api/movements`](#get-apimovements) y los `period.totals` de [`GET /api/overview`](#get-apioverview)). **No cambia el importe ni el saldo; solo saca el movimiento de `income` y `expense`**: el `amount`, el `type`, las fechas, la descripción, el `balanceAfter` y el `balance` de su cuenta en `GET /api/accounts` siguen iguales. Todo movimiento nace con `false` (también los que ya existían antes de la feature). Lo escribe **solo el humano**, con [`PATCH /api/movements/:id`](#patch-apimovementsid) o [`PATCH /api/movements`](#patch-apimovements), y se deshace escribiendo `false`. Es independiente de `transferId`: se puede marcar una pierna de un traspaso, y enlazar o deshacer un traspaso no lo cambia. |
 | `daySequence`   | number \| null                                              | Posición del movimiento **dentro de su `bookingDate`** (`1` = el primero del día). Fija el orden intradía y forma parte de la clave de deduplicación de importados. |
 | `createdAt`     | string (ISO)                                                | Fecha de creación del registro.                                  |
 | `updatedAt`     | string (ISO)                                                | Fecha de última modificación.                                    |
@@ -256,7 +257,11 @@ Un apunte del extracto. **Solo entra por importación** (ver
 > `income` en la destino). La **detección** sigue sin endpoint; lo que sí tiene
 > endpoint desde la feature 44 es el **enlace manual** entre dos movimientos ya
 > existentes ([`POST /api/transfers`](#post-apitransfers)) y su deshecho
-> ([`DELETE /api/transfers/:transferId`](#delete-apitransferstransferid)).
+> ([`DELETE /api/transfers/:transferId`](#delete-apitransferstransferid)), y
+> desde la feature 49 dos consultas de solo lectura: la lista de las parejas
+> enlazadas ([`GET /api/transfers`](#get-apitransfers)) y los grupos dudosos que
+> la detección no puede resolver
+> ([`GET /api/transfers/ambiguous`](#get-apitransfersambiguous)).
 > Lo único propio de un traspaso es
 > que ambas piernas comparten un `transferId` y que **no cuentan como gasto ni
 > como ingreso** en los totales globales. El `type` que reportó el banco **no se
@@ -651,6 +656,11 @@ tres parámetros más de la misma lista: se combinan con los de antes y con la
 paginación, y `pagination.total` y `totals` se siguen calculando sobre **todas**
 las coincidencias del filtro. La respuesta **no cambia de forma**.
 
+Desde la feature 49 `honest-totals` (2026-09-27) se filtra además **por traspaso
+enlazado** (`transfer`) y **por la marca de «no cuenta en las sumas»**
+(`excluded`), cada movimiento trae el campo nuevo `excludedFromTotals`, y los
+`totals` dejan fuera también los movimientos marcados.
+
 **Parámetros de querystring** (todos opcionales, combinables entre sí):
 
 | Parámetro   | Tipo                                     | Qué filtra                                                       |
@@ -663,6 +673,8 @@ las coincidencias del filtro. La respuesta **no cambia de forma**.
 | `categoryId`| number (entero ≥ 1)                      | Solo los movimientos cuyo `categoryId` es **exactamente** ese. Una categoría padre **no** arrastra los movimientos de sus subcategorías: si quieres las dos cosas, pides las dos. Si la categoría no existe → **404 `NOT_FOUND`** (mismo criterio que `accountId`). |
 | `uncategorized` | boolean (`true` / `false`)           | `uncategorized=true` deja solo los movimientos **sin categoría** (`categoryId: null`). `uncategorized=false` **no filtra nada**, es igual que no mandarlo. Mandar `categoryId` y `uncategorized=true` en la misma petición → **400 `VALIDATION_ERROR`**. |
 | `q`         | string (2–100 caracteres)                | Solo los movimientos cuya `description` **contiene** ese texto, **ignorando mayúsculas y tildes**. Ver la nota de debajo de la tabla. |
+| `transfer`  | `"only"` \| `"none"`                     | **Desde la feature 49.** `transfer=only` deja solo los movimientos **enlazados como pierna de un traspaso** (`transferId` no nulo); `transfer=none`, solo los **no enlazados** (`transferId: null`). Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. |
+| `excluded`  | `"only"` \| `"none"`                     | **Desde la feature 49.** `excluded=only` deja solo los movimientos **marcados como que no cuentan en las sumas** (`excludedFromTotals: true`); `excluded=none`, solo los **no marcados** (`excludedFromTotals: false`). Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. Se combina con `transfer` y con todos los demás. |
 | `page`      | number (entero ≥ 1)                      | Página pedida. Def. `1`.                                         |
 | `pageSize`  | number (entero 1–200)                    | Movimientos por página. Def. `50`, máximo `200`.                 |
 
@@ -715,6 +727,7 @@ las coincidencias del filtro. La respuesta **no cambia de forma**.
       "origin": "imported",
       "status": "pending_review",
       "transferId": null,
+      "excludedFromTotals": false,
       "daySequence": 2,
       "createdAt": "2026-08-06T18:30:00.000Z",
       "updatedAt": "2026-08-06T18:30:00.000Z"
@@ -725,8 +738,9 @@ las coincidencias del filtro. La respuesta **no cambia de forma**.
 }
 ```
 
-- `movements`: la página pedida. **La forma de cada movimiento no cambia ni un
-  campo** respecto al contrato anterior.
+- `movements`: la página pedida. Cada movimiento con la forma de
+  [`Movement`](#movement); desde la feature 49 lleva **un campo más**,
+  `excludedFromTotals` (ningún campo anterior cambia ni desaparece).
 - `pagination.total`: cuántos movimientos **coinciden con el filtro entero**, no
   cuántos trae la página. `totalPages` = `ceil(total / pageSize)` (`0` si no
   coincide ninguno).
@@ -734,19 +748,26 @@ las coincidencias del filtro. La respuesta **no cambia de forma**.
   la página y nunca sobre toda la tabla—. `income` = suma de los `income`,
   `expense` = suma de los `expense`, `net` = `income − expense`. Strings
   decimales, como todos los importes del contrato. **Quedan fuera de los
-  totales** (aunque sí se listan como movimientos): los `neutral`, las dos
-  piernas de un traspaso (`transferId != null`) y las aportaciones a un producto
-  de inversión (`productId != null`) — en los tres casos el dinero sigue siendo
-  del usuario (ver `docs/data-model.md` §Totales). Desde la feature 40,
+  totales** (aunque sí se listan como movimientos): los `neutral` y, además,
+  tres exclusiones — las dos piernas de un traspaso (`transferId != null`), las
+  aportaciones a un producto de inversión (`productId != null`) y, **desde la
+  feature 49**, los movimientos marcados con `excludedFromTotals: true` — (ver
+  `docs/data-model.md` §Totales globales). Desde la feature 40,
   `transferId` lo escribe la detección de traspasos al final de cada importación,
   así que los traspasos emparejados **ya no inflan** estos totales; `productId`
-  sigue sin escritor (feature posterior).
+  sigue sin escritor (feature posterior). Quitar la marca (`excludedFromTotals`
+  de vuelta a `false`) devuelve el movimiento a los totales exactamente como
+  estaba antes de marcarlo.
+- Con `transfer=only` o con `excluded=only` los `totals` salen **siempre a
+  `"0.00"`** los tres: todos los movimientos de ese filtro están, por
+  construcción, fuera de las sumas. No es un error; `pagination.total` sí cuenta
+  cuántos hay.
 
 **Errores**
 
 | Código HTTP | `code`             | Cuándo                                                             |
 | ----------- | ------------------ | ------------------------------------------------------------------ |
-| 400         | `VALIDATION_ERROR` | Un parámetro no cumple el esquema (fecha que no es `YYYY-MM-DD`, `type`/`status` fuera de su enumeración, `page` < 1, `pageSize` fuera de 1–200, `accountId` o `categoryId` no entero, `q` fuera de 2–100 caracteres); `from` posterior a `to`; o `page` más allá de la última página con coincidencias. **Desde la feature 47:** `categoryId` y `uncategorized=true` en la misma petición (se piden dos cosas incompatibles: los de una categoría **y** los que no tienen ninguna). |
+| 400         | `VALIDATION_ERROR` | Un parámetro no cumple el esquema (fecha que no es `YYYY-MM-DD`, `type`/`status` fuera de su enumeración, **desde la feature 49** `transfer`/`excluded` con un valor que no es `only` ni `none`, `page` < 1, `pageSize` fuera de 1–200, `accountId` o `categoryId` no entero, `q` fuera de 2–100 caracteres); `from` posterior a `to`; o `page` más allá de la última página con coincidencias. **Desde la feature 47:** `categoryId` y `uncategorized=true` en la misma petición (se piden dos cosas incompatibles: los de una categoría **y** los que no tienen ninguna). |
 | 404         | `NOT_FOUND`        | El `accountId` pedido no existe. **Desde la feature 47:** o el `categoryId` pedido no existe. |
 
 Un filtro **válido sin coincidencias** (una cuenta que existe pero sin
@@ -768,10 +789,11 @@ resultado.
 > ficheros del banco: si un movimiento existe, existe en el
 > banco y llegará en su extracto; y darlos de alta o borrarlos a mano
 > descuadraría el saldo contra el banco. Lo único editable de un movimiento
-> existente son sus **dos campos de anotación** — `categoryId` y `status` — vía
+> existente son sus **campos de anotación** — `categoryId` y `status` y, desde
+> la feature 49, `excludedFromTotals` — vía
 > [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37) o, para varios
 > movimientos a la vez, [`PATCH /api/movements`](#patch-apimovements) (feature
-> 47).
+> 47). Ninguno de los tres toca el hecho bancario ni el saldo.
 
 ---
 
@@ -782,22 +804,31 @@ sola petición** (feature 47, 2026-09-18). Es la operación que permite vaciar l
 cola de pendientes sin mandar una petición por movimiento.
 
 Vale exactamente lo mismo que en
-[`PATCH /api/movements/:id`](#patch-apimovementsid): los únicos dos campos que se
-pueden tocar son `categoryId` y `status`. **Ningún otro campo del movimiento
-cambia** — importe, tipo, fechas, descripción, `balanceAfter`, `note`,
-`transferId`, `daySequence`, `origin`… quedan idénticos —, y los saldos de las
-cuentas y los `totals` de `GET /api/movements` tampoco se mueven.
+[`PATCH /api/movements/:id`](#patch-apimovementsid): los únicos campos que se
+pueden tocar son `categoryId`, `status` y, desde la feature 49,
+`excludedFromTotals`. **Ningún otro campo del movimiento cambia** — importe,
+tipo, fechas, descripción, `balanceAfter`, `note`, `transferId`, `daySequence`,
+`origin`… quedan idénticos —, y los saldos de las cuentas tampoco se mueven.
+Los `totals` de `GET /api/movements` y de `GET /api/overview` **solo** cambian
+cuando se escribe `excludedFromTotals` (marcar saca los movimientos de las sumas;
+desmarcar los devuelve); `categoryId` y `status` no los mueven.
 
-**Body** (`ids` siempre; además, **al menos una** de `categoryId` y `status`)
+**Body** (`ids` siempre; además, **al menos una** de `categoryId`, `status` y
+`excludedFromTotals`)
 
 | Campo        | Tipo                                | Reglas                                                                 |
 | ------------ | ----------------------------------- | ---------------------------------------------------------------------- |
 | `ids`        | array de number (entero ≥ 1)        | Los movimientos a cambiar. **Mínimo 1, máximo 200** y **sin repetidos**. Todos tienen que existir. |
 | `categoryId` | number (entero ≥ 1) \| null         | Id de una categoría existente cuyo `kind` **coincida con el `type`** de **cada uno** de los movimientos (`expense`↔`expense`, `income`↔`income`). `null` **quita** la categoría. Un movimiento `neutral` (importe 0) no se categoriza. |
 | `status`     | `"confirmed"` \| `"pending_review"` | Se aplica a todos. Funciona en los dos sentidos: dar por revisado y volver atrás. |
+| `excludedFromTotals` | boolean (`true` \| `false`, **literales**) | **Desde la feature 49.** Se aplica a todos. `true` los saca de las sumas de `income` y `expense`; `false` los devuelve. Se puede mandar solo (`{ ids, excludedFromTotals }`) o junto a `categoryId` y/o `status`. Se puede marcar cualquier movimiento: también un `neutral` y también una pierna de traspaso. **Solo vale el booleano JSON**: `null`, `"true"`, `"false"`, `0` o `1` → **400 `VALIDATION_ERROR`**, sin escribir nada (no se convierten a booleano). |
 
 ```json
 { "ids": [10, 11, 12], "categoryId": 4, "status": "confirmed" }
+```
+
+```json
+{ "ids": [210, 211], "excludedFromTotals": true }
 ```
 
 - **El tope es de 200 ids**, el mismo que el `pageSize` máximo de
@@ -806,8 +837,8 @@ cuentas y los `totals` de `GET /api/movements` tampoco se mueven.
 - **No se admite pedirlo por filtro** («cambia todo lo que cumpla estas
   condiciones»): el servidor cambia exactamente los ids que el cliente enumera.
 - Un cuerpo con **cualquier otra propiedad** (`amount`, `description`, `note`…),
-  o **sin `categoryId` ni `status`**, responde **400 `VALIDATION_ERROR`**: no se
-  ignora ni se descarta en silencio.
+  o **sin ninguna de `categoryId`, `status` y `excludedFromTotals`**, responde
+  **400 `VALIDATION_ERROR`**: no se ignora ni se descarta en silencio.
 
 **Respuesta 200**
 
@@ -836,26 +867,34 @@ para humanos: **no programar lógica contra él**, ver [Errores](#errores)).
 
 | Código HTTP | `code`             | Cuándo                                                            |
 | ----------- | ------------------ | ----------------------------------------------------------------- |
-| 400         | `VALIDATION_ERROR` | El body no cumple el esquema: `ids` vacío, con **ids repetidos**, con **más de 200** elementos o con algo que no es un entero ≥ 1; propiedades no admitidas; ni `categoryId` ni `status`; valores fuera de tipo o de enumeración. También si el `kind` de la categoría no coincide con el `type` de alguno de los movimientos, o si alguno es `neutral` y se manda categoría. **No se modifica nada.** |
+| 400         | `VALIDATION_ERROR` | El body no cumple el esquema: `ids` vacío, con **ids repetidos**, con **más de 200** elementos o con algo que no es un entero ≥ 1; propiedades no admitidas; ninguna de `categoryId`, `status` y `excludedFromTotals`; valores fuera de tipo o de enumeración; **desde la feature 49**, `excludedFromTotals` con un valor que no es literalmente `true` ni `false` (`null`, `"true"`, `0`, `1`…). También si el `kind` de la categoría no coincide con el `type` de alguno de los movimientos, o si alguno es `neutral` y se manda categoría. **No se modifica nada.** |
 | 404         | `NOT_FOUND`        | Alguno de los `ids` no corresponde a un movimiento existente, o el `categoryId` enviado no existe. **No se modifica nada.** |
 
 ---
 
 ### `PATCH /api/movements/:id`
 
-Actualiza **exclusivamente** la categoría y/o el estado de revisión de **un**
+Actualiza **exclusivamente** la categoría, el estado de revisión y/o (desde la
+feature 49) la marca de «no cuenta en las sumas» de **un**
 movimiento existente (para varios a la vez, ver
 [`PATCH /api/movements`](#patch-apimovements)). Ningún otro campo puede viajar
 por aquí: el importe, el
-tipo, las fechas, la descripción, el `balanceAfter`… son el hecho bancario y no
-se tocan; el saldo de la cuenta y los `totals` de `GET /api/movements` no
-cambian por categorizar ni por confirmar.
+tipo, las fechas, la descripción, el `balanceAfter`, el `transferId`… son el
+hecho bancario (o el enlace de un traspaso) y no se tocan; el saldo de la cuenta
+no cambia por nada de lo que viaja aquí. Los `totals` de `GET /api/movements` y
+de `GET /api/overview` no cambian por categorizar ni por confirmar; **solo**
+cambian al escribir `excludedFromTotals`.
 
-**Body** (al menos una de las dos; pueden ir juntas en la misma petición)
+**Body** (al menos uno de los tres campos; pueden ir juntos en la misma petición)
 | Campo        | Tipo                                    | Reglas                                                            |
 | ------------ | --------------------------------------- | ----------------------------------------------------------------- |
 | `categoryId` | number (entero ≥ 1) \| null             | Id de una categoría existente cuyo `kind` **coincida con el `type`** del movimiento (`expense`↔`expense`, `income`↔`income`). `null` **quita** la categoría. Un movimiento `neutral` (importe 0) no se categoriza. |
 | `status`     | `"confirmed"` \| `"pending_review"`     | Funciona en los dos sentidos: dar por revisado y volver atrás.    |
+| `excludedFromTotals` | boolean (`true` \| `false`, **literales**) | **Desde la feature 49.** `true` saca el movimiento de las sumas de `income` y `expense`; `false` lo devuelve, exactamente como estaba. Se puede marcar cualquier movimiento, también un `neutral` y también una pierna de traspaso. **Solo vale el booleano JSON**: `null`, `"true"`, `"false"`, `0` o `1` → **400 `VALIDATION_ERROR`**, sin escribir nada (no se convierten a booleano). |
+
+```json
+{ "excludedFromTotals": true }
+```
 
 > Un body vacío (`{}`) o con cualquier otra propiedad (`amount`,
 > `description`…) responde **400 `VALIDATION_ERROR`**: no se ignora ni se
@@ -868,7 +907,7 @@ elemento de `movements` en `GET /api/movements`), con su `account` y su
 **Errores**
 | Código HTTP | `code`             | Cuándo                                                            |
 | ----------- | ------------------ | ----------------------------------------------------------------- |
-| 400         | `VALIDATION_ERROR` | El body no cumple el esquema (vacío, propiedades no admitidas, valores fuera de tipo/enumeración); el `kind` de la categoría no coincide con el `type` del movimiento; o el movimiento es `neutral` y se le manda una categoría. No se modifica nada. |
+| 400         | `VALIDATION_ERROR` | El body no cumple el esquema (vacío, propiedades no admitidas, valores fuera de tipo/enumeración; **desde la feature 49**, `excludedFromTotals` con un valor que no es literalmente `true` ni `false`); el `kind` de la categoría no coincide con el `type` del movimiento; o el movimiento es `neutral` y se le manda una categoría. No se modifica nada. |
 | 404         | `NOT_FOUND`        | El movimiento no existe, o el `categoryId` enviado no existe.     |
 
 ---
@@ -907,6 +946,11 @@ a mano una pareja que tú mismo deshiciste es legítimo.
 `movements` son los dos movimientos serializados completos (la misma forma que
 en `GET /api/movements`), en el orden en que llegaron los ids.
 
+**Traspasos y la marca `excludedFromTotals` (feature 49).** Son independientes:
+un movimiento marcado se puede enlazar igual que uno sin marcar, y enlazarlo no
+cambia su marca. Tampoco la cambian `DELETE /api/transfers/:transferId` ni la
+detección de traspasos que corre tras cada importación.
+
 **Errores**
 | Código HTTP | `code`             | Cuándo                                                            |
 | ----------- | ------------------ | ----------------------------------------------------------------- |
@@ -925,7 +969,14 @@ pareja, no del movimiento: cada pierna sigue siendo candidata para emparejarse
 con otros). Esa memoria es maquinaria interna: **no** aparece en
 `GET /api/movements` ni en ningún otro endpoint. Una sola sentencia escribe las
 dos piernas a la vez: `transferId` a `null` y la memoria con el valor que
-acaban de perder. Nada más cambia y nada se borra.
+acaban de perder. Nada más cambia y nada se borra (tampoco `excludedFromTotals`).
+
+Desde la feature 49, deshacer es la forma de corregir una pareja **falsa** (dos
+movimientos que la detección enlazó y no eran un traspaso tuyo): en cuanto se
+deshace, sus dos piernas **vuelven a sumar** en los `totals` de
+`GET /api/movements` —la de gasto en `expense`, la de ingreso en `income`—
+siempre que ninguna de las dos esté marcada con `excludedFromTotals: true`, y la
+pareja deja de salir en [`GET /api/transfers`](#get-apitransfers).
 
 **Respuesta 204** — sin cuerpo.
 
@@ -933,6 +984,110 @@ acaban de perder. Nada más cambia y nada se borra.
 | Código HTTP | `code`      | Cuándo                                            |
 | ----------- | ----------- | ------------------------------------------------- |
 | 404         | `NOT_FOUND` | Ningún movimiento lleva ese `transferId`.         |
+
+---
+
+### `GET /api/transfers`
+
+Lista **todas las parejas de traspaso enlazadas** que hay ahora mismo en la base
+(feature 49, 2026-09-27), para poder revisarlas y deshacer las falsas con
+[`DELETE /api/transfers/:transferId`](#delete-apitransferstransferid). Da igual
+quién las enlazó: la detección de traspasos o el enlace manual
+(`POST /api/transfers`). **Solo lectura**: no escribe nada.
+
+No tiene parámetros. **No va paginada** ni admite filtros: devuelve todas las
+parejas de una vez. Un parámetro de query desconocido **se ignora** (responde
+200 igual). Eso incluye `page` y `pageSize`: **no paginan**; con `?page=2` la
+respuesta sigue trayendo todas las parejas.
+
+**Respuesta 200**
+
+```json
+{
+  "pairs": [
+    {
+      "transferId": "3b6c1c4e-…",
+      "movements": [
+        { "id": 210, "type": "expense", "bookingDate": "2026-08-03", "amount": "100.00",
+          "accountId": 1, "transferId": "3b6c1c4e-…", "excludedFromTotals": false, "…": "…" },
+        { "id": 587, "type": "income", "bookingDate": "2026-08-05", "amount": "100.00",
+          "accountId": 2, "transferId": "3b6c1c4e-…", "excludedFromTotals": false, "…": "…" }
+      ]
+    }
+  ]
+}
+```
+
+- `pairs`: una entrada por cada `transferId` distinto que existe. `pairs: []`
+  si no hay ninguna pareja enlazada (no es un error).
+- `pairs[].transferId`: el enlace que comparten las dos piernas; es el que se
+  pasa a `DELETE /api/transfers/:transferId` para deshacerla.
+- `pairs[].movements`: las **dos piernas**, serializadas completas con la misma
+  forma que cada elemento de `movements` en
+  [`GET /api/movements`](#get-apimovements) (con `account` y `category`
+  embebidos). **Primero el `expense`, después el `income`.**
+- **Orden de las parejas:** de la más reciente a la más antigua, según la
+  `bookingDate` **más reciente de sus dos piernas**. Si dos parejas empatan en
+  esa fecha, por `transferId` ascendente, para que el orden sea siempre el mismo.
+
+**Errores:** ninguno propio. Un fallo de la base es un
+**500 `INTERNAL_SERVER_ERROR`** con el cuerpo genérico.
+
+---
+
+### `GET /api/transfers/ambiguous`
+
+Devuelve los **traspasos dudosos**: los grupos de movimientos que parecen
+traspasos entre cuentas propias pero que la detección **no puede emparejar sin
+ambigüedad** (feature 49, 2026-09-27). Se **calculan en el momento de la
+petición**, no se guardan: con la misma lectura de candidatos y la misma función
+de emparejado que usa la detección al final de cada importación. Por eso, si
+después de importar enlazaste o deshiciste algo a mano, la respuesta ya lo
+refleja. **Solo lectura**: no enlaza nada ni escribe nada en la base, aunque al
+calcular encontrara algo emparejable (eso lo hace solo la detección, al
+importar).
+
+No tiene parámetros. Un parámetro de query desconocido **se ignora** (responde
+200 igual).
+
+**Respuesta 200** — los mismos dos campos, con la misma forma, que
+`transfers.ambiguousCount` y `transfers.ambiguous` del informe de
+[`POST /api/import`](#post-apiimport):
+
+```json
+{
+  "ambiguousCount": 1,
+  "ambiguous": [
+    {
+      "amount": "500.00",
+      "movements": [
+        { "id": 12, "accountId": 1, "accountAlias": "bankinter ···0236",
+          "type": "expense", "bookingDate": "2026-08-01", "description": "TRANSFERENCIA" },
+        { "id": 40, "accountId": 2, "accountAlias": "openbank ···1111",
+          "type": "income", "bookingDate": "2026-08-01", "description": "TRANSFERENCIA RECIBIDA" },
+        { "id": 41, "accountId": 3, "accountAlias": "n26 ···2222",
+          "type": "income", "bookingDate": "2026-08-02", "description": "ABONO" }
+      ]
+    }
+  ]
+}
+```
+
+- `ambiguousCount`: cuántos **grupos** dudosos hay (grupos, no movimientos).
+  Siempre igual a `ambiguous.length`.
+- `ambiguous`: cada grupo, **entero**, con su `amount` y los datos de cada
+  movimiento para localizarlo (`id`, `accountId`, `accountAlias`, `type`,
+  `bookingDate`, `description`). Qué hace dudoso a un grupo está explicado en el
+  campo `ambiguous` del informe de `POST /api/import`. `ambiguousCount: 0` y
+  `ambiguous: []` si no hay ninguno (no es un error).
+
+Para resolver un grupo dudoso a mano se enlazan sus dos piernas con
+[`POST /api/transfers`](#post-apitransfers); en la siguiente petición a este
+endpoint ese grupo habrá cambiado o desaparecido.
+
+**Errores:** ninguno propio. A diferencia de la detección que corre al importar
+(que, si falla, lo apunta en el informe y no rompe la importación), aquí un fallo
+de la base es un **500 `INTERNAL_SERVER_ERROR`** con el cuerpo genérico.
 
 ---
 
@@ -951,8 +1106,11 @@ No calcula nada propio — ese es el punto del endpoint:
 - Los totales del mes salen de **la misma suma** que los `totals` de
   [`GET /api/movements`](#get-apimovements) (feature 36), con sus mismas
   exclusiones: quedan fuera los `neutral`, las dos piernas de un traspaso
-  (`transferId != null`) y las aportaciones a un producto de inversión
-  (`productId != null`).
+  (`transferId != null`), las aportaciones a un producto de inversión
+  (`productId != null`) y, **desde la feature 49**, los movimientos marcados con
+  `excludedFromTotals: true`. Quitar la marca devuelve el movimiento a los
+  totales de su mes exactamente como estaba. La marca **no** mueve los saldos
+  (`totalBalance`, `balance`).
 
 Las **inversiones no aparecen aquí**: tendrán su propia consulta (feature 39).
 

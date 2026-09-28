@@ -39,6 +39,22 @@ function assertSomethingToWrite(body: unknown): void {
 }
 
 /**
+ * `excludedFromTotals` must be literally `true` or `false` (feature 49, R3).
+ * This runs in `preValidation`, on the RAW body: AJV coerces types by default,
+ * so after the schema a `"true"` or a `null` could already look like a boolean,
+ * and a malformed request could unmark a movement silently.
+ */
+function assertStrictBoolean(body: unknown, property: string): void {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return
+  if (!Object.hasOwn(body, property)) return
+
+  const value: unknown = (body as Record<string, unknown>)[property]
+  if (typeof value !== 'boolean') {
+    throw new ValidationError(`'${property}' must be true or false`)
+  }
+}
+
+/**
  * HTTP layer for movements. Registered under the `/api/movements` prefix
  * (see `src/app.ts`), so the routes resolve to:
  *   GET   /api/movements
@@ -52,8 +68,9 @@ function assertSomethingToWrite(body: unknown): void {
  * a movement. The importer writes the table (see specs/08-data-model/design.md
  * §5 and §2.1).
  * What CAN be edited (feature 37) are the two annotation fields of an existing
- * movement — `categoryId` and `status` — and nothing else: the PATCH schema
- * rejects any other property.
+ * movement — `categoryId` and `status` — and, since feature 49, the mark
+ * `excludedFromTotals`; nothing else: the PATCH schema rejects any other
+ * property.
  *
  * Since feature 36 the listing takes combinable filters (account, date range,
  * type, status), is always paginated, and ships the totals of the filter.
@@ -79,6 +96,7 @@ export default async function movementsRoutes(fastify: FastifyInstance) {
       preValidation: async (request) => {
         assertOnlyAllowedBodyProperties(request.body, bulkUpdateMovementsBodyProperties)
         assertSomethingToWrite(request.body)
+        assertStrictBoolean(request.body, 'excludedFromTotals')
       },
     },
     async (request) => {
@@ -94,6 +112,7 @@ export default async function movementsRoutes(fastify: FastifyInstance) {
       // a PATCH carrying `amount` must be a 400, never a 200 that ignored it.
       preValidation: async (request) => {
         assertOnlyAllowedBodyProperties(request.body, updateMovementBodyProperties)
+        assertStrictBoolean(request.body, 'excludedFromTotals')
       },
     },
     async (request) => {

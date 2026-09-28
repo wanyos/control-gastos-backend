@@ -27,6 +27,11 @@ export const listMovementsSchema = {
       // Matched against the generated `descriptionSearch` column, so case and
       // diacritics do not matter (R5). Trimmed by the service before use.
       q: { type: 'string', minLength: 2, maxLength: 100 },
+      // Feature 49: `only` = linked transfer legs, `none` = not linked (R10);
+      // `only` = marked out of the totals, `none` = not marked (R16). Anything
+      // else is a 400 (R11).
+      transfer: { type: 'string', enum: ['only', 'none'] },
+      excluded: { type: 'string', enum: ['only', 'none'] },
       page: { type: 'integer', minimum: 1, default: 1 },
       pageSize: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
     },
@@ -56,6 +61,9 @@ export const updateMovementSchema = {
       // null removes the category ("no category" is not a category, it is none).
       categoryId: { type: ['integer', 'null'], minimum: 1 },
       status: { type: 'string', enum: ['confirmed', 'pending_review'] },
+      // Feature 49. AJV would coerce `"true"` or `null` into a boolean, so the
+      // route also checks the RAW value in its preValidation (R3).
+      excludedFromTotals: { type: 'boolean' },
     },
   },
 } as const
@@ -98,6 +106,8 @@ export const bulkUpdateMovementsSchema = {
       // null removes the category ("no category" is not a category, it is none).
       categoryId: { type: ['integer', 'null'], minimum: 1 },
       status: { type: 'string', enum: ['confirmed', 'pending_review'] },
+      // Feature 49: same strict boolean as the single-movement endpoint (R3).
+      excludedFromTotals: { type: 'boolean' },
     },
   },
 } as const
@@ -107,5 +117,12 @@ export const bulkUpdateMovementsBodyProperties: ReadonlySet<string> = new Set(
   Object.keys(bulkUpdateMovementsSchema.body.properties),
 )
 
-/** The two fields a bulk update may write: at least one must travel (R12). */
-export const bulkUpdateMovementsWritableProperties: readonly string[] = ['categoryId', 'status']
+/**
+ * The fields a bulk update may write: at least one must travel (feature 47,
+ * R12). Feature 49 adds the mark, so `{ ids, excludedFromTotals }` is valid.
+ */
+export const bulkUpdateMovementsWritableProperties: readonly string[] = [
+  'categoryId',
+  'status',
+  'excludedFromTotals',
+]

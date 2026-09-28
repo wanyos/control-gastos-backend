@@ -50,12 +50,17 @@ export interface TotalsMovement {
   amount: DecimalLike
   transferId: string | null
   productId: number | null
+  /** Feature 49: marked by the human as not counting in the totals (R5, R6). */
+  excludedFromTotals: boolean
 }
 
 export interface MovementTotals {
   income: Prisma.Decimal
   expense: Prisma.Decimal
 }
+
+/** Values of the `transfer` and `excluded` filters of the listing (feature 49). */
+export type MovementPresenceFilter = 'only' | 'none'
 
 /**
  * The querystring of `GET /api/movements`, after schema validation: every
@@ -74,6 +79,10 @@ export interface MovementListQuery {
   uncategorized?: boolean
   /** Feature 47: free text of the description, case- and accent-insensitive (R5). */
   q?: string
+  /** Feature 49: only linked transfer legs (`only`) or only unlinked movements (`none`) (R10). */
+  transfer?: MovementPresenceFilter
+  /** Feature 49: only marked movements (`only`) or only unmarked ones (`none`) (R16). */
+  excluded?: MovementPresenceFilter
   page: number
   pageSize: number
 }
@@ -86,6 +95,8 @@ export interface MovementListQuery {
 export interface UpdateMovementBody {
   categoryId?: number | null
   status?: MovementStatus
+  /** Feature 49: in or out of the income/expense totals; never the amount (R1). */
+  excludedFromTotals?: boolean
 }
 
 export interface MovementIdParams {
@@ -102,6 +113,8 @@ export interface BulkUpdateMovementsBody {
   ids: number[]
   categoryId?: number | null
   status?: MovementStatus
+  /** Feature 49: the same mark as the single-movement endpoint (R2). */
+  excludedFromTotals?: boolean
 }
 
 /**
@@ -174,6 +187,7 @@ export interface SerializedMovement {
   status: MovementStatus
   transferId: string | null
   daySequence: number | null
+  excludedFromTotals: boolean
   createdAt: string
   updatedAt: string
   account: EmbeddedAccount

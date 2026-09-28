@@ -37,7 +37,8 @@ export function monthRange(month: string): { from: string; to: string } {
  *    single balance formula of feature 31 that `GET /api/accounts` also uses;
  *  - the period totals go through `computeTotals`, the single sum of feature 36
  *    that already leaves out both legs of a transfer (`transferId != null`),
- *    the contributions to an investment product (`productId != null`) and the
+ *    the contributions to an investment product (`productId != null`), the
+ *    movements the human marked `excludedFromTotals` (feature 49) and the
  *    `neutral` movements. Two different sums of the same money diverge.
  *
  * A month with no movements is not an error: the totals are simply zero.
@@ -61,7 +62,13 @@ export async function getOverview(
           lte: new Date(`${to}T00:00:00.000Z`),
         },
       },
-      select: { type: true, amount: true, transferId: true, productId: true },
+      select: {
+        type: true,
+        amount: true,
+        transferId: true,
+        productId: true,
+        excludedFromTotals: true,
+      },
     }),
   ])
 

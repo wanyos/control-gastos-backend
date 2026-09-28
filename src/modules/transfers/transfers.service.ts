@@ -7,10 +7,13 @@ import type { AppPrismaClient } from '../../lib/prisma.js'
 import { serializeMovement } from '../movements/movements.service.js'
 import type {
   AmbiguousTransferGroup,
+  AmbiguousTransfersResponse,
   LinkTransferBody,
   LinkTransferResult,
   TransferCandidate,
   TransferDetectionResult,
+  TransferPair,
+  TransferPairsResponse,
 } from './transfers.types.js'
 
 /**
@@ -198,6 +201,41 @@ export function pairTransferCandidates(candidates: TransferCandidate[]): {
 }
 
 /**
+ * The candidates of the pairing: every unlinked non-neutral movement of the
+ * whole table. Shared by the detection and by `GET /api/transfers/ambiguous`
+ * (F49 R14), so both read EXACTLY the same set; that is what keeps the doubtful
+ * groups on request identical to the ones of the import report.
+ */
+async function readTransferCandidates(prisma: AppPrismaClient): Promise<TransferCandidate[]> {
+  const rows = await prisma.movement.findMany({
+    where: { transferId: null, type: { in: ['expense', 'income'] } },
+    select: {
+      id: true,
+      accountId: true,
+      type: true,
+      amount: true,
+      bookingDate: true,
+      daySequence: true,
+      description: true,
+      undoneTransferId: true,
+      account: { select: { alias: true } },
+    },
+  })
+  return rows.map((row) => ({
+    id: row.id,
+    accountId: row.accountId,
+    accountAlias: row.account.alias,
+    // The WHERE already left `neutral` out; this cast states it to the compiler.
+    type: row.type as 'expense' | 'income',
+    amount: row.amount.toFixed(2),
+    bookingDate: row.bookingDate,
+    daySequence: row.daySequence,
+    description: row.description,
+    undoneTransferId: row.undoneTransferId,
+  }))
+}
+
+/**
  * Reads the candidates, pairs them and writes each pair (R1 half, R2, R3, R11).
  *
  * It reads the WHOLE table of unlinked non-neutral movements, not "what this
@@ -219,32 +257,7 @@ export async function detectTransfers(prisma: AppPrismaClient): Promise<Transfer
   const result: TransferDetectionResult = { pairsCreated: 0, ambiguousCount: 0, ambiguous: [] }
 
   try {
-    const rows = await prisma.movement.findMany({
-      where: { transferId: null, type: { in: ['expense', 'income'] } },
-      select: {
-        id: true,
-        accountId: true,
-        type: true,
-        amount: true,
-        bookingDate: true,
-        daySequence: true,
-        description: true,
-        undoneTransferId: true,
-        account: { select: { alias: true } },
-      },
-    })
-    const candidates: TransferCandidate[] = rows.map((row) => ({
-      id: row.id,
-      accountId: row.accountId,
-      accountAlias: row.account.alias,
-      // The WHERE already left `neutral` out; this cast states it to the compiler.
-      type: row.type as 'expense' | 'income',
-      amount: row.amount.toFixed(2),
-      bookingDate: row.bookingDate,
-      daySequence: row.daySequence,
-      description: row.description,
-      undoneTransferId: row.undoneTransferId,
-    }))
+    const candidates = await readTransferCandidates(prisma)
 
     const { pairs, ambiguous } = pairTransferCandidates(candidates)
 
@@ -378,6 +391,76 @@ export async function unlinkTransfer(prisma: AppPrismaClient, transferId: string
   if (count === 0) {
     throw new NotFoundError('No movement carries that transferId')
   }
+}
+
+/** Inside one pair: the `expense` leg first, then the `income` one; by id otherwise. */
+function byLegOrder(a: { type: string; id: number }, b: { type: string; id: number }): number {
+  const rank = (type: string) => (type === 'expense' ? 0 : type === 'income' ? 1 : 2)
+  const rankDiff = rank(a.type) - rank(b.type)
+  if (rankDiff !== 0) return rankDiff
+  return a.id - b.id
+}
+
+/**
+ * Every transfer pair with its two legs together (F49 R12), unpaginated. Pairs
+ * are ordered by the most recent `bookingDate` of their two legs, newest first,
+ * and by `transferId` ascending on a tie so the order is stable. Inside a pair
+ * the `expense` leg comes first. A group that were not one `expense` plus one
+ * `income` falls back to id order: the writers never produce it, so no error is
+ * invented for it. Read only; a database failure reaches the central handler.
+ */
+export async function listTransferPairs(prisma: AppPrismaClient): Promise<TransferPairsResponse> {
+  const rows = await prisma.movement.findMany({
+    where: { transferId: { not: null } },
+    include: { account: true, category: true },
+  })
+
+  const byTransferId = new Map<string, typeof rows>()
+  for (const row of rows) {
+    if (row.transferId === null) continue
+    const group = byTransferId.get(row.transferId)
+    if (group === undefined) {
+      byTransferId.set(row.transferId, [row])
+    } else {
+      group.push(row)
+    }
+  }
+
+  const groups = [...byTransferId.entries()].map(([transferId, legs]) => ({
+    transferId,
+    legs: [...legs].sort(byLegOrder),
+    latest: Math.max(...legs.map((leg) => leg.bookingDate.getTime())),
+  }))
+  groups.sort((a, b) => {
+    if (a.latest !== b.latest) return b.latest - a.latest
+    return a.transferId < b.transferId ? -1 : a.transferId > b.transferId ? 1 : 0
+  })
+
+  const pairs: TransferPair[] = []
+  for (const group of groups) {
+    const [first, second] = group.legs
+    // By construction a transferId sits on exactly two rows (see unlinkTransfer).
+    if (first === undefined || second === undefined) continue
+    pairs.push({
+      transferId: group.transferId,
+      movements: [serializeMovement(first), serializeMovement(second)],
+    })
+  }
+  return { pairs }
+}
+
+/**
+ * The doubtful transfer groups, computed at the moment of the request (F49 R14)
+ * with the same candidate read and the same pairing function the detection
+ * uses after an import. It NEVER writes: any pair the pairing could resolve is
+ * discarded here (decisions ⚙️ 3); linking stays the job of the detection.
+ * Unlike `detectTransfers`, a database failure is thrown: this is a plain read.
+ */
+export async function listAmbiguousTransfers(
+  prisma: AppPrismaClient,
+): Promise<AmbiguousTransfersResponse> {
+  const { ambiguous } = pairTransferCandidates(await readTransferCandidates(prisma))
+  return { ambiguousCount: ambiguous.length, ambiguous }
 }
 
 /**
