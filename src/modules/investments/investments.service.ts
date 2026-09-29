@@ -11,7 +11,10 @@ import { NotFoundError, ValidationError } from '../../errors/app-error.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { currentMonth, monthRange } from '../overview/overview.service.js'
 import type {
+  DepositEarningsEntry,
+  DepositEarningsResponse,
   DepositInput,
+  DepositMaturityMatcherRegistry,
   ExcludedFromPeriodGain,
   InvestmentProductOverview,
   InvestmentsNetWorth,
@@ -649,6 +652,144 @@ export async function getInvestmentsNetWorth(
   }
 
   return { total: total.toFixed(2), products: netWorthProducts, issues }
+}
+
+/**
+ * The read of feature 50: every deposit with a product file and, once it
+ * matured, what it earned -- the amount of its maturity movement in the
+ * statement minus the `principal` of its file -- plus the total of them all.
+ *
+ * The maturity movement is linked to the deposit BY DATE ONLY: a movement of an
+ * account of the same bank, of type `income`, booked on the `maturityDate`,
+ * whose description the matcher of that bank recognizes. The number in the
+ * description is never read (it repeats between deposits), and the F49 mark,
+ * `transferId` and `productId` play no part. Zero or several candidates give no
+ * figure, never a guessed one.
+ *
+ * `today` is injected (date-only, midnight UTC) so the tests can fix the clock.
+ * Only `find*` in the whole path: the link is computed, never stored.
+ */
+export async function getDepositEarnings(
+  prisma: AppPrismaClient,
+  matchers: DepositMaturityMatcherRegistry,
+  today: Date,
+): Promise<DepositEarningsResponse> {
+  const products = await prisma.investmentProduct.findMany({
+    where: { type: 'deposit' },
+    orderBy: [{ maturityDate: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+  })
+
+  // Only the deposits that are due need a look at the statement.
+  const due = products.flatMap((product) =>
+    product.maturityDate !== null &&
+    !isCancelledBeforeMaturity(product) &&
+    product.maturityDate <= today
+      ? [{ bank: product.bank, maturityDate: product.maturityDate }]
+      : [],
+  )
+  const dueDates = [...new Set(due.map((product) => product.maturityDate.getTime()))].map(
+    (time) => new Date(time),
+  )
+  const dueBanks = [...new Set(due.map((product) => product.bank))]
+
+  const movements =
+    due.length === 0
+      ? []
+      : await prisma.movement.findMany({
+          where: {
+            type: 'income',
+            bookingDate: { in: dueDates },
+            account: { bank: { in: dueBanks } },
+          },
+          select: {
+            id: true,
+            bookingDate: true,
+            amount: true,
+            description: true,
+            account: { select: { bank: true } },
+          },
+          orderBy: { id: 'asc' },
+        })
+
+  let total = new Prisma.Decimal(0)
+  const deposits: DepositEarningsEntry[] = []
+
+  for (const product of products) {
+    const entry: DepositEarningsEntry = {
+      id: product.id,
+      bank: product.bank,
+      name: product.name,
+      openedAt: product.openedAt === null ? null : serializeDateOnly(product.openedAt),
+      closedAt: product.closedAt === null ? null : serializeDateOnly(product.closedAt),
+      principal: product.principal === null ? null : product.principal.toFixed(2),
+      expectedGain: product.expectedGain === null ? null : product.expectedGain.toFixed(2),
+      maturityDate: product.maturityDate === null ? null : serializeDateOnly(product.maturityDate),
+      status: 'maturity_not_found',
+      earned: null,
+      maturity: null,
+      candidateMovementIds: [],
+    }
+    deposits.push(entry)
+
+    if (isCancelledBeforeMaturity(product)) {
+      entry.status = 'cancelled'
+      continue
+    }
+    const { maturityDate, principal } = product
+    // A NULL maturityDate (the parser forbids it) can be neither active nor
+    // looked up: it stays `maturity_not_found`, never with a figure.
+    if (maturityDate === null) continue
+    if (maturityDate > today) {
+      entry.status = 'active'
+      continue
+    }
+
+    const matcher = matchers.find((candidate) => candidate.bank === product.bank)
+    const candidates =
+      matcher === undefined
+        ? []
+        : movements.filter(
+            (movement) =>
+              movement.account.bank === product.bank &&
+              movement.bookingDate.getTime() === maturityDate.getTime() &&
+              matcher.isDepositMaturity(movement.description),
+          )
+
+    if (candidates.length === 0 || principal === null) continue
+    if (candidates.length > 1) {
+      entry.status = 'ambiguous'
+      entry.candidateMovementIds = candidates.map((movement) => movement.id).sort((a, b) => a - b)
+      continue
+    }
+
+    const [maturity] = candidates
+    entry.maturity = {
+      movementId: maturity.id,
+      date: serializeDateOnly(maturity.bookingDate),
+      amount: maturity.amount.toFixed(2),
+    }
+    if (maturity.amount.lessThan(principal)) {
+      // In a deposit, getting back less than the principal can only be a wrong
+      // link: no figure, and the movement is shown so it can be checked.
+      entry.status = 'below_principal'
+      continue
+    }
+    const earned = maturity.amount.minus(principal)
+    entry.status = 'matured'
+    entry.earned = earned.toFixed(2)
+    total = total.plus(earned)
+  }
+
+  return { asOf: serializeDateOnly(today), deposits, total: total.toFixed(2) }
+}
+
+/** `closedAt` before `maturityDate`: the human cancelled it before it matured. */
+function isCancelledBeforeMaturity(product: InvestmentProduct): boolean {
+  return (
+    product.closedAt !== null &&
+    product.maturityDate !== null &&
+    product.closedAt < product.maturityDate
+  )
 }
 
 /** `YYYY-MM-DD` of a date-only column (stored at midnight UTC). */

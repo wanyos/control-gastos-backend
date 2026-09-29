@@ -443,7 +443,7 @@ describe('GET /api/investments/overview', () => {
     expect(response.statusCode).toBe(200)
   })
 
-  it('exposes no write surface: only GET /overview exists under /api/investments', async () => {
+  it('exposes no write surface: no POST, PATCH, PUT or DELETE on /overview or /api/investments', async () => {
     expect(app.hasRoute({ method: 'GET', url: '/api/investments/overview' })).toBe(true)
     for (const method of ['POST', 'PATCH', 'PUT', 'DELETE'] as const) {
       expect(app.hasRoute({ method, url: '/api/investments/overview' })).toBe(false)

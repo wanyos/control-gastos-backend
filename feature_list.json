@@ -2044,32 +2044,32 @@
       "name": "deposit-earnings",
       "title": "Ver cuánto generó cada depósito: la parte del vencimiento por encima del principal",
       "intent": {
-        "_procedencia": "BORRADOR del leader (2026-09-27), sale del corte de la F49 aprobado por el humano ese día. Su respuesta de partida: «no es correcto perder nada, además en esos casos quiero saber cuánto me generó el depósito y eso es el dinero de más que va en la cantidad». Datos del spec-author en progress/spec_honest-totals.md. Pendiente de que el humano apruebe o corrija este intent. Depende de la F49.",
-        "que_quiero": "Poder ver, para cada depósito que he tenido, cuánto me generó: lo que me devolvieron al vencer menos lo que puse. Y un total de lo que me han generado los depósitos, sin que se pierda nada al sacar aperturas y vencimientos de las sumas de ingreso y gasto.",
+        "_procedencia": "BORRADOR del leader (2026-09-27), sale del corte de la F49 aprobado por el humano ese día. Su respuesta de partida: «no es correcto perder nada, además en esos casos quiero saber cuánto me generó el depósito y eso es el dinero de más que va en la cantidad». Datos del spec-author en progress/spec_honest-totals.md. El humano pidió seguir con ella el 2026-09-28 («después el commit y seguido la feature 50») y respondió la pregunta abierta (ver _respuestas_del_humano); el resto lo revisa en la puerta del spec. Depende de la F49.",
+        "que_quiero": "Poder ver, para cada depósito que tengo dado de alta con su .json, cuánto me generó: lo que me devolvieron al vencer menos el principal de su .json. Y un total de lo que me han generado esos depósitos.",
         "por_que": "Con la F49 las aperturas y los vencimientos de depósitos salen de las sumas porque inflan ingreso y gasto, pero el vencimiento lleva dentro el interés, que es dinero que gané de verdad. No quiero perderlo de vista.",
         "como_se_que_esta_bien": [
-          "Para un depósito ya vencido cuya apertura está en la base, veo lo que me generó: lo que me devolvieron al vencer menos lo que puse.",
+          "Para un depósito con su .json que ya venció, veo lo que me generó: el importe con que venció en el extracto menos el principal de su .json.",
           "Un depósito que sigue vivo no sale con una ganancia inventada ni negativa.",
-          "Una apertura cancelada y reabierta, o dos aperturas el mismo día con el mismo número, no dan cifras falsas.",
-          "Un vencimiento cuya apertura no está en la base no sale con una cifra inventada.",
+          "Los depósitos antiguos sin .json no salen con ninguna cifra ni dan error.",
           "docs/api-contract.md describe lo nuevo, para que el frontend construya contra él."
         ],
         "que_no_quiero": [
           "No quiero que cambie el saldo de ninguna cuenta ni el importe de ningún movimiento.",
           "No quiero que se deduzca el principal emparejando por el número del concepto: se repite y da cifras falsas.",
-          "No quiero tocar cómo la F49 saca movimientos de las sumas."
+          "No quiero tocar cómo la F49 saca movimientos de las sumas.",
+          "No voy a escribir los .json de los depósitos antiguos (de agosto de 2025 a julio de 2026): lo que generaron ya está en el saldo de la cuenta y no merece la pena buscar los datos."
         ],
         "delego_en_agente": [
           "Dónde se ve: en la vista de inversiones o en otro sitio.",
-          "Cómo se enlaza cada vencimiento con su depósito."
+          "Cómo se relaciona cada vencimiento del extracto con el .json de su depósito."
         ],
-        "_pendiente_del_humano": [
-          "De dónde sale el principal de cada depósito antiguo (unos 12, solo 3 dados de alta como producto): (a) doy de alta cada depósito como producto con un archivo, a mano (unos 9-11 archivos), y cada vencimiento se enlaza a su producto; (b) escribo el principal a mano al marcar cada vencimiento (unos 12 números), lo que pide una columna nueva cuyo nombre tendré que aprobar."
+        "_respuestas_del_humano": [
+          "2026-09-28, sobre de dónde sale el principal: de los .json de depósito que pone en Drive, como el resto de productos. Los antiguos no se escriben: «no voy a poner los json de depósitos antiguos, lo que han generado ya está en el saldo de la cuenta, con lo cual no merece la pena poner todos esos archivos y buscar los datos». Comprobado ese día en la base: 3 depósitos con .json (aperturas del 2026-07-31, 2026-08-03 y 2026-09-02) frente a 15 aperturas en los extractos desde el 2025-08-25."
         ]
       },
       "acceptance": [],
       "sdd": true,
-      "status": "pending"
+      "status": "done"
     }
   ]
 }

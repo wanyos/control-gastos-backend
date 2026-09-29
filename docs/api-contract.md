@@ -289,9 +289,10 @@ productos de MyInvestor (fondo, ETF, cartera gestionada y depósito). **Y desde 
 feature 39 tiene un lector**:
 [`GET /api/investments/overview`](#get-apiinvestmentsoverview), la vista de solo
 lectura que devuelve cada producto con su foto del mes, la variación frente a la
-foto anterior y la ganancia total del periodo. Es el **único** endpoint bajo
-`/api/investments`: no hay `POST`, `PATCH` ni `DELETE` — los datos entran
-solamente por la importación. **Y desde la feature 42 existe la consulta de
+foto anterior y la ganancia total del periodo. Desde la feature 50 tiene un
+segundo, [`GET /api/investments/deposits`](#get-apiinvestmentsdeposits) (lo que
+generó cada depósito). Bajo `/api/investments` solo hay `GET`: no hay `POST`,
+`PATCH` ni `DELETE` — los datos entran solamente por la importación. **Y desde la feature 42 existe la consulta de
 patrimonio neto**: [`GET /api/net-worth`](#get-apinet-worth), que suma el saldo
 real de las cuentas y el valor de las inversiones según sus últimas fotos
 (`marketValue` + `uninvestedCash` en los productos que fluctúan), sin tocar
@@ -1185,7 +1186,9 @@ La vista de **solo lectura** de las inversiones (feature "investments-overview",
 anterior (en euros y en puntos porcentuales) y cuánto se ganó en total en el
 periodo, sumando la fluctuación de los productos que fluctúan y los intereses
 abonados en las cuentas remuneradas. Es el primer lector de la capa que
-escriben las features 26 y 29, y el **único** endpoint bajo `/api/investments`.
+escriben las features 26 y 29. Desde la feature 50 no es el único endpoint bajo
+`/api/investments`: también está
+[`GET /api/investments/deposits`](#get-apiinvestmentsdeposits).
 
 Reglas que gobiernan toda la respuesta:
 
@@ -1319,6 +1322,103 @@ de querystring **desconocido se ignora**, igual que en `GET /api/overview`.
 
 > Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
 > `PATCH`, ni `DELETE` bajo `/api/investments`).
+
+### `GET /api/investments/deposits`
+
+Lo que generó cada depósito (feature "deposit-earnings", 2026-09-28): la lista de
+**todos** los productos `deposit` —vivos, vencidos o cerrados hace meses— y, si
+ya vencieron, cuánto generaron: el importe con que vencieron en el extracto
+menos el `principal` de su archivo de producto. Y el total de todos. **Solo
+lectura**: se calcula en cada petición y no guarda nada; no cambia el saldo de
+ninguna cuenta, ni el importe, `excludedFromTotals`, `productId` o `transferId`
+de ningún movimiento, ni ningún producto. [`GET /api/investments/overview`](#get-apiinvestmentsoverview)
+sigue exactamente igual.
+
+**No tiene parámetros**: responde siempre a fecha de hoy (UTC, a medianoche). Un
+parámetro de querystring desconocido **se ignora**, igual que en
+`GET /api/investments/overview` y `GET /api/net-worth`.
+
+**Cómo se encuentra el vencimiento de un depósito.** Se llama «candidato» a un
+movimiento que cumple las cuatro condiciones a la vez:
+
+- es de una cuenta cuyo `bank` es el `bank` del producto;
+- es de `type` `income`;
+- su `bookingDate` es **exactamente** el `maturityDate` del producto (sin días de
+  margen);
+- su descripción la reconoce como vencimiento el código del banco (en MyInvestor:
+  empieza por `INTERESES DEP`, quitados los espacios iniciales; `APERTURA DEP` y
+  `CANCELACION DEP` no cuentan).
+
+El número que lleva la descripción **no se lee** (se repite entre depósitos), y
+tampoco importan `excludedFromTotals`, `transferId` ni `productId`: un
+vencimiento marcado para no sumar se encuentra igual. Un banco sin ese
+reconocimiento no tiene candidatos.
+
+**Estado de cada depósito** (`status`), decidido en este orden:
+
+| `status` | Cuándo | `earned` | `maturity` | `candidateMovementIds` |
+| --- | --- | --- | --- | --- |
+| `cancelled` | `closedAt` es **anterior** a `maturityDate` (cancelado antes de vencer). No se busca nada. | `null` | `null` | `[]` |
+| `active` | `maturityDate` es posterior a hoy. | `null` | `null` | `[]` |
+| `maturity_not_found` | Ya venció (`maturityDate` ≤ hoy) y no hay ningún candidato (p. ej. el extracto aún no está importado). | `null` | `null` | `[]` |
+| `ambiguous` | Ya venció y hay **más de un** candidato. Nunca se elige uno. | `null` | `null` | ids de los candidatos, ascendentes |
+| `below_principal` | Ya venció, hay un solo candidato y su importe es **menor** que el `principal`. | `null` | el movimiento | `[]` |
+| `matured` | Ya venció, hay un solo candidato y su importe es **mayor o igual** que el `principal`. | importe − `principal` | el movimiento | `[]` |
+
+Un `closedAt` igual a `maturityDate` (lo normal en un depósito) **no** es
+`cancelled`. Un depósito vivo nunca lleva cifra, aunque `expectedGain` diga lo
+que se espera: `expectedGain` se enseña y no se suma. Un producto con
+`maturityDate` o `principal` a `NULL` (el parser lo impide) nunca lleva cifra.
+
+`total` es la suma de `earned` de las entradas `matured` y de ninguna otra; sin
+ninguna, `"0.00"`. Un vencimiento del extracto de un depósito sin archivo de
+producto (los antiguos) **no aparece** ni suma, y no es un error.
+
+Orden de `deposits`: por `maturityDate` descendente y, a igualdad, por `id`
+descendente.
+
+**Respuesta 200** (cifras inventadas)
+
+```json
+{
+  "asOf": "2026-06-15",
+  "deposits": [
+    {
+      "id": 7, "bank": "myinvestor", "name": "Deposito 3m", "openedAt": "2026-06-01",
+      "closedAt": "2026-09-01", "principal": "5000.00", "expectedGain": "31.20",
+      "maturityDate": "2026-09-01", "status": "active", "earned": null,
+      "maturity": null, "candidateMovementIds": []
+    },
+    {
+      "id": 5, "bank": "myinvestor", "name": "Deposito 1m", "openedAt": "2026-05-02",
+      "closedAt": "2026-06-02", "principal": "4000.00", "expectedGain": "7.10",
+      "maturityDate": "2026-06-02", "status": "matured", "earned": "7.25",
+      "maturity": { "movementId": 812, "date": "2026-06-02", "amount": "4007.25" },
+      "candidateMovementIds": []
+    },
+    {
+      "id": 3, "bank": "myinvestor", "name": "Deposito 6m", "openedAt": "2025-11-04",
+      "closedAt": "2026-03-10", "principal": "2000.00", "expectedGain": "22.00",
+      "maturityDate": "2026-05-04", "status": "cancelled", "earned": null,
+      "maturity": null, "candidateMovementIds": []
+    }
+  ],
+  "total": "7.25"
+}
+```
+
+Cada entrada lleva `id`, `bank`, `name`, `openedAt`, `closedAt`, `principal`,
+`expectedGain` y `maturityDate` tal como están guardados en el producto
+(importes con dos decimales, fechas `YYYY-MM-DD`, `null` donde no hay dato), más
+`status`, `earned`, `maturity` (`{ movementId, date, amount }` del movimiento del
+vencimiento) y `candidateMovementIds`.
+
+**Errores:** ninguno propio. Sin depósitos, `200` con `deposits: []` y
+`total: "0.00"`.
+
+> Solo existe el `GET`: este endpoint **no escribe nada**. Lo que generan los
+> depósitos **no entra** en las sumas de ingresos ni en la ganancia del mes de
+> `GET /api/investments/overview`: solo se ve aquí.
 
 ### `GET /api/net-worth`
 

@@ -64,6 +64,30 @@ probada en real) — [veredicto](reviews/revolut-statement.md) ·
 [prueba real](explorations/prueba-real-revolut-2026-09-15.md). Commiteada en
 el commit `feat(revolut)` del 2026-09-15. Cierra la E4 del roadmap (6 de 6 bancos).
 
+## F50 `deposit-earnings` — CERRADA (2026-09-28), prueba real hecha
+
+**Cierre:** aprobada por el reviewer en primera pasada
+([veredicto](reviews/deposit-earnings.md) · [resumen](summaries/deposit-earnings.md)),
+`done`. La desviación del parámetro desconocido se corrigió también en
+`design.md` §5 y en la T6, como pidió la nota del reviewer.
+**Prueba real (leader, 2026-09-28, solo `GET`):** `GET /api/investments/deposits`
+devuelve los 3 depósitos con `.json`: el vencido sale `matured` con cifra y los
+otros dos `active` sin cifra, como preveía `decisions.md`. La cifra se cuadró a
+mano: importe del vencimiento de ese día en el extracto menos el `principal` del
+producto, idéntica. Sin commitear.
+
+**Feature en curso:** 50 — `deposit-earnings`, lote A (T1–T11, único lote).
+**Plan:** reconocedor de vencimiento en `modules/myinvestor/`; tipos y
+`getDepositEarnings` (solo `find*`) en `modules/investments/`; ruta
+`GET /api/investments/deposits` y tercer registro en `app.ts`; tests con
+fixtures inventados; contrato y nota en la plantilla B.
+**Estado:** T1–T11 hechas; 30 tests nuevos. `./init.sh` completo en solitario:
+exit 0, 75 archivos, 1393 tests. Una desviación anotada en el informe: un
+parámetro desconocido da 200 (se ignora, como el resto de rutas), no el 400 que
+decía `design.md` §5. Esperando al reviewer; la feature no está `done`.
+**Bloqueos:** ninguno.
+**Informe:** `implementations/deposit-earnings.md`.
+
 ## F49 `honest-totals` — CERRADA (2026-09-27), prueba real hecha el 2026-09-28
 
 **Prueba real (leader, a petición del humano, 2026-09-28), contra la base real

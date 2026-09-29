@@ -156,6 +156,17 @@ contratarlo y al vencer —, no todos los meses: sus condiciones no cambian. El 
 es el que lleva `closedAt`. Su `date` significa **«el día que escribí esto»**, no una
 foto mensual.
 
+**`maturityDate` es también lo que une el depósito con su vencimiento del extracto**
+(feature 50, [`GET /api/investments/deposits`](api-contract.md#get-apiinvestmentsdeposits)):
+se busca el movimiento `INTERESES DEP` de MyInvestor cuyo día es **exactamente** ese
+`maturityDate`, y lo que generó el depósito es su importe menos el `principal` de este
+archivo. Si el día no coincide, el depósito sale «no encontrado», sin cifra.
+
+**Si cancelas un depósito antes de que venza**, vuelve a subir su archivo con
+`closedAt` = el día de la cancelación (**anterior** a `maturityDate`). Así sale como
+cancelado, sin cifra. Un `closedAt` igual a `maturityDate` —lo normal, ver más abajo—
+no es una cancelación.
+
 ---
 
 ## Tabla de campos y de dónde sale cada uno

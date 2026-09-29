@@ -10,9 +10,13 @@ import healthRoutes from './modules/health/health.routes.js'
 import importRoutes from './modules/import/import.routes.js'
 import type { BankParserRegistry } from './modules/import/import.types.js'
 import investmentsRoutes from './modules/investments/investments.routes.js'
-import type { ProductParserRegistry } from './modules/investments/investments.types.js'
+import type {
+  DepositMaturityMatcherRegistry,
+  ProductParserRegistry,
+} from './modules/investments/investments.types.js'
 import ingestionRoutes from './modules/ingestion/ingestion.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
+import { isMyinvestorDepositMaturity } from './modules/myinvestor/myinvestor.deposit-maturity.js'
 import myinvestorRoutes from './modules/myinvestor/myinvestor.routes.js'
 import netWorthRoutes from './modules/net-worth/net-worth.routes.js'
 import { parseMyinvestorProductFile } from './modules/myinvestor/myinvestor.service.js'
@@ -72,6 +76,16 @@ export const productParsers: ProductParserRegistry = [
   { bank: 'trade-republic', extensions: ['.json'], parse: parseTradeRepublicProductFile },
 ]
 
+/**
+ * Bank → deposit-maturity matcher registry (feature 50). The THIRD registry of
+ * this composition root, twin of the two above: which statement description is
+ * the maturity of a deposit is knowledge of each bank, and the investments
+ * module that links it to the deposit's product file may not name a bank.
+ */
+export const depositMaturityMatchers: DepositMaturityMatcherRegistry = [
+  { bank: 'myinvestor', isDepositMaturity: isMyinvestorDepositMaturity },
+]
+
 export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -94,7 +108,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(movementsRoutes, { prefix: '/api/movements' })
   app.register(overviewRoutes, { prefix: '/api/overview' })
   app.register(netWorthRoutes, { prefix: '/api/net-worth' })
-  app.register(investmentsRoutes, { prefix: '/api/investments' })
+  app.register(investmentsRoutes, { prefix: '/api/investments', depositMaturityMatchers })
   app.register(ingestionRoutes, { prefix: '/api/ingestion' })
   app.register(transfersRoutes, { prefix: '/api/transfers' })
   app.register(importRoutes, { prefix: '/api/import', parsers: bankParsers, productParsers })

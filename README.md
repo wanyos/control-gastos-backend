@@ -81,6 +81,7 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `GET`    | `/api/overview`                | Cuánto dinero hay en total, cómo se reparte entre las cuentas, y qué entró, salió y quedó en un mes. |
 | `GET`    | `/api/net-worth`               | El patrimonio neto **de hoy**: saldo de las cuentas más el valor de las inversiones, con su desglose y los avisos del dato incompleto. |
 | `GET`    | `/api/investments/overview`    | Las inversiones del mes: la foto de cada producto, cuánto cambió desde la anterior y la ganancia del periodo. |
+| `GET`    | `/api/investments/deposits`    | Cada depósito con su archivo de producto y, si ya venció, lo que generó (importe del vencimiento menos el principal), con el total. Solo lectura. |
 | `GET`    | `/api/ingestion/pending`       | Archivos de banco pendientes en Drive. |
 | `POST`   | `/api/ingestion/process`       | Descarga los pendientes y guarda una copia local. **No mueve nada.** |
 | `POST`   | `/api/import`                  | **Importa:** descarga, parsea, guarda los movimientos y solo entonces mueve el archivo a `procesados/`. |

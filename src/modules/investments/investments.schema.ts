@@ -19,3 +19,15 @@ export const getInvestmentsOverviewSchema = {
     },
   },
 } as const
+
+/**
+ * Querystring of `GET /api/investments/deposits` (feature 50): there are NO
+ * parameters -- it answers for today, over every deposit.
+ */
+export const getDepositEarningsSchema = {
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {},
+  },
+} as const

@@ -389,6 +389,7 @@ describe('architecture invariants', () => {
 
   it('keeps the myinvestor parser module free of data access (no "prisma" reference)', () => {
     const files = [
+      'modules/myinvestor/myinvestor.deposit-maturity.ts',
       'modules/myinvestor/myinvestor.format.ts',
       'modules/myinvestor/myinvestor.statement.parser.ts',
       'modules/myinvestor/myinvestor.product.parser.ts',

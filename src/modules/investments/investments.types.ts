@@ -372,6 +372,52 @@ export interface InvestmentsNetWorth {
   issues: NetWorthIssue[]
 }
 
+// ---------------------------------------------------------------------------
+// Read side (feature 50): what each deposit with a product file earned, for
+// `GET /api/investments/deposits`. Computed on every request, stored nowhere.
+// ---------------------------------------------------------------------------
+
+/**
+ * Recognizes, for ONE bank, the statement description of a deposit maturity.
+ * Built in `src/app.ts` and injected, so this module still names no bank.
+ */
+export interface DepositMaturityMatcher {
+  bank: string
+  isDepositMaturity(description: string): boolean
+}
+
+export type DepositMaturityMatcherRegistry = DepositMaturityMatcher[]
+
+/** Closed enum, part of the contract (decisions.md 🔴 5 of feature 50). */
+export type DepositEarningsStatus =
+  'active' | 'matured' | 'cancelled' | 'maturity_not_found' | 'ambiguous' | 'below_principal'
+
+export interface DepositEarningsEntry {
+  id: number
+  bank: string
+  name: string
+  openedAt: string | null
+  closedAt: string | null
+  principal: string | null
+  expectedGain: string | null
+  maturityDate: string | null
+  status: DepositEarningsStatus
+  /** amount − principal; ONLY on `matured`. Never zero standing in for a gap. */
+  earned: string | null
+  /** The linked movement, on `matured` and `below_principal`. */
+  maturity: { movementId: number; date: string; amount: string } | null
+  /** Ascending ids, ONLY on `ambiguous`; `[]` otherwise. */
+  candidateMovementIds: number[]
+}
+
+export interface DepositEarningsResponse {
+  /** `YYYY-MM-DD`, the "today" the statuses were decided against. */
+  asOf: string
+  deposits: DepositEarningsEntry[]
+  /** Sum of `earned` of the `matured` entries, `toFixed(2)`. */
+  total: string
+}
+
 /**
  * What one product file left in the database. `created` is what tells "it has
  * been stored" apart from "the same thing has been stored again", which is the
