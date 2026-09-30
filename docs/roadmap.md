@@ -443,15 +443,6 @@ tiene etapa, es que se va a perder.
 
 ## Deberes tuyos pendientes (no son código)
 
-- **A partir del 2026-09-17: borrar las dos líneas de `minimumReleaseAgeExclude`
-  de `pnpm-workspace.yaml`.** Al actualizar dependencias el 2026-09-16, pedir
-  `fastify@5.12.5` y `prettier@3.9.7` por su número exacto se saltó la espera de
-  un día que pnpm aplica por defecto a una versión recién publicada, y pnpm
-  escribió esa lista de excepciones. Las dos versiones cumplen el día el
-  2026-09-17 (07:37 y 08:23 UTC): a partir de ahí las líneas no excluyen de nada
-  y se quedarían como la lista vieja que este repositorio borró a propósito el
-  2026-08-21. Se comprueba con un `pnpm install` después de borrarlas.
-
 - **La prueba real de la F47 `movements-review-bulk`** (2026-09-18; pasada aquí
   desde `progress/current.md` el 2026-09-30). Ya está commiteada en `00c6790` y
   no bloquea nada. ⚠️ Los pasos 3 y 4 **escriben en tu base de datos real**:
