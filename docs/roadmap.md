@@ -452,6 +452,24 @@ tiene etapa, es que se va a perder.
   y se quedarían como la lista vieja que este repositorio borró a propósito el
   2026-08-21. Se comprueba con un `pnpm install` después de borrarlas.
 
+- **La prueba real de la F47 `movements-review-bulk`** (2026-09-18; pasada aquí
+  desde `progress/current.md` el 2026-09-30). Ya está commiteada en `00c6790` y
+  no bloquea nada. ⚠️ Los pasos 3 y 4 **escriben en tu base de datos real**:
+  hazlos con tres o cuatro movimientos que elijas tú. Con `pnpm run dev`:
+  1. `GET /api/movements?categoryId=<id>&pageSize=5`: todos los que salen son de
+     esa categoría, los `totals` son solo los de esa categoría y **no** arrastra
+     los de sus subcategorías (a propósito).
+  2. `GET /api/movements?uncategorized=true&pageSize=5`: solo salen con
+     `categoryId: null`. Después `q=cafeteria` y `q=CAFETERÍA` (o la palabra con
+     tilde que te venga bien) devuelven lo mismo, y una palabra a medias
+     (`q=eter`) encuentra `VETERINARIO`.
+  3. `PATCH /api/movements` con `{"ids":[a,b,c],"status":"confirmed"}` →
+     `updated: 3`. Se deshace con la misma petición y `"status":"pending_review"`.
+  4. `{"ids":[…],"categoryId":<id>}` con dos o tres movimientos del mismo tipo:
+     quedan con esa categoría. Para ver el «todo o nada», mete un ingreso entre
+     dos gastos y pide una categoría de gasto: **400** con el id que falla, y
+     ninguno de los tres cambia.
+
 - ~~🔴 **Comparar los cuatro saldos con la web de tu banco**~~ — **retirado de
   los pendientes por decisión del humano el 2026-09-05** («no lo volvamos a
   mostrar como una cosa que falta por hacer»). Era el paso que quedaba del

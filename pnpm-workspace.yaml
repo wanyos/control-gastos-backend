@@ -18,8 +18,6 @@ allowBuilds:
 # no excluye de nada y se puede borrar en la siguiente actualización de
 # dependencias. Repasada el 2026-09-20: se quitaron `fastify@5.12.5` y
 # `prettier@3.9.7`, publicadas cuatro días antes (y la segunda, además, ya
-# sustituida por la 3.9.8).
-minimumReleaseAgeExclude:
-  # tsx 4.23.15 se publicó el 2026-09-20 a las 07:22 UTC. Se puede borrar a
-  # partir del 2026-09-21.
-  - tsx@4.23.15
+# sustituida por la 3.9.8). Repasada el 2026-09-30: se quitó `tsx@4.23.15`,
+# caducada desde el 2026-09-21, y la lista quedó vacía. Si pnpm la vuelve a
+# escribir aquí debajo, es por una actualización nueva.
