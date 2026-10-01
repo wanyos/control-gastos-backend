@@ -20,7 +20,10 @@ y coordinar**, nunca implementar.
    resuelve uno, dilo al humano al arrancar.
 5. Si existe `docs/related-projects.md` con contenido real (no solo TEMPLATE),
    léelo: el cambio puede afectar a proyectos hermanos.
-6. Ejecuta `./init.sh`. Si falla, paras y reportas.
+6. Lee `docs/lessons.md` si existe: son correcciones que el humano ya hizo en
+   este proyecto. Las que van dirigidas a ti se cumplen como reglas; las de otros
+   agentes, recuérdaselas al lanzarlos si tocan la tarea.
+7. Ejecuta `./init.sh`. Si falla, paras y reportas.
 
 ## El humano es dueño del QUÉ (regla previa a todo lo demás)
 
@@ -103,6 +106,11 @@ Flujo simple — lanza directamente **1 `implementer`**. El implementer
 trabaja a partir del `acceptance` del `feature_list.json`. Cuando termine
 → lanza **1 `reviewer`**.
 
+Antes de lanzarlo, si la feature no tiene `checks`, derívalos tú del
+`como_se_que_esta_bien` del `intent` (formato en `docs/specs.md §checks`) y
+díselos al humano en una línea por comando. No hay puerta de aprobación en este
+flujo, pero tiene que haberlos visto antes de que se implemente contra ellos.
+
 ### Caso C — status == `spec_ready` Y el humano acaba de aprobar
 
 1. Cambia el status a `in_progress` en `feature_list.json`.
@@ -171,7 +179,7 @@ Pasos:
 
 4. Redacta `docs/architecture.md` y `docs/conventions.md` como PROPUESTA
    basada en las convenciones idiomáticas del stack y en cualquier config ya
-   presente (ej: si hay `.oxlintrc.json` o `.prettierrc`, refleja sus reglas
+   presente (ej: si hay `.eslintrc` o `.prettierrc`, refleja sus reglas
    reales). Marca CADA sección con `PROPUESTA — confirmar` al principio. No
    las presentes como definitivas: son las decisiones que el humano posee.
 
@@ -209,19 +217,20 @@ referencias del tipo: "resultado en `progress/<nombre>.md`" o
 
 Convención de nombres:
 
-- `progress/explore_<tema>.md` — investigaciones previas
+- `progress/explorations/<topic>.md` — investigaciones previas
 - `specs/<nn>-<feature>/decisions.md` — la hoja del humano (lo que enlazas en la puerta)
 - `specs/<nn>-<feature>/` — el resto del output del spec-author (material de agentes)
-- `progress/<feature>.md` — **un solo archivo por feature**: el implementer
-  escribe su informe (o su lote), el reviewer añade el veredicto debajo
+- `progress/implementations/<feature>.md` — el informe del implementer (o de
+  cada lote, uno debajo de otro)
+- `progress/reviews/<feature>.md` — el veredicto del reviewer
 - `progress/summaries/<feature>.md` — el resumen de cierre, para el humano
 - `progress/history.md` — índice de **una línea por feature** cerrada
 
 Ejemplo de instrucción correcta para un subagente:
 
 > "Investiga cómo está estructurada la capa de auth actual. Escribe tus
-> hallazgos en `progress/explore_auth.md`. Tu respuesta a mí debe ser solo:
-> `done -> progress/explore_auth.md` o un mensaje de bloqueo."
+> hallazgos en `progress/explorations/auth.md`. Tu respuesta a mí debe ser solo:
+> `done -> progress/explorations/auth.md` o un mensaje de bloqueo."
 
 ## Escalado de esfuerzo
 
@@ -233,6 +242,38 @@ Ejemplo de instrucción correcta para un subagente:
 | Compleja (refactor)     | 2-3 explorers → 1 spec-author → ⏸ → 1 implementer → 1 reviewer  | 2-3 explorers → 1 implementer → 1 reviewer |
 | Muy compleja            | Divide en sub-tareas y vuelve a aplicar la tabla                 | Igual                         |
 
+## Qué modelo usa cada subagente: los niveles de consumo
+
+El modelo de cada subagente lo eliges tú al lanzarlo, con el parámetro `model`
+(manda sobre el `model:` del archivo del agente), según el **nivel de consumo**
+que esté activo:
+
+| Nivel | `spec-author` | `implementer` | `reviewer` | Búsquedas e investigación |
+|---|---|---|---|---|
+| **Bajo consumo** | `opus` | `sonnet` | `opus` | `opus` |
+| **Medio consumo** (por defecto) | `opus` | `opus` | `opus` | `opus` |
+| **Alto consumo** | `fable` u `opus` | `fable` u `opus` | `fable` u `opus` | `opus` |
+
+`opus` es siempre el Opus más alto disponible.
+
+- **Cada sesión empieza en medio consumo.** El humano lo cambia diciéndotelo
+  («pasa a bajo consumo», «pasa a alto consumo»). Lo aplicas desde el siguiente
+  subagente que lances y se lo confirmas en una línea.
+- **Alto consumo es el permiso para usar `fable`.** Al activarlo, pregúntale **en
+  qué fases** (spec, implementación, revisión); las demás siguen en `opus`. Dura
+  **hasta que termine la feature en curso**: al cerrarla vuelves solo a medio
+  consumo y se lo dices.
+- **Apunta el nivel activo** en `progress/current.md` (`Nivel de consumo: …`, y
+  las fases con `fable` si es alto), para que sobreviva a que se compacte la
+  conversación.
+- **Tu propio modelo no lo puedes cambiar**: la sesión principal usa el que el
+  humano eligió con `/model`. Si quiere `fable` también para ti, recuérdale que
+  lo cambie él.
+- ❌ Fuera de alto consumo, **nunca uses `fable`**, ni en el parámetro `model` ni
+  sugiriéndolo, sin que el humano lo apruebe explícitamente para esa tarea
+  concreta. Si crees que una tarea lo necesita, **pregunta**: qué tarea y por qué
+  `opus` no basta. La aprobación vale para esa tarea, no para las siguientes.
+
 ### El carril rápido se decide por RUTA, nunca por tamaño
 
 Puedes saltarte implementer y reviewer **solo** si el cambio no toca ningún
@@ -242,6 +283,50 @@ Ese es el carril "solo artefactos" de la tabla.
 El criterio es la ruta y no el juicio de "esto es pequeño" **a propósito**: el
 tamaño se racionaliza («son cuatro líneas»), una ruta no. En cuanto el diff toca
 código o tests, hay reviewer, cueste lo que cueste.
+
+## Las correcciones del humano se apuntan (docs/lessons.md)
+
+Los subagentes no ven la conversación: las correcciones que el humano hace en el
+chat solo las tienes tú. Si no se escriben, se pierden al cerrar la sesión y el
+mismo fallo vuelve en la feature siguiente.
+
+**Mientras se trabaja.** Cada vez que el humano corrige algo que hizo un agente
+(«esto no, así», un cambio en la puerta del spec, un «no me inventes X»),
+añádelo en el momento a `progress/current.md`, sección
+`## Correcciones del humano` (créala si no existe): una línea con qué se hizo,
+qué agente y qué quería él. En disco sobrevive a que se compacte el contexto; en tu memoria, no.
+Esa sección no se vacía al cerrar la sesión: solo al cerrar la feature, después
+del paso 3 de abajo.
+
+**Al cerrar la feature** (cuando el implementer la ha pasado a `done`):
+
+1. Relee esa sección. Si está vacía, no propones nada y no preguntas.
+2. Si hay correcciones, propónle al humano **como mucho 3** entradas para
+   `docs/lessons.md`, cada una en el formato de ese archivo. Junta en una sola
+   las que sean el mismo fallo. Descarta las que fueron cambios de opinión suyos
+   y no fallos de un agente.
+3. Escribe **solo las que apruebe**, tal como las apruebe. Las que rechace no
+   se guardan en ningún sitio.
+4. Vacía la sección `## Correcciones del humano` de `progress/current.md`.
+5. Si el nivel de consumo era alto, vuelve a medio consumo y díselo.
+
+Criterio para proponer una lección: tiene que servir **la próxima vez**. «El
+implementer puso el botón en azul» no sirve; «el implementer elige colores en vez
+de usar los tokens de `src/theme.ts`» sí.
+
+Si una lección aprobada suena a fallo del harness en general y no de este
+proyecto, márcala `harness` en su columna de alcance: el comando `/lessons` la
+recogerá para proponerla a la plantilla.
+
+**Si la corrección se puede comprobar mirando los archivos del repositorio**
+(qué carpeta importa a cuál, dónde se lee la configuración, qué no puede
+aparecer en un archivo), propónle además, en ese momento, convertirla en un test
+que falle diciendo archivo y línea. Una regla que los agentes tienen que
+recordar se incumple en cuanto uno no la lee; un test, no.
+
+Las correcciones van **a `docs/lessons.md`, nunca a la memoria automática de
+Claude Code**: la memoria vive en el usuario de cada ordenador, no viaja con el
+repositorio, y los subagentes leen `docs/lessons.md` al arrancar.
 
 ## Sobre proyectos hermanos
 

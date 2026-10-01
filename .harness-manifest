@@ -1,0 +1,24 @@
+# Huellas del motor del harness tal como lo instaló el script.
+# Lo escriben apply-harness.sh y upgrade-harness.sh: no se edita a mano.
+# Si un archivo no coincide con su huella, se ha cambiado en el proyecto
+# y el siguiente update se para antes de sobrescribirlo.
+version 3.0.0
+cb2f144a5b6e07717db6c7c6cc9bcf61635360cf4fbeaf674bf4e5df6bee0375  AGENTS.md
+6fb366fa8d286b0177574e42d4f1701305b6ce6838c129f5064859369b583913  CHECKPOINTS.md
+f3248e74830a6ccf5a3f817fde5d18d41bdcba2d53c5f0f26e4a23b7552edc01  CLAUDE.md
+cdbd1dd07536f5940f29641a38aacac9489c2551b2a78960f2d7d910f1629abe  init.sh
+2985be8b28d3ade858e8d8fb4bc22f565b1bf6020dff982dce141f7721b9999c  VERSION
+12274e3c9cbb9b2955d7f379deced973c0a33852cff9a1e0290f3cdd9140f195  .claude/agents/leader.md
+d811f00c8c1721f2e607e6528a8ab8c663edee748d6e2dba37e9021a727f867e  .claude/agents/spec-author.md
+f34c200f7b2a541d91aaccc3535b21ba9f144bb7e305f6c47931ff064d66c18a  .claude/agents/implementer.md
+a2435de3c2f011e8253d527bc61ce4c3fe8f24cff0215926b60e63010a6d7d5c  .claude/agents/reviewer.md
+73a8f2fd12390cc6e15528930001649795e86d356b21408d2c4b1e4e041b82a1  .claude/commands/project-status.md
+80d424e167e63e1c3387241e73921c56b125794969475e3eddc3ef16aeff970a  .claude/commands/lessons.md
+0d91c00e9f80d4d4e8db436e9d0ae79ef6894849f62b8268d8d8dc8592a26ed0  .claude/hooks/verify-changed.sh
+48592b90275df526b8e4e07284bf06f50959e4e91511e79315e9731448c8874c  .claude/hooks/protect-motor.sh
+2b0fa5e68dac87fcb01431c5e8971e4bf2ba947b7149bc11f089b011a0fdb5b1  .claude/settings.json
+e5966f6aa0225b873b150bfebe07b1f4f451cf967f451a064c94ad3a1a66a036  docs/specs.md
+c7b316dd17888ce957c80ef960da9e86e6636bc9e520625ceb6c1d973ce06c0d  docs/intent-template.md
+39ff8ccddd66ef02758739e9a75a5d9c2d99f4969511d07eb05457f45bed3552  docs/decisions-template.md
+37857b8f9eda45e0201800b0ec2f1c2263fb47daabc5a08c8472c117dcf16264  docs/summary-template.md
+691c6064c093f5d94c7c47d1364de7846e4a1ad73a1657600f9459584eb153a7  specs/README.md

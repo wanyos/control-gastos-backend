@@ -11,6 +11,9 @@
 #   ./init.sh            completo: estado + type check + suite de tests
 #   ./init.sh --fast     estado + type check, SIN tests (para el hook de edición)
 #   ./init.sh --state    solo valida feature_list.json y specs (casi instantáneo)
+#   ./init.sh --checks [id|name]
+#                        ejecuta los `checks` de una feature (por defecto, la que
+#                        está in_progress). Sale en rojo si alguno falla.
 #
 # WHY de los modos: la suite completa tras cada edición convierte la
 # verificación en el cuello de botella de la sesión. Rápido donde el ciclo es
@@ -19,11 +22,13 @@
 set -u
 
 MODE="full"
+CHECKS_TARGET=""
 case "${1:-}" in
-  --fast)  MODE="fast" ;;
-  --state) MODE="state" ;;
-  "")      MODE="full" ;;
-  *)       echo "Uso: $0 [--fast|--state]" >&2; exit 2 ;;
+  --fast)   MODE="fast" ;;
+  --state)  MODE="state" ;;
+  --checks) MODE="checks"; CHECKS_TARGET="${2:-}" ;;
+  "")       MODE="full" ;;
+  *)        echo "Uso: $0 [--fast|--state|--checks [id|name]]" >&2; exit 2 ;;
 esac
 
 RED='\033[0;31m'
@@ -52,6 +57,105 @@ runnable() {
   done
   return 1
 }
+
+# ─────────────────────────────────────────────────────────────────────
+# Modo --checks: ejecuta los comandos del campo `checks` de una feature
+# ─────────────────────────────────────────────────────────────────────
+# WHY: el `acceptance` es texto y el reviewer opina si se cumple. Los `checks`
+# son comandos: la feature solo se cierra si todos salen con exit 0, diga lo que
+# diga cualquier agente. Formato y reglas en docs/specs.md §checks.
+if [ "$MODE" = "checks" ]; then
+  echo "── Checks de la feature ───────────────────────────────"
+  # El intérprete imprime una línea por check: descripcion<US>comando.
+  # <US> (\x1f) no aparece en texto normal, así que no hace falta escapar nada.
+  CHECKS_PY='
+import json, sys
+target = sys.argv[1] if len(sys.argv) > 1 else ""
+features = json.load(open("feature_list.json", encoding="utf-8")).get("features", [])
+if target:
+    sel = [f for f in features if str(f.get("id")) == target or f.get("name") == target]
+else:
+    sel = [f for f in features if f.get("status") == "in_progress"]
+if not sel:
+    print("ERR\x1f" + ("no hay ninguna feature con id o nombre " + target if target
+                      else "no hay ninguna feature in_progress; pasa su id o su nombre"))
+    sys.exit(0)
+f = sel[0]
+print("FEATURE\x1fF" + str(f.get("id")) + " " + str(f.get("name")))
+for c in f.get("checks") or []:
+    print("CHECK\x1f" + c.get("descripcion", "") + "\x1f" + c.get("comando", ""))
+'
+  CHECKS_JS='
+const fs = require("fs");
+const target = process.argv[1] || "";
+const features = JSON.parse(fs.readFileSync("feature_list.json", "utf8")).features || [];
+const sel = target
+  ? features.filter(f => String(f.id) === target || f.name === target)
+  : features.filter(f => f.status === "in_progress");
+if (!sel.length) {
+  console.log("ERR\x1f" + (target ? "no hay ninguna feature con id o nombre " + target
+                                  : "no hay ninguna feature in_progress; pasa su id o su nombre"));
+  process.exit(0);
+}
+const f = sel[0];
+console.log("FEATURE\x1fF" + f.id + " " + f.name);
+for (const c of f.checks || []) console.log("CHECK\x1f" + (c.descripcion || "") + "\x1f" + (c.comando || ""));
+'
+  if PYBIN=$(runnable python3 python); then
+    LIST=$(PYTHONIOENCODING=utf-8 "$PYBIN" -c "$CHECKS_PY" "$CHECKS_TARGET" 2>&1)
+  elif NODEBIN=$(runnable node); then
+    LIST=$("$NODEBIN" -e "$CHECKS_JS" "$CHECKS_TARGET" 2>&1)
+  else
+    fail "No hay Python ni Node para leer feature_list.json"
+    exit 1
+  fi
+  # En Windows, Python escribe \r\n: se quita para que no acabe dentro del comando.
+  LIST=$(printf '%s\n' "$LIST" | tr -d '\r')
+
+  TOTAL=0; PASSED=0; N=0
+  LOG_DIR="${TMPDIR:-/tmp}"
+  while IFS=$'\x1f' read -r kind a b; do
+    case "$kind" in
+      ERR)     fail "$a"; exit 1 ;;
+      FEATURE) info "Feature: $a" ;;
+      CHECK)
+        N=$((N + 1)); TOTAL=$((TOTAL + 1))
+        LOG="$LOG_DIR/harness_check_$N.log"
+        echo ""
+        info "[$N] $a"
+        info "    \$ $b"
+        if [ -z "$b" ]; then
+          fail "    check sin comando"
+          continue
+        fi
+        if bash -c "$b" < /dev/null > "$LOG" 2>&1; then
+          ok "    exit 0"
+          PASSED=$((PASSED + 1))
+          # Las últimas líneas son la prueba de que el comando hizo algo (p. ej.
+          # cuántos tests corrió). El reviewer las mira: un exit 0 sin tests
+          # ejecutados no demuestra nada.
+          tail -3 "$LOG" | sed 's/^/          /'
+        else
+          fail "    exit $? — últimas líneas (completo en $LOG):"
+          tail -15 "$LOG" | sed 's/^/          /'
+        fi
+        ;;
+      *) [ -n "$kind" ] && fail "Salida inesperada al leer checks: $kind" && exit 1 ;;
+    esac
+  done <<< "$LIST"
+
+  echo ""
+  if [ $TOTAL -eq 0 ]; then
+    warn "La feature no tiene checks. Se revisa como siempre, sin comandos."
+    exit 0
+  elif [ $PASSED -eq $TOTAL ]; then
+    ok "Checks: $PASSED de $TOTAL en verde."
+    exit 0
+  else
+    fail "Checks: $PASSED de $TOTAL en verde. La feature no se puede cerrar."
+    exit 1
+  fi
+fi
 
 # ─────────────────────────────────────────────────────────────────────
 # 1. Detección de stack
@@ -179,6 +283,39 @@ if [ ! -f "docs/related-projects.md" ]; then
   warn "No existe docs/related-projects.md (opcional, créalo si hay proyectos hermanos)"
 fi
 
+# Harness fuera de git: ningún archivo del harness puede estar en git.
+# WHY: en ese modo el harness no se sube nunca al repositorio. El exclude evita
+# que `git add` los coja, pero no saca lo que ya estaba versionado ni lo que se
+# añade con `git add -f`. Esta comprobación avisa antes del push, no después.
+# Las rutas se leen de los bloques que escriben apply-harness.sh y
+# upgrade-harness.sh en .git/info/exclude, entre su marca y «Fin harness personal».
+EXCLUDE_FILE=".git/info/exclude"
+if [ -f "$EXCLUDE_FILE" ] && grep -qF "# === Harness personal (apply-harness.sh) ===" "$EXCLUDE_FILE"; then
+  HARNESS_PATTERNS=$(awk '
+    /^# === Harness personal \(apply-harness\.sh\) ===/ { on = 1; next }
+    /^# === Añadido por upgrade-harness\.sh/            { on = 1; next }
+    /^# === Fin harness personal ===/                   { on = 0; next }
+    on && $0 !~ /^#/ && NF > 0                          { print }
+  ' "$EXCLUDE_FILE")
+  TRACKED=""
+  while IFS= read -r pat; do
+    [ -z "$pat" ] && continue
+    found=$(git ls-files -- "$pat" 2>/dev/null)
+    [ -n "$found" ] && TRACKED="$TRACKED$found
+"
+  done <<EOF
+$HARNESS_PATTERNS
+EOF
+  if [ -n "$TRACKED" ]; then
+    fail "Harness fuera de git, pero estos archivos del harness están en git:"
+    printf '%s' "$TRACKED" | sed 's/^/          /'
+    fail "Sácalos sin borrarlos del disco: git rm --cached <archivo>"
+    EXIT_CODE=1
+  else
+    ok "Harness fuera de git: ningún archivo del harness está versionado"
+  fi
+fi
+
 # ─────────────────────────────────────────────────────────────────────
 # 3. Validación de feature_list.json
 # ─────────────────────────────────────────────────────────────────────
@@ -186,7 +323,7 @@ echo ""
 echo "── 3. Validando feature_list.json ──────────────────────"
 
 if PYBIN=$(runnable python3 python); then
-  "$PYBIN" - <<'PY'
+  PYTHONIOENCODING=utf-8 "$PYBIN" - <<'PY'
 import json, os, sys
 try:
     # encoding explícito: en Windows Python abre con la codepage del sistema
@@ -205,6 +342,21 @@ try:
         if f.get("status") not in valid:
             print(f"[FAIL]  Estado inválido en feature {f.get('id')}: {f.get('status')}")
             sys.exit(1)
+        # `checks` es opcional; si está, cada uno es {descripcion, comando} y el
+        # comando cabe en una línea (./init.sh --checks los lee línea a línea).
+        checks = f.get("checks")
+        if checks is not None:
+            if not isinstance(checks, list):
+                spec_errors.append(f"feature {f.get('id')}: `checks` tiene que ser una lista")
+            else:
+                for i, c in enumerate(checks, 1):
+                    cmd = c.get("comando") if isinstance(c, dict) else None
+                    if not isinstance(cmd, str) or not cmd.strip():
+                        spec_errors.append(f"feature {f.get('id')}: check {i} sin `comando`")
+                    elif "\n" in cmd:
+                        spec_errors.append(f"feature {f.get('id')}: check {i} con el comando en varias líneas")
+                    elif not isinstance(c.get("descripcion"), str) or not c["descripcion"].strip():
+                        spec_errors.append(f"feature {f.get('id')}: check {i} sin `descripcion`")
         if f.get("sdd") and f.get("status") in requires_spec:
             spec_dir = os.path.join("specs", f"{int(f.get('id', 0)):02d}-{f.get('name', '')}")
             required = ["requirements.md", "design.md", "tasks.md"]
@@ -252,6 +404,24 @@ elif NODEBIN=$(runnable node); then
         if (!valid.has(f.status)) {
           console.log(`[FAIL]  Estado inválido en feature ${f.id}: ${f.status}`);
           process.exit(1);
+        }
+        // mismo criterio que la rama Python para `checks`.
+        if (f.checks !== undefined) {
+          if (!Array.isArray(f.checks)) {
+            specErrors.push(`feature ${f.id}: \`checks\` tiene que ser una lista`);
+          } else {
+            f.checks.forEach((c, idx) => {
+              const i = idx + 1;
+              const cmd = c && typeof c === "object" ? c.comando : undefined;
+              if (typeof cmd !== "string" || !cmd.trim()) {
+                specErrors.push(`feature ${f.id}: check ${i} sin \`comando\``);
+              } else if (cmd.includes("\n")) {
+                specErrors.push(`feature ${f.id}: check ${i} con el comando en varias líneas`);
+              } else if (typeof c.descripcion !== "string" || !c.descripcion.trim()) {
+                specErrors.push(`feature ${f.id}: check ${i} sin \`descripcion\``);
+              }
+            });
+          }
         }
         if (f.sdd && requiresSpec.has(f.status)) {
           const specDir = path.join("specs", String(f.id).padStart(2, "0") + "-" + (f.name || ""));
@@ -334,43 +504,82 @@ if [ "$MODE" = "fast" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────
-# 5. Lint y formato (solo Node, y solo si el proyecto los declara)
+# 5. Lint y formato (solo si el proyecto ha configurado la herramienta)
 # ─────────────────────────────────────────────────────────────────────
-# WHY: hasta el 2026-09-01 este script no ejecutaba NINGUNO de los dos, asi que
-# una regresion de estilo pasaba la puerta de calidad en verde. El limite de 100
-# columnas y las comillas simples estan escritos en docs/conventions.md como
-# estandar del proyecto, y un estandar que nadie hace cumplir deja de serlo: el
-# 2026-08-30 entro en HEAD un script que no lo cumplia y nadie se entero.
-# Los dos van DESPUES de la salida del modo --fast a proposito: ese modo lo
-# dispara un hook tras cada lote de herramientas y ahi manda el tiempo de vuelta.
-if [ "$STACK" = "node" ]; then
-  echo ""
-  echo "── 5. Lint y formato ──────────────────────────────"
+# WHY: una norma de estilo escrita en docs/conventions.md que ningún paso
+# comprueba deja de cumplirse sin que nadie se entere. Va DESPUÉS de la salida
+# del modo --fast a propósito: ese modo lo lanza el hook tras cada edición y ahí
+# manda el tiempo de vuelta. Si el proyecto no ha configurado la herramienta, se
+# dice en una línea y se sigue: no pone nada en rojo.
+echo ""
+echo "── 5. Lint y formato ───────────────────────────────────"
 
-  if grep -q '"lint"' package.json 2>/dev/null; then
-    info "Ejecutando: $PKG run lint"
-    if $PKG run lint; then
-      ok "Lint OK"
-    else
-      fail "Lint fallido"
-      EXIT_CODE=1
-    fi
+# Ejecuta un comando de lint o formato y pone la pasada en rojo si falla.
+run_style() {
+  info "Ejecutando: $1"
+  if eval "$1"; then
+    ok "OK: $1"
   else
-    warn "El proyecto no declara un script 'lint' en package.json"
+    fail "Fallido: $1"
+    EXIT_CODE=1
   fi
+}
 
-  if grep -q '"format:check"' package.json 2>/dev/null; then
-    info "Ejecutando: $PKG run format:check"
-    if $PKG run format:check; then
-      ok "Formato OK"
-    else
-      fail "Formato fallido (arreglable con '$PKG run format')"
-      EXIT_CODE=1
+STYLE_DONE=0
+case "$STACK" in
+  node)
+    if grep -q '"lint"' package.json 2>/dev/null; then
+      run_style "$PKG run lint"; STYLE_DONE=1
     fi
-  else
-    warn "El proyecto no declara un script 'format:check' en package.json"
-  fi
-fi
+    if grep -q '"format:check"' package.json 2>/dev/null; then
+      run_style "$PKG run format:check"; STYLE_DONE=1
+    fi
+    ;;
+  dotnet)
+    # .editorconfig es donde un proyecto .NET declara sus reglas de estilo.
+    if [ -f ".editorconfig" ]; then
+      if command -v dotnet >/dev/null 2>&1; then
+        run_style "dotnet format --verify-no-changes"
+      else
+        fail "Hay .editorconfig pero no se encuentra 'dotnet'"; EXIT_CODE=1
+      fi
+      STYLE_DONE=1
+    fi
+    ;;
+  python)
+    if [ -f "ruff.toml" ] || [ -f ".ruff.toml" ] || grep -q '^\[tool\.ruff' pyproject.toml 2>/dev/null; then
+      if command -v ruff >/dev/null 2>&1; then
+        run_style "ruff check ."
+        run_style "ruff format --check ."
+      else
+        fail "El proyecto configura ruff pero no se encuentra 'ruff'"; EXIT_CODE=1
+      fi
+      STYLE_DONE=1
+    fi
+    ;;
+  rust)
+    # rustfmt viene con la instalación estándar de Rust.
+    if cargo fmt --version >/dev/null 2>&1; then
+      run_style "cargo fmt --check"; STYLE_DONE=1
+    fi
+    ;;
+  go)
+    # gofmt viene con Go. Lista los archivos sin formatear; vacío = OK.
+    if command -v gofmt >/dev/null 2>&1; then
+      info "Ejecutando: gofmt -l ."
+      UNFORMATTED=$(gofmt -l . 2>&1)
+      if [ -z "$UNFORMATTED" ]; then
+        ok "OK: gofmt -l ."
+      else
+        fail "Archivos sin formatear (gofmt -l .):"
+        printf '%s\n' "$UNFORMATTED" | sed 's/^/          /'
+        EXIT_CODE=1
+      fi
+      STYLE_DONE=1
+    fi
+    ;;
+esac
+[ $STYLE_DONE -eq 0 ] && info "El proyecto no tiene lint ni formato configurados para '$STACK'; se omite."
 
 # ─────────────────────────────────────────────────────────────────────
 # 6. Ejecución de tests (depende del stack)

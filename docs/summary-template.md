@@ -3,21 +3,38 @@
 > **Esto lo escribe el REVIEWER, en lenguaje humano, al aprobar una feature.**
 >
 > Es la pieza de SALIDA, simétrica a `docs/intent-template.md` (la de entrada).
-> Su objetivo: que el humano entienda QUÉ se hizo y DÓNDE está el código, sin
-> tener que bucear en diffs de git. Un archivo por feature en
-> `progress/summaries/<feature>.md`.
+> Un archivo por feature en `progress/summaries/<feature>.md`.
 >
-> Reglas de estilo:
-> - En cristiano, sin jerga. Como si se lo explicaras a alguien que conoce el
->   proyecto pero no ha visto este código.
-> - Archivo y línea concretos en la tabla de "Dónde está el código", **como
->   enlace clicable** para saltar directo desde VS Code. Formato:
->   `[archivo.ext:línea](ruta/relativa#Llínea)`, con la ruta **relativa al propio
->   resumen** (desde `progress/summaries/` son dos niveles: `../../src/...`).
->   Verifica cada línea contra el código actual y agrupa las filas por tema si
->   son muchas.
-> - Cierra el círculo con el `intent`: por cada punto del
->   `como_se_que_esta_bien`, di si se cumplió y dónde se verifica.
+> **Para qué sirve de verdad:** es lo que impide perder el hilo del proyecto.
+> Dentro de un mes no vas a recordar qué feature dejó qué código. Este archivo
+> te dice **qué sabe hacer la app que antes no** y **dónde vive cada pieza** que
+> la feature creó o tocó, sin bucear en diffs de git.
+
+## Las dos reglas del mapa de código
+
+**1. Aparece TODO el código de la feature, agrupado por tema.** No es un
+resumen ejecutivo: es un índice. Si algo se tocó y no está aquí, es código que
+dentro de un mes nadie sabrá que existe.
+
+**2. Enlace al archivo + símbolo, no archivo + línea.** Cada fila lleva un
+enlace clicable **al archivo, sin número de línea**, y al lado el símbolo (la
+función, la clase, el endpoint, el componente). El enlace abre el archivo y el
+símbolo se encuentra con la búsqueda del editor (`Ctrl+Shift+O`, en macOS
+`Cmd+Shift+O`). Ni el enlace ni el símbolo caducan; el número de línea se rompe
+en el commit siguiente y verificarlos uno a uno es caro.
+
+Excepción: los **puntos de entrada** —3 a 6 como mucho, por donde se toca la
+feature desde fuera— sí llevan línea y enlace clicable, porque son los que de
+verdad se visitan. Formato: `[archivo.ext:NN](ruta/relativa#LNN)`, con la ruta
+**relativa al propio resumen** (desde `progress/summaries/` son dos niveles:
+`../../src/...`). Esos sí se verifican contra el código actual.
+
+Otras reglas de estilo:
+
+- En cristiano, sin jerga. Como si se lo explicaras a alguien que conoce el
+  proyecto pero no ha visto este código.
+- Cierra el círculo con el `intent`: por cada punto del `como_se_que_esta_bien`,
+  di si se cumplió y dónde se verifica.
 
 ---
 
@@ -36,64 +53,73 @@ Spec (si SDD): `specs/<nn>-<name>/`
 importe, categoría y fecha, y queda guardado. Antes no había forma de meter
 gastos.">
 
-## Por dónde se usa (puntos de entrada)
+## Por dónde se toca (puntos de entrada)
 
-<Cómo se toca esto desde fuera: endpoint, comando, botón, función pública.>
-- Ej: `POST /gastos` — crea un gasto nuevo.
-- Ej: `GET /gastos?mes=2026-07` — lista los gastos de un mes.
+> Los únicos con número de línea, y son clicables.
 
-## Dónde está el código (para revisión directa)
-
-> Los enlaces de la columna **Código** son clicables en la vista previa de
-> Markdown de VS Code (o con Ctrl/Cmd + clic): saltan a la línea exacta.
-
-### <Grupo temático 1 — p. ej. la lógica principal>
-
-| Qué hace | Símbolo | Código |
-| --- | --- | --- |
-| <handler / función> | `nombreFuncion` | [archivo.ext:NN](../../src/....ext#LNN) |
-| <validación / modelo> | `otraFuncion` | [archivo.ext:NN](../../src/....ext#LNN) |
-
-### <Grupo temático 2 — p. ej. Tests>
-
-| Qué cubre | Código |
+| Cómo se usa | Código |
 | --- | --- |
-| <test principal> | [archivo.test.ext:NN](../../src/....test.ext#LNN) |
+| `POST /gastos` — crea un gasto | [routes/gastos.ts:18](../../src/routes/gastos.ts#L18) |
+| `GET /gastos?mes=` — lista el mes | [routes/gastos.ts:44](../../src/routes/gastos.ts#L44) |
+
+## Dónde está el código
+
+> Todo lo que la feature creó o tocó, por tema. Enlace al archivo, sin línea, y
+> el símbolo al lado: ninguno de los dos caduca.
+
+### <Tema 1 — p. ej. Lógica de negocio>
+
+| Qué hace | Dónde |
+| --- | --- |
+| <valida y normaliza la entrada> | [services/gastos.ts](../../src/services/gastos.ts) → `parseGasto` |
+| <calcula el total del mes> | [services/gastos.ts](../../src/services/gastos.ts) → `totalDelMes` |
+
+### <Tema 2 — p. ej. Persistencia>
+
+| Qué hace | Dónde |
+| --- | --- |
+| <inserta y lee> | [db/gastos.ts](../../src/db/gastos.ts) → `GastoRepository` |
+
+### Tests
+
+| Qué cubre | Dónde |
+| --- | --- |
+| <camino feliz> | [tests/gastos.test.ts](../../tests/gastos.test.ts) → `test_crear_gasto` |
+| <importe negativo> | [tests/gastos.test.ts](../../tests/gastos.test.ts) → `test_importe_invalido` |
 
 ## Cumplimiento de la intención
 
 Por cada punto del `como_se_que_esta_bien` del `intent`:
 
-- ✅ "<punto 1 de la intención>" → se cumple; verificado en `tests/....ext:NN`.
-- ✅ "<punto 2 de la intención>" → se cumple; verificado en `tests/....ext:NN`.
+- ✅ "<punto 1 de la intención>" → se cumple; lo verifica `test_xxx`.
+  Check: ✅ `<comando>` (resultado real de `./init.sh --checks`).
+- ✅ "<punto 2 de la intención>" → se cumple; sin check (<por qué no hay
+  comando>), revisado a mano: <qué se miró>.
 
 ## Decisiones que se tomaron por ti
 
-Lo que en el spec estaba marcado como `(delegado)` o `(añadido)`, recordado
-aquí para que lo tengas presente:
+Lo que en el spec estaba marcado `(delegado)` o `(añadido)`, recordado aquí:
 
-- (delegado) <qué se decidió y dónde vive>. Ej: "el backend avisa con el
-  campo `companies[]`; se lee en `src/api/login.ext:NN`."
-- (añadido) <alcance que no pediste y se introdujo>. Ej: "si el mes no tiene
-  gastos, devuelve lista vacía en vez de error."
+- (delegado) <qué se decidió y dónde vive>.
+- (añadido) <alcance que no pediste y se introdujo>.
 
 ## Qué NO se tocó / quedó fuera
 
-<Los límites de lo hecho, para que sepas dónde termina esta feature.>
-- Ej: no se toca el borrado de gastos (queda para otra feature).
-- Ej: no hay paginación todavía.
+- <los límites de lo hecho, para saber dónde termina esta feature>
 
 ## Notas para el futuro (opcional)
 
-<Deuda técnica consciente, sugerencias fuera de scope que anotó el
-implementer, o cosas a vigilar. Vacío si no hay.>
+<Deuda técnica consciente o sugerencias fuera de scope que anotó el
+implementer. Vacío si no hay.>
 ```
 
 ---
 
 ## Para qué sirve luego
 
-Estos resúmenes son tu registro legible del proyecto. Puedes conservarlos como
-documentación viva o borrarlos cuando ya no aporten: el código y los tests
-siguen siendo la fuente de verdad, esto es solo el mapa para llegar a ellos
-rápido.
+Estos resúmenes son tu registro legible del proyecto: encadenados, cuentan qué
+se construyó y en qué orden. `progress/history.md` es el índice de una línea por
+feature que apunta a cada uno.
+
+Puedes borrarlos cuando ya no aporten: el código y los tests siguen siendo la
+fuente de verdad, esto es el mapa para llegar rápido.

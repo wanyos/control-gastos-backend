@@ -41,8 +41,7 @@ specs/<nn>-<feature-name>/
 El `feature-name` coincide con el campo `name` de `feature_list.json`, y `nn`
 es el `id` de la feature con **dos dígitos** (`08-data-model`,
 `31-real-account-balance`): así la carpeta se localiza por el número y la lista
-sale ordenada. Decidido por el humano el 2026-09-02; `./init.sh` exige ese
-nombre exacto en su paso 3.
+sale ordenada. `./init.sh` exige ese nombre exacto en su paso 3.
 
 `decisions.md` sigue la plantilla de `docs/decisions-template.md`. Los otros
 tres son material del `implementer` y del `reviewer`.
@@ -299,7 +298,7 @@ rechaza si queda alguna `[ ]` sin justificación documentada.
 - El `reviewer` comprueba esta correspondencia explícitamente y rechaza
   si falta.
 
-El `implementer` documenta el mapa en `progress/<name>.md`:
+El `implementer` documenta el mapa en `progress/implementations/<name>.md`:
 
 ```markdown
 ## Trazabilidad
@@ -307,6 +306,57 @@ El `implementer` documenta el mapa en `progress/<name>.md`:
 - R2 → `test_recent_invalid_limit`
 - R3 → `test_recent_custom_limit`
 ```
+
+## checks
+
+Campo opcional de cada feature en `feature_list.json`: los comandos que tienen
+que salir con exit 0 para que la feature se pueda cerrar. El `acceptance` es
+texto y el reviewer opina si se cumple; los `checks` se ejecutan, y si uno falla
+la feature no se cierra, opine lo que opine cualquier agente.
+
+```json
+"checks": [
+  {
+    "descripcion": "Cuando creo un gasto sin importe, me sale un error claro.",
+    "comando": "npm test -- -t \"rechaza gasto sin importe\""
+  },
+  {
+    "descripcion": "Cuando ejecuto el comando de arranque, el proyecto compila.",
+    "comando": "npm run build"
+  }
+]
+```
+
+Se ejecutan con `./init.sh --checks` (la feature `in_progress`) o
+`./init.sh --checks <id|name>`. `./init.sh --state` valida el formato.
+
+**Quién los escribe:** el `spec-author` en las features SDD, y el `leader` en las
+que no lo son. **Nunca el humano** (él escribe frases en `como_se_que_esta_bien`)
+**y nunca el `implementer`** (sería corregirse el examen).
+
+**Reglas:**
+
+- **Cada `descripcion` es una frase del `como_se_que_esta_bien`**, copiada tal
+  cual o casi. Así el humano reconoce en `decisions.md` qué se va a comprobar.
+  Una frase puede tener varios checks; un check que no sale de ninguna frase va
+  marcado `(añadido)` en la descripción.
+- **El comando cabe en una línea** y no depende de estado previo que nadie haya
+  preparado (si necesita la base de datos levantada, el comando la levanta o
+  `docs/verification.md` dice cómo).
+- **No puede pasar sin comprobar nada.** Si filtra tests por nombre, el test
+  tiene que existir y ejecutarse: muchos runners salen con 0 cuando el filtro no
+  encuentra nada. Nombra el test que el implementer va a crear (el spec-author lo
+  pone también en `tasks.md`) y evita opciones como `--passWithNoTests`.
+- **No todo se puede convertir en comando.** Lo visual o lo que depende de un
+  servicio externo se queda en `acceptance` y lo revisa el reviewer como siempre.
+  No fuerces un check que no demuestra lo que dice la frase.
+- **Son opcionales.** Una feature sin `checks` se revisa como antes. Por eso las
+  features antiguas no hay que migrarlas.
+
+**Durante la implementación:** los checks empiezan en rojo (la feature no existe
+todavía) y es normal. El `implementer` los pone en verde antes de darse por
+terminado y **no puede modificarlos**: si uno está mal escrito, para y lo
+reporta como bloqueo. El `reviewer` los ejecuta él mismo y pega el resultado.
 
 ## Cuándo NO aplica SDD
 

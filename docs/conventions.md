@@ -492,6 +492,14 @@ class NotFoundError extends AppError {
 - `TODO:` con formato `// TODO: <acción concreta>`. No dejar `TODO` sin dueño en
   features marcadas `done`.
 
+## Commits
+
+- Sin firma de coautoría de agente: la regla general está en `CLAUDE.md`.
+- **Los 12 commits anteriores a `ec5c786` sí llevan el trailer
+  `Co-Authored-By: Claude`** (el último, `c3db02f`, del 2026-08-12). Se decidió
+  el 2026-08-13 no reescribir el histórico para quitarlo: se quedan como están.
+  (`c2a5153` nombra el trailer en su texto, pero no lo lleva.)
+
 ## Estilos / UI
 
 N/A — este proyecto es backend, no hay capa de UI.

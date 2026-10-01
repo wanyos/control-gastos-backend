@@ -23,6 +23,8 @@
 
 ## Feature en curso
 
+**Nivel de consumo:** medio _(bajo / medio / alto; en alto, qué fases usan `fable`)_
+
 _Ninguna._ Última cerrada: **F50 `deposit-earnings`** (2026-09-28, commiteada en
 `a6195be`) → [resumen](summaries/deposit-earnings.md).
 
@@ -43,3 +45,10 @@ _Nada de la sesión en curso._ Sus deberes pendientes viven en
 [`docs/roadmap.md`](../docs/roadmap.md) §Deberes tuyos pendientes, y los cabos
 sueltos en la tabla §Cabos sueltos con dueño del mismo archivo. Aquí solo se
 escribe lo que sale de la sesión **en curso**.
+
+## Correcciones del humano
+
+_Cada corrección que el humano hace a un agente durante la feature, en una
+línea: qué se hizo, qué agente, qué quería él. El leader la usa al cerrar para
+proponer entradas de `docs/lessons.md`. Esta sección no se vacía al cerrar la
+sesión, solo al cerrar la feature._

@@ -443,6 +443,16 @@ tiene etapa, es que se va a perder.
 
 ## Deberes tuyos pendientes (no son código)
 
+- **Probar el harness v3.0.0 en el Mac y en Linux** (2026-10-01). Solo se ha
+  probado en este Windows (Git Bash). En cada sistema, desde el proyecto:
+  `./init.sh` (tiene que acabar en `[OK] Entorno listo`) y
+  `<ruta a harness-template>/upgrade-harness.sh . --dry` (tiene que decir que no
+  hay nada que hacer). Si algo falla, el arreglo va a harness-template.
+- **El paso de lint y formato de `init.sh` en un proyecto .NET** (2026-10-01).
+  Solo está probada la parte de Node; la de .NET (`dotnet format
+  --verify-no-changes` si hay `.editorconfig`) se prueba la primera vez que
+  actualices un proyecto de C#.
+
 - **La prueba real de la F47 `movements-review-bulk`** (2026-09-18; pasada aquí
   desde `progress/current.md` el 2026-09-30). Ya está commiteada en `00c6790` y
   no bloquea nada. ⚠️ Los pasos 3 y 4 **escriben en tu base de datos real**:

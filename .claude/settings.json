@@ -1,6 +1,18 @@
 {
   "$schema_comment": "Hooks que automatizan la verificación. El harness los ejecuta, no el agente, así que no se pueden saltar. init.sh detecta el stack automáticamente y corre los tests apropiados. Regla de diseño: rápido donde el ciclo es apretado (tras editar), completo donde se toman decisiones (al cerrar el trabajo de un implementer).",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/protect-motor.sh\"",
+            "description": "Impide que un agente edite en un proyecto los archivos del motor del harness (los de .harness-manifest): el update los sobrescribe y lo escrito se perdería. Responde a qué archivo va el cambio. No afecta al humano ni al repositorio harness-template."
+          }
+        ]
+      }
+    ],
     "PostToolBatch": [
       {
         "hooks": [
@@ -30,9 +42,22 @@
       "Bash(./init.sh)",
       "Bash(./init.sh --fast)",
       "Bash(./init.sh --state)",
+      "Bash(./init.sh --checks*)",
+      "Bash(npm test*)",
       "Bash(pnpm test*)",
+      "Bash(yarn test*)",
+      "Bash(npm run*)",
       "Bash(pnpm run*)",
-      "Bash(npx vitest run*)",
+      "Bash(yarn run*)",
+      "Bash(python3 -m unittest*)",
+      "Bash(python3 -m pytest*)",
+      "Bash(pytest*)",
+      "Bash(dotnet test*)",
+      "Bash(dotnet run*)",
+      "Bash(cargo test*)",
+      "Bash(go test*)",
+      "Bash(mvn test*)",
+      "Bash(gradle test*)",
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)"

@@ -102,6 +102,30 @@ curl -s http://localhost:3000/health/db    # -> {"status":"ok","database":"up"}
 Verde = el proceso responde (`/health`) y la base de datos está accesible
 (`/health/db`).
 
+#### La prueba real en este proyecto (`CHECKPOINTS.md` §C4 bis)
+
+En este proyecto, «datos de fuera del código» son sobre todo los **archivos de
+banco** que descarga el humano y sus archivos de producto: toda feature que
+añada o cambie un parser de banco, o la lectura de un archivo que él escribe,
+pasa su archivo real (de `var/drive-read/`) por el código nuevo antes de cerrar.
+El resultado lleva recuentos y forma, nunca contenido: ni importes, ni IBAN, ni
+nombres, ni conceptos literales (ADR-017).
+
+Por qué aquí pesa tanto: las primeras pasadas encontraron defectos que la suite
+en verde no podía ver. En N26 (2026-08-18, 493 tests en verde) el IBAN se
+guardaba literal y el mismo IBAN con y sin espacios creaba dos cuentas → F21. En
+Openbank (2026-08-19, 628 tests en verde) había importes reales colados en un
+fixture —que `src/no-real-data.test.ts` no veía porque no lee `.xls`— y un
+mensaje de error falso ante un archivo guardado en otra codificación → F22. En
+Trade Republic (2026-08-20, 721 tests en verde) la documentación afirmaba algo
+falso sobre su extracto, y el volcado de un archivo rechazado llenaba
+`src/no-real-data.test.ts` de 270 avisos falsos → F24.
+
+Hasta el 2026-10-01 el resultado iba en
+`progress/explorations/prueba-real-<tema>-<fecha>.md`; desde entonces va en el
+informe del implementer, sección `## Prueba real`. Los informes antiguos se
+quedan donde están.
+
 ### Nivel 4 — Trazabilidad de requirements (obligatorio para features con `"sdd": true`)
 
 Cada `R<n>` de `specs/<nn>-<name>/requirements.md` debe poder mapearse a al
