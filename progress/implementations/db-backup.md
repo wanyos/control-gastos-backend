@@ -551,3 +551,123 @@ eso los veinte tests salen como saltados. Con el arreglo, `pnpm exec vitest run 
 `./init.sh --checks 55` — código de salida 0: `Checks: 12 de 12 en verde.`
 
 `docker exec gastos-postgres psql -U postgres -Atc "select count(*) from pg_database where datname like 'gastos_test_backup%'"` → `0`.
+
+## Rechazo de las bases internas de PostgreSQL como destino
+
+Implementer, 2026-10-02. Pedido por el humano a partir de la observación del reviewer
+(`progress/reviews/db-backup.md`, primera pasada). Sin commit, sin `git stash`, sin tocar los
+`checks` ni el estado de ninguna feature, sin leer `.env`, y sin lanzar `db:backup` ni `db:restore`
+contra el Drive de verdad ni contra la base `gastos`. No se ha restaurado nada en `postgres`,
+`template0` ni `template1`.
+
+**A comprobar por el leader:** las dos bases de comprobación del humano (`gastos_restore_check` y
+`gastos_restore_check_before_restore_20261002175832`) **no aparecen** en la lista de bases del
+servidor que saqué al terminar (abajo). No saqué esa lista antes de empezar, así que no sé si
+estaban cuando arranqué. Ningún comando que yo haya lanzado nombra esas bases; lo único que borra
+bases en lo que ejecuté es la suite, y no he comprobado qué nombres borra más allá de leer que
+`backup.service.test.ts` borra las que empiezan por `gastos_test_backup_`.
+
+### Qué cambia
+
+- `src/modules/backup/backup.database.ts`: función nueva `assertNotInternalDatabase(name)`. Lanza
+  un `BackupError` si el nombre es `postgres`, `template0` o `template1`.
+- `src/modules/backup/backup.service.ts`: `restoreBackup` la llama en su primera línea, antes de
+  `assertDatabaseName`, de cualquier llamada a Drive y de cualquier comando en el contenedor.
+- `scripts/db-restore.ts`: sin cambios. Ya imprime el mensaje de un `BackupError` y sale con 1.
+- `docs/database-backup.md`, apartado 4: la línea que solo avisaba de `postgres` dice ahora que las
+  tres se rechazan, con el mensaje.
+- `docs/architecture.md`, ADR-034, punto 11 de la decisión (el de los nombres de base): una frase.
+  Ningún otro ADR tocado.
+
+Mensaje, con el nombre que se haya escrito:
+
+```
+La base «template1» es interna de PostgreSQL y no se puede usar como destino de una restauración: elige otro nombre. No se ha tocado nada.
+```
+
+### Mayúsculas
+
+La comparación es exacta, distinguiendo mayúsculas, igual que la validación de nombres que ya
+tenía el módulo: `assertDatabaseName` solo admite minúsculas. `Postgres` o `TEMPLATE1` no dan el
+mensaje nuevo, pero se rechazan igualmente, sin llamar a Drive ni al contenedor, con el mensaje de
+siempre («El nombre de la base de datos no es válido…»). El test lo fija con esos dos nombres.
+
+### Tests (2 nuevos; la suite pasa de 1345 a 1347)
+
+- `backup.service.test.ts` → `rejects the internal databases of PostgreSQL as target before doing
+  anything`: con los tres nombres comprueba el código `BACKUP_FAILED` y el mensaje entero; al final,
+  que no se ejecutó ningún comando del contenedor (`ran` vacío), que no hubo ninguna llamada al
+  cliente de Drive simulado (`drive.calls` vacío), ninguna descarga y ninguna petición de
+  confirmación. El comando del contenedor de este test es uno que no llega a ningún contenedor
+  (responde código 1 sin ejecutar nada), para que el test no pueda restaurar en esas bases ni
+  siquiera si la comprobación desapareciera.
+- `backup.database.test.ts` → `refuses the three databases PostgreSQL creates and no other name`:
+  los tres nombres lanzan; `gastos`, `gastos_restore_check`, `postgres_copia` y `template2` no.
+
+**El test falla sin el cambio.** Con la llamada de `restoreBackup` comentada,
+`pnpm exec vitest run src/modules/backup/backup.service.test.ts -t "internal databases"`:
+
+```
+AssertionError: expected 'No se ha podido comprobar si existe l…' to be 'La base «postgres» es interna de Post…'
+ Test Files  1 failed (1)
+      Tests  1 failed | 20 skipped (21)
+```
+
+Con la llamada puesta, `pnpm exec vitest run src/modules/backup`: `Test Files 6 passed (6)`,
+`Tests 38 passed (38)`.
+
+### El comando, lanzado de verdad
+
+`scripts/db-restore.ts` lanzado con `tsx` desde una carpeta temporal fuera del repositorio (sin
+ningún `.env`), con todas las variables inventadas (credenciales de Drive inventadas y
+`DATABASE_URL` apuntando a una base que no existe), una vez por nombre:
+
+```
+La base «postgres» es interna de PostgreSQL y no se puede usar como destino de una restauración: elige otro nombre. No se ha tocado nada.
+exit=1
+La base «template0» es interna de PostgreSQL y no se puede usar como destino de una restauración: elige otro nombre. No se ha tocado nada.
+exit=1
+La base «template1» es interna de PostgreSQL y no se puede usar como destino de una restauración: elige otro nombre. No se ha tocado nada.
+exit=1
+```
+
+Un primer intento de esta misma prueba, con `env -i`, no llegó a arrancar Node (código 134, fallo
+de Node al iniciarse sin las variables de Windows): no ejecutó nada del script.
+
+Después de todo lo anterior, leyendo sin escribir:
+`select count(*) from pg_tables where schemaname='public'` da `0` en `postgres` y `0` en
+`template1`. En `template0` no lo he comprobado (no admite conexiones).
+
+### Documentos actualizados
+
+`git grep -n -i "template1\|template0\|base interna\|como destino" -- . ':!progress' ':!specs'`:
+solo salen las líneas nuevas de `docs/database-backup.md`, del ADR-034 y del módulo, y una línea
+del ADR-034 sobre las bases de los tests que sigue siendo cierta. La única línea que el cambio
+volvía falsa era la de `docs/database-backup.md` («No uses `postgres` como destino…»), ya
+corregida.
+
+`progress/current.md` no lo he anotado: no estaba entre los archivos que se me permitía tocar.
+
+### Comandos y resultados
+
+`./init.sh` — código de salida 0:
+
+```
+[OK]    Type check OK (tsc sin errores)
+[OK]    OK: pnpm run lint
+[OK]    OK: pnpm run format:check
+ Test Files  76 passed (76)
+      Tests  1347 passed (1347)
+   Duration  15.95s
+[OK]    Todos los tests pasan
+```
+
+`./init.sh --checks 55` — código de salida 0: `Checks: 12 de 12 en verde.`
+
+`docker exec gastos-postgres psql -U postgres -Atc "select datname from pg_database order by 1"`,
+al terminar: `gastos`, `gastos_test_1` a `gastos_test_8`, `gastos_test_template`, `postgres`,
+`template0`, `template1`.
+
+`git status --short`: `docs/architecture.md`, `docs/database-backup.md` y cuatro archivos de
+`src/modules/backup/` (`backup.database.ts`, `backup.database.test.ts`, `backup.service.ts`,
+`backup.service.test.ts`), más este informe.

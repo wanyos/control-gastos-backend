@@ -5,6 +5,7 @@ import { BackupError } from '../../errors/app-error.js'
 import { downloadFileContent } from '../../lib/drive-structure.js'
 import {
   assertDatabaseName,
+  assertNotInternalDatabase,
   countRows,
   createDatabase,
   databaseExists,
@@ -87,6 +88,7 @@ export async function restoreBackup(
   args: { fileName: string; database: string },
 ): Promise<RestoredDatabase> {
   const { database } = args
+  assertNotInternalDatabase(database)
   assertDatabaseName(database)
   const file = await findBackupFile(deps, args.fileName)
   const { user } = databaseTarget(deps.databaseUrl)

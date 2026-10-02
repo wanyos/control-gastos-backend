@@ -188,7 +188,14 @@ pnpm run db:restore control-gastos-2026-03-14-090507.dump gastos_restore_check
   ninguna tabla, restaura dentro. En ninguno de los dos casos pregunta nada.
 - El nombre de la base tiene que empezar por una letra minúscula y llevar solo
   minúsculas, números y guiones bajos, 30 caracteres como mucho.
-- No uses `postgres` como destino: es la base interna del contenedor.
+- **`postgres`, `template0` y `template1` no valen como destino:** son las bases
+  internas de PostgreSQL y el comando las rechaza. Termina con error antes de
+  hacer nada (no descarga la copia ni ejecuta nada en el contenedor), con este
+  mensaje:
+
+  ```
+  La base «template1» es interna de PostgreSQL y no se puede usar como destino de una restauración: elige otro nombre. No se ha tocado nada.
+  ```
 
 Al terminar imprime la base y **las filas de cada tabla**:
 

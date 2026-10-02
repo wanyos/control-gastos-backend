@@ -598,6 +598,35 @@ describe('backup commands', { timeout: 60_000 }, () => {
       expect(drive.calls).toEqual([])
     })
 
+    it('rejects the internal databases of PostgreSQL as target before doing anything', async () => {
+      // A command that reaches no container: this test can never restore into them.
+      const { drive, deps, ran, asked } = harness({
+        answer: 'postgres',
+        run: async () => ({ exitCode: 1, stdout: Buffer.alloc(0), stderr: '' }),
+      })
+      drive.addFile(fixedFileName, sourceDump, '2026-03-14T08:05:09.000Z')
+
+      for (const database of ['postgres', 'template0', 'template1']) {
+        const error = await rejection(restoreBackup(deps, { fileName: fixedFileName, database }))
+
+        expect(error.code).toBe('BACKUP_FAILED')
+        expect(error.message).toBe(
+          `La base «${database}» es interna de PostgreSQL y no se puede usar como destino de una ` +
+            'restauración: elige otro nombre. No se ha tocado nada.',
+        )
+      }
+      // With an uppercase letter it is the rule of valid names that refuses it.
+      for (const database of ['Postgres', 'TEMPLATE1']) {
+        const error = await rejection(restoreBackup(deps, { fileName: fixedFileName, database }))
+
+        expect(error.message).toContain('El nombre de la base de datos no es válido')
+      }
+      expect(ran).toEqual([])
+      expect(drive.calls).toEqual([])
+      expect(drive.downloads).toEqual([])
+      expect(asked).toEqual([])
+    })
+
     it('calls nothing of Drive that deletes, moves or renames a file', async () => {
       const database = targetName('calls')
       const { drive, deps } = harness()

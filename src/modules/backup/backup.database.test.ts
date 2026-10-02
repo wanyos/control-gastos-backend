@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { BackupError } from '../../errors/app-error.js'
 import {
   assertDatabaseName,
+  assertNotInternalDatabase,
   databaseExists,
   databaseTarget,
   dumpDatabase,
@@ -51,6 +52,18 @@ describe('backup database commands', () => {
       expect(() => assertDatabaseName(invalid)).toThrow(BackupError)
     }
     expect(() => assertDatabaseName('gastos"; drop database gastos; --')).toThrow(BackupError)
+  })
+
+  it('refuses the three databases PostgreSQL creates and no other name', () => {
+    for (const internal of ['postgres', 'template0', 'template1']) {
+      expect(() => assertNotInternalDatabase(internal)).toThrow(BackupError)
+      expect(() => assertNotInternalDatabase(internal)).toThrow(
+        `La base «${internal}» es interna de PostgreSQL`,
+      )
+    }
+    for (const other of ['gastos', 'gastos_restore_check', 'postgres_copia', 'template2']) {
+      expect(() => assertNotInternalDatabase(other)).not.toThrow()
+    }
   })
 
   it('runs nothing in the container for a name that is not valid', async () => {

@@ -253,3 +253,60 @@ Con qué comando y qué salió:
   y era una lectura, no una ejecución. Es histórico; el ADR-034 no lo repite.
 - `src/architecture.test.ts` sigue sin listar los tres archivos de test añadidos después del
   Lote A.
+
+## Review (2026-10-02, rechazo de las bases internas)
+
+**Veredicto:** APPROVED
+Comprobado: lo pedido por el humano ↔ tests, arquitectura, convenciones, documentos,
+vocabulario, CHECKPOINTS C1-C5 y C8. Checks: 12 de 12 en verde. Sin hallazgos.
+Resumen de cierre: `progress/summaries/db-backup.md` (dos líneas añadidas).
+
+Con qué comando y qué salió:
+
+1. `./init.sh` → código de salida 0: `Test Files 76 passed (76)`, `Tests 1347 passed (1347)`
+   (antes 1345), tipos, lint y formato en verde. `./init.sh --checks 55` → código de salida 0,
+   `Checks: 12 de 12 en verde`; los doce muestran tests ejecutados (`1 passed | 20 skipped (21)`
+   en los de `backup.service.test.ts`, uno más saltado que antes por el test nuevo).
+2. **El rechazo ocurre antes de Drive y del contenedor.**
+   - Leído: `src/modules/backup/backup.service.ts:91` llama a `assertNotInternalDatabase` en la
+     primera línea de `restoreBackup`, antes de `assertDatabaseName` (92) y de `findBackupFile`
+     (93), que es la primera llamada a Drive; el primer comando del contenedor va después.
+   - Ejecutado, script propio fuera del repositorio que llama a `restoreBackup` con un cliente
+     de Drive que apunta cualquier acceso y un comando del contenedor que apunta y no ejecuta
+     nada: con `postgres`, `template0` y `template1` → `BackupError` `BACKUP_FAILED`, el mensaje
+     nuevo, y **ningún acceso apuntado**. Con un nombre normal (`gastos_review_probe`) el mismo
+     script apunta `drive.files`: el instrumento sí detecta la llamada cuando la hay.
+   - Ejecutado, `scripts/db-restore.ts` con `tsx` desde una carpeta sin `.env`, variables
+     inventadas y `HTTPS_PROXY=http://127.0.0.1:9`, una vez por nombre: los tres imprimen
+     «La base «…» es interna de PostgreSQL y no se puede usar como destino de una restauración:
+     elige otro nombre. No se ha tocado nada.» por la salida de error, nada por la estándar,
+     y `exit=1`.
+   - **Mayúsculas:** `Postgres` y `TEMPLATE1` (y ` postgres`, `postgres ` con espacio) → `exit=1`
+     con «El nombre de la base de datos no es válido…», sin ningún acceso apuntado. No dan el
+     mensaje nuevo, pero no pueden llegar a ninguna base: `assertDatabaseName` solo admite
+     minúsculas, así que la comparación exacta es coherente con la validación del módulo. El
+     test lo fija con esos dos nombres.
+3. **Una base con nombre normal se restaura igual:** el diff de los dos archivos de test solo
+   añade (13 y 29 líneas, ninguna quitada ni cambiada); los tests de antes pasan en la suite y
+   en los checks de restauración.
+4. **Documentos:** `git grep -n -i "template1\|template0\|base interna\|como destino"` fuera de
+   `progress/` y `specs/` → solo las líneas nuevas de `docs/database-backup.md:191-197`, del
+   ADR-034 (`docs/architecture.md:2909-2913`) y del módulo, más `architecture.md:2923`, que
+   sigue siendo cierta. El diff de `docs/architecture.md` es un solo bloque, dentro del
+   ADR-034. Ninguna palabra corta nueva.
+5. **El diff no toca nada más:** `git status --short --untracked-files=all` → los dos documentos,
+   cuatro archivos de `src/modules/backup/` y el informe. `feature_list.json`, `scripts/` y
+   `package.json` sin cambios; `git stash list` vacío.
+6. Bases al acabar: `gastos`, `gastos_test_1` a `gastos_test_8`, `gastos_test_template`,
+   `postgres`, `template0`, `template1`. No creé ninguna.
+
+### Observaciones (no bloquean)
+
+- **No he comprobado yo** que el test nuevo falle sin el cambio: haría falta quitar la línea 91
+  de `backup.service.ts`, y no edito el código. El informe del implementer pega esa salida; mi
+  script de arriba comprueba el comportamiento, no el test.
+- Al empezar, la lista de bases tenía ocho `gastos_test_backup_7_*`; veinte segundos después ya
+  no estaban, antes de que yo lanzara nada. No he comprobado quién las creó: es lo que se vería
+  con otra pasada de la suite en marcha a la vez.
+- `gastos_restore_check` y `gastos_restore_check_before_restore_…`, las bases de la prueba del
+  humano, no estaban ni al empezar ni al acabar mi revisión. No sé cuándo desaparecieron.

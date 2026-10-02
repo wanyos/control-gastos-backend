@@ -11,6 +11,7 @@ import type { CommandResult, ContainerCommand, DatabaseTarget, TableRows } from 
 export const postgresContainerName = 'gastos-postgres'
 
 const maintenanceDatabase = 'postgres'
+const internalDatabases = [maintenanceDatabase, 'template0', 'template1']
 const databaseNameShape = /^[a-z][a-z0-9_]{0,29}$/
 // What PostgreSQL itself allows (63), for the names this module derives.
 const sqlSafeNameShape = /^[a-z][a-z0-9_]{0,62}$/
@@ -59,6 +60,21 @@ export function assertDatabaseName(name: string): void {
     throw new BackupError(
       'El nombre de la base de datos no es válido: tiene que empezar por una letra minúscula y ' +
         'llevar solo minúsculas, números y guiones bajos, 30 caracteres como mucho.',
+    )
+  }
+}
+
+/**
+ * The databases PostgreSQL itself creates are never a restore target: they have
+ * no tables, so a restore would go in unasked, and every database created
+ * afterwards is cloned from `template1`. Compared as typed: a name with an
+ * uppercase letter is already refused by `assertDatabaseName`.
+ */
+export function assertNotInternalDatabase(name: string): void {
+  if (internalDatabases.includes(name)) {
+    throw new BackupError(
+      `La base «${name}» es interna de PostgreSQL y no se puede usar como destino de una ` +
+        'restauración: elige otro nombre. No se ha tocado nada.',
     )
   }
 }

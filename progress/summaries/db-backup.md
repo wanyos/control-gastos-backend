@@ -223,3 +223,8 @@ En un ordenador nuevo: `docker compose up -d` y restaurar **antes** de `pnpm run
 - Lanzada otra vez sobre esa base, ya con tablas: el comando preguntó el nombre en el
   terminal, restauró y dejó la anterior renombrada.
 - Sin probar: restaurar sobre la base `gastos` y el mensaje con Docker parado.
+
+## Añadido el 2026-10-02: las bases internas de PostgreSQL no valen como destino
+
+- `pnpm run db:restore <archivo> <base>` rechaza `postgres`, `template0` y `template1` con un mensaje en español y código de salida 1, antes de llamar a Drive y de ejecutar nada en el contenedor. Sustituye a la línea de arriba que decía que las aceptaba. Con mayúsculas (`Postgres`) lo rechaza la regla de nombres de siempre.
+- Dónde vive: [backup.database.ts](../../src/modules/backup/backup.database.ts) → `assertNotInternalDatabase`, llamada en la primera línea de `restoreBackup` de [backup.service.ts](../../src/modules/backup/backup.service.ts). Test: `rejects the internal databases of PostgreSQL as target before doing anything`.

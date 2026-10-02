@@ -2906,7 +2906,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
       pasan de 30, así que toda función que interpola un nombre lo comprueba con el
       tope de PostgreSQL, 63. Esto último se aparta del design del spec, que pedía la
       regla de 30 para todos y hacía fallar siempre la restauración sobre una base con
-      tablas.
+      tablas. **Las tres bases internas de PostgreSQL (`postgres`, `template0` y
+      `template1`) se rechazan como destino** (`assertNotInternalDatabase`), antes de
+      llamar a Drive y de ejecutar nada en el contenedor: no tienen tablas, así que se
+      restauraría dentro sin preguntar, y de `template1` hereda cada base creada
+      después. Añadido el 2026-10-02, tras la observación del reviewer.
   12. **Los mensajes son nuestros.** Un código de salida distinto de 0 se convierte en
       un `BackupError` (`BACKUP_FAILED`; no llega nunca a una respuesta HTTP) que dice
       qué paso falló. Del texto del programa del contenedor solo se reconocen síntomas
