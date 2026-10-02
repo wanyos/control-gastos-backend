@@ -2075,12 +2075,25 @@ tipo**—. **No se guarda ni el producto ni la foto** y **no** se mueve a `proce
 >
 > **Nada se recalcula al leer.** `computed` y `fromFile` son los números tal como
 > los calculó la comprobación el día que la encontró (ADR-031).
+>
+> **Feature 54 `unparsed-row-review` (2026-10-02) — cambio visible para el
+> frontend.** Una fila que el parser no pudo leer ya se puede dar por revisada,
+> con una nota, por
+> [`PATCH /api/import/warnings/unparsed-rows/:id`](#patch-apiimportwarningsunparsed-rowsid).
+> Cada elemento de `unparsedRows` gana tres campos (`status`, `note`,
+> `reviewedAt`). Dos cosas cambian en `GET /api/import/warnings`: la lista
+> `unparsedRows` **incluye las filas ya revisadas**, marcadas, y
+> `counts.unparsedRows` **ya no es el tamaño de esa lista**: cuenta solo las que
+> siguen sin revisar. Los descuadres de saldo no cambian en nada. Reimportar el
+> mismo archivo no le quita a una fila ni la marca de revisada, ni la nota, ni la
+> fecha de revisión.
 
 ### `GET /api/import/warnings`
 
-Sin cuerpo de petición, sin parámetros y sin autenticación nueva. Devuelve **lo
-que sigue abierto**, de lo más reciente a lo más antiguo (`detectedAt`
-descendente; a igualdad, id descendente).
+Sin cuerpo de petición, sin parámetros y sin autenticación nueva. Devuelve
+**todas** las filas que el parser no pudo leer, revisadas y sin revisar, y los
+descuadres de saldo **que siguen sin revisar**, de lo más reciente a lo más
+antiguo (`detectedAt` descendente; a igualdad, id descendente).
 
 **Respuesta 200**
 
@@ -2092,6 +2105,9 @@ descendente; a igualdad, id descendente).
       "file": { "bank": "bankinter", "year": "2026", "name": "movs.xlsx" },
       "row": 42,
       "reason": "importe no interpretable",
+      "status": "reviewed",
+      "note": "era la fila de totales del pie",
+      "reviewedAt": "2026-10-02T09:30:00.000Z",
       "detectedAt": "2026-09-18T10:00:00.000Z"
     }
   ],
@@ -2112,18 +2128,24 @@ descendente; a igualdad, id descendente).
       "lastSeenAt": "2026-09-18T10:00:00.000Z"
     }
   ],
-  "counts": { "unparsedRows": 1, "balanceMismatches": 1 }
+  "counts": { "unparsedRows": 0, "balanceMismatches": 1 }
 }
 ```
+
+> En el ejemplo `counts.unparsedRows` es `0` con una fila en la lista: esa fila
+> ya está revisada y el contador solo cuenta las que quedan sin revisar.
 
 `unparsedRows[]` — una fila de un archivo de extracto que el parser no pudo leer:
 
 | Campo | Qué es |
 | --- | --- |
-| `id` | Identificador de la fila guardada. |
+| `id` | Identificador de la fila guardada; es el `:id` del `PATCH` de filas de abajo. |
 | `file` | De dónde salió: `bank` (el slug de la carpeta), `year` y `name` del archivo. |
 | `row` | Número de fila dentro del archivo, 1-based. **Mismo campo y mismo valor** que el `row` de `unparsedRows` en el informe de `POST /api/import`. |
 | `reason` | El motivo, en castellano. Mismo campo que en el informe de la importación. |
+| `status` | `"pending"` (sin revisar; así nace toda fila) o `"reviewed"` (el humano la dio por revisada). Aquí llegan **las dos**. |
+| `note` | La nota que escribió el humano, o `null`. Máximo 500 caracteres. |
+| `reviewedAt` | Cuándo la dio por revisada. ISO 8601 UTC. `null` mientras esté `"pending"`, y vuelve a `null` si se le quita la marca. |
 | `detectedAt` | Cuándo se guardó por primera vez. ISO 8601 UTC. |
 
 `balanceMismatches[]` — un descuadre de saldo de los que describe
@@ -2139,24 +2161,36 @@ descendente; a igualdad, id descendente).
 | `fromFile` | El número que traía el archivo, string decimal, **congelado**. |
 | `difference` | `computed − fromFile`, con su signo. No se guarda: se calcula al serializar, para que no pueda divergir de sus dos sumandos. |
 | `check` | Cuál de las **dos** comprobaciones lo produjo: `"per-line"` o `"statement-balance"` (los mismos dos valores y el mismo significado que en el informe de la importación). |
-| `status` | `"pending"` o `"reviewed"`. Aquí **siempre** llega `"pending"`: ver abajo. |
+| `status` | `"pending"` o `"reviewed"`. En un descuadre, aquí **siempre** llega `"pending"`: ver abajo. |
 | `note` | La nota que escribió el humano al revisarlo, o `null`. Máximo 500 caracteres. |
 | `detectedAt` | Cuándo se guardó por primera vez. ISO 8601 UTC. |
 | `lastSeenAt` | La última importación que volvió a producirlo. ISO 8601 UTC. Igual a `detectedAt` si solo se ha visto una vez. |
 
-`counts` — el tamaño de **estas mismas dos listas** (`unparsedRows` y
-`balanceMismatches`), para pintar un contador sin recorrerlas.
+`counts` — lo que queda **sin revisar** de cada tipo, para pintar un contador sin
+recorrer las listas. Los dos números **no se calculan igual**:
+
+- `counts.unparsedRows` es el número de elementos de `unparsedRows` con
+  `status: "pending"`. **No es el tamaño de la lista**, que incluye también las
+  filas revisadas.
+- `counts.balanceMismatches` es el tamaño de la lista `balanceMismatches`, que
+  solo trae descuadres sin revisar.
+
+Y lo que hay que saber de las dos listas:
 
 - **Un descuadre marcado como revisado no aparece aquí ni cuenta en `counts`.**
   Es la única forma de que un descuadre salga de esta lista: el sistema **nunca**
   lo quita solo, ni siquiera si una importación posterior ya no lo encuentra.
-- **Las filas ilegibles no tienen estado y salen todas.** Hoy no hay forma de dar
-  una por resuelta; arreglarla o descartarla es otra feature.
-- **No pagina.** Devuelve entero lo que queda por mirar, que se espera corto. No
-  admite `page`, `limit` ni filtros. Si un día deja de ser corto, será otra
-  feature y este contrato lo dirá.
-- Las dos listas vacías y los dos contadores a `0` significan que no queda nada
-  por mirar; nunca llega `undefined`.
+- **Las filas que el parser no pudo leer salen todas, también las revisadas**
+  (feature 54). Una fila revisada sigue en la lista con `status: "reviewed"`, su
+  `note` y su `reviewedAt`; lo único que deja de hacer es contar en
+  `counts.unparsedRows`. No hay filtro ni parámetro para pedir solo unas u otras:
+  se distinguen por `status`. Una fila nunca se borra, ni al revisarla ni después.
+- **No pagina.** Devuelve entera cada lista, que se espera corta. No admite
+  `page`, `limit` ni filtros. Si un día deja de ser corta, será otra feature y
+  este contrato lo dirá. Las filas revisadas no salen nunca de `unparsedRows`,
+  así que esa lista solo crece.
+- Las dos listas vacías y los dos contadores a `0` significan que no hay nada
+  guardado: ni sin revisar ni revisado; nunca llega `undefined`.
 
 **Errores:** ninguno propio. Solo los genéricos de la API.
 
@@ -2165,8 +2199,9 @@ descendente; a igualdad, id descendente).
 ### `PATCH /api/import/warnings/balance-mismatches/:id`
 
 Marca un descuadre guardado como revisado, o lo devuelve a pendiente, y guarda
-la nota del humano. **Solo** aplica a los descuadres: una fila ilegible no se
-revisa por aquí (no tiene estado).
+la nota del humano. **Solo** aplica a los descuadres: una fila que el parser no
+pudo leer se revisa por su propia ruta,
+[`PATCH /api/import/warnings/unparsed-rows/:id`](#patch-apiimportwarningsunparsed-rowsid).
 
 **Params**
 | Campo | Tipo | Reglas |
@@ -2197,6 +2232,59 @@ revisión se guarda pero **no** se serializa.
 | 404 | `NOT_FOUND` | No hay ningún descuadre guardado con ese `id`. |
 
 **Ningún código de error nuevo:** los dos ya están en la tabla de
+[Errores](#errores).
+
+---
+
+### `PATCH /api/import/warnings/unparsed-rows/:id`
+
+Feature 54 (2026-10-02). Da por revisada una fila guardada que el parser no pudo
+leer, o le quita esa marca, y guarda la nota del humano. Tiene el mismo cuerpo y
+los mismos errores que la ruta de los descuadres de arriba. **No crea ningún
+movimiento** a partir de la fila y **no borra** la fila.
+
+**Params**
+| Campo | Tipo | Reglas |
+| --- | --- | --- |
+| `id` | number (entero ≥ 1) | El `id` de un elemento de `unparsedRows`. |
+
+**Body** (al menos una de las dos; pueden ir juntas en la misma petición)
+| Campo | Tipo | Reglas |
+| --- | --- | --- |
+| `status` | `"reviewed"` \| `"pending"` | `"reviewed"` da la fila por revisada y apunta en `reviewedAt` el momento de esa petición. `"pending"` le quita la marca y deja `reviewedAt` a `null`. |
+| `note` | string (máx. 500) \| null | Texto libre del humano, **opcional**: se puede dar una fila por revisada sin nota. `null` **borra** la nota; omitirla **conserva** la que hubiera, también al quitar la marca. Mandar solo `note` no cambia `status` ni `reviewedAt`. |
+
+> Ningún otro campo puede viajar por aquí: el archivo, el número de fila y el
+> motivo son lo que se encontró y no se tocan. Un body vacío (`{}`) o con
+> cualquier otra propiedad (`reason`, `row`…) responde **400 `VALIDATION_ERROR`**
+> y **no modifica nada**: no se ignora en silencio.
+
+**Respuesta 200** — **la fila** serializada, con exactamente la misma forma que
+un elemento de `unparsedRows` en `GET /api/import/warnings`: `id`, `file`, `row`,
+`reason`, `status`, `note`, `reviewedAt` y `detectedAt`. A diferencia de un
+descuadre, la fila revisada **sigue saliendo** en la consulta, y por eso
+`reviewedAt` sí se serializa.
+
+```json
+{
+  "id": 3,
+  "file": { "bank": "bankinter", "year": "2026", "name": "movs.xlsx" },
+  "row": 42,
+  "reason": "importe no interpretable",
+  "status": "reviewed",
+  "note": "era la fila de totales del pie",
+  "reviewedAt": "2026-10-02T09:30:00.000Z",
+  "detectedAt": "2026-09-18T10:00:00.000Z"
+}
+```
+
+**Errores**
+| Código HTTP | `code` | Cuándo |
+| ----------- | ------------------ | ----------------------------------------------------------------- |
+| 400 | `VALIDATION_ERROR` | El body está vacío, trae una propiedad no admitida, un `status` fuera de la enumeración, una `note` de más de 500 caracteres, o el `:id` no es un entero ≥ 1. No se modifica nada. |
+| 404 | `NOT_FOUND` | No hay ninguna fila guardada con ese `id`. |
+
+Tampoco aquí hay ningún código nuevo: los dos ya están en la tabla de
 [Errores](#errores).
 
 ---

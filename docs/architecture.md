@@ -2578,6 +2578,15 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-031: Lo que una importación no puede resolver se guarda como el hecho congelado que fue, con su clave natural, y solo el humano lo cierra
 
+> **Revisado el 2026-10-02 por la feature 54 `unparsed-row-review`:** una fila que el
+> parser no pudo leer ya tiene estado, nota y fecha de revisión, y se revisa por
+> `PATCH /api/import/warnings/unparsed-rows/:id`; a diferencia del descuadre, sigue
+> saliendo en la consulta una vez revisada, y `counts.unparsedRows` cuenta solo las que
+> quedan sin revisar. Lo que abajo dice que una fila ilegible «**no** tiene estado» y
+> que hay «dos rutas» queda como historia. El resto no cambia: la reimportación sigue
+> sin tocar `status`, `note` ni la fecha de revisión, ahora también en esa tabla, y
+> `ImportUnparsedRow.note` entra en los textos que compara `src/no-real-data.test.ts`.
+
 - **Fecha:** 2026-09-18
 - **Estado:** aceptada (implementada en la feature #48 `import-warnings-persistence`, SDD).
   **Supera la decisión 3 del ADR-030.**

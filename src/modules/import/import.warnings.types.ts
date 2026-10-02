@@ -30,12 +30,19 @@ export interface ImportWarningsInput {
  * A stored unreadable row as it leaves the backend. `row` and `reason` are
  * EXACTLY the fields the frontend already receives inside the import report
  * (`UnparsedRow`), so whoever renders the modal renders this too.
+ *
+ * Since feature 54 it carries its review: unlike a descuadre, a reviewed row
+ * keeps being listed, so `reviewedAt` travels too.
  */
 export interface SerializedUnparsedRow {
   id: number
   file: WarningFileRef
   row: number
   reason: string
+  status: 'pending' | 'reviewed'
+  note: string | null
+  /** When the human gave it for reviewed, ISO UTC; null while pending. */
+  reviewedAt: string | null
   /** When it was stored for the first time, ISO UTC. */
   detectedAt: string
 }
@@ -85,3 +92,6 @@ export interface ReviewBalanceMismatchPatch {
   /** `null` clears the note; `undefined` leaves the stored one untouched (R12). */
   note?: string | null
 }
+
+/** Same shape and same rules as ReviewBalanceMismatchPatch (feature 54). */
+export type ReviewUnparsedRowPatch = ReviewBalanceMismatchPatch

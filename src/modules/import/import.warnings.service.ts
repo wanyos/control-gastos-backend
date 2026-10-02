@@ -6,6 +6,7 @@ import type {
   ImportWarningsInput,
   ImportWarningsReport,
   ReviewBalanceMismatchPatch,
+  ReviewUnparsedRowPatch,
   SerializedBalanceMismatch,
   SerializedUnparsedRow,
   WarningFileRef,
@@ -47,6 +48,9 @@ function serializeUnparsedRow(row: UnparsedRowRow): SerializedUnparsedRow {
     file: { bank: row.bank, year: row.year, name: row.fileName },
     row: row.rowNumber,
     reason: row.reason,
+    status: row.status,
+    note: row.note,
+    reviewedAt: row.reviewedAt?.toISOString() ?? null,
     detectedAt: row.createdAt.toISOString(),
   }
 }
@@ -73,9 +77,10 @@ function serializeBalanceMismatch(row: MismatchRow): SerializedBalanceMismatch {
  * Stores the warnings of ONE statement file that was imported, in a single
  * transaction: either all the warnings of that file are in, or none is.
  *
- * Reimporting the same file UPDATES on the natural key (R6) and the update of a
- * descuadre touches neither `status`, nor `note`, nor `reviewedAt`: that single
- * omission is what keeps a reimport from resurrecting something already
+ * Reimporting the same file UPDATES on the natural key (R6) and the update
+ * touches neither `status`, nor `note`, nor `reviewedAt`, of a descuadre or of
+ * an unreadable row (feature 54): those three columns are the human's, and that
+ * single omission is what keeps a reimport from resurrecting something already
  * reviewed (R7).
  *
  * A file with no warning at all opens no transaction and writes nothing (R8).
@@ -108,6 +113,7 @@ export async function persistImportWarnings(
           rowNumber: unparsed.row,
           reason: unparsed.reason,
         },
+        // Never status, note nor reviewedAt: they are the human's (feature 54).
         update: { reason: unparsed.reason, updatedAt: seenAt },
       }),
     ),
@@ -145,11 +151,15 @@ export async function persistImportWarnings(
 }
 
 /**
- * The warnings still open: every stored unreadable row (they have no state --
- * closing one is another feature) and the descuadres still `pending` (R10).
+ * Every stored unreadable row, reviewed or not (feature 54: a reviewed one keeps
+ * being listed, marked), and the descuadres still `pending` (R10). The name says
+ * `Pending` because of the descuadres; it was kept not to touch feature 48.
  *
- * Most recent first (`createdAt DESC, id DESC`). It does NOT paginate: the list
- * is what is left to look at, and it is expected to be short.
+ * `counts.unparsedRows` counts only the rows still `pending`, so it is NOT the
+ * size of that list; `counts.balanceMismatches` is the size of its own.
+ *
+ * Most recent first (`createdAt DESC, id DESC`). It does NOT paginate: it is
+ * expected to be short.
  */
 export async function listPendingImportWarnings(
   prisma: AppPrismaClient,
@@ -169,10 +179,36 @@ export async function listPendingImportWarnings(
     unparsedRows: unparsedRows.map(serializeUnparsedRow),
     balanceMismatches: balanceMismatches.map(serializeBalanceMismatch),
     counts: {
-      unparsedRows: unparsedRows.length,
+      unparsedRows: unparsedRows.filter((row) => row.status === 'pending').length,
       balanceMismatches: balanceMismatches.length,
     },
   }
+}
+
+/**
+ * Marks an unreadable row reviewed (or puts it back to pending) and stores the
+ * note (feature 54). Same rules as `reviewBalanceMismatch`: reversible,
+ * `reviewedAt` follows the status, and the note survives both ways unless an
+ * explicit `null` clears it. It NEVER deletes the row.
+ */
+export async function reviewUnparsedRow(
+  prisma: AppPrismaClient,
+  id: number,
+  patch: ReviewUnparsedRowPatch,
+): Promise<SerializedUnparsedRow> {
+  const existing = await prisma.importUnparsedRow.findUnique({ where: { id } })
+  if (existing === null) throw new NotFoundError(`Unparsed row ${id} not found`)
+
+  const data: Prisma.ImportUnparsedRowUpdateInput = {}
+  if (patch.status !== undefined) {
+    data.status = patch.status
+    data.reviewedAt = patch.status === 'reviewed' ? new Date() : null
+  }
+  if (patch.note !== undefined) data.note = patch.note
+
+  const updated = await prisma.importUnparsedRow.update({ where: { id }, data })
+
+  return serializeUnparsedRow(updated)
 }
 
 /**

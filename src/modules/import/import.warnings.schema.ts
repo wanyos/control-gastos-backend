@@ -1,5 +1,5 @@
 /**
- * Schemas of the two warning routes (feature 48), with the native JSON Schema of
+ * Schemas of the warning routes (features 48 and 54), with the native JSON Schema of
  * Fastify (ADR-003).
  *
  * There is NO response schema here, on purpose and for the same reason as
@@ -38,6 +38,15 @@ export const reviewBalanceMismatchSchema = {
       note: { type: ['string', 'null'], maxLength: 500 },
     },
   },
+} as const
+
+/**
+ * `PATCH /api/import/warnings/unparsed-rows/:id` (feature 54): the same params
+ * and the same body, so the allow-list below serves both routes.
+ */
+export const reviewUnparsedRowSchema = {
+  params: reviewBalanceMismatchSchema.params,
+  body: reviewBalanceMismatchSchema.body,
 } as const
 
 /** Derived from the schema so the allow-list and the schema cannot diverge. */

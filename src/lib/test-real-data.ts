@@ -50,6 +50,7 @@ export const comparedColumns: Array<{ table: string; column: string; kind: Colum
   { table: 'Account', column: 'alias', kind: 'text' },
   { table: 'CategoryRule', column: 'matchText', kind: 'text' },
   { table: 'ImportBalanceMismatch', column: 'note', kind: 'text' },
+  { table: 'ImportUnparsedRow', column: 'note', kind: 'text' },
   { table: 'ImportUnparsedRow', column: 'reason', kind: 'ownMessage' },
   { table: 'Account', column: 'iban', kind: 'iban' },
 ]

@@ -16,6 +16,7 @@ import {
   listPendingImportWarnings,
   persistImportWarnings,
   reviewBalanceMismatch,
+  reviewUnparsedRow,
 } from './import.warnings.service.js'
 import type { ImportWarningsInput, WarningFileRef } from './import.warnings.types.js'
 
@@ -318,6 +319,96 @@ describe('import warnings service (feature 48)', () => {
     ).rejects.toThrow(AppError)
     await expect(
       reviewBalanceMismatch(app.prisma, 999_999_999, { status: 'reviewed' }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 })
+  })
+})
+
+// Feature 54 `unparsed-row-review`: the three review columns of an unreadable
+// row. No account is needed: an unreadable row hangs from a file, not from one.
+describe('unreadable row review (feature 54)', () => {
+  let app: FastifyInstance
+
+  const reviewFile: WarningFileRef = {
+    bank: 'test-row-review-bank',
+    year: '2026',
+    name: 'extracto-inventado-revision.csv',
+  }
+
+  async function emptyUnparsedRows() {
+    await app.prisma.importUnparsedRow.deleteMany({})
+  }
+
+  async function storeRow(row: UnparsedRow) {
+    await persistImportWarnings(app.prisma, reviewFile, {
+      unparsedRows: [row],
+      balanceMismatches: [],
+    })
+    return app.prisma.importUnparsedRow.findFirstOrThrow({ where: { rowNumber: row.row } })
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  beforeEach(emptyUnparsedRows)
+  afterEach(emptyUnparsedRows)
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('stores a new unreadable row as pending, with no note and no review date', async () => {
+    const stored = await storeRow({ row: 37, reason: 'fecha ilegible' })
+
+    expect(stored).toMatchObject({
+      rowNumber: 37,
+      reason: 'fecha ilegible',
+      status: 'pending',
+      note: null,
+      reviewedAt: null,
+    })
+  })
+
+  it('reimporting does NOT take the reviewed mark nor the note off an unreadable row', async () => {
+    const stored = await storeRow({ row: 37, reason: 'fecha ilegible' })
+    const reviewed = await reviewUnparsedRow(app.prisma, stored.id, {
+      status: 'reviewed',
+      note: 'era la línea de totales del pie',
+    })
+    const reviewedInDatabase = await app.prisma.importUnparsedRow.findUniqueOrThrow({
+      where: { id: stored.id },
+    })
+
+    // What the import does when the same file comes in again, with another reason.
+    await persistImportWarnings(app.prisma, reviewFile, {
+      unparsedRows: [{ row: 37, reason: 'fecha ilegible (motivo reescrito)' }],
+      balanceMismatches: [],
+    })
+
+    expect(await app.prisma.importUnparsedRow.count()).toBe(1)
+    const after = await app.prisma.importUnparsedRow.findUniqueOrThrow({ where: { id: stored.id } })
+    // The reimport did arrive: the reason is the new one.
+    expect(after.reason).toBe('fecha ilegible (motivo reescrito)')
+    expect(after.status).toBe('reviewed')
+    expect(after.note).toBe('era la línea de totales del pie')
+    expect(after.reviewedAt).not.toBeNull()
+    expect(after.reviewedAt?.toISOString()).toBe(reviewedInDatabase.reviewedAt?.toISOString())
+    expect(after.reviewedAt?.toISOString()).toBe(reviewed.reviewedAt)
+    // And it is still listed as reviewed, without counting as pending.
+    const report = await listPendingImportWarnings(app.prisma)
+    expect(report.unparsedRows.map((row) => [row.id, row.status])).toEqual([
+      [stored.id, 'reviewed'],
+    ])
+    expect(report.counts.unparsedRows).toBe(0)
+  })
+
+  it('throws NOT_FOUND when the id is of no stored unreadable row', async () => {
+    await expect(
+      reviewUnparsedRow(app.prisma, 999_999_999, { status: 'reviewed' }),
+    ).rejects.toThrow(AppError)
+    await expect(
+      reviewUnparsedRow(app.prisma, 999_999_999, { status: 'reviewed' }),
     ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 })
   })
 })

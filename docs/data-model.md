@@ -7,6 +7,7 @@
 > | Parte | Qué cubre | Feature | Decisiones |
 > | --- | --- | --- | --- |
 > | [Parte 1 — Flujo](#parte-1--flujo) | cuentas, movimientos, categorías | 8 `data-model` (2026-08-06) | [ADR-011](architecture.md), [`specs/08-data-model/`](../specs/08-data-model/design.md) |
+> | ↳ **[lo que una importación deja sin resolver](#lo-que-una-importación-deja-sin-resolver-f48-f54)** | las filas que el parser no pudo leer y los descuadres de saldo, con su revisión | 48 `import-warnings-persistence` (2026-09-18) y 54 `unparsed-row-review` (2026-10-02) | [ADR-031](architecture.md) |
 > | [Parte 2 — Inversiones](#parte-2--inversiones) | productos de inversión y su valoración periódica | 9 `investments-data-model` (2026-08-11) | [ADR-012](architecture.md), [`specs/09-investments-data-model/`](../specs/09-investments-data-model/design.md) |
 > | ↳ **la cuenta remunerada** | quinto tipo de producto y su **foto mensual propia** (`SavingsSnapshot`) | 26 `savings-account-as-product` (2026-08-20) | [ADR-026](architecture.md), [`specs/26-savings-account-as-product/`](../specs/26-savings-account-as-product/design.md) |
 > | ↳ **los otros cuatro tipos** | `Valuation` y las **condiciones del depósito** estrenan escritor; ni una columna nueva | 29 `myinvestor-products-to-db` (2026-08-21) | [ADR-012](architecture.md), [`progress/implementations/myinvestor-products-to-db.md`](../progress/implementations/myinvestor-products-to-db.md) |
@@ -75,6 +76,32 @@
 erDiagram
     ACCOUNT ||--o{ MOVEMENT : registra
     CATEGORY ||--o{ MOVEMENT : clasifica
+    ACCOUNT ||--o{ IMPORT_BALANCE_MISMATCH : "tiene descuadres"
+    IMPORT_UNPARSED_ROW {
+        int id PK
+        string bank
+        string year
+        string fileName
+        int rowNumber
+        string reason
+        ImportWarningStatus status
+        string note
+        datetime reviewedAt
+    }
+    IMPORT_BALANCE_MISMATCH {
+        int id PK
+        string bank
+        string year
+        string fileName
+        int accountId FK
+        date bookingDate
+        string check
+        decimal computed
+        decimal fromFile
+        ImportWarningStatus status
+        string note
+        datetime reviewedAt
+    }
     ACCOUNT {
         int id PK
         string iban UK
@@ -120,6 +147,11 @@ erDiagram
 > - **Traspaso:** no es una FK. Son **dos filas `MOVEMENT` ordinarias** (un
 >   `expense` en la cuenta origen y un `income` en la destino, tal como los
 >   reportó cada banco) que comparten el mismo `transferId`. Es un enlace lógico.
+>
+> **`IMPORT_UNPARSED_ROW` no cuelga de nada, a propósito:** una fila que el parser
+> no pudo leer no llegó a ser un movimiento ni tiene cuenta; se identifica por el
+> archivo del que salió. Las dos tablas `IMPORT_*` se explican en
+> [Lo que una importación deja sin resolver](#lo-que-una-importación-deja-sin-resolver-f48-f54).
 
 ### Esquema Prisma (el real; fuente de verdad: `prisma/schema.prisma`)
 
@@ -176,6 +208,7 @@ model Account {
   balanceAnchorDate        DateTime?   @db.Date
   balanceAnchorDaySequence Int?        // posición dentro de ese día, para desempatar
   movements      Movement[]
+  importBalanceMismatches ImportBalanceMismatch[]  // relación inversa (F48); no es una columna
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 }
@@ -526,6 +559,96 @@ CREATE UNIQUE INDEX "Category_parentId_kind_name_key"
 
 Alternativas descartadas: dos índices parciales (dos objetos donde basta uno) y un
 centinela `parentId = 0` (ensucia el modelo y complica los `include`).
+
+### Lo que una importación deja sin resolver (F48, F54)
+
+Dos tablas que no son movimientos: guardan lo que una importación encontró y no
+supo arreglar sola. Las creó la feature 48 (ADR-031) y este documento no las
+nombraba hasta la feature 54, que añadió a la primera sus tres columnas de
+revisión. Se leen y se escriben solo desde
+[`src/modules/import/import.warnings.service.ts`](../src/modules/import/import.warnings.service.ts).
+
+```prisma
+// El estado de las dos tablas. Solo el humano da algo por revisado: un descuadre
+// desde la F48 y una fila que el parser no pudo leer desde la F54.
+enum ImportWarningStatus {
+  pending
+  reviewed
+}
+
+// Una fila de un archivo de extracto que el parser no pudo leer (F48).
+// NO es un movimiento: nada de ella llega a la tabla Movement.
+model ImportUnparsedRow {
+  id         Int                 @id @default(autoincrement())
+  bank       String
+  year       String
+  fileName   String
+  rowNumber  Int                 // nº de fila en el archivo, 1-based
+  reason     String              // el motivo que escribió el parser
+  // Las tres columnas de la revisión (F54). Son del humano: la importación no
+  // las escribe nunca, tampoco cuando vuelve a guardar la misma fila.
+  status     ImportWarningStatus @default(pending)
+  note       String?
+  reviewedAt DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  // El `map:` es obligatorio: el nombre por defecto se pasa de los 63
+  // caracteres que admite Postgres.
+  @@unique([bank, year, fileName, rowNumber], map: "ImportUnparsedRow_identity_key")
+}
+
+// Un descuadre de saldo encontrado por una de las dos comprobaciones de la F32,
+// guardado como el HECHO que fue: `computed` y `fromFile` nunca se recalculan.
+model ImportBalanceMismatch {
+  id          Int                 @id @default(autoincrement())
+  bank        String
+  year        String
+  fileName    String
+  account     Account             @relation(fields: [accountId], references: [id])
+  accountId   Int
+  bookingDate DateTime            @db.Date  // el punto comparado; se serializa como `date`
+  check       String              // 'per-line' | 'statement-balance', tal cual lo escribe el informe
+  computed    Decimal             @db.Decimal(10, 2)
+  fromFile    Decimal             @db.Decimal(10, 2)
+  status      ImportWarningStatus @default(pending)
+  note        String?
+  reviewedAt  DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  // `difference` NO se guarda: es `computed − fromFile` y se deriva al serializar.
+  @@unique([bank, year, fileName, accountId, bookingDate, check, computed, fromFile], map: "ImportBalanceMismatch_identity_key")
+  @@index([status])
+}
+```
+
+**Claves naturales** (las dos son `@@unique` declarativos, sin SQL crudo):
+
+| Tabla | Clave | Por qué basta |
+| --- | --- | --- |
+| `ImportUnparsedRow` | `@@unique([bank, year, fileName, rowNumber])`, con nombre `ImportUnparsedRow_identity_key` | El archivo del que salió más el número de fila dentro de él. Reimportar el mismo archivo **actualiza** la fila (`reason` y `updatedAt`) y no crea otra. |
+| `ImportBalanceMismatch` | `@@unique([bank, year, fileName, accountId, bookingDate, check, computed, fromFile])`, con nombre `ImportBalanceMismatch_identity_key` | El archivo más el contenido del propio descuadre: la cuenta, la fecha, cuál de las dos comprobaciones y los dos importes comparados. Reimportar actualiza `updatedAt` y nada más. |
+
+Quién escribe cada columna de la revisión, que es lo que hace que reimportar no
+deshaga lo que el humano revisó:
+
+| Columna | Quién la escribe |
+| --- | --- |
+| `status`, `reviewedAt` | Nacen `pending` y `NULL` al guardar la fila o el descuadre por primera vez. Después solo las escribe el humano: `PATCH /api/import/warnings/unparsed-rows/:id` (F54) y `PATCH /api/import/warnings/balance-mismatches/:id` (F48). `reviewedAt` se pone al pasar a `reviewed` y vuelve a `NULL` al volver a `pending`. |
+| `note` | Solo el humano, por las mismas dos rutas. Máximo 500 caracteres, validado en la ruta y no en la base de datos. |
+
+- **La importación nunca escribe esas tres columnas**, ni en una tabla ni en la
+  otra: el `update` de su `upsert` las omite. Por eso reimportar el mismo archivo
+  no le quita a nada la marca de revisado, la nota ni la fecha.
+- **Ninguna de las dos tablas pierde filas**: revisar no borra, y una importación
+  posterior tampoco.
+- **`ImportUnparsedRow` no lleva `@@index([status])`** y `ImportBalanceMismatch`
+  sí: la consulta filtra los descuadres por estado, pero las filas las devuelve
+  todas, revisadas incluidas.
+- **La migración de la F54 solo añade** las tres columnas a `ImportUnparsedRow`
+  (`prisma/migrations/20261002120000_unparsed_row_review/`): las filas que ya
+  existieran quedan `pending`, sin nota y sin fecha.
 
 ### Puntos abiertos
 

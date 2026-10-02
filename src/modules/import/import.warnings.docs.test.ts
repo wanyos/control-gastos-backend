@@ -35,7 +35,16 @@ function jsonBlocks(markdown: string): string[] {
 // literal list on purpose: a type is erased at runtime, and what this file
 // guards is the DOCUMENT, so the list has to be written down somewhere the
 // document can be checked against.
-const unparsedRowFields = ['id', 'file', 'row', 'reason', 'detectedAt']
+const unparsedRowFields = [
+  'id',
+  'file',
+  'row',
+  'reason',
+  'status',
+  'note',
+  'reviewedAt',
+  'detectedAt',
+]
 const balanceMismatchFields = [
   'id',
   'file',
@@ -118,5 +127,80 @@ describe('docs/api-contract.md — the two routes of feature 48 (R15)', () => {
   it('says a reviewed descuadre stops being listed and is the human who closes it', () => {
     expect(section).toContain('no aparece aquí ni cuenta en `counts`')
     expect(section.replace(/\s+/g, ' ')).toContain('el sistema **nunca** lo quita solo')
+  })
+})
+
+// Feature 54 `unparsed-row-review`: the three documents that describe it.
+describe('the documents of feature 54 (R13, R14, R15)', () => {
+  const readDoc = (name: string) => readFileSync(join(repoRoot, 'docs', name), 'utf8')
+
+  it('api-contract: names the route that reviews an unreadable row and its fields', () => {
+    const route = 'PATCH /api/import/warnings/unparsed-rows/:id'
+    expect(section).toContain(`### \`${route}\``)
+    for (const field of ['status', 'note', 'reviewedAt']) {
+      expect(section, `the contract does not name \`${field}\``).toContain(`\`${field}\``)
+    }
+    // The old sentence said an unreadable row could not be reviewed at all.
+    expect(section).not.toContain('no tienen estado')
+    expect(section).not.toContain('no tiene estado')
+
+    // The subsection of the route: params, body, answer and its two errors.
+    const subsection = section.slice(section.indexOf(`### \`${route}\``))
+    for (const part of ['**Params**', '**Body**', '**Respuesta 200**', '**Errores**']) {
+      expect(subsection, `the route has no ${part}`).toContain(part)
+    }
+    expect(subsection).toContain('VALIDATION_ERROR')
+    expect(subsection).toContain('NOT_FOUND')
+    const [answer] = jsonBlocks(subsection)
+    expect(Object.keys(JSON.parse(answer) as object)).toEqual(unparsedRowFields)
+
+    // The counter no longer is the size of the list.
+    const flat = section.replace(/\s+/g, ' ')
+    expect(flat).toContain('`counts.unparsedRows` es el número de elementos de `unparsedRows` con')
+    expect(flat).toContain('**No es el tamaño de la lista**')
+  })
+
+  it('data-model: describes ImportUnparsedRow with its review columns', () => {
+    const dataModel = readDoc('data-model.md')
+    const start = dataModel.indexOf('model ImportUnparsedRow {')
+    expect(start, 'data-model.md has no `model ImportUnparsedRow`').toBeGreaterThan(-1)
+    const block = dataModel.slice(start, dataModel.indexOf('\n}', start))
+
+    expect(block).toMatch(/^\s+status\s+ImportWarningStatus\s+@default\(pending\)/m)
+    expect(block).toMatch(/^\s+note\s+String\?/m)
+    expect(block).toMatch(/^\s+reviewedAt\s+DateTime\?/m)
+    expect(block).toContain('ImportUnparsedRow_identity_key')
+    // The other table of feature 48 and the enumeration they share.
+    expect(dataModel).toContain('model ImportBalanceMismatch {')
+    expect(dataModel).toContain('enum ImportWarningStatus {')
+    expect(dataModel).toContain('ImportBalanceMismatch_identity_key')
+    // Both are in the entity diagram.
+    expect(dataModel).toContain('IMPORT_UNPARSED_ROW {')
+    expect(dataModel).toContain('ACCOUNT ||--o{ IMPORT_BALANCE_MISMATCH')
+  })
+
+  it('data-model: declares for ImportUnparsedRow the same columns as prisma/schema.prisma', () => {
+    const columnsOf = (text: string) => {
+      const start = text.indexOf('model ImportUnparsedRow {')
+      const block = text.slice(start, text.indexOf('\n}', start))
+      return [...block.matchAll(/^\s+(\w+)\s+(Int|String\??|DateTime\??|ImportWarningStatus)\s/gm)]
+        .map((match) => `${match[1]} ${match[2]}`)
+        .sort()
+    }
+    const schema = readFileSync(join(repoRoot, 'prisma', 'schema.prisma'), 'utf8')
+
+    expect(columnsOf(schema)).toHaveLength(11)
+    expect(columnsOf(readDoc('data-model.md'))).toEqual(columnsOf(schema))
+  })
+
+  it('roadmap: closes loose end 23 with feature 54 and says creating the movement by hand was discarded', () => {
+    const row = readDoc('roadmap.md')
+      .split(/\r?\n/)
+      .find((line) => /^\|\s*~*23~*\s*\|/.test(line))
+
+    expect(row, 'the roadmap has no row 23 in its table of loose ends').toBeDefined()
+    expect(row).toMatch(/^\|\s*~~23~~\s*\|\s*~~.*~~\s*\|/)
+    expect(row).toContain('F54')
+    expect(row).toContain('descartado')
   })
 })

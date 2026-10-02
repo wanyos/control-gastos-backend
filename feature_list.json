@@ -2269,6 +2269,72 @@
       ],
       "sdd": true,
       "status": "done"
+    },
+    {
+      "id": 54,
+      "name": "unparsed-row-review",
+      "title": "Dar por revisada, con una nota, una fila que el parser no pudo leer",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-02) a partir del cabo suelto 23 de docs/roadmap.md y de la respuesta del humano de ese día: «creo que lo más simple es descartarla, no creo que ocurra con mucha frecuencia, si se pierde algún movimiento no creo que sea muy relevante, si en el futuro noto que es un problema ya haremos algo». El leader le había ofrecido descartarla como «marcarla como revisada con una nota, igual que ya haces con los descuadres de saldo». El nombre de la feature es propuesta del leader. El humano lo revisa en la puerta del spec.",
+        "que_quiero": "Poder dar por revisada una fila que el parser no pudo leer, con una nota mía, igual que ya puedo hacer con un descuadre de saldo. Que al consultar lo que una importación dejó sin resolver pueda distinguir las filas que ya he revisado de las que no.",
+        "por_que": "Desde la feature 48 esas filas quedan guardadas y se pueden consultar, pero no se puede hacer nada con ellas: se quedan para siempre como pendientes aunque ya las haya mirado y haya decidido que no importan. No espero que pase a menudo, y si se pierde algún movimiento no es grave.",
+        "como_se_que_esta_bien": [
+          "Puedo dar por revisada una fila que el parser no pudo leer, escribiendo una nota.",
+          "Al consultar lo que las importaciones dejaron sin resolver, una fila revisada sale como revisada, con su nota y cuándo la revisé.",
+          "Puedo quitarle la marca de revisada a una fila si me equivoqué.",
+          "Si pido revisar una fila que no existe, me responde con un error claro.",
+          "Volver a importar el mismo archivo no le quita a la fila la marca de revisada ni la nota.",
+          "docs/api-contract.md describe lo nuevo, para que el frontend construya contra él."
+        ],
+        "que_no_quiero": [
+          "No quiero poder crear un movimiento a mano a partir de la fila: si algún día es un problema, será otra feature.",
+          "No quiero que la fila se borre de la base de datos al revisarla.",
+          "No quiero que cambie nada de la importación: mismos contadores y el archivo se sigue moviendo a procesados/.",
+          "No quiero que cambie cómo se revisa un descuadre de saldo."
+        ],
+        "delego_en_agente": [
+          "La forma de la ruta y de la petición; que se parezca lo más posible a la que ya existe para los descuadres de saldo.",
+          "Si la nota es obligatoria u opcional; que sea igual que en los descuadres.",
+          "Si la consulta de lo que quedó sin resolver filtra por revisadas y no revisadas, y cómo."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "checks": [
+        {
+          "descripcion": "Puedo dar por revisada una fila que el parser no pudo leer, escribiendo una nota.",
+          "comando": "pnpm exec vitest run src/modules/import/import.warnings.routes.test.ts -t \"marks an unreadable row reviewed with its note and returns it serialized\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Al consultar lo que las importaciones dejaron sin resolver, una fila revisada sale como revisada, con su nota y cuándo la revisé.",
+          "comando": "pnpm exec vitest run src/modules/import/import.warnings.routes.test.ts -t \"lists a reviewed unreadable row as reviewed, with its note and when it was reviewed\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Al consultar lo que las importaciones dejaron sin resolver, una fila revisada sale como revisada, con su nota y cuándo la revisé.",
+          "comando": "pnpm exec vitest run src/modules/import/import.warnings.routes.test.ts -t \"counts only the unreadable rows still pending\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Puedo quitarle la marca de revisada a una fila si me equivoqué.",
+          "comando": "pnpm exec vitest run src/modules/import/import.warnings.routes.test.ts -t \"puts a reviewed unreadable row back to pending keeping its note\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Si pido revisar una fila que no existe, me responde con un error claro.",
+          "comando": "pnpm exec vitest run src/modules/import/import.warnings.routes.test.ts -t \"answers 404 NOT_FOUND when the id is of no stored unreadable row\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Volver a importar el mismo archivo no le quita a la fila la marca de revisada ni la nota.",
+          "comando": "pnpm exec vitest run src/modules/import/import.warnings.service.test.ts -t \"reimporting does NOT take the reviewed mark nor the note off an unreadable row\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md describe lo nuevo, para que el frontend construya contra él.",
+          "comando": "pnpm exec vitest run src/modules/import/import.warnings.docs.test.ts -t \"api-contract: names the route that reviews an unreadable row and its fields\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) La importación y la revisión de un descuadre de saldo siguen igual que hoy: la suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ],
+      "status": "done"
     }
   ]
 }

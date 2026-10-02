@@ -15,6 +15,7 @@ import { persistImportWarnings } from './import.warnings.service.js'
 import type {
   ImportWarningsReport,
   SerializedBalanceMismatch,
+  SerializedUnparsedRow,
   WarningFileRef,
 } from './import.warnings.types.js'
 
@@ -288,5 +289,248 @@ describe('import warnings routes (feature 48)', () => {
 
     expect(response.statusCode).toBe(400)
     expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+  })
+})
+
+// Feature 54 `unparsed-row-review`: the route that gives an unreadable row for
+// reviewed, and what the listing answers once one is. Synthetic data only.
+describe('unreadable row review routes (feature 54)', () => {
+  let app: FastifyInstance
+
+  const reviewFile: WarningFileRef = {
+    bank: 'zz-row-review-routes-bank',
+    year: '2026',
+    name: 'extracto-inventado-revision.csv',
+  }
+  const unparsedRowUrl = (id: number | string) => `${warningsUrl}/unparsed-rows/${id}`
+  const isoUtc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+  const serializedRowFields = [
+    'id',
+    'file',
+    'row',
+    'reason',
+    'status',
+    'note',
+    'reviewedAt',
+    'detectedAt',
+  ]
+
+  async function emptyUnparsedRows() {
+    await app.prisma.importUnparsedRow.deleteMany({})
+  }
+
+  /** One stored unreadable row, with the id the database gave it. */
+  async function seedRow(row: number, reason = 'importe vacío') {
+    await persistImportWarnings(app.prisma, reviewFile, {
+      unparsedRows: [{ row, reason }],
+      balanceMismatches: [],
+    })
+    return app.prisma.importUnparsedRow.findFirstOrThrow({ where: { rowNumber: row } })
+  }
+
+  function patch(id: number | string, payload: Record<string, unknown>) {
+    return app.inject({ method: 'PATCH', url: unparsedRowUrl(id), payload })
+  }
+
+  function storedRow(id: number) {
+    return app.prisma.importUnparsedRow.findUniqueOrThrow({ where: { id } })
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  beforeEach(emptyUnparsedRows)
+  afterEach(emptyUnparsedRows)
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('registers the unreadable-row review route under the /api/import prefix', () => {
+    expect(app.hasRoute({ method: 'PATCH', url: `${warningsUrl}/unparsed-rows/:id` })).toBe(true)
+  })
+
+  it('marks an unreadable row reviewed with its note and returns it serialized', async () => {
+    const stored = await seedRow(58)
+    const before = Date.now()
+
+    const response = await patch(stored.id, {
+      status: 'reviewed',
+      note: 'es la fila de totales, no un movimiento',
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<SerializedUnparsedRow>()
+    expect(Object.keys(body)).toEqual(serializedRowFields)
+    expect(body).toMatchObject({
+      id: stored.id,
+      file: { bank: reviewFile.bank, year: reviewFile.year, name: reviewFile.name },
+      row: 58,
+      reason: 'importe vacío',
+      status: 'reviewed',
+      note: 'es la fila de totales, no un movimiento',
+      detectedAt: stored.createdAt.toISOString(),
+    })
+    expect(Object.keys(body.file)).toEqual(['bank', 'year', 'name'])
+    expect(body.reviewedAt).toMatch(isoUtc)
+    // The moment of THIS request, not any other date of the row.
+    const reviewedAt = new Date(body.reviewedAt ?? '').getTime()
+    expect(reviewedAt).toBeGreaterThanOrEqual(before)
+    expect(reviewedAt).toBeLessThanOrEqual(Date.now())
+    // Reviewing never deletes the row (R10).
+    expect(await app.prisma.importUnparsedRow.count()).toBe(1)
+    const after = await storedRow(stored.id)
+    expect(after.status).toBe('reviewed')
+    expect(after.note).toBe('es la fila de totales, no un movimiento')
+    expect(after.reviewedAt?.toISOString()).toBe(body.reviewedAt)
+  })
+
+  it('marks an unreadable row reviewed without any note', async () => {
+    const stored = await seedRow(58)
+
+    const response = await patch(stored.id, { status: 'reviewed' })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<SerializedUnparsedRow>()
+    expect(body.status).toBe('reviewed')
+    expect(body.note).toBeNull()
+    expect(body.reviewedAt).toMatch(isoUtc)
+  })
+
+  it('puts a reviewed unreadable row back to pending keeping its note', async () => {
+    const stored = await seedRow(58)
+    await patch(stored.id, { status: 'reviewed', note: 'la marqué sin querer' })
+
+    const response = await patch(stored.id, { status: 'pending' })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<SerializedUnparsedRow>()
+    expect(Object.keys(body)).toEqual(serializedRowFields)
+    expect(body.status).toBe('pending')
+    expect(body.reviewedAt).toBeNull()
+    expect(body.note).toBe('la marqué sin querer')
+    const after = await storedRow(stored.id)
+    expect(after.status).toBe('pending')
+    expect(after.reviewedAt).toBeNull()
+    expect(after.note).toBe('la marqué sin querer')
+  })
+
+  it('stores only the note of an unreadable row without touching its status', async () => {
+    const pending = await seedRow(58)
+    const reviewed = await seedRow(61, 'fecha ilegible')
+    const reviewResponse = await patch(reviewed.id, { status: 'reviewed' })
+    const reviewedAt = reviewResponse.json<SerializedUnparsedRow>().reviewedAt
+    expect(reviewedAt).toMatch(isoUtc)
+
+    const onPending = await patch(pending.id, { note: 'pendiente de mirar con calma' })
+    const onReviewed = await patch(reviewed.id, { note: 'cabecera repetida a mitad de archivo' })
+
+    expect(onPending.statusCode).toBe(200)
+    expect(onPending.json<SerializedUnparsedRow>()).toMatchObject({
+      status: 'pending',
+      note: 'pendiente de mirar con calma',
+      reviewedAt: null,
+    })
+    expect(onReviewed.statusCode).toBe(200)
+    expect(onReviewed.json<SerializedUnparsedRow>()).toMatchObject({
+      status: 'reviewed',
+      note: 'cabecera repetida a mitad de archivo',
+      reviewedAt,
+    })
+
+    // `null` clears the note, and still touches neither status nor date.
+    const cleared = await patch(reviewed.id, { note: null })
+
+    expect(cleared.statusCode).toBe(200)
+    expect(cleared.json<SerializedUnparsedRow>()).toMatchObject({
+      status: 'reviewed',
+      note: null,
+      reviewedAt,
+    })
+    const after = await storedRow(reviewed.id)
+    expect(after.status).toBe('reviewed')
+    expect(after.note).toBeNull()
+    expect(after.reviewedAt?.toISOString()).toBe(reviewedAt)
+  })
+
+  it('answers 404 NOT_FOUND when the id is of no stored unreadable row', async () => {
+    const response = await patch(999_999_999, { status: 'reviewed' })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+  })
+
+  it('answers 400 VALIDATION_ERROR to a bad body or id of the unreadable-row route, changing nothing', async () => {
+    const stored = await seedRow(58)
+    const untouched = await storedRow(stored.id)
+
+    const badRequests: Array<[string, number | string, Record<string, unknown>]> = [
+      ['an empty body', stored.id, {}],
+      ['a property that is not admitted', stored.id, { status: 'reviewed', reason: 'otro' }],
+      ['a status outside the enumeration', stored.id, { status: 'closed' }],
+      ['a note longer than 500 characters', stored.id, { note: 'a'.repeat(501) }],
+      ['an id that is not an integer >= 1', 0, { status: 'reviewed' }],
+      ['an id that is not a number', 'not-a-number', { status: 'reviewed' }],
+    ]
+
+    for (const [what, id, payload] of badRequests) {
+      const response = await patch(id, payload)
+
+      expect(response.statusCode, what).toBe(400)
+      expect(response.json(), what).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
+      expect(await storedRow(stored.id), what).toEqual(untouched)
+    }
+    expect(await app.prisma.importUnparsedRow.count()).toBe(1)
+  })
+
+  it('lists a reviewed unreadable row as reviewed, with its note and when it was reviewed', async () => {
+    const reviewed = await seedRow(58)
+    const stillPending = await seedRow(61, 'fecha ilegible')
+    const reviewResponse = await patch(reviewed.id, {
+      status: 'reviewed',
+      note: 'línea en blanco con un espacio',
+    })
+    const reviewedAt = reviewResponse.json<SerializedUnparsedRow>().reviewedAt
+
+    const response = await app.inject({ method: 'GET', url: warningsUrl })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<ImportWarningsReport>()
+    // Both are listed, in the order the listing already had: newest first.
+    expect(body.unparsedRows.map((row) => row.id)).toEqual([stillPending.id, reviewed.id])
+    for (const row of body.unparsedRows) {
+      expect(Object.keys(row)).toEqual(serializedRowFields)
+    }
+    expect(reviewedAt).toMatch(isoUtc)
+    expect(body.unparsedRows[1]).toMatchObject({
+      id: reviewed.id,
+      row: 58,
+      status: 'reviewed',
+      note: 'línea en blanco con un espacio',
+      reviewedAt,
+    })
+    expect(body.unparsedRows[0]).toMatchObject({
+      id: stillPending.id,
+      row: 61,
+      status: 'pending',
+      note: null,
+      reviewedAt: null,
+    })
+  })
+
+  it('counts only the unreadable rows still pending', async () => {
+    const reviewed = await seedRow(58)
+    await seedRow(61, 'fecha ilegible')
+    await patch(reviewed.id, { status: 'reviewed' })
+
+    const response = await app.inject({ method: 'GET', url: warningsUrl })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<ImportWarningsReport>()
+    expect(body.counts.unparsedRows).toBe(1)
+    expect(body.unparsedRows).toHaveLength(2)
+    expect(body.counts.balanceMismatches).toBe(0)
   })
 })

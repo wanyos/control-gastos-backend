@@ -25,14 +25,14 @@
 
 **Nivel de consumo:** medio _(bajo / medio / alto; en alto, qué fases usan `fable`)_
 
-_Ninguna._ Última cerrada: **F53 `product-file-collision`** (2026-10-02) →
-[resumen](summaries/product-file-collision.md). Antes, el mismo día, la F51
-(`d8c0a6d`) y la F52 (`55d574d`); la carpeta `var/` ya está borrada del disco.
+_Ninguna._ Última cerrada: **F54 `unparsed-row-review`** (2026-10-02) →
+[resumen](summaries/unparsed-row-review.md). Antes, el mismo día: F51 (`d8c0a6d`),
+F52 (`55d574d`) y F53 (`24784b7`).
 
-**Siguiente (acordado con el humano el 2026-10-02):** los cabos sueltos 23, 10,
-6 y 22 de [`docs/roadmap.md`](../docs/roadmap.md), en ese orden y cada uno como
-una feature. El cabo 20 queda aparcado hasta que el humano decida qué quiere
-ver, y el 24 (borrar un producto o un valor desde la API) va después.
+**Siguiente (acordado con el humano el 2026-10-02):** los cabos sueltos 10, 6 y
+22 de [`docs/roadmap.md`](../docs/roadmap.md), en ese orden y cada uno como una
+feature; luego el 24. El cabo 20 queda aparcado hasta que el humano decida qué
+quiere ver.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:

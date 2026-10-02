@@ -66,9 +66,9 @@ enum InvestmentProductType {
   savings_account
 }
 
-// Feature 48: the state of a warning left by an import. A row the parser could
-// not read has NO state (it can only be closed by fixing it, which is another
-// feature); only a mismatch can be given for reviewed, and by the human.
+// Feature 48: the state of a warning left by an import. Only the human gives
+// one for reviewed: a mismatch since feature 48, and a row the parser could not
+// read since feature 54.
 enum ImportWarningStatus {
   pending
   reviewed
@@ -289,15 +289,20 @@ model SavingsSnapshot {
 /// A row of a statement file the parser could not interpret (feature 48).
 /// It is NOT a movement: nothing about it reaches the Movement table.
 model ImportUnparsedRow {
-  id        Int      @id @default(autoincrement())
-  bank      String
-  year      String
-  fileName  String
+  id         Int                 @id @default(autoincrement())
+  bank       String
+  year       String
+  fileName   String
   /// 1-based row number in the file, as UnparsedRow.row carries it.
-  rowNumber Int
-  reason    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  rowNumber  Int
+  reason     String
+  /// Feature 54: the three columns of the review. They are the human's: the
+  /// import never writes them, not even when it stores the same row again.
+  status     ImportWarningStatus @default(pending)
+  note       String?
+  reviewedAt DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
 
   // Natural key: the file it came out of plus the row of that file. Reimporting
   // the same file updates the reason, it never adds a second row (R6). The

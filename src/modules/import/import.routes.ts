@@ -23,10 +23,11 @@ export interface ImportRoutesOptions {
  * HTTP layer of the importer:
  *   POST /api/import  -> download + parse + store + move to procesados/
  *
- * The two routes of what an import leaves unresolved (feature 48) hang from this
- * same prefix and live in their own plugin, registered at the bottom:
+ * The three routes of what an import leaves unresolved (features 48 and 54) hang
+ * from this same prefix and live in their own plugin, registered at the bottom:
  *   GET   /api/import/warnings
  *   PATCH /api/import/warnings/balance-mismatches/:id
+ *   PATCH /api/import/warnings/unparsed-rows/:id
  *
  * Registered under the `/api/import` prefix (see `src/app.ts`). No new
  * authentication (consistent with the current contract), and a per-file failure
