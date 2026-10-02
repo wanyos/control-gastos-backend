@@ -823,6 +823,14 @@ delante para que nadie invente una tercera:
 | Qué pasa | El duplicado se **descarta**: el movimiento ya importado es **el mismo hecho** | El duplicado **sobrescribe**: la foto es una **medición** que puede corregirse |
 | Por qué | Un movimiento es un hecho pasado inmutable | Una valoración es un dato observado que puede refinarse (el banco publica el valor definitivo un día después) |
 
+> **Desde la feature 53 (2026-10-02), la columna Inversiones vale entre importaciones
+> distintas.** Dentro de **una misma** llamada a `POST /api/import`, el segundo archivo
+> de producto que declara el mismo banco, `name` y `date` que otro ya guardado en esa
+> llamada **no sustituye: se rechaza** (`DUPLICATE_PRODUCT_FILE`), no se guarda nada de
+> él y no se mueve a `procesados/`. La regla vive en el importador
+> (`src/modules/import/import.service.ts`), no en la base de datos: ninguna clave ni
+> columna cambia. Ver ADR-033.
+
 📌 **El importador necesita DOS upserts, no uno.** Cada fichero mensual
 **re-afirma** la identidad y las condiciones de **todos** los productos (el humano
 copia el del mes pasado y cambia los números), así que el depósito vuelve a venir

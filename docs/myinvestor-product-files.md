@@ -264,11 +264,18 @@ y el nombre solo se usa para reportar y como procedencia.
 `mi-fondo-2026-08-31.json`. Ordena cronológicamente sola y deja ver a simple vista
 de qué mes es cada archivo.
 
-**Si dos archivos declaran el mismo `name` y la misma `date`** (el caso típico:
-`fondo.json` y `fondo (1).json`, que Drive crea al subir dos veces), **nadie te avisa
-del choque**: la importación trata cada archivo por separado y la foto de esa fecha se
-sobrescribe (ver §Dónde acaba lo que escribes). Borra el que sobra. El mismo producto
-con **otra** fecha es lo normal.
+**Si dos archivos de la misma importación declaran el mismo `name` y la misma `date`**
+(el caso típico: `fondo.json` y `fondo (1).json`, que Drive crea al subir dos veces),
+**el segundo se rechaza** con `DUPLICATE_PRODUCT_FILE` (feature 53): el primero se
+guarda, del segundo no se guarda nada, **se queda en Drive** sin moverse a
+`procesados/` y el informe te dice con qué archivo coincide y en qué carpeta de año
+está. «El segundo» es el que va después por orden de nombre de carpeta de año y de
+archivo, y la comparación cruza las carpetas de año. Si son dos productos distintos,
+corrige el `name` de uno; si es el mismo archivo subido dos veces, bórralo de Drive.
+⚠️ **Si vuelves a importar sin corregirlo ni borrarlo**, entra él solo (el otro ya
+está en `procesados/`) y **sustituye** el valor que guardó el primero: es lo mismo
+que subir otro día el archivo corregido de una fecha. El mismo producto con **otra**
+fecha es lo normal.
 
 ## Qué pasa cuando un archivo está mal
 
@@ -287,6 +294,7 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 | Una clave desconocida (o de otro tipo de producto) | las claves sobrantes, por su nombre |
 | Un campo se quedó con el marcador `<…>` de la plantilla | *«campos sin sustituir, siguen con el marcador …»* y **cuáles** |
 | Un campo se quedó con **medio** marcador (`"<nombre del producto"`) | *«A MEDIO SUSTITUIR, te dejaste un símbolo suelto»*, el campo y el valor recibido |
+| Otro archivo de la **misma importación** ya guardó el mismo `name` con la misma `date` | código `DUPLICATE_PRODUCT_FILE`: el nombre del otro archivo y su carpeta de año, y que de este no se ha guardado nada ni se ha movido a `procesados/` |
 
 ## Dónde acaba lo que escribes
 

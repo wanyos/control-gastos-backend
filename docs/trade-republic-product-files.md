@@ -171,11 +171,18 @@ y el nombre solo se usa para reportar y como procedencia.
 **Convención recomendada (no obligatoria):** `cuenta-remunerada-<AAAA-MM-DD>.json`.
 Ordena cronológicamente sola y deja ver a simple vista de qué mes es cada archivo.
 
-**Si dos archivos declaran la misma cuenta (`name`) y la misma fecha (`date`)** —el caso
-típico: `cuenta.json` y `cuenta (1).json`, que Drive crea al subir dos veces—, **nadie te
-avisa del choque**: la importación trata cada archivo por separado y la foto de ese mes
-se sobrescribe (ver §Dónde acaba lo que escribes). Borra el que sobra. La misma cuenta
-con **otra** fecha es lo normal.
+**Si dos archivos de la misma importación declaran la misma cuenta (`name`) y la misma
+fecha (`date`)** —el caso típico: `cuenta.json` y `cuenta (1).json`, que Drive crea al
+subir dos veces—, **el segundo se rechaza** con `DUPLICATE_PRODUCT_FILE` (feature 53):
+el primero se guarda, del segundo no se guarda nada, **se queda en Drive** sin moverse
+a `procesados/` y el informe te dice con qué archivo coincide y en qué carpeta de año
+está. «El segundo» es el que va después por orden de nombre de carpeta de año y de
+archivo, y la comparación cruza las carpetas de año. Si son dos cuentas distintas,
+corrige el `name` de una; si es el mismo archivo subido dos veces, bórralo de Drive.
+⚠️ **Si vuelves a importar sin corregirlo ni borrarlo**, entra él solo (el otro ya
+está en `procesados/`) y **sustituye** el valor que guardó el primero: es lo mismo
+que subir otro día el archivo corregido de un mes. La misma cuenta con **otra** fecha
+es lo normal.
 
 ## Qué pasa cuando un archivo está mal
 
@@ -196,6 +203,7 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 | Una fecha en otro formato, o que no existe (`2026-02-31`) | el campo y `AAAA-MM-DD` |
 | Una clave desconocida | las claves sobrantes, por su nombre |
 | **Los cinco importes no cuadran** | la desviación con signo, el saldo esperado frente al escrito y los cinco importes |
+| Otro archivo de la **misma importación** ya guardó la misma cuenta (`name`) con la misma `date` | código `DUPLICATE_PRODUCT_FILE`: el nombre del otro archivo y su carpeta de año, y que de este no se ha guardado nada ni se ha movido a `procesados/` |
 
 > **El símbolo a medio borrar es la errata número uno** al rellenar a mano (pasó en el primer
 > archivo real, en dos campos a la vez). Por eso tiene motivo propio: el de antes decía

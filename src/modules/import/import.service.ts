@@ -6,6 +6,7 @@ import type { Prisma } from '../../generated/prisma/client.js'
 
 import {
   AppError,
+  DuplicateProductFileError,
   EmptyStatementError,
   MissingAccountDataError,
   UnreadableStatementError,
@@ -49,6 +50,7 @@ import type {
   FileErrorReport,
   ImportRunResult,
   ImportedFileReport,
+  ProductFilesStoredInRun,
   ProductResult,
   StatementResult,
 } from './import.types.js'
@@ -349,6 +351,9 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
   const { client, prisma, rootFolderId, parsers } = deps
   const productParsers = deps.productParsers ?? []
   const files: ImportedFileReport[] = []
+  // Feature 53: one per run and in memory only, so a later run starts empty and
+  // a corrected file of the same product and date still replaces the value.
+  const storedInRun: ProductFilesStoredInRun = new Map()
 
   for (const bank of await listBankFolders(client, rootFolderId)) {
     const bankSlug = normalizeBankName(bank.name)
@@ -412,6 +417,8 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
                   adapter: productAdapter.adapter,
                   bankSlug,
                   fileName: file.name,
+                  year: year.name,
+                  storedInRun,
                 }),
             }),
           )
@@ -537,6 +544,15 @@ export interface ImportProductFileDeps {
   /** Only for the parser's messages: the name never decides a value of the file. */
   fileName: string
   content: Buffer
+  /** Year folder of the file, only to name it in the message of another file. */
+  year?: string
+  /** Files of this run already stored. Absent: nothing is compared (as before). */
+  storedInRun?: ProductFilesStoredInRun
+}
+
+/** Exact comparison, like the unique key `(bank, name)` of the database. */
+export function productFileKey(bank: string, name: string, date: string): string {
+  return JSON.stringify([bank, name, date])
 }
 
 /**
@@ -562,9 +578,24 @@ export async function importProductFile(deps: ImportProductFileDeps): Promise<Pr
 
   try {
     const parsed = deps.adapter.parse(deps.fileName, deps.content)
+    // Feature 53: BEFORE anything is written, and with the bank of the FOLDER. A
+    // file is noted only after it stored its value, so one that failed rejects
+    // nobody, and one whose move to `procesados/` failed still does.
+    const key = productFileKey(deps.bankSlug, parsed.name, parsed.date)
+    const alreadyStored = deps.storedInRun?.get(key)
+    if (alreadyStored !== undefined) {
+      throw new DuplicateProductFileError(
+        `este archivo declara el producto '${parsed.name}' con fecha ${parsed.date}, lo mismo ` +
+          `que el archivo '${alreadyStored.name}' de la carpeta ${alreadyStored.year}, que ya ` +
+          'se ha guardado en esta misma importación: de este no se ha guardado nada y NO se ' +
+          'ha movido a procesados/. Si son dos productos distintos, corrige el "name" de uno; ' +
+          'si es el mismo archivo subido dos veces, bórralo de Drive.',
+      )
+    }
     // The bank of a file is the one of its FOLDER (ADR-009), never the one its
     // contents claim: the parser's own slug is overwritten here on purpose.
     const stored = await persistProductSnapshot(deps.prisma, { ...parsed, bank: deps.bankSlug })
+    deps.storedInRun?.set(key, { year: deps.year ?? '', name: deps.fileName })
     result.product = stored.product
     result.snapshot = stored.snapshot
     result.status = 'imported'

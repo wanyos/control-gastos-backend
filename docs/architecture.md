@@ -2142,6 +2142,10 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-026: La cuenta remunerada entra como `InvestmentProductType` nuevo con su propia serie (`SavingsSnapshot`), el importador gana un SEGUNDO registro y `var/parsed/` pasa a ser el ENSAYO
 
+> **Revisado el 2026-10-02 por la feature 53 `product-file-collision`:** dentro de una misma importación el segundo
+> archivo del mismo producto y fecha se rechaza en vez de sustituir; entre
+> importaciones sigue sustituyendo. Ver ADR-033.
+
 > **Revisado el 2026-10-02 por la feature 52 `remove-var`:** la decisión 10 (`var/parsed/` como sitio donde mirar lo
 > que entiende un parser sin guardar nada, el final del título) desaparece con las
 > rutas `POST /api/parser/<banco>`. Para eso hay ahora un comando de terminal,
@@ -2734,6 +2738,80 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     históricas:** cuentan lo que había cuando se escribieron y no llevan línea de
     revisión. Los títulos de los ADR-009, 010, 017, 025, 026 y 029 siguen nombrando
     `var/` o las rutas porque un ADR no se reescribe.
+
+### ADR-033: Dentro de una misma importación, el segundo archivo de producto con el mismo banco, nombre y fecha se rechaza; entre importaciones sigue sustituyendo
+
+- **Fecha:** 2026-10-02
+- **Estado:** aceptada (implementada en la feature #53 `product-file-collision`, SDD).
+  Revisa el ADR-026, que lleva encima su línea de revisión.
+- **Contexto:** un producto se identifica por `(bank, name)` y su valor en una fecha por
+  `(productId, date)`; las dos claves salen del **contenido** del archivo y las dos
+  escrituras son `upsert`. `importPending` trataba cada archivo por separado, así que
+  dos archivos de la misma llamada con el mismo banco, `name` y `date` se guardaban uno
+  detrás de otro: el segundo sustituía lo que acababa de guardar el primero y los dos
+  salían `status: "imported"`. Le pasó al humano el 2026-09-12 con dos `.json` de
+  MyInvestor que llevaban el mismo `name` por error: el dato del primero se perdió sin
+  que el informe dijera nada y hubo que arreglarlo en la base de datos a mano.
+- **Decisión:**
+  1. **`importPending` recuerda, en memoria y solo mientras dura esa ejecución, qué
+     archivo de producto guardó cada `(bank, name, date)`** (un `Map`,
+     `ProductFilesStoredInRun`, con la clave de `productFileKey`). No se guarda en la
+     base de datos y una llamada nueva a `POST /api/import` empieza con él vacío.
+  2. **`importProductFile` lo consulta después de `adapter.parse` y antes de
+     `persistProductSnapshot`.** Si la clave ya está, lanza `DuplicateProductFileError`
+     (`DUPLICATE_PRODUCT_FILE`, 422, solo dentro de `files[].error` de un 200): el
+     archivo no llega a abrir ninguna escritura, sale `failed` con `product: null` y
+     `snapshot: null`, `importDriveFile` no lo mueve a `procesados/` y el recorrido
+     sigue con el archivo siguiente.
+  3. **El archivo se apunta solo después de que `persistProductSnapshot` termine sin
+     error**, y antes del movimiento a `procesados/`: un archivo que falló al leerse o
+     al guardarse no rechaza a nadie, y uno cuyo valor se guardó pero que Drive no pudo
+     mover sí cuenta, porque su valor ya está en la base.
+  4. **La clave es `(slug de la carpeta del banco, name, date)`, comparada carácter a
+     carácter y sin el `type`.** Es la misma para los tres tipos de archivo de producto
+     (`Valuation`, `SavingsSnapshot` y `deposit`), cruza las carpetas de año de un banco
+     y nunca coincide entre dos bancos.
+  5. **El archivo rechazado es el que el recorrido encuentra después:** orden por nombre
+     de banco, de carpeta de año y de archivo, que es el que devuelve
+     `src/lib/drive-structure.ts`.
+  6. **El mensaje nombra el otro archivo y su carpeta de año** y dice qué hacer:
+     corregir el `name` de uno o borrar de Drive el que sobra.
+- **Alternativas descartadas:**
+  1. *Comparar contra la base de datos* (rechazar todo archivo cuyo producto y fecha ya
+     existan): rompe lo que el humano pidió conservar —importar otro día el archivo
+     corregido de una fecha sigue sustituyendo— y el uso documentado de volver a subir
+     un mes para corregirlo.
+  2. *Leer todos los archivos pendientes antes de guardar ninguno y rechazar los dos:*
+     el humano pidió rechazar el segundo; además obligaría a descargar y parsear todo
+     antes de escribir nada y cambiaría el recorrido archivo a archivo en el que se
+     apoya el aislamiento de fallos.
+  3. *Hacer la comprobación dentro de `persistProductSnapshot`:*
+     `investments.service.ts` es el escritor y no sabe qué es una ejecución de la
+     importación ni cómo se llama un archivo; ese dato solo lo tiene el importador.
+  4. *Guardar en la base de datos qué archivo escribió cada valor:* pide migración y es
+     otra feature; detectaría además el caso entre importaciones, que el humano quiere
+     que siga sustituyendo.
+  5. *Reutilizar `VALIDATION_ERROR`:* ese código dice «el archivo está mal escrito», y
+     aquí el archivo puede estar bien escrito y sobrar. Un código propio deja al
+     frontend dar un texto propio.
+- **Consecuencias:**
+  - No hay migración, ni dependencia, ni ruta nueva. `persistProductSnapshot`, los
+    parsers y `importStatement` no cambian; los extractos de movimientos entran igual.
+  - El contrato gana un valor más de `files[].error.code`; ningún campo cambia de forma.
+  - **El archivo rechazado, importado otra vez sin corregirlo ni borrarlo, entra y
+    sustituye:** en la llamada siguiente está solo (el otro ya está en `procesados/`)
+    y el registro en memoria empieza vacío. El sistema no puede distinguirlo del
+    archivo corregido de otro día. Está dicho en los dos documentos de archivos de
+    producto y en el contrato.
+  - Casos parecidos que esta regla **no** cubre y siguen como estaban: el mismo `name`
+    con otro `type` y fechas distintas (ya se rechazaba con `VALIDATION_ERROR`); dos
+    productos distintos con el mismo `name` por error y fechas distintas (entran como
+    uno solo); dos archivos del mismo depósito con fechas distintas en la misma
+    llamada (el segundo reescribe las condiciones del primero); dos llamadas a
+    `POST /api/import` a la vez (cada una recuerda solo lo suyo); nombres que solo
+    difieren en mayúsculas o espacios (son productos distintos).
+  - Borrar un producto o uno de sus valores desde la API sigue sin existir: es el cabo
+    suelto 24 de `docs/roadmap.md`.
 
 
 ## Qué NO hacer

@@ -98,6 +98,14 @@ export interface ProductResult {
 /** A product file the importer did try to import, whether it succeeded or not. */
 export interface AttemptedProductFileReport extends FileReportBase, ProductResult {}
 
+/** Which file of THIS run stored each (bank, name, date). In memory, one per run. */
+export interface StoredProductFileRef {
+  year: string
+  name: string
+}
+
+export type ProductFilesStoredInRun = Map<string, StoredProductFileRef>
+
 export type ImportedFileReport =
   SkippedFileReport | AttemptedFileReport | AttemptedProductFileReport
 

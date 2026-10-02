@@ -1359,6 +1359,353 @@ describe('importPending: the product files (feature 26)', () => {
   })
 })
 
+/// ── Feature 53: two product files of one run with the same product and date ──
+//
+// 🔒 Nothing here is real (ADR-017): `zz-product-…` slugs, generated names and
+// amounts built by hand so the five of each file add up.
+
+describe('importPending: two product files of one run declaring the same product and date (feature 53)', () => {
+  let app: FastifyInstance
+  const usedBanks: string[] = []
+  let counter = 0
+
+  /** The amounts of a second file: different from the default ones, and adding up. */
+  const otherAmounts = {
+    openingBalance: 3150.2,
+    moneyIn: 120,
+    moneyOut: 45.5,
+    interest: 5.15,
+    balance: 3229.85,
+  }
+  const firstAmounts = ['4000.00', '0.00', '0.00', '6.40', '4006.40']
+  const secondAmounts = ['3150.20', '120.00', '45.50', '5.15', '3229.85']
+
+  interface PendingProductFile {
+    id: string
+    name: string
+    file: ProductFile
+  }
+
+  function uniqueBank(): string {
+    counter += 1
+    const slug = `zz-product-${Date.now()}-dup-${counter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function uniqueAccountName(): string {
+    counter += 1
+    return `Cuenta Sintetica Repetida ${Date.now()}-${counter}`
+  }
+
+  /** A tree of bank folders, each with its year folders and their pending files. */
+  function treeOf(banks: Record<string, Record<string, PendingProductFile[]>>): DriveTree {
+    const tree: DriveTree = { folders: { root: [] }, files: {} }
+    for (const [bank, years] of Object.entries(banks)) {
+      tree.folders.root.push({ id: `b-${bank}`, name: bank })
+      tree.folders[`b-${bank}`] = []
+      for (const [year, files] of Object.entries(years)) {
+        const yearId = `y-${bank}-${year}`
+        tree.folders[`b-${bank}`].push({ id: yearId, name: year })
+        tree.folders[yearId] = [{ id: `proc-${yearId}`, name: 'procesados' }]
+        tree.files[yearId] = files.map(({ id, name }) => ({
+          id,
+          name,
+          mimeType: 'application/json',
+        }))
+      }
+    }
+    return tree
+  }
+
+  function driveOf(
+    banks: Record<string, Record<string, PendingProductFile[]>>,
+    overrides: DriveOverrides = {},
+  ) {
+    const contents = new Map<string, ProductFile>()
+    for (const years of Object.values(banks)) {
+      for (const files of Object.values(years)) {
+        for (const { id, file } of files) {
+          contents.set(id, file)
+        }
+      }
+    }
+    return buildDrive(treeOf(banks), {
+      get: vi.fn(async ({ fileId }: { fileId: string }) => ({
+        data: productBytes(contents.get(fileId) ?? {}),
+      })),
+      ...overrides,
+    })
+  }
+
+  function run(client: AppDriveClient, banks: string[]) {
+    return importPending({
+      client,
+      prisma: app.prisma,
+      rootFolderId: 'root',
+      parsers: [],
+      productParsers: banks.map((bank) => fakeProductAdapter(bank)),
+    })
+  }
+
+  function reports(result: { files: unknown[] }): AttemptedProductFileReport[] {
+    return result.files as AttemptedProductFileReport[]
+  }
+
+  /** The five amounts of every stored value of the bank, oldest date first. */
+  async function storedAmounts(bank: string): Promise<string[][]> {
+    const rows = await app.prisma.savingsSnapshot.findMany({
+      where: { product: { bank } },
+      orderBy: { date: 'asc' },
+    })
+    return rows.map((row) =>
+      [row.openingBalance, row.moneyIn, row.moneyOut, row.interest, row.balance].map((amount) =>
+        amount.toFixed(2),
+      ),
+    )
+  }
+
+  /** Two files of the same bank, name and date, with different amounts. */
+  function sameProductAndDate(name: string): PendingProductFile[] {
+    return [
+      { id: 'first', name: 'cuenta-a.json', file: productFile({ name }) },
+      { id: 'second', name: 'cuenta-b.json', file: productFile({ name, ...otherAmounts }) },
+    ]
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    if (usedBanks.length > 0) {
+      const products = await app.prisma.investmentProduct.findMany({
+        where: { bank: { in: usedBanks } },
+      })
+      const ids = products.map((product) => product.id)
+      await app.prisma.savingsSnapshot.deleteMany({ where: { productId: { in: ids } } })
+      await app.prisma.investmentProduct.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('rejects the second product file of a run that declares the same bank, name and date, naming the first', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const { client } = driveOf({ [bank]: { '2026': sameProductAndDate(name) } })
+
+    const result = await run(client, [bank])
+
+    const [first, second] = reports(result)
+    expect(first.status).toBe('imported')
+    expect(first.product).toMatchObject({ bank, name, created: true })
+    expect(second.status).toBe('failed')
+    expect(second.error?.code).toBe('DUPLICATE_PRODUCT_FILE')
+    expect(second.error?.message).toContain(`el producto '${name}' con fecha 2026-08-31`)
+    expect(second.error?.message).toContain("el archivo 'cuenta-a.json' de la carpeta 2026")
+  })
+
+  it('leaves the rejected product file pending in Drive and moves only the first', async () => {
+    const bank = uniqueBank()
+    const { client, update } = driveOf({
+      [bank]: { '2026': sameProductAndDate(uniqueAccountName()) },
+    })
+
+    const result = await run(client, [bank])
+
+    const [first, second] = reports(result)
+    expect(first.movedToProcessed).toBe(true)
+    expect(second.movedToProcessed).toBe(false)
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(update.mock.calls[0]?.[0]).toMatchObject({ fileId: 'first' })
+  })
+
+  it('keeps the value the first file stored exactly as it stored it', async () => {
+    const bank = uniqueBank()
+    const { client } = driveOf({ [bank]: { '2026': sameProductAndDate(uniqueAccountName()) } })
+
+    await run(client, [bank])
+
+    expect(await storedAmounts(bank)).toEqual([firstAmounts])
+    expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(1)
+  })
+
+  it('imports two files of the same product with different dates in one run', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const { client } = driveOf({
+      [bank]: {
+        '2026': [
+          { id: 'july', name: 'cuenta-07.json', file: productFile({ name, date: '2026-07-31' }) },
+          {
+            id: 'august',
+            name: 'cuenta-08.json',
+            file: productFile({ name, date: '2026-08-31', ...otherAmounts }),
+          },
+        ],
+      },
+    })
+
+    const result = await run(client, [bank])
+
+    expect(reports(result).map((file) => file.status)).toEqual(['imported', 'imported'])
+    expect(await storedAmounts(bank)).toEqual([firstAmounts, secondAmounts])
+  })
+
+  it('still replaces the value when a corrected file of the same product and date arrives in a later run', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const original = driveOf({
+      [bank]: { '2026': [{ id: 'f1', name: 'cuenta.json', file: productFile({ name }) }] },
+    })
+    const corrected = driveOf({
+      [bank]: {
+        '2026': [{ id: 'f2', name: 'cuenta.json', file: productFile({ name, ...otherAmounts }) }],
+      },
+    })
+
+    await run(original.client, [bank])
+    const later = await run(corrected.client, [bank])
+
+    const [file] = reports(later)
+    expect(file.status).toBe('imported')
+    expect(file.snapshot).toEqual({ date: '2026-08-31', created: false })
+    expect(file.movedToProcessed).toBe(true)
+    expect(await storedAmounts(bank)).toEqual([secondAmounts])
+  })
+
+  it('counts only the stored file in importedProductCount and the rejected one in failedCount', async () => {
+    const bank = uniqueBank()
+    const { client } = driveOf({ [bank]: { '2026': sameProductAndDate(uniqueAccountName()) } })
+
+    const result = await run(client, [bank])
+
+    expect(result).toMatchObject({ importedProductCount: 1, failedCount: 1 })
+    const rejected = reports(result)[1]
+    expect(rejected.product).toBeNull()
+    expect(rejected.snapshot).toBeNull()
+  })
+
+  it('goes on with the files that come after the rejected one', async () => {
+    const bank = uniqueBank()
+    const otherName = uniqueAccountName()
+    const { client, update } = driveOf({
+      [bank]: {
+        '2026': [
+          ...sameProductAndDate(uniqueAccountName()),
+          { id: 'third', name: 'cuenta-c.json', file: productFile({ name: otherName }) },
+        ],
+      },
+    })
+
+    const result = await run(client, [bank])
+
+    const [, second, third] = reports(result)
+    expect(second.error?.code).toBe('DUPLICATE_PRODUCT_FILE')
+    expect(third.status).toBe('imported')
+    expect(third.product).toMatchObject({ name: otherName, created: true })
+    expect(third.movedToProcessed).toBe(true)
+    expect(update.mock.calls.map(([call]) => (call as { fileId: string }).fileId)).toEqual([
+      'first',
+      'third',
+    ])
+  })
+
+  it('does not hold a file that failed against the next one with the same product and date', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const { client } = driveOf({
+      [bank]: {
+        '2026': [
+          // A mistyped digit: 4106.40 where 4006.40 was due.
+          { id: 'first', name: 'cuenta-a.json', file: productFile({ name, balance: 4106.4 }) },
+          { id: 'second', name: 'cuenta-b.json', file: productFile({ name, ...otherAmounts }) },
+        ],
+      },
+    })
+
+    const result = await run(client, [bank])
+
+    const [first, second] = reports(result)
+    expect(first.status).toBe('failed')
+    expect(first.error?.message).toContain('los importes no cuadran')
+    expect(second.status).toBe('imported')
+    expect(second.snapshot).toEqual({ date: '2026-08-31', created: true })
+    expect(await storedAmounts(bank)).toEqual([secondAmounts])
+  })
+
+  it('holds a stored file against the next one even when its move to procesados failed', async () => {
+    const bank = uniqueBank()
+    const update = vi.fn(async ({ fileId }: { fileId: string }) => {
+      if (fileId === 'first') {
+        throw new Error('drive refused the move')
+      }
+      return { data: {} }
+    })
+    const { client } = driveOf(
+      { [bank]: { '2026': sameProductAndDate(uniqueAccountName()) } },
+      { update },
+    )
+
+    const result = await run(client, [bank])
+
+    const [first, second] = reports(result)
+    expect(first.status).toBe('failed')
+    expect(first.movedToProcessed).toBe(false)
+    expect(second.status).toBe('failed')
+    expect(second.error?.code).toBe('DUPLICATE_PRODUCT_FILE')
+    expect(second.error?.message).toContain("'cuenta-a.json'")
+    expect(await storedAmounts(bank)).toEqual([firstAmounts])
+  })
+
+  it('rejects the second file across two year folders of the same bank, and not across two banks', async () => {
+    const bank = uniqueBank()
+    const otherBank = uniqueBank()
+    const name = uniqueAccountName()
+    const { client } = driveOf({
+      [bank]: {
+        '2025': [{ id: 'old-year', name: 'cuenta-a.json', file: productFile({ name }) }],
+        '2026': [
+          {
+            id: 'new-year',
+            name: 'cuenta-b.json',
+            file: productFile({ name, ...otherAmounts }),
+          },
+        ],
+      },
+      [otherBank]: {
+        '2026': [
+          {
+            id: 'other-bank',
+            name: 'cuenta-a.json',
+            file: productFile({ name, ...otherAmounts }),
+          },
+        ],
+      },
+    })
+
+    const result = await run(client, [bank, otherBank])
+
+    const [oldYear, newYear, ofOtherBank] = reports(result)
+    expect(oldYear).toMatchObject({ year: '2025', status: 'imported' })
+    expect(newYear).toMatchObject({ year: '2026', status: 'failed' })
+    expect(newYear.error?.code).toBe('DUPLICATE_PRODUCT_FILE')
+    expect(newYear.error?.message).toContain("el archivo 'cuenta-a.json' de la carpeta 2025")
+    expect(ofOtherBank).toMatchObject({ bank: otherBank, status: 'imported' })
+    expect(ofOtherBank.product).toMatchObject({ bank: otherBank, name, created: true })
+    expect(await storedAmounts(bank)).toEqual([firstAmounts])
+    expect(await storedAmounts(otherBank)).toEqual([secondAmounts])
+    expect(
+      await app.prisma.investmentProduct.count({ where: { bank: { in: [bank, otherBank] } } }),
+    ).toBe(2)
+  })
+})
+
 // ── Feature 31: the importer anchors the account and fills missing balances ──
 //
 // 🔒 ADR-017: not one real amount here. Every figure is invented, every bank is

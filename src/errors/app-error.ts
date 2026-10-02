@@ -134,3 +134,18 @@ export class UnreadableStatementError extends AppError {
     super(message, 'ALL_ROWS_UNPARSED', 422)
   }
 }
+
+/**
+ * A product file declares the same bank, name and date as another file the SAME
+ * import run already stored (feature 53). The file itself may be well written,
+ * which is why it is not `VALIDATION_ERROR`: storing it would replace the value
+ * the other file has just written, in silence.
+ *
+ * 422, and it only ever travels inside `files[].error` of the 200 report: the
+ * file is not stored and does NOT move.
+ */
+export class DuplicateProductFileError extends AppError {
+  constructor(message = 'Another file of this import already stored this product and date') {
+    super(message, 'DUPLICATE_PRODUCT_FILE', 422)
+  }
+}

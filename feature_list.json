@@ -2202,6 +2202,73 @@
       ],
       "sdd": true,
       "status": "done"
+    },
+    {
+      "id": 53,
+      "name": "product-file-collision",
+      "title": "Rechazar el segundo archivo de producto de una misma importación que apunta al mismo producto y a la misma fecha que otro",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-02) a partir del cabo suelto 21 de docs/roadmap.md y de la respuesta del humano de ese día: «rechazar el segundo, no se guarda, se avisa de esto» y «lo de borrar lo dejamos para otra feature, pero que no se pierda esta idea» (apuntada como cabo suelto 24). El nombre de la feature es propuesta del leader. El humano lo revisa en la puerta del spec.",
+        "que_quiero": "Cuando en una misma importación hay dos archivos de producto que apuntan al mismo producto (mismo banco y mismo nombre) y a la misma fecha, quiero que el segundo se rechace: no se guarda nada de él, se queda pendiente en Drive y el informe de la importación me dice que choca con el otro archivo y con cuál.",
+        "por_que": "Hoy el segundo sustituye el valor que acaba de guardar el primero y el informe dice que los dos se importaron bien. Me pasó el 2026-09-12 con dos .json de MyInvestor que llevaban el mismo nombre por error: perdí el dato del primero sin ningún aviso y hubo que arreglarlo tocando la base de datos a mano.",
+        "como_se_que_esta_bien": [
+          "Cuando importo dos archivos de producto con el mismo banco, el mismo nombre y la misma fecha, el primero se guarda y el segundo sale como fallido, con un mensaje que nombra el archivo con el que choca.",
+          "El archivo rechazado no se mueve a procesados/: sigue pendiente en Drive para que lo corrija y lo vuelva a importar.",
+          "El valor que guardó el primer archivo sigue en la base de datos tal como lo guardó.",
+          "Dos archivos del mismo producto con fechas distintas, como los de cada mes, se importan los dos igual que hoy.",
+          "Volver a importar otro día un archivo corregido del mismo producto y la misma fecha sigue sustituyendo el valor, igual que hoy.",
+          "docs/api-contract.md describe el rechazo nuevo."
+        ],
+        "que_no_quiero": [
+          "No quiero que se guarde el segundo archivo y solo se avise: tiene que rechazarse.",
+          "No quiero que un archivo rechazado tumbe la importación de los demás.",
+          "No quiero en esta feature ninguna ruta para borrar un producto ni un valor: es el cabo suelto 24.",
+          "No quiero que cambie cómo entran los extractos de movimientos."
+        ],
+        "delego_en_agente": [
+          "Cuál de los dos archivos es «el segundo»: el orden en que la importación los recorre.",
+          "Si la regla vale igual para los dos tipos de valor que se guardan por producto y fecha (el de un producto de inversión y el de la cuenta remunerada) y para los depósitos.",
+          "Con qué código de error y con qué texto sale el rechazo en el informe.",
+          "Si el contador de archivos de producto importados cuenta solo los que se han guardado."
+        ]
+      },
+      "acceptance": [],
+      "checks": [
+        {
+          "descripcion": "Cuando importo dos archivos de producto con el mismo banco, el mismo nombre y la misma fecha, el primero se guarda y el segundo sale como fallido, con un mensaje que nombra el archivo con el que choca.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"rejects the second product file of a run that declares the same bank, name and date, naming the first\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cuando importo dos archivos de producto con el mismo banco, el mismo nombre y la misma fecha, el primero se guarda y el segundo sale como fallido, con un mensaje que nombra el archivo con el que choca.",
+          "comando": "pnpm exec vitest run src/modules/myinvestor/myinvestor.import.test.ts -t \"rejects the second file of the same\" | grep -E \"Tests +2 passed\""
+        },
+        {
+          "descripcion": "El archivo rechazado no se mueve a procesados/: sigue pendiente en Drive para que lo corrija y lo vuelva a importar.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"leaves the rejected product file pending in Drive and moves only the first\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "El valor que guardó el primer archivo sigue en la base de datos tal como lo guardó.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"keeps the value the first file stored exactly as it stored it\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Dos archivos del mismo producto con fechas distintas, como los de cada mes, se importan los dos igual que hoy.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"imports two files of the same product with different dates in one run\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Volver a importar otro día un archivo corregido del mismo producto y la misma fecha sigue sustituyendo el valor, igual que hoy.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"still replaces the value when a corrected file of the same product and date arrives in a later run\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md describe el rechazo nuevo.",
+          "comando": "pnpm exec vitest run src/modules/import/import.product-files.docs.test.ts -t \"api-contract: describes the rejection of the second product file of one import\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Los extractos de movimientos y el resto de la importación entran igual que hoy: la suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ],
+      "sdd": true,
+      "status": "done"
     }
   ]
 }

@@ -307,3 +307,50 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
     )
   })
 })
+
+describe('two product files of one run declaring the same product and date (feature 53)', () => {
+  function errorOf(file: ImportedFileReport) {
+    return 'error' in file ? file.error : undefined
+  }
+
+  it('rejects the second file of the same fund and date in one run', async () => {
+    const name = trackedName()
+    pendingFile('fondo-a.json', buildProductFund({ name }))
+    pendingFile(
+      'fondo-b.json',
+      buildProductFund({ name, marketValue: 873.65, gain: 73.65, gainPercent: 9.21 }),
+    )
+
+    const result = await run()
+
+    expect(reportOf(result, 'fondo-a.json')).toMatchObject({
+      status: 'imported',
+      movedToProcessed: true,
+    })
+    const rejected = reportOf(result, 'fondo-b.json')
+    expect(rejected).toMatchObject({ status: 'failed', movedToProcessed: false, product: null })
+    expect(errorOf(rejected)?.code).toBe('DUPLICATE_PRODUCT_FILE')
+    expect(errorOf(rejected)?.message).toContain("el archivo 'fondo-a.json' de la carpeta 2026")
+    const [product] = await productsNamed([name])
+    const rows = await app.prisma.valuation.findMany({ where: { productId: product.id } })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.marketValue.toFixed(2)).toBe('947.25')
+  })
+
+  it('rejects the second file of the same deposit and date in one run', async () => {
+    const name = trackedName()
+    pendingFile('deposito-a.json', buildProductDeposit({ name }))
+    pendingFile('deposito-b.json', buildProductDeposit({ name, principal: 1350 }))
+
+    const result = await run()
+
+    expect(reportOf(result, 'deposito-a.json').status).toBe('imported')
+    const rejected = reportOf(result, 'deposito-b.json')
+    expect(rejected).toMatchObject({ status: 'failed', movedToProcessed: false, product: null })
+    expect(errorOf(rejected)?.code).toBe('DUPLICATE_PRODUCT_FILE')
+    expect(errorOf(rejected)?.message).toContain("el archivo 'deposito-a.json' de la carpeta 2026")
+    const stored = await productsNamed([name])
+    expect(stored).toHaveLength(1)
+    expect(stored[0]?.principal?.toFixed(2)).toBe('1200.00')
+  })
+})

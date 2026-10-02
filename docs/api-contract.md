@@ -1700,7 +1700,33 @@ sin su foto. Y toda la validación del parser —**el cuadre de los cinco import
 cuenta remunerada incluido**— ocurre **antes** de abrirla, así que un archivo que no
 cuadra **no deja rastro**: ni producto, ni foto, ni movimiento a `procesados/`.
 
-**Idempotencia:** subir **la misma fecha** otra vez (mismo `name`, misma `date`)
+**Dos archivos de producto de la misma llamada con el mismo banco, `name` y `date`
+(feature 53):** antes de guardar un archivo de producto se comprueba si **otro archivo
+de esta misma llamada** a `POST /api/import` ya guardó el mismo `(bank, name, date)`
+—el `bank` es el de la carpeta y el `name` se compara carácter a carácter, igual que la
+base de datos distingue los productos—. Si es así, el archivo se **rechaza** con
+`DUPLICATE_PRODUCT_FILE`: **no se guarda nada** de él (ni producto ni valor; lo que
+guardó el otro archivo queda tal como lo guardó), **no se mueve a `procesados/`** y su
+`error.message` nombra el archivo con el que coincide y la carpeta de año en la que
+está. El resto de archivos se sigue importando.
+
+- **Cuál de los dos se rechaza:** el que la importación recorre **después**. El orden
+  es por nombre de banco, luego de carpeta de año, luego de archivo.
+- **La comparación cruza carpetas de año** del mismo banco (uno en `2025/` y otro en
+  `2026/` también coinciden). Dos bancos distintos nunca coinciden.
+- **Vale igual para los tres tipos** de la tabla de arriba. En el `deposit` la `date`
+  no se guarda en ninguna fila, pero se compara igual.
+- **Solo cuenta un archivo que sí guardó su valor.** Si el primero de los dos falló
+  (no cuadra, está mal escrito), el segundo se importa con normalidad. Si el primero
+  guardó su valor y lo que falló fue moverlo a `procesados/`, sí cuenta.
+- **Solo compara archivos de una misma llamada.** No mira la base de datos: lo que
+  llega en **otra** llamada sigue la regla de «Idempotencia» de abajo. Por eso, si el
+  archivo rechazado se vuelve a importar **sin corregirlo ni borrarlo de Drive**, en
+  la llamada siguiente está solo (el otro ya está en `procesados/`), entra y
+  **sustituye** el valor que guardó el primero.
+
+**Idempotencia:** subir **la misma fecha** otra vez (mismo `name`, misma `date`) **en
+otra llamada** a `POST /api/import` —el archivo corregido de otro día—
 sobrescribe la foto y deja **un** producto y **una** fila; subir el **mes siguiente**
 reutiliza el producto y añade **una fila más**. Un depósito, que no tiene serie, se
 limita a reescribir sus mismas condiciones. Ninguna de las dos claves lleva un
@@ -1863,7 +1889,9 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 >   cuentan movimientos). El que entra bien (`status: "imported"`) suma **1** a
 >   `importedProductCount` (feature 45), tanto si creó el producto como si volvió a
 >   escribir el mismo mes (`created: false` no es un descarte: la foto se pisa y se
->   guarda). Si falla, suma a `failedCount` y a nada más.
+>   guarda). Si falla, suma a `failedCount` y a nada más. El archivo rechazado con
+>   `DUPLICATE_PRODUCT_FILE` (feature 53) es un fallo más: lleva `product: null` y
+>   `snapshot: null`, suma **1** a `failedCount` y **0** a `importedProductCount`.
 
 - **Totales:** `importedCount` movimientos guardados, `duplicateCount` descartados
   por ya existir, `unparsedCount` líneas que ningún parser supo interpretar,
@@ -2020,6 +2048,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 | `ALL_ROWS_UNPARSED`      | El archivo trae líneas y **ninguna** se ha podido interpretar (formato del banco cambiado). No se guarda nada y **no** se mueve; el motivo de cada línea está en `unparsedRows`. |
 | `VALIDATION_ERROR`       | El archivo no es un extracto reconocible para el parser de su banco. En un **archivo de producto**: el parser lo ha rechazado y el `message` trae el motivo **íntegro** —descuadre de los cinco importes, marcador `<…>` sin sustituir, campo obligatorio ausente, número escrito como texto, fecha inválida, clave desconocida, o un `name` que ya existe en ese banco **con otro
 tipo**—. **No se guarda ni el producto ni la foto** y **no** se mueve a `procesados/`: corrígelo y vuelve a subirlo. |
+| `DUPLICATE_PRODUCT_FILE` | Solo en un **archivo de producto**: declara el mismo banco, `name` y `date` que otro archivo que **esta misma llamada** ya guardó (feature 53). El archivo puede estar bien escrito. **No se guarda nada** de él y **no** se mueve a `procesados/`; el `message` nombra el otro archivo y su carpeta de año. Si son dos productos distintos, corrige el `name` de uno; si es el mismo archivo subido dos veces, bórralo de Drive. |
 | `DRIVE_CONNECTION_ERROR` | Falló la descarga de **ese** archivo.                                              |
 | `INTERNAL_SERVER_ERROR`  | Cualquier otro fallo de ese archivo (mensaje sanitizado).                          |
 
