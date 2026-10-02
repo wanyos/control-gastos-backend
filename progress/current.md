@@ -25,14 +25,15 @@
 
 **Nivel de consumo:** medio _(bajo / medio / alto; en alto, qué fases usan `fable`)_
 
-_Ninguna._ Última cerrada: **F55 `db-backup`** (2026-10-02) →
+_Ninguna._ Última cerrada: **F55 `db-backup`** (2026-10-02, commit `91a3cfc`) →
 [resumen](summaries/db-backup.md). Antes, el mismo día: F51 (`d8c0a6d`), F52
 (`55d574d`), F53 (`24784b7`) y F54 (`44797d6`); el cabo 10 quedó como riesgo
 aceptado por el humano, sin código.
 
-**Siguiente (acordado con el humano el 2026-10-02):** el cabo suelto 22 de
-[`docs/roadmap.md`](../docs/roadmap.md) (sustituir `exceljs`) y luego el 24. El
-cabo 20 queda aparcado hasta que el humano decida qué quiere ver.
+**Cabos sueltos tras el 2026-10-02:** cerrados el 6, 14, 16, 21 y 23 (F51 a F55,
+última en `8e78654`); el 10 es riesgo aceptado y el 22 queda aparcado hasta que
+`exceljs` falle, los dos por decisión del humano; el 20 espera a que decida qué
+quiere ver. Queda abierto el 24 (borrar un producto o un valor desde la API).
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
