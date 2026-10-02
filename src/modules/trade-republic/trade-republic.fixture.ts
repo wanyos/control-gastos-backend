@@ -11,10 +11,10 @@ import { join } from 'node:path'
  * these fixtures keep from it is only the SHAPE: a balance of a few thousand, an
  * interest of a few euros, and the five amounts adding up.
  *
- * ⚠️ The guardian of feature 14/23 cannot watch that PDF (it is unreadable
- * binary), so nothing automatic protects a value copied from it: see
- * `unwatchedBanks` in `src/no-real-data.test.ts`. Which is exactly why every
- * number below is built by hand here.
+ * ⚠️ The guardian (`src/no-real-data.test.ts`) never reads that PDF: since
+ * feature 51 it compares the repository against his database, so a value copied
+ * from the PDF that was never imported is caught by nothing automatic. Which is
+ * exactly why every number below is built by hand here.
  */
 
 /** A file as the human writes it, wrong values included, hence the loose type. */

@@ -418,7 +418,7 @@ describe('deposit earnings (feature 50)', () => {
       const unmarked = await createDeposit({ principal: '4000.00', maturityDate: '2026-06-02' })
       await seedMovement(account.id, {
         bookingDate: '2026-05-04',
-        amount: '4013.05',
+        amount: '4012.63',
         excludedFromTotals: true,
       })
       await seedMovement(account.id, {
@@ -429,7 +429,7 @@ describe('deposit earnings (feature 50)', () => {
 
       const response = await read()
 
-      expect(entryOf(response, marked.id)).toMatchObject({ status: 'matured', earned: '13.05' })
+      expect(entryOf(response, marked.id)).toMatchObject({ status: 'matured', earned: '12.63' })
       expect(entryOf(response, unmarked.id)).toMatchObject({ status: 'matured', earned: '7.81' })
     })
 

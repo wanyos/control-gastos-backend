@@ -206,7 +206,7 @@ Ningún `R<n>` se queda sin cubrir.**
 Las 22 tasks de `specs/08-data-model/tasks.md` están `[x]` y **verificadas contra el
 código**, no solo marcadas:
 
-- **T1** `[x]` `app-error.ts:29,39` + `app-error.test.ts:59-86`.
+- **T1** `[x]` `app-error.ts:29 y 39` + `app-error.test.ts:59-86`.
 - **T2** `[x]` `movements.service.ts:33,56,137`. **T3** `[x]`
   `movements.test.ts:31-177`.
 - **T4** `[x]` `schema.prisma` completo. **T5** `[x]` `migration.sql` (DROP+CREATE
@@ -267,7 +267,7 @@ código**, no solo marcadas:
   `accountsDb` / `categoriesDb` / `movementsDb`.
 - [x] **P3 — errores explícitos y tipados.** `ConflictError` (409) y
   `MissingAccountDataError` (422) como subclases de `AppError`
-  (`app-error.ts:29,39`), traducidas por el handler central sin tocarlo. El
+  (`app-error.ts:29 y 39`), traducidas por el handler central sin tocarlo. El
   `P2002` de Prisma se traduce en el servicio (`accounts.service.ts:153`,
   `categories.service.ts:63`) y **cualquier otro error se re-lanza**, sin
   disfrazarse de conflicto: detalle correcto y comentado.

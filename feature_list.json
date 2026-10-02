@@ -2070,6 +2070,100 @@
       "acceptance": [],
       "sdd": true,
       "status": "done"
+    },
+    {
+      "id": 51,
+      "name": "no-real-data-from-db",
+      "title": "Comprobar contra la base de datos, y no contra los archivos de var/, que ningún dato real mío acaba en el repositorio",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-02) con las palabras del humano de ese día, al revisar los cabos sueltos 14 y 16 de docs/roadmap.md: «creo que lo mejor sería quitar var entero, para los test y que no coja datos reales, buscar algún mecanismo que lea o compare de la base de datos» y «tener todos estos archivos solo para comprobar que no se escriben datos reales no lo veo, además en una semana ya no sirven». El nombre de la feature es propuesta del leader. Sustituye al borrador anterior de la 51 (pasar las carpetas de var/ desde src/app.ts), que el humano descartó. El humano lo revisa en la puerta del spec. Va ANTES de la 52 para que la comprobación no se quede ningún día sin fuente.",
+        "que_quiero": "Que la comprobación de que ningún dato real mío acaba en un archivo del repositorio deje de leer los archivos de var/ y compare contra mi base de datos, que es donde están ya todos mis datos y la que está siempre al día.",
+        "por_que": "Hoy esa comprobación necesita tener guardadas en var/ las copias de los archivos de mis bancos. No quiero conservar esos archivos solo para eso, y en cuanto dejen de escribirse copias nuevas la referencia se queda vieja en una semana. La base de datos ya tiene todos los importes y conceptos y se actualiza con cada importación.",
+        "como_se_que_esta_bien": [
+          "Si un importe, un concepto o un IBAN que está en mi base de datos aparece en un archivo versionado del repositorio, la suite falla diciendo archivo y línea.",
+          "Un dato inventado de un fixture, que no está en mi base de datos, no hace fallar la suite.",
+          "La comprobación funciona igual con la carpeta var/ borrada.",
+          "La comprobación solo lee mi base de datos: después de la suite está exactamente igual que antes.",
+          "En un ordenador con la base de datos vacía la suite no falla por esto: la comprobación de IBAN por su forma sigue funcionando y la comparación avisa de que no tiene con qué comparar."
+        ],
+        "que_no_quiero": [
+          "No quiero que la comprobación de IBAN por su forma, que no necesita ni var/ ni base de datos, se quite ni cambie.",
+          "No quiero que ningún test escriba en mi base de datos.",
+          "No quiero que el mensaje de fallo enseñe el dato real: solo el archivo y la línea donde está.",
+          "No quiero que en esta feature se quiten todavía las rutas ni la carpeta var/: eso es la feature 52."
+        ],
+        "delego_en_agente": [
+          "Qué datos de la base se comparan exactamente (importes, conceptos, IBAN, nombres de producto) y cómo se evita que un importe corriente, como 10,00, dé falsos positivos.",
+          "Si se compara contra mi base de datos directamente o contra otra cosa; yo dije «a las malas hacer tablas con datos mocks o algo similar». Que el agente proponga y me lo marque.",
+          "Qué pasa con las excepciones que hoy tiene la comprobación (rutas permitidas, la marca `no-real-data-ok`).",
+          "Qué documentos hay que corregir porque describen la comparación contra var/ (docs/conventions.md, docs/verification.md)."
+        ]
+      },
+      "acceptance": [],
+      "checks": [
+        {
+          "descripcion": "Si un importe, un concepto o un IBAN que está en mi base de datos aparece en un archivo versionado del repositorio, la suite falla diciendo archivo y línea.",
+          "comando": "pnpm exec vitest run src/no-real-data.test.ts -t \"catches an? (amount|concept|IBAN) of the database\" | grep -E \"Tests +3 passed\""
+        },
+        {
+          "descripcion": "Un dato inventado de un fixture, que no está en mi base de datos, no hace fallar la suite.",
+          "comando": "pnpm exec vitest run src/no-real-data.test.ts -t \"says nothing about an invented amount, concept or IBAN that is not in the database\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "La comprobación funciona igual con la carpeta var/ borrada.",
+          "comando": "pnpm exec vitest run src/no-real-data.test.ts -t \"imports nothing that can list or walk a folder\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "La comprobación solo lee mi base de datos: después de la suite está exactamente igual que antes.",
+          "comando": "pnpm exec vitest run src/lib/test-real-data.test.ts -t \"rejects a write through the read-only connection\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "La comprobación solo lee mi base de datos: después de la suite está exactamente igual que antes.",
+          "comando": "pnpm test"
+        },
+        {
+          "descripcion": "En un ordenador con la base de datos vacía la suite no falla por esto: la comprobación de IBAN por su forma sigue funcionando y la comparación avisa de que no tiene con qué comparar.",
+          "comando": "pnpm exec vitest run src/no-real-data.test.ts -t \"skips the comparison and says so when the database has nothing to compare against\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "En un ordenador con la base de datos vacía la suite no falla por esto: la comprobación de IBAN por su forma sigue funcionando y la comparación avisa de que no tiene con qué comparar.",
+          "comando": "pnpm exec vitest run src/no-real-data.test.ts -t \"versions no well-formed Spanish IBAN other than the documented synthetic ones\" | grep -E \"Tests +1 passed\""
+        }
+      ],
+      "sdd": true,
+      "status": "done"
+    },
+    {
+      "id": 52,
+      "name": "remove-var",
+      "title": "Quitar la carpeta var/ y las ocho rutas que solo existen por ella",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-02) con las palabras del humano de ese día: «los archivos en var no sirven para nada, después seis rutas que nadie llama», «de momento poner un archivo a mano desde procesados a su carpeta normal no lo veo un problema» y «lo mejor sería quitar var entero». El nombre de la feature es propuesta del leader. Cierra los cabos sueltos 14 y 16 de docs/roadmap.md. Depende de la 51. El humano lo revisa en la puerta del spec.",
+        "que_quiero": "Que el backend deje de usar la carpeta var/ de mi ordenador. Importar sigue igual: se descarga el archivo de Drive, se lee, se guardan los datos en la base de datos y el archivo pasa a procesados/. Lo que desaparece es la copia en var/ y las rutas que solo trabajan con esa copia: las seis de POST /api/parser/<banco>, POST /api/import/local y POST /api/ingestion/process.",
+        "por_que": "Esa carpeta la hice de forma temporal, para simular cómo se leerían los archivos antes de poder leer de Google Drive. Hoy se lee de Drive, los datos van a la base de datos y el archivo original queda en procesados/. Las ocho rutas no las llama el frontend, y tener ahí mis archivos reales es más un problema que una solución: un test que se olvida de decir qué carpeta usar los lee y los reescribe.",
+        "como_se_que_esta_bien": [
+          "POST /api/import importa igual que hoy y no escribe nada en var/.",
+          "Las ocho rutas responden 404.",
+          "En el código de la aplicación no queda ninguna referencia a var/.",
+          "docs/api-contract.md ya no describe las ocho rutas, y dice de forma visible que se han quitado.",
+          "GET /api/ingestion/pending sigue funcionando igual: es lo que usa el frontend para el aviso de archivos nuevos.",
+          "La suite entera pasa con la carpeta var/ borrada."
+        ],
+        "que_no_quiero": [
+          "No quiero que cambie lo que devuelve POST /api/import ni GET /api/ingestion/pending.",
+          "No quiero un flujo nuevo para reimportar desde procesados/: si hace falta, devuelvo el archivo a mano a la carpeta del año.",
+          "No quiero que se toquen los parsers ni el guardado en la base de datos.",
+          "No quiero que un agente borre mi carpeta var/ del disco: la borro yo cuando la feature esté cerrada."
+        ],
+        "delego_en_agente": [
+          "Qué se hace con la comprobación de la feature 33, que compara var/ antes y después de la suite, cuando ya nada escribe ahí.",
+          "Cómo se prueba un parser nuevo con mi archivo real antes de cerrarlo, ahora que no existen las rutas POST /api/parser/<banco>; hoy docs/verification.md lo pide con el archivo de var/drive-read/.",
+          "Qué documentos y decisiones de docs/architecture.md hay que corregir o marcar como superadas, y qué pasa con scripts/ si alguno usa var/."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "pending"
     }
   ]
 }

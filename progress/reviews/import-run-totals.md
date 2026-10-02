@@ -18,7 +18,7 @@ Resumen de cierre: [`summaries/import-run-totals.md`](../summaries/import-run-to
    pasos 1-5 en verde (node v24.18.0; `feature_list.json` válido, 45 features;
    `tsc --noEmit` sin errores; `oxlint` OK; `prettier --check` «All matched files
    use Prettier code style!»). Paso 6: `Test Files 60 passed (60)`,
-   `Tests 1176 passed (1176)`, 10.84 s. Paso 7: «Entorno listo». **Exit 0.**
+   `Tests 1176 passed (1176)`, 11 s. Paso 7: «Entorno listo». **Exit 0.**
    Incluye los cambios ajenos de `src/architecture.test.ts` y
    `src/modules/bankinter/bankinter.routes.test.ts` (cabos 15 y 19): no rompen
    nada.

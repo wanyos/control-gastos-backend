@@ -1274,6 +1274,27 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 > procedencia **y** por forma, con los patrones leídos de los propios `docs/`— y la
 > prueba de que no se ha aflojado, en §Consecuencias.
 
+> **Revisado el 2026-10-02 por la feature 51 `no-real-data-from-db`:** la comparación
+> deja de hacerse contra los archivos de `var/` y pasa a hacerse contra **la base de
+> datos del humano**; el guardián ya no lee ni lista nada de `var/`. Los valores los lee
+> `vitest.global-setup.ts` por una conexión de solo lectura y se los entrega a los tests
+> en memoria (ver la revisión del ADR-027). **Columnas:** todas las `Decimal` del
+> esquema como importes; `Movement.description`, `Movement.note`,
+> `InvestmentProduct.name`, `Account.alias`, `CategoryRule.matchText` e
+> `ImportBalanceMismatch.note` como textos; `ImportUnparsedRow.reason` con el trato que
+> la F24 daba al motivo de un volcado; y `Account.iban`, que es una comparación nueva y
+> sin excepciones de ruta ni de marca. Una columna `Decimal` o `String` nueva que no
+> esté ni en la lista de comparadas ni en la de no comparadas pone la suite roja
+> (`src/lib/test-real-data.ts`). **Lo que deja de vigilarse:** todo lo que estaba en los
+> archivos y no está en la base (texto del extracto que el parser no guarda, archivos
+> aún no importados) y los nombres de archivo. Con ello desaparece del guardián lo que
+> solo servía para leer archivos: la decisión por contenido y los binarios de la F23, la
+> lista `unwatchedBanks` y la exención de nombres de archivo publicados de la F34
+> (`fileNameKeys`, `letThrough`). Lo que §Consecuencias dice de esas piezas queda como
+> historia. Con la base sin datos de un tipo, la comparación de ese tipo se salta y lo
+> escribe en el descriptor 2. Por qué: el humano no quiere conservar `var/` solo para
+> esto, y la base es la que está siempre al día.
+
 - **Fecha:** 2026-08-12.
 - **Estado:** aceptada (feature 14 `no-real-data`).
 - **Contexto:** dos features seguidas versionaron datos financieros reales del dueño
@@ -1879,6 +1900,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-024: Un banco puede entrar SIN parser de lo que emite el banco — Trade Republic entra por `.json` escrito a mano, con un cuadre aritmético que RECHAZA, y sin compartir el tipo de producto con MyInvestor
 
+> **Revisado el 2026-10-02 por la feature 51 `no-real-data-from-db`:** la consecuencia
+> que dice que `src/no-real-data.test.ts` no puede vigilar este banco (`unwatchedBanks`)
+> y que la suite lo anuncia en cada ejecución queda como historia. Esa lista ya no
+> existe: la comparación se hace contra la base de datos y no contra los archivos de
+> `var/`, así que lo que este banco guarda en la base se compara como lo de cualquier
+> otro (ver la revisión del ADR-017).
+
 - **Fecha:** 2026-08-19.
 - **Estado:** aceptada (feature 20 `trade-republic-product-file`; las tres decisiones
   delegadas del `intent` y los seis puntos de la puerta de aprobación, uno de ellos
@@ -2162,6 +2190,15 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     los totales de gasto e ingreso**, igual que el resto de productos de inversión.
 
 ### ADR-027: La suite corre contra una base DESECHABLE por worker, clonada de una plantilla migrada, y dos guardianes la ponen roja si toca la base del humano o deja una fila
+
+> **Revisado el 2026-10-02 por la feature 51 `no-real-data-from-db`:**
+> `vitest.global-setup.ts`, además de la foto de antes y después, **lee** de la base del
+> humano los valores de las columnas con las que compara `src/no-real-data.test.ts` y se
+> los entrega a los tests con `provide`. Lo hace por una conexión abierta con
+> `default_transaction_read_only=on`, por la que PostgreSQL rechaza cualquier escritura
+> (`withReadOnlyClient` en `src/lib/test-real-data.ts`). Sigue siendo el único archivo de
+> la suite que abre esa base: ningún test la abre. Por qué: la comparación del ADR-017
+> necesita esos valores, y que el test abriera él la base rompía esta decisión.
 
 - **Fecha:** 2026-08-20
 - **Estado:** aceptada (implementada en la feature #27)

@@ -75,7 +75,7 @@ Por cada punto del `como_se_que_esta_bien` del `intent`:
   `src/config/env.test.ts:86-132` (R2, R3).
 - ✅ "Cuando compruebo la conexión, me dice si llega a Drive o no" ->
   `GET /health/drive` 200/503 sin tumbar la app; verificado en
-  `src/modules/health/health.test.ts:43,85` (R9, R10).
+  `src/modules/health/health.test.ts:43 y 85` (R9, R10).
 - ✅ "Cualquier feature futura reutiliza la conexión sin volver a resolver el auth"
   -> `fastify.drive` decorado por plugin `fp`; verificado en
   `src/plugins/drive.test.ts:22,29` (R7).

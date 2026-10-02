@@ -109,71 +109,73 @@ export default async function accountRoutes(fastify: FastifyInstance) {
   archivo de test se versiona, se comparte y lo leen herramientas, y a un fixture
   solo se le pide estar **bien formado**, nunca ser cierto. Para un IBAN se usa el
   de ejemplo público de la documentación española (`ES91 2100 0418 4502 0005 1332`)
-  o uno claramente sintético. Los datos reales viven en `var/drive-read/`, que está
-  gitignoreada.
+  o uno claramente sintético. Los datos reales viven en la base de datos del humano
+  (y, hasta la feature 52, en la carpeta gitignoreada `var/`); en el repositorio, nunca.
 
 - **La regla anterior ya no depende de que alguien se acuerde: la hace cumplir
   [`src/no-real-data.test.ts`](../src/no-real-data.test.ts)** (F14, 2026-08-12; ver
   ADR-017). Alcance: **todo archivo versionado**, no solo los fixtures — `docs/`,
   `specs/` y `progress/` incluidos, y también el archivo nuevo aún sin commitear.
-  Dos capas: **por forma** (un IBAN español con checksum válido fuera de la lista
-  blanca, siempre activa) y **por comparación** contra las capturas de `var/`, que
-  **se salta con un mensaje** cuando no están (nunca exige tenerlas: versionar los
-  datos para protegerlos sería el mismo problema con otro nombre).
+  Hace dos comprobaciones: **por forma** (un IBAN español con checksum válido fuera
+  de la lista blanca; siempre activa, no necesita nada de la máquina) y **por
+  comparación contra la base de datos del humano** (desde la F51, 2026-10-02; hasta
+  entonces comparaba contra los archivos de `var/`, que ya no lee ni lista).
+  - **De dónde salen los datos con los que compara.** El guardián **no abre la base
+    del humano**: `vitest.global-setup.ts` lee, al arrancar la pasada y por una
+    conexión que PostgreSQL abre en **solo lectura**, los valores de las columnas
+    comparadas, y se los entrega a los tests en memoria (`provide` / `inject`). No se
+    escriben en disco ni se imprimen. El lector es
+    [`src/lib/test-real-data.ts`](../src/lib/test-real-data.ts).
+  - **Qué mira.** Importes: **todas** las columnas `Decimal` del esquema
+    (movimientos, cuentas, productos, valoraciones, saldos mensuales de la cuenta
+    remunerada y descuadres). Textos: `Movement.description`, `Movement.note`,
+    `InvestmentProduct.name`, `Account.alias`, `CategoryRule.matchText` e
+    `ImportBalanceMismatch.note`. IBAN: `Account.iban`, comparado sin espacios,
+    guiones ni mayúsculas, **sea del país que sea** (la comprobación por forma solo
+    ve los españoles). La lista exacta, y la de columnas que **no** se comparan con
+    su motivo (nombres de categoría, nombres de banco, nombres de archivo…), está en
+    `comparedColumns` y `notComparedColumns` de `src/lib/test-real-data.ts`.
   - **Si salta con razón:** inventa otro valor. Que el ejemplo siga cuadrando (la
     aritmética que ilustraba) y que ninguna aserción se vuelva trivial.
-  - **Si salta sin razón** (un número inventado que colisiona): añade
-    `no-real-data-ok` **en esa línea**, con el motivo al lado. Para un caso más
-    ancho, la lista de rutas o la de IBAN del propio guardián, siempre **con su
-    porqué**. No se desarma entero.
-  - **Lo que NO caza** (está en el ADR-017, y conviene saberlo antes de fiarse del
-    verde): importes redondos o cortos, valores **derivados** de los suyos, fechas, y
-    conceptos de menos de tres palabras. Y **qué mira**, desde la F23 (2026-08-19):
-    **todo fichero de `var/` cuyos bytes se lean como texto** —el `.xls` de Openbank es
-    HTML y entra; se decide por contenido, **nunca por extensión**, que es justo lo que
-    dejó el hueco por el que pasó la fuga de la F19—. De un fichero de marcado compara
-    **lo que dice, no sus etiquetas**. Los dos binarios de verdad (el `.xlsx` de
-    Bankinter y el `.pdf` de Trade Republic) quedan fuera para no meter ruido de bytes:
-    el ZIP se vigila por su volcado de `var/parsed/`, y el PDF **no se vigila** y el
-    guardián **lo dice por su nombre en la salida de `./init.sh`**, en toda ejecución
-    (lista `unwatchedBanks`). Ese aviso se escribe al **descriptor 2**, no por
-    `console`: vitest **intercepta la consola** y con el reporter por defecto —el que
-    usa `./init.sh`— un `console.warn` **no se imprime**. Se intentó así en la primera
-    pasada de la F23 y el resultado fue un verde silencioso; hay test que lo impide
-    ahora.
-  - **Si aparece un banco que no puede leer**, la suite se pone **roja** hasta que se
-    decida qué hacer con él: nunca pasa en verde sobre lo que no ha mirado. Una carpeta
-    de banco **vacía** no es lo mismo y no dice nada.
-  - **Lo que hay en `var/parsed/` es texto NUESTRO además de datos suyos** (F24,
-    2026-08-20). El volcado lo escribe el parser: si un archivo se rechaza, guarda el
-    **motivo**, que es una frase nuestra y que los `docs/` publican tal cual. El
-    guardián ya no la confunde con «una frase de su extracto»: de un `reason` solo se da
-    por nuestra la frase que **no está dentro de unas comillas** (todo valor suyo va
-    entrecomillado, y lo entrecomillado se compara sin preguntar) **y** que además esté
-    **literal en el código de producción** (`src/**.ts`, sin tests ni fixtures). Las dos
-    condiciones, nunca una. El motivo **no se trocea** para preguntarlo —va entero—:
-    trocearlo hacía desaparecer un valor con **apóstrofo dentro** (`COMPRA D'ALIMENTS…`),
-    que es un silencio, y lo cazó la review de la F24. **La capa de
-    importes no cambia**: sigue mirando el texto crudo, motivos incluidos, así que los
-    cinco importes del mensaje del descuadre se vigilan igual. Si escribes un parser
-    nuevo, **entrecomilla el valor que devuelvas en un motivo**: no es cosmética, es la
+  - **Si salta sin razón** (un número inventado que colisiona): lo normal es
+    **inventar otro**. Solo si no se puede reescribir, añade `no-real-data-ok` **en
+    esa línea**, con el motivo al lado. Para un caso más ancho, la lista de rutas del
+    propio guardián, siempre **con su porqué**. No se desarma entero. La marca y la
+    lista de rutas valen para importes y frases; **un IBAN de la base no admite
+    ninguna de las dos**, solo los dos IBAN de ejemplo de `allowedIbans`.
+  - **Puede saltar después de una importación, sin que nadie haya tocado el
+    repositorio:** si un importe nuevo del humano coincide con uno inventado de un
+    test. Se arregla inventando otro valor en la línea que señale.
+  - **Lo que NO caza** (conviene saberlo antes de fiarse del verde): importes
+    redondos o cortos (menos de cuatro cifras significativas), valores **derivados**
+    de los suyos, fechas, conceptos de menos de tres palabras, y **todo lo que no
+    esté importado en la base**: un banco nuevo o un archivo que aún no se ha
+    importado no existe para el guardián.
+  - **Con la base vacía la suite no falla.** Si la base no tiene ningún valor de un
+    tipo (importes, frases o IBAN), por no tener filas o por no tener las tablas, la
+    comparación de ese tipo **se salta y lo dice** en la salida de `./init.sh`. Ese
+    aviso se escribe al **descriptor 2**, no por `console`: vitest **intercepta la
+    consola** y con el reporter por defecto —el que usa `./init.sh`— ni un
+    `console.warn` ni la nota de un test saltado se imprimen. La comprobación de IBAN
+    por forma sigue funcionando igual.
+  - **Si una feature añade una columna `Decimal` o `String` al esquema**, la suite se
+    pone **roja** nombrando tabla y columna hasta que se apunte en `comparedColumns`
+    o en `notComparedColumns` (con su motivo) de `src/lib/test-real-data.ts`: ninguna
+    columna nueva se queda sin decidir.
+  - **Los motivos de `ImportUnparsedRow.reason` son texto NUESTRO además de datos
+    suyos** (F24, 2026-08-20, referido a esa columna desde la F51). El motivo lo
+    escribe el parser: es una frase nuestra, que los `docs/` publican tal cual, con
+    valores suyos dentro. El guardián no la confunde con «una frase de su extracto»:
+    de un motivo solo se da por nuestra la frase que **no está dentro de unas
+    comillas** (todo valor suyo va entrecomillado, y lo entrecomillado se compara sin
+    preguntar) **y** que además esté **literal en el código de producción**
+    (`src/**.ts`, sin tests ni fixtures). Las dos condiciones, nunca una. El motivo
+    **no se trocea** para preguntarlo —va entero—: trocearlo hacía desaparecer un
+    valor con **apóstrofo dentro** (`COMPRA D'ALIMENTS…`), que es un silencio, y lo
+    cazó la review de la F24. Los **importes** escritos dentro de un motivo se
+    comparan igual que los de las columnas de dinero. Si escribes un parser nuevo,
+    **entrecomilla el valor que devuelvas en un motivo**: no es cosmética, es la
     mitad de esta regla. Detalle y porqué en el ADR-017.
-  - **Y en `var/parsed/` hay además NOMBRES DE ARCHIVO, que pueden ser convención
-    nuestra** (F34, 2026-08-26). El volcado de un parser de producto guarda en `file` el
-    nombre del fichero que parseó, y ese nombre es el que **nosotros** le decimos que use
-    en la página del banco. El guardián lo leía como una frase de su extracto: 52 avisos
-    falsos de **un solo trigrama**, señalando textos nuestros con datos sintéticos, y
-    **cada parseo real suyo lo reproducía**. Desde la F34 se exime un valor solo si
-    cumple **las dos** condiciones: está bajo una clave que sabemos que guarda un nombre
-    de archivo (hoy `file`) **y** encaja **entero** con un patrón que publica nuestra
-    propia documentación. Los patrones **se leen de los `docs/`** (la línea que recomienda
-    cómo nombrar el archivo, con el patrón entre comillas invertidas), así que **no hay
-    lista de excepciones que ampliar** y un banco nuevo entra solo por documentarse. Un
-    patrón con un hueco que **no es una fecha** se descarta entero, porque lo que cabe en
-    ese hueco es suyo: por eso MyInvestor —cuyo patrón lleva el nombre del producto—
-    **sigue vigilado igual**. Si escribes la página de un banco nuevo, **recomienda el
-    nombre del archivo con la fecha como único hueco**: no es cosmética, es lo que
-    distingue tu convención de un dato suyo. Detalle y porqué en el ADR-017.
   - **Sus mensajes no llevan tu dato**: dicen `archivo:línea` y el tipo de coincidencia,
     nunca el valor. Si al leer un fallo te falta saber qué cifra es, búscala en la línea
     que te señala; el guardián no la transcribe a propósito.
@@ -209,7 +211,9 @@ export default async function accountRoutes(fastify: FastifyInstance) {
   otro, y las claves naturales siguen siendo claves naturales.
 - **Un test no abre nunca la base del humano.** El `globalSetup` le hace una foto de
   **solo lectura** antes y después de la suite; si cambia algo —hasta una secuencia
-  que avanzó por una fila insertada y borrada— la pasada termina en **rojo**.
+  que avanzó por una fila insertada y borrada— la pasada termina en **rojo**. Desde
+  la F51 el `globalSetup` lee además, por una conexión que PostgreSQL abre en solo
+  lectura, las columnas con las que compara `src/no-real-data.test.ts` (ver §Tests).
 - **No pases `--maxWorkers` a mano.** El número lo fija `vitest.config.ts` para que
   haya exactamente una base preparada por worker; si lo subes, la suite falla con ese
   mensaje en vez de compartir base en silencio.

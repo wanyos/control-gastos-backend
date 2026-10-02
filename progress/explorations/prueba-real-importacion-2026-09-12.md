@@ -139,9 +139,9 @@ true`):
 
 Comprobado despues con `GET /api/net-worth`: los dos ya se valoran con su foto
 del **2026-09-12** (antes con la del 2026-08-15), quedan **6 productos**,
-`issues` vacio y `totalPending: 1` (solo Revolut). El patrimonio pasa de
-88.875,57 € a **88.850,64 €**: baja 24,93 €, que es exactamente lo que cambia al
-sustituir las dos valoraciones de agosto por las de septiembre.
+`issues` vacio y `totalPending: 1` (solo Revolut). El patrimonio baja, y la
+bajada es exactamente lo que cambia al sustituir las dos valoraciones de agosto
+por las de septiembre (las cifras no se escriben aqui: pueden ser datos del humano).
 
 Antes de subirlos se comprobo, contra la tabla `InvestmentProduct`, que el
 `name`, el `type` y el `openedAt` de los cinco archivos de la carpeta local del

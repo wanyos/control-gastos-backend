@@ -20,9 +20,16 @@
 // descriptor 2 and sets the exit code. Collected, and not the first one only, so
 // a change in his database no longer hides one in his `var/`.
 //
+// Since feature 51 it has a third job: it reads from HIS database, through a
+// connection PostgreSQL opens READ-ONLY, the values of the columns the privacy
+// guardian (`src/no-real-data.test.ts`) compares the repository against, and
+// hands them to the test files with `provide`. They travel in memory: nothing
+// is written to disk nor printed. This file stays the only place of the suite
+// that opens his database.
+//
 // It is deliberately thin: the logic it calls lives in `src/lib/test-db.ts`,
-// `src/lib/test-var.ts` and `src/lib/test-guard.ts`, type-checked by `tsc` and
-// each with its own tests.
+// `src/lib/test-var.ts`, `src/lib/test-guard.ts` and `src/lib/test-real-data.ts`,
+// type-checked by `tsc` and each with its own tests.
 import './src/lib/load-env-file.js'
 import { availableParallelism } from 'node:os'
 
@@ -35,9 +42,16 @@ import {
   testWorkerCount,
 } from './src/lib/test-db.js'
 import { failRun } from './src/lib/test-guard.js'
+import { readRealDataReference } from './src/lib/test-real-data.js'
+import type { RealDataReference } from './src/lib/test-real-data.js'
 import { describeVarDifferences, snapshotVarDir } from './src/lib/test-var.js'
 
-export default async function setup() {
+/** The one thing this file needs of vitest's `TestProject`. */
+interface ProvidingProject {
+  provide(key: 'realDataReference', value: RealDataReference): void
+}
+
+export default async function setup(project: ProvidingProject) {
   const realDatabaseUrl = process.env.DATABASE_URL
   if (!realDatabaseUrl) {
     throw new Error(
@@ -48,8 +62,11 @@ export default async function setup() {
   const workerCount = testWorkerCount(availableParallelism())
   const { urls } = await prepareTestDatabases(realDatabaseUrl, workerCount, process.env)
 
-  // Read-only photo of HIS database. Nothing else in the suite opens it.
+  // Read-only photo of HIS database. No test file opens it: only this one does.
   const before = await snapshotDatabase(realDatabaseUrl)
+  // What the privacy guardian compares against (feature 51), read through a
+  // read-only connection. An empty or table-less database gives empty lists.
+  project.provide('realDataReference', await readRealDataReference(realDatabaseUrl))
   // Read-only photo of HIS `var/` (feature 33): the downloads of his banks and
   // the dumps the parser writes over them, gitignored and with no copy anywhere.
   // Empty snapshot on a machine that has no `var/`, which is every machine but his.

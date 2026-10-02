@@ -1,4 +1,4 @@
-// Privacy guardian (feature 14 `no-real-data`).
+// Privacy guardian (feature 14 `no-real-data`, source changed by feature 51).
 //
 // It fails when a real financial datum of the owner of this project reaches a
 // VERSIONED file. It lives in its own file, and not inside `architecture.test.ts`,
@@ -6,19 +6,21 @@
 // shape of `src/`, and because it is the executable half of the rule written in
 // `docs/conventions.md` §Tests.
 //
-// TWO LAYERS, on purpose (see progress/implementations/no-real-data.md):
+// TWO LAYERS, on purpose:
 //
 //  1. BY SHAPE — always on, needs nothing from the machine: any well-formed
 //     Spanish IBAN (mod-97 checksum) that is not one of the two documented
 //     synthetic ones is a leak. This is the layer that protects when an agent
-//     works on another machine, with no `var/` at all.
+//     works on another machine, with an empty database.
 //
-//  2. BY COMPARISON against the gitignored captures in `var/` — the precise one,
-//     but only available where those captures exist. When they are missing, or
-//     when only ONE of the two branches of `var/` is there, the check SKIPS with a
-//     message; it never fails and it never asks for them to be versioned (that
-//     would be the same problem with another name), and it never compares against
-//     half the data in silence.
+//  2. BY COMPARISON against HIS DATABASE (feature 51) — amounts, texts and IBANs
+//     of the compared columns listed in `src/lib/test-real-data.ts`. This file does
+//     NOT open his database: `vitest.global-setup.ts` reads those columns through a
+//     read-only connection and hands them over with `provide`; here they arrive
+//     with `inject`. When the database has nothing of a kind, the comparison of
+//     that kind SKIPS and says so on file descriptor 2; it never fails for it.
+//     Until feature 51 this layer read the files of `var/`; it reads no file nor
+//     folder of `var/` any more.
 //
 // This file is scanned like every other one: it is NOT on its own exception list.
 //
@@ -26,27 +28,26 @@
 //   - `allowedIbans`: an IBAN that is public/invented and used as an example.
 //   - `allowedPaths`: a path prefix excluded with its reason.
 //   - inline marker `no-real-data-ok`: a line carrying it is skipped by the
-//     comparison layers. Use it for the rare false positive, with the reason next
-//     to it. It never silences the IBAN layer.
+//     comparison of amounts and of phrases. Use it for the rare false positive,
+//     with the reason next to it. It never silences an IBAN, by shape or by
+//     comparison.
 import { execFileSync } from 'node:child_process'
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-  writeSync,
-} from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, extname, join } from 'node:path'
+import { readFileSync, writeSync } from 'node:fs'
+import { extname, join } from 'node:path'
 
-import { afterAll, describe, expect, it } from 'vitest'
+import { describe, expect, inject, it } from 'vitest'
+
+import type { RealDataReference } from './lib/test-real-data.js'
+
+// `tsconfig.json` only types `src/**`, so the key `vitest.global-setup.ts`
+// provides is declared here.
+declare module 'vitest' {
+  interface ProvidedContext {
+    realDataReference: RealDataReference
+  }
+}
 
 const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
-const captureRoot = join(repoRoot, 'var')
 
 /** Well-formed IBANs that are public documentation or plainly invented. */
 const allowedIbans = new Set([
@@ -92,6 +93,9 @@ function isAllowedPath(file: string): boolean {
  * Every file git tracks PLUS every new file that is not gitignored, as
  * repo-relative POSIX paths. The second half matters: a leak has to be caught in
  * the working tree, before the commit, which is where the reviewer reads it.
+ *
+ * A tracked file deleted from the working tree is still listed here; it is
+ * dropped by `versionedSources`, when reading it says it is not there.
  */
 function versionedFiles(): string[] {
   const listed = execFileSync(
@@ -103,203 +107,22 @@ function versionedFiles(): string[] {
     .split('\0')
     .filter(Boolean)
     .filter((file) => scannedExtensions.has(extname(file).toLowerCase()))
-    .filter((file) => existsSync(join(repoRoot, file)))
 }
 
 /**
- * WHAT COUNTS AS A CAPTURE, AND WHY IT IS NOT A LIST OF EXTENSIONS ANY MORE
- * (feature 23 `no-real-data-blind-spot`).
+ * OUR OWN WORDS INSIDE HIS DATA (feature 24, kept by feature 51).
  *
- * Until 2026-08-19 this layer opened `.txt .csv .json .md .tsv` and nothing else. The
- * `.xls` of Openbank is an HTML page in plain text — perfectly readable — so it was
- * NEVER opened, and it is the only bank whose statement carries NAMES OF PEOPLE. That
- * is how the leak of feature 19 (real amounts copied into a fixture) passed with the
- * whole suite in green: the guardian ran «with its comparison layer active» and had
- * not read the file it was supposed to compare against.
+ * `ImportUnparsedRow.reason` is not a copy of his statement: it is the sentence OUR
+ * parser wrote about a row it could not read — «se espera el formato AAAA-MM-DD» —
+ * and the documentation publishes those same sentences word for word, because they
+ * are ours to publish. Read as «a phrase of his copied into the docs» they flood the
+ * run with false warnings (270 in one run, when the same messages lived in the dump
+ * of `var/parsed/`).
  *
- * A list of extensions is a promise about the future that nobody keeps: bank number
- * seven arrives with another one and the hole opens again in silence. So the question
- * asked here is about the CONTENT — are these bytes readable as text? — and nothing
- * else. The name of the file decides nothing.
- */
-const binarySampleBytes = 8192
-const controlByteRatio = 0.01
-
-/**
- * A capture larger than this is not read: no statement of his is remotely this big
- * (the largest today is ~165 KB), and a runaway file must not hang the suite. It is
- * accounted for exactly like an unreadable one, never ignored in silence.
- */
-const maxCaptureBytes = 32 * 1024 * 1024
-
-type CaptureOutcome =
-  { readable: true; text: string } | { readable: false; why: 'binary' | 'too-large' }
-
-/**
- * Binary means «there are bytes here that no text has»: a NUL byte, or more than 1% of
- * control bytes in the first 8 KiB. That single question separates the two files of
- * `var/` that really are binary — the `.xlsx` of Bankinter (a ZIP) and the `.pdf` of
- * Trade Republic — from the `.xls` of Openbank, which is only binary in its NAME.
+ * WHERE THE LINE IS DRAWN, and why it does not open a hole:
  *
- * Those two are left OUT on purpose, and it is not an oversight:
- *  - reading them as text would feed the comparison compressed bytes, which is noise
- *    that produces false positives and teaches everyone to add exceptions;
- *  - the ZIP is already comparable through its dump in `var/parsed/`, which is why
- *    this file demands BOTH branches of `var/` (see `captureBranches`);
- *  - and the PDF is comparable through NOTHING today, which is not swept under the
- *    rug either: see `unwatchedBanks`.
- */
-function looksBinary(bytes: Buffer): boolean {
-  const sample = bytes.subarray(0, binarySampleBytes)
-  if (sample.length === 0) return false
-  let control = 0
-  for (const byte of sample) {
-    if (byte === 0) return true
-    if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 12 && byte !== 13) control += 1
-  }
-  return control > sample.length * controlByteRatio
-}
-
-/**
- * Decoding a capture NEVER throws: UTF-8 first, and anything else is read as cp1252,
- * which maps all 256 bytes. `decodeCp1252Strict` of `src/lib/` is deliberately NOT
- * reused here — it rejects a file carrying `U+FFFD` (feature 17/22), and a damaged
- * capture is exactly one the guardian still has to compare, not one it may drop.
- */
-function decodeCapture(bytes: Buffer): string {
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-  } catch {
-    return new TextDecoder('windows-1252').decode(bytes)
-  }
-}
-
-const captureCache = new Map<string, CaptureOutcome>()
-
-function readCapture(file: string): CaptureOutcome {
-  const cached = captureCache.get(file)
-  if (cached) return cached
-  let outcome: CaptureOutcome
-  if (statSync(file).size > maxCaptureBytes) {
-    outcome = { readable: false, why: 'too-large' }
-  } else {
-    const bytes = readFileSync(file)
-    outcome = looksBinary(bytes)
-      ? { readable: false, why: 'binary' }
-      : { readable: true, text: decodeCapture(bytes) }
-  }
-  captureCache.set(file, outcome)
-  return outcome
-}
-
-/** Every file under `dir`, readable or not. */
-function allFiles(dir: string): string[] {
-  if (!existsSync(dir)) return []
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const full = join(dir, entry.name)
-    return entry.isDirectory() ? allFiles(full) : [full]
-  })
-}
-
-/** The human's real captures that CAN be read. Gitignored, absent on any other machine. */
-function captureFiles(dir = captureRoot): string[] {
-  return allFiles(dir).filter((file) => readCapture(file).readable)
-}
-
-/**
- * A capture written in markup (the `.xls` of Openbank is an HTML page). Its TAGS are
- * the bank's format — our parser has to reproduce them, so comparing against them would
- * flag our own parser — and its TEXT is his. Same criterion already applied to the KEYS
- * of a `.json` dump below: compare what the document says, never its container.
- */
-function looksLikeMarkup(text: string): boolean {
-  return text.slice(0, 512).trimStart().startsWith('<') && /<\/?[a-z!?][^>]*>/i.test(text)
-}
-
-function markupText(text: string): string {
-  return (
-    text
-      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-      // The comment DELIMITERS go and what they say STAYS: the line where he writes his
-      // IBAN into the Openbank file is an HTML comment (feature 19).
-      .replace(/<!--|-->/g, ' ')
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&amp;/gi, '&')
-      .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number(code)))
-      .replace(/&[a-z]+;/gi, ' ')
-  )
-}
-
-/**
- * The two branches of `var/` the comparison layer needs to be worth anything.
- *
- * `var/drive-read/` holds the downloads AS THEY COME, and some are BINARY (the
- * `.xlsx` of Bankinter): nothing readable can be extracted from them here. That
- * whole statement only becomes comparable through its parsed dump in
- * `var/parsed/`. So a machine that has downloaded but not parsed yet used to run
- * the comparison "successfully" against half the data and pass in GREEN with real
- * balances in the tree — false security, which is the one thing this feature
- * exists to prevent. Missing branch ⇒ the layer SKIPS and says so.
- */
-const captureBranches = ['drive-read', 'parsed']
-
-function missingCaptureBranches(): string[] {
-  return captureBranches.filter((branch) => captureFiles(join(captureRoot, branch)).length === 0)
-}
-
-/** Null when the comparison layer can run; the reason to skip when it cannot. */
-function comparisonUnavailable(missing = missingCaptureBranches()): string | null {
-  if (missing.length === captureBranches.length) {
-    return (
-      'No captures under var/: the comparison layer cannot run on this machine. This is ' +
-      'BY DESIGN — the real data must NEVER be versioned to make this test possible. ' +
-      'The shape layer (IBAN checksum) did run.'
-    )
-  }
-  if (missing.length > 0) {
-    return (
-      `var/ is INCOMPLETE (missing: ${missing.join(', ')}). Comparing against half the ` +
-      'captures would pass in green while missing the other half — a binary .xlsx is only ' +
-      'readable through its parsed dump. Run the parser, or accept that only the shape ' +
-      'layer is guarding this run.'
-    )
-  }
-  return null
-}
-
-/**
- * What a capture is worth comparing as: its CONTENT, never its container.
- * Markup is stripped to the text it shows (see `markupText`).
- */
-function captureContent(file: string): string {
-  const outcome = readCapture(file)
-  if (!outcome.readable) return ''
-  return looksLikeMarkup(outcome.text) ? markupText(outcome.text) : outcome.text
-}
-
-function captureText(dir = captureRoot): string {
-  return captureFiles(dir)
-    .map((file) => captureContent(file))
-    .join('\n')
-}
-
-/**
- * OUR OWN WORDS INSIDE HIS DUMP (feature 24, found by the real run of 2026-08-20).
- *
- * `var/parsed/` is not a copy of his statement: it is what OUR parser wrote about it.
- * When a file is rejected, the dump carries the REJECTION MESSAGE of the parser — the
- * balance formula, «se espera el formato AAAA-MM-DD» — and the documentation publishes
- * those same sentences word for word, because they are ours to publish. The guardian
- * read them as «a phrase of his statement copied into the docs» and returned 270 false
- * warnings in one run. It happens to ANY bank every time a file is rejected.
- *
- * WHERE THE LINE IS DRAWN, and why it does not open a hole (the decision of this
- * feature, argued in progress/implementations/guardian-own-words.md):
- *
- *  - It is NOT drawn per FILE: nothing is added to an ignore list.
- *  - It is NOT drawn per FIELD either. Dropping the whole `reason` would stop watching
- *    the five real amounts that the balance-mismatch message carries INSIDE it.
+ *  - It is NOT drawn per COLUMN. Dropping the whole message would stop watching the
+ *    values of his that it carries INSIDE it.
  *  - It is drawn per PHRASE, and only where TWO independent conditions agree:
  *      (a) the phrase is NOT part of a value echoed from his file. Every echoed value
  *          is quoted, by the convention every parser follows (`display()` quotes as
@@ -311,142 +134,23 @@ function captureText(dir = captureRoot): string {
  *    watched; a sentence of ours quoted by accident fails (a) and stays watched.
  *
  *    AND THE MESSAGE IS NEVER CHOPPED UP TO ASK THE QUESTION (fixed 2026-08-20 after
- *    the review of this feature). It used to be: the message was cut at the quotes and
+ *    the review of feature 24). It used to be: the message was cut at the quotes and
  *    only the pieces BETWEEN them were asked about — so a value of his carrying an
  *    APOSTROPHE (`COMPRA D'ALIMENTS…`, and there are apostrophes in real card concepts)
  *    mis-cut the message, each half landed in a different bucket, neither half reached
- *    three words, and the value STOPPED BEING COMPARED. A silence, in the one function
- *    whose comment promised it could not produce one. Now the WHOLE message is asked
+ *    three words, and the value STOPPED BEING COMPARED. Now the WHOLE message is asked
  *    about as ONE string and the quoted spans are added ON TOP: the split can only ADD
  *    to what is compared, never take a character away from it.
  *
- *  - AND THE AMOUNT LAYER IS NOT TOUCHED AT ALL: it keeps comparing against the RAW
- *    text of every capture (`captureText`), messages included. The five amounts of the
- *    mismatch reason are watched today exactly as they were yesterday. The line drawn
- *    here is only about WORDS, which is where the confusion was.
+ *  - AND THE AMOUNTS OF A MESSAGE ARE WATCHED WITH NO SPLIT AT ALL: every amount
+ *    written inside one of those messages is compared like the amounts of the money
+ *    columns (`comparisonOf`). The line drawn here is only about WORDS.
  */
-const ourProseKeys = new Set(['reason'])
-
-/**
- * OUR OWN FILE-NAMING CONVENTION INSIDE HIS DUMP (feature 34, measured by feature 33
- * on 2026-08-25 and NOT covered by the rule above).
- *
- * The dump of a product parser stores, per entry, the NAME OF THE FILE it parsed. That
- * name is not a datum of his statement: for Trade Republic it is the convention THIS
- * PROJECT PUBLISHES in `docs/trade-republic-product-files.md` and prints on the template
- * he fills in. So the guardian was reporting OUR OWN texts —`docs/api-contract.md`, three
- * test files whose data is synthetic, `history.md`— as «a phrase of his statement»: 52
- * warnings out of ONE trigram, the three words the name leaves once `words()` throws the
- * digits away. It is not a leftover of feature 33: every real parse of Trade Republic he
- * runs writes that name again, so the suite went red whenever he used the application.
- *
- * WHY THE FEATURE 24 MECHANISM DOES NOT COVER IT, and why this is a separate piece:
- * feature 24 subtracts a phrase only when OUR PRODUCTION SOURCE proves we wrote it, and
- * it excludes tests and fixtures ON PURPOSE (a copy is not proof of ownership). The word
- * of this convention lives in the DOCUMENTATION and in the template, never in a message
- * literal of `src/`, so `ownSourceVocabulary` says —correctly— «this is not mine». The
- * proof needed here is of another kind, so it is read from another place, mechanically.
- *
- * WHERE THE LINE IS DRAWN, and why it does not open a hole:
- *
- *  - BY PROVENANCE FIRST: only a value under a key we KNOW holds a file name
- *    (`fileNameKeys`). The very same string sitting in `name`, which is where a product
- *    of his lands, is compared exactly as before.
- *  - AND BY FORM ON TOP: the value has to match, WHOLE and anchored, a naming pattern
- *    that our own documentation publishes. Both, never one — the same shape as the two
- *    conditions of feature 24.
- *  - The patterns are READ FROM OUR DOCS, not written here: there is no hand-kept list to
- *    extend every time it fires, and a run can say WHICH page let a value through.
- *  - A pattern whose placeholder is NOT a date is DISCARDED, because everything a
- *    placeholder admits is HIS. That is what keeps MyInvestor watched: its published
- *    convention is `<producto>-<AAAA-MM-DD>.json`, and `<producto>` is the name he gives
- *    his fund. Only a pattern made of OUR literal words plus a date can exempt anything,
- *    so an exempted value is our published text plus digits, and nothing else can hide
- *    inside it.
- *  - AND THE AMOUNT LAYER IS NOT TOUCHED: it keeps comparing against the RAW text of
- *    every capture, file names included. Digits are its business, not this one's.
- */
-const fileNameKeys = new Set(['file'])
-
-interface PublishedFilename {
-  /** The pattern as the documentation writes it, placeholder included. */
-  source: string
-  /** The page it was read from, so it can be said WHY a value was let through. */
-  doc: string
-  pattern: RegExp
-}
-
-/** The pages this project publishes to him: `docs/*.md`, never a test nor a fixture. */
-function isPublishedDoc(file: string): boolean {
-  return /^docs\/[^/]+\.md$/.test(file)
-}
-
-/** The ONE placeholder that admits no word of his: a calendar date. */
-const datePlaceholder = '<AAAA-MM-DD>'
-
-/**
- * A published pattern compiled into an anchored regular expression, or `null` when it
- * carries a placeholder that is not a date — that one admits HIS words and may exempt
- * nothing.
- */
-function compilePublishedFilename(source: string): RegExp | null {
-  if (source.length === 0) return null
-  let body = ''
-  for (const part of source.split(/(<[^>]*>)/)) {
-    if (part.length === 0) continue
-    if (!part.startsWith('<')) {
-      body += part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      continue
-    }
-    if (part !== datePlaceholder) return null
-    body += '\\d{4}-\\d{2}-\\d{2}'
-  }
-  return new RegExp(`^${body}$`)
-}
-
-/**
- * The naming conventions this project publishes, read from the documentation itself:
- * the line «Convención recomendada …» of each page, with the pattern between backticks.
- */
-function publishedFilenames(
-  sources: SourceFile[] = versionedSources().filter((source) => isPublishedDoc(source.file)),
-): PublishedFilename[] {
-  const published: PublishedFilename[] = []
-  for (const source of sources) {
-    for (const match of source.text.matchAll(/Convención recomendada[^`\n]*`([^`\n]+)`/g)) {
-      const text = match[1] ?? ''
-      const pattern = compilePublishedFilename(text)
-      if (pattern) published.push({ source: text, doc: source.file, pattern })
-    }
-  }
-  return published
-}
-
-let publishedFilenamesCache: PublishedFilename[] | null = null
-
-/** Read once per run: the repository does not change while the suite runs. */
-function defaultPublishedFilenames(): PublishedFilename[] {
-  publishedFilenamesCache ??= publishedFilenames()
-  return publishedFilenamesCache
-}
-
-/** The published convention a value follows, or `null` when it follows none. */
-function publishedFilenameOf(
-  value: string,
-  published: PublishedFilename[],
-): PublishedFilename | null {
-  return published.find((entry) => entry.pattern.test(value)) ?? null
-}
-
 interface CaptureSources {
   /**
-   * His: every capture, minus the template half of our own messages. ONE ENTRY PER
-   * VALUE, never a single blob: joining the values of a dump and reading trigrams
-   * across the seam invents phrases that are written in NO file — `bank` and `year`
-   * repeat once per entry, so a dump of a rejected file used to «contain» the phrase
-   * «trade republic trade», and every document naming the bank twice was reported. A
-   * phrase of his lives INSIDE one value; the seam between two is our JSON, not his
-   * statement. A capture that is not a dump stays one whole entry, as it always was.
+   * His: ONE ENTRY PER VALUE, never a single blob. Joining the values and reading
+   * trigrams across the seam invents phrases that are written in NO value of his. A
+   * phrase of his lives INSIDE one value.
    */
   data: string[]
   /**
@@ -456,19 +160,6 @@ interface CaptureSources {
    * own source proves we wrote it.
    */
   ourProse: string[]
-  /**
-   * Neither: the file names let through as OUR OWN published naming convention, with the
-   * page that publishes each one (feature 34). Nothing here is compared — it is kept so
-   * that «why did the guardian let this through» has an answer that is not a hand-kept
-   * list, and so the tests below can assert on exactly what was exempted.
-   */
-  letThrough: PublishedFileName[]
-}
-
-/** A value the guardian let through, and the page whose convention it follows. */
-interface PublishedFileName {
-  value: string
-  doc: string
 }
 
 /**
@@ -491,80 +182,24 @@ function echoedSpans(message: string): string[] {
 }
 
 /**
- * The captures split in two: what is his and what is ours.
- *
- * The KEYS of a `.json` dump are dropped as they always were — they are OUR field
- * names (`bookingDate`, `descripcion`…) and comparing prose against them flags every
- * document that talks about the model. Only the values are his… except the ones under
- * `ourProseKeys`, which are the sentences we compose about his file.
+ * The reference split in two: what is his and what is ours. The text columns are his,
+ * one entry per value; each of our messages goes WHOLE on one side and whatever it
+ * quotes is lifted to the other. Both, so that no cut of ours can lose a phrase of his.
  */
-function capturePhraseSources(
-  dir = captureRoot,
-  published: PublishedFilename[] = defaultPublishedFilenames(),
-): CaptureSources {
-  const data: string[] = []
-  const ourProse: string[] = []
-  const letThrough: PublishedFileName[] = []
-  const exemptionOf = (value: string): PublishedFilename | null =>
-    publishedFilenameOf(value, published)
-  for (const file of captureFiles(dir)) {
-    const outcome = readCapture(file)
-    if (!outcome.readable) continue
-    if (looksLikeMarkup(outcome.text)) {
-      data.push(markupText(outcome.text))
-      continue
-    }
-    if (extname(file).toLowerCase() !== '.json') {
-      data.push(outcome.text)
-      continue
-    }
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(outcome.text)
-    } catch {
-      data.push(outcome.text)
-      continue
-    }
-    const walk = (node: unknown, key: string | null): void => {
-      if (typeof node === 'string' && key !== null && ourProseKeys.has(key)) {
-        // The message WHOLE on one side, and whatever it quotes lifted to the other.
-        // Both, so that no cut of ours can lose a phrase of his.
-        data.push(...echoedSpans(node))
-        ourProse.push(node)
-      } else if (
-        typeof node === 'string' &&
-        key !== null &&
-        fileNameKeys.has(key) &&
-        exemptionOf(node)
-      ) {
-        // A file name that follows, WHOLE, a convention we publish: our words plus a
-        // date, and nothing of his can hide inside it (feature 34). It is compared as
-        // NEITHER — it is not his data, and it is not one of our messages either, so
-        // asking `ownSourceVocabulary` about it would keep it watched: the convention
-        // lives in the documentation, not in a message literal of `src/`. What it IS
-        // gets recorded, so a run can say what it let through and which page says so.
-        // The amount layer never sees this split and keeps reading the raw capture.
-        letThrough.push({ value: node, doc: exemptionOf(node)?.doc ?? '' })
-      } else if (typeof node === 'string' || typeof node === 'number') {
-        data.push(String(node))
-      } else if (Array.isArray(node)) {
-        node.forEach((item) => walk(item, key))
-      } else if (node && typeof node === 'object') {
-        for (const [childKey, value] of Object.entries(node)) walk(value, childKey)
-      }
-    }
-    walk(parsed, null)
+function referencePhraseSources(reference: RealDataReference): CaptureSources {
+  return {
+    data: [...reference.texts, ...reference.ownMessages.flatMap((message) => echoedSpans(message))],
+    ourProse: [...reference.ownMessages],
   }
-  return { data, ourProse, letThrough }
 }
 
 /**
  * The message literals of one of our source files, as prose.
  *
  * `${…}` goes first: what is interpolated is a VALUE, ours or his, never our words —
- * and dropping it makes the source read like the dump, where `words()` throws digits
+ * and dropping it makes the source read like the stored message, where `words()` throws digits
  * away too. Then literals glued with `+` are joined back into ONE message, because a
- * sentence split across three lines by the formatter is still one sentence in the dump.
+ * sentence split across three lines by the formatter is still one sentence in the stored message.
  */
 function ownMessageProse(source: string): string[] {
   const glued = source.replace(/\$\{[^{}]*\}/g, ' ').replace(/(['"`])\s*\+\s*(['"`])/g, '')
@@ -590,7 +225,7 @@ function isOwnSource(file: string): boolean {
  *  - `phrases`: the exact three-word sequences of our messages.
  *  - `words`: every word those literals use, field names included (`'openedAt'` is a
  *    literal in the parser too). It is needed because a message is composed AROUND its
- *    interpolations: the source says «${key}: fecha inválida» and the dump says
+ *    interpolations: the source says «${key}: fecha inválida» and the stored message says
  *    «openedAt: fecha inválida», a sequence that is nowhere in the source and is ours
  *    all the same. A trigram made ENTIRELY of our vocabulary is ours; one single word
  *    of his — a product name, a concept — and it stays watched.
@@ -637,71 +272,6 @@ function comparablePhrases(sources: CaptureSources, own: OwnVocabulary): string[
   }
   return [...phrases]
 }
-
-const driveReadRoot = join(captureRoot, 'drive-read')
-const parsedRoot = join(captureRoot, 'parsed')
-
-interface BankCoverage {
-  bank: string
-  files: number
-  captured: number
-  parsedCaptures: number
-}
-
-/**
- * How much of each bank of `var/drive-read/` the comparison layer can actually see.
- * A bank is watched when at least one of its downloads reads as text, OR when its
- * parsed dump exists in `var/parsed/<bank>/` (the only way a real binary becomes
- * comparable, ADR-017).
- */
-function bankCoverage(driveRead = driveReadRoot, parsed = parsedRoot): BankCoverage[] {
-  if (!existsSync(driveRead)) return []
-  return readdirSync(driveRead, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => {
-      const files = allFiles(join(driveRead, entry.name))
-      return {
-        bank: entry.name.toLowerCase(),
-        files: files.length,
-        captured: files.filter((file) => readCapture(file).readable).length,
-        parsedCaptures: captureFiles(join(parsed, entry.name.toLowerCase())).length,
-      }
-    })
-}
-
-/**
- * A bank folder that HAS files, where nothing could be captured and no parsed dump
- * exists either. This is the exact state feature 23 was opened for: it is NOT «empty
- * folder» (nothing of his to guard, nothing to say) and it must never end in a silent
- * green — a guardian that passes over what it has not read is worse than none.
- */
-function unwatchedNow(coverage = bankCoverage()): string[] {
-  return coverage
-    .filter((bank) => bank.files > 0 && bank.captured === 0 && bank.parsedCaptures === 0)
-    .map((bank) => bank.bank)
-    .sort()
-}
-
-/**
- * The banks this guardian ADMITS it does not watch, each with its reason and what
- * would close it.
- *
- * It is NOT an exception to make anything pass: nothing here silences a match, and a
- * bank on this list is a hole DECLARED OUT LOUD, printed on every run. The test below
- * asserts the list is EXACTLY the real state, in both directions, so bank number seven
- * arriving with an unreadable format turns the suite RED, and a bank that becomes
- * readable forces its entry to be deleted.
- */
-const unwatchedBanks: Array<{ bank: string; reason: string }> = [
-  // EMPTY TODAY, and that is a state worth reading, not a leftover. Trade Republic was
-  // here until 2026-08-20 because its statement is a PDF drawn with subset fonts; the
-  // entry itself said HOW IT CLOSES — «the day that JSON lands in
-  // var/drive-read/trade-republic/, that file is text and this entry has to be
-  // deleted». It landed, the test went red exactly as it promised, and the entry is
-  // gone (feature 24). The list stays, and so does the test below asserting it is
-  // EXACTLY the real state: bank number seven arriving with an unreadable format has to
-  // turn the suite red and write its reason here.
-]
 
 // The first alternative catches the thousands separator written as a SPACE
 // (`9 876,54`), which is how prose tends to quote an amount and how a leak got
@@ -841,7 +411,7 @@ function words(text: string): string[] {
 }
 
 /**
- * Three-word sequences of a capture carrying at least TWO uncommon words.
+ * Three-word sequences of a value carrying at least TWO uncommon words.
  * `valor de mercado` is everyone's; a product name plus its index is only his.
  */
 function tellingPhrases(text: string): string[] {
@@ -893,10 +463,15 @@ interface SourceFile {
 }
 
 function versionedSources(): SourceFile[] {
-  return versionedFiles().map((file) => ({
-    file,
-    text: readFileSync(join(repoRoot, file), 'utf8'),
-  }))
+  return versionedFiles().flatMap((file) => {
+    try {
+      return [{ file, text: readFileSync(join(repoRoot, file), 'utf8') }]
+    } catch (error) {
+      // Tracked by git and deleted from the working tree: nothing to scan.
+      if ((error as { code?: string }).code === 'ENOENT') return []
+      throw error
+    }
+  })
 }
 
 /**
@@ -905,8 +480,8 @@ function versionedSources(): SourceFile[] {
  * past the first sweep of feature 14.
  *
  * It takes the sources instead of reading the repository itself so that the MECHANISM
- * can be proved on a synthetic bank file and a simulated versioned file in a temporary
- * directory — feature 23, and never with a real datum inside a test.
+ * can be proved on a simulated versioned file and an invented reference, both built in
+ * memory — never with a real datum inside a test.
  */
 function scanSources(
   sources: SourceFile[],
@@ -937,21 +512,24 @@ function scan(
 }
 
 /**
- * The two leak checks, built apart from the suite so the same code that guards the
+ * The three leak checks, built apart from the suite so the same code that guards the
  * repository is the one the mechanism tests exercise.
  *
- * NEITHER MESSAGE CARRIES THE VALUE. It used to echo the amount, and that message is
+ * NO MESSAGE CARRIES THE VALUE. It used to echo the amount, and that message is
  * itself printed, pasted into reports and versioned: a guardian that prints his data to
  * complain about his data being printed. Where (file and line) and what kind, nothing
  * else (feature 23).
  */
+const amountReason =
+  'an amount on this line is in the database: it is real data, invent another one'
+const phraseReason = 'a three-word sequence copied from the database (a concept of his movements?)'
+const ibanReason = 'an IBAN of the database is on this line: it is real data, invent another one'
+
 function amountLeak(secrets: Set<number>): (text: string) => string | null {
   return (text) => {
     for (const match of text.matchAll(numberPattern)) {
       const value = toNumber(match[0])
-      if (isTelling(value) && secrets.has(Number(value.toFixed(4)))) {
-        return 'an amount on this line is in a file of var/: it is real data, invent another one'
-      }
+      if (isTelling(value) && secrets.has(Number(value.toFixed(4)))) return amountReason
     }
     return null
   }
@@ -959,20 +537,127 @@ function amountLeak(secrets: Set<number>): (text: string) => string | null {
 
 function phraseLeak(phrases: string[]): (text: string) => string | null {
   // The chunk's own trigrams are looked UP in a set, instead of trying every phrase of
-  // `var/` on every line. Same verdict for a real copy —a phrase is three consecutive
-  // words either way— and the cost stops depending on how much of `var/` is captured:
-  // with the two `.xls` of Openbank entering (feature 23) the old loop went over the
-  // 5 s budget of the suite. It is also STRICTER: `includes` matched a phrase glued to
-  // the tail of a longer word.
+  // the reference on every line. Same verdict for a real copy —a phrase is three
+  // consecutive words either way— and the cost stops depending on how much there is to
+  // compare against. It is also STRICTER: `includes` matched a phrase glued to the tail
+  // of a longer word.
   const wanted = new Set(phrases)
-  return (text) =>
-    trigramsOf(text).some((trigram) => wanted.has(trigram))
-      ? 'a three-word sequence copied from a file of var/ (a concept of his statement?)'
-      : null
+  return (text) => (trigramsOf(text).some((trigram) => wanted.has(trigram)) ? phraseReason : null)
+}
+
+/** An IBAN as it is compared: no spaces, no hyphens, upper case. */
+function compactIban(text: string): string {
+  return text.replace(/[\s-]/g, '').toUpperCase()
+}
+
+/**
+ * An IBAN of the database written on a line, however it is spaced or cased. Unlike the
+ * shape layer it needs no country nor checksum: it knows the exact value it looks for,
+ * so an IBAN that is not Spanish is caught too.
+ */
+function ibanLeak(ibans: string[]): (text: string) => string | null {
+  return (text) => {
+    const line = compactIban(text)
+    return ibans.some((iban) => line.includes(iban)) ? ibanReason : null
+  }
 }
 
 function report(findings: Finding[]): string[] {
   return findings.map((finding) => `${finding.file}:${finding.line} — ${finding.reason}`).sort()
+}
+
+/** What the reference is turned into before comparing: one set per kind. */
+interface Comparison {
+  amounts: Set<number>
+  phrases: string[]
+  ibans: string[]
+}
+
+/**
+ * The reference read from the database, reduced to what is worth comparing. The reader
+ * hands the values RAW; the criterion (`isTelling`, `tellingPhrases`, our own
+ * vocabulary) lives only here.
+ *
+ * The amounts are those of the money columns PLUS every amount written inside one of
+ * our messages (`ImportUnparsedRow.reason`): a message carries values of his, and its
+ * amounts are watched with no question about who wrote the sentence.
+ */
+function comparisonOf(reference: RealDataReference, own: OwnVocabulary): Comparison {
+  const amounts = new Set<number>()
+  for (const raw of reference.amounts) {
+    const value = Math.abs(Number(raw))
+    if (Number.isFinite(value) && isTelling(value)) amounts.add(Number(value.toFixed(4)))
+  }
+  for (const message of reference.ownMessages) {
+    for (const amount of amountsOf(message)) amounts.add(amount)
+  }
+
+  return {
+    amounts,
+    phrases: comparablePhrases(referencePhraseSources(reference), own),
+    ibans: [...new Set(reference.ibans.map((iban) => compactIban(iban)))].filter(
+      (iban) => iban.length > 0 && !allowedIbans.has(iban),
+    ),
+  }
+}
+
+type ComparedKind = 'amounts' | 'phrases' | 'IBAN'
+
+/** The kinds the database gives nothing to compare against: no rows, or no tables. */
+function kindsWithNothingToCompare(comparison: Comparison): ComparedKind[] {
+  const kinds: ComparedKind[] = []
+  if (comparison.amounts.size === 0) kinds.push('amounts')
+  if (comparison.phrases.length === 0) kinds.push('phrases')
+  if (comparison.ibans.length === 0) kinds.push('IBAN')
+  return kinds
+}
+
+/**
+ * HOW A SKIPPED COMPARISON IS SAID OUT LOUD, AND WHY NOT WITH `console.warn`.
+ *
+ * vitest INTERCEPTS the console: with the default reporter —the one `pnpm test` and
+ * therefore `./init.sh` use— a `console.warn` is not printed at all, and neither is the
+ * note given to `context.skip`. `writeSync(2, …)` writes to FILE DESCRIPTOR 2: it does
+ * not pass through `console`, nor through the reporter, nor through anything vitest
+ * owns. It is ONE mechanism chosen and FIXED (feature 23): changing it means measuring
+ * again, on purpose — there is a test below that goes red if anyone swaps it while
+ * tidying up.
+ *
+ * The kind only, never a value of his.
+ */
+function skippedAnnouncement(kinds: ComparedKind[]): string | null {
+  if (kinds.length === 0) return null
+  const lines = [
+    `[no-real-data] THE DATABASE HAS NOTHING TO COMPARE AGAINST FOR: ${kinds.join(', ')}`,
+    '[no-real-data]   that comparison was SKIPPED on this run: a datum of that kind copied ' +
+      'into the repository is not caught by it.',
+    '[no-real-data]   the check of Spanish IBANs by their shape did run: it needs no database.',
+  ]
+  return `\n${lines.join('\n')}\n\n`
+}
+
+function announceSkipped(kinds: ComparedKind[]): void {
+  const announcement = skippedAnnouncement(kinds)
+  if (announcement) writeSync(2, announcement)
+}
+
+let providedComparison: Comparison | null = null
+
+/**
+ * What `vitest.global-setup.ts` read from his database, once per file. A run whose
+ * global setup provided nothing is a broken wiring, not an empty database: it fails.
+ */
+function databaseComparison(): Comparison {
+  if (providedComparison) return providedComparison
+  const reference = inject('realDataReference') as RealDataReference | undefined
+  if (!reference) {
+    throw new Error(
+      'vitest.global-setup.ts provided no `realDataReference`: the comparison against the ' +
+        'database cannot run and must not pass in silence.',
+    )
+  }
+  providedComparison = comparisonOf(reference, ownSourceVocabulary())
+  return providedComparison
 }
 
 describe('no real financial data of the human is versioned', () => {
@@ -997,35 +682,45 @@ describe('no real financial data of the human is versioned', () => {
     expect(versionedFiles().filter((file) => file.startsWith('var/'))).toEqual([])
   })
 
-  it('repeats no telling amount of the local captures (skipped when they are absent or partial)', (context) => {
-    const unavailable = comparisonUnavailable()
-    if (unavailable) {
-      context.skip(unavailable)
+  it('repeats no telling amount of the database', (context) => {
+    const { amounts } = databaseComparison()
+    if (amounts.size === 0) {
+      announceSkipped(['amounts'])
+      context.skip('the database has no amount to compare against')
       return
     }
 
-    const secrets = amountsOf(captureText())
-    expect(secrets.size).toBeGreaterThan(0)
-
-    const offenders = scan(amountLeak(secrets), true)
+    const offenders = scan(amountLeak(amounts), true)
 
     expect(report(offenders)).toEqual([])
   })
 
-  it('copies no telling phrase of the local captures (skipped when they are absent or partial)', (context) => {
-    const unavailable = comparisonUnavailable()
-    if (unavailable) {
-      context.skip(unavailable)
+  it('copies no telling phrase of the database', (context) => {
+    // Ours is subtracted from his ONE PHRASE AT A TIME, and only where our own source
+    // proves we wrote it (feature 24): the message our parser stores about a row it
+    // could not read is not «a phrase of his statement».
+    const { phrases } = databaseComparison()
+    if (phrases.length === 0) {
+      announceSkipped(['phrases'])
+      context.skip('the database has no phrase to compare against')
       return
     }
 
-    // Ours is subtracted from his ONE PHRASE AT A TIME, and only where our own source
-    // proves we wrote it (feature 24): the rejection message our parser leaves inside
-    // the dump is not «a phrase of his statement».
-    const phrases = comparablePhrases(capturePhraseSources(), ownSourceVocabulary())
-    expect(phrases.length).toBeGreaterThan(0)
-
     const offenders = scan(phraseLeak(phrases), true, 2)
+
+    expect(report(offenders)).toEqual([])
+  })
+
+  it('repeats no IBAN of the database', (context) => {
+    const { ibans } = databaseComparison()
+    if (ibans.length === 0) {
+      announceSkipped(['IBAN'])
+      context.skip('the database has no IBAN to compare against')
+      return
+    }
+
+    // Neither the path list nor the marker apply: same as the check by shape.
+    const offenders = scan(ibanLeak(ibans), false)
 
     expect(report(offenders)).toEqual([])
   })
@@ -1069,16 +764,6 @@ describe('the guardian itself', () => {
     expect(tellingPhrases('Valor de mercado')).toEqual([])
   })
 
-  it('refuses to compare against half of var/ instead of passing in green', () => {
-    // A binary `.xlsx` of `drive-read/` is only readable through its dump in
-    // `parsed/`: with one branch missing the comparison would guard half the data
-    // and say nothing. It has to skip WITH A REASON, and name the branch.
-    expect(comparisonUnavailable([])).toBeNull()
-    expect(comparisonUnavailable(['parsed'])).toContain('INCOMPLETE')
-    expect(comparisonUnavailable(['parsed'])).toContain('parsed')
-    expect(comparisonUnavailable(['drive-read', 'parsed'])).toContain('BY DESIGN')
-  })
-
   it('is not on its own exception list: it guards itself like any other file', () => {
     expect(isAllowedPath('src/no-real-data.test.ts')).toBe(false)
     expect(isAllowedPath('prisma/migrations/x/migration.sql')).toBe(true)
@@ -1091,224 +776,55 @@ describe('the guardian itself', () => {
     expect(files).toContain('src/no-real-data.test.ts')
     expect(files.length).toBeGreaterThan(20)
   })
+
+  it('imports nothing that can list or walk a folder', () => {
+    // WHAT MAKES «it works the same with `var/` deleted» TRUE: with these two names
+    // this file can read a file it is given the path of and write to a descriptor.
+    // It cannot list a folder, ask whether a path exists, nor create anything.
+    const source = readFileSync(join(repoRoot, 'src/no-real-data.test.ts'), 'utf8')
+    const imported = [...source.matchAll(/^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+'node:fs'/gm)]
+      .flatMap((match) => (match[1] ?? '').split(','))
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .sort()
+
+    expect(imported).toEqual(['readFileSync', 'writeSync'])
+    // And no other door to the file system: neither the promises API nor a namespace.
+    expect(source).not.toMatch(/from\s+'node:fs\/promises'/)
+    expect(source).not.toMatch(/import\s+\*\s+as\s+\w+\s+from\s+'node:fs'/)
+    expect(source).not.toMatch(/import\s+\w+\s+from\s+'node:fs'/)
+    expect(source).not.toMatch(/require\(/)
+  })
 })
 
 /**
- * EVERYTHING BELOW IS INVENTED (feature 23). This file is scanned like any other, so a
- * synthetic bank file is built here in code — never a copy of his — and it lives in a
- * temporary directory outside the repository that is deleted when the suite ends.
- *
- * The invented statement has the SHAPE of the Openbank download: an HTML page named
- * `.xls`, with the IBAN line he writes inside an HTML comment, Spanish thousands and
- * decimal separators, and a concept of three words.
+ * EVERYTHING BELOW IS INVENTED (feature 51). This file is scanned like any other, so
+ * the reference is built here in code and in memory — never read from his database —
+ * with the SHAPE the reader gives it: decimal text for the amounts, one element per
+ * text, and the IBAN compact and in upper case.
  */
-const inventedIban = 'ES9820385778983000760236'
 const inventedAmount = '7.531,86'
 const inventedConcept = 'COMPRA MENSUAL TRAMONTANA'
-const inventedStatementXls = [
-  '<!DOCTYPE html>',
-  `<!-- iban;${inventedIban} -->`,
-  '<html><head><meta charset="iso-8859-1"><style>td { color: #123456 }</style></head>',
-  '<body><table>',
-  `<tr><td class="cell">01/02/2026</td><td class="cell">${inventedConcept}</td>`,
-  `<td class="cell">-${inventedAmount}</td><td class="cell">1.111,11&nbsp;&euro;</td></tr>`,
-  '</table></body></html>',
-].join('\n')
+/** Not Spanish on purpose: the check by shape does not see it, the comparison does. */
+const inventedForeignIban = 'NL47ZEPH0318665209'
+const inventedForeignIbanAsWritten = 'nl47 zeph 0318 6652 09'
 
-/** A real binary: the first bytes of a ZIP, which is what an `.xlsx` is. */
-const inventedZipBytes = Buffer.from([
-  0x50, 0x4b, 0x03, 0x04, 0x0a, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01, 0x02, 0x00, 0x03, 0x1f, 0x8b,
-])
+const emptyReference: RealDataReference = { amounts: [], texts: [], ownMessages: [], ibans: [] }
+const emptyVocabulary: OwnVocabulary = { phrases: new Set(), words: new Set() }
 
-const temporaryRoots: string[] = []
-
-function temporaryCaptureRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'no-real-data-'))
-  temporaryRoots.push(root)
-  return root
+const inventedReference: RealDataReference = {
+  // As PostgreSQL gives a Decimal: a point, and the sign of an expense.
+  amounts: ['-7531.86', '1111.11'],
+  texts: [inventedConcept, 'Cuenta Ventolera Diaria'],
+  ownMessages: [],
+  ibans: [inventedForeignIban],
 }
 
-function writeCapture(root: string, relative: string, content: string | Buffer): string {
-  const full = join(root, ...relative.split('/'))
-  mkdirSync(dirname(full), { recursive: true })
-  writeFileSync(full, content)
-  return full
-}
+describe('the comparison against the database (feature 51)', () => {
+  it('catches an amount of the database copied into a versioned file', () => {
+    const { amounts } = comparisonOf(inventedReference, emptyVocabulary)
 
-afterAll(() => {
-  for (const root of temporaryRoots) rmSync(root, { recursive: true, force: true })
-})
-
-describe('the capture layer looks at the CONTENT, not at the extension (feature 23)', () => {
-  it('tells a real binary from text by its bytes, whatever the file is called', () => {
-    // The `.xls` of Openbank is HTML: binary in its NAME only. The `.xlsx` is a ZIP.
-    expect(looksBinary(Buffer.from(inventedStatementXls, 'latin1'))).toBe(false)
-    expect(looksBinary(inventedZipBytes)).toBe(true)
-    // A PDF: `%PDF` in ASCII and NUL bytes right after.
-    expect(looksBinary(Buffer.concat([Buffer.from('%PDF-2.0'), Buffer.from([0, 1, 2])]))).toBe(true)
-    expect(looksBinary(Buffer.from('fecha;concepto;importe\n', 'utf8'))).toBe(false)
-    expect(looksBinary(Buffer.alloc(0))).toBe(false)
-  })
-
-  it('captures a statement named .xls and leaves the binary of the same folder out', () => {
-    const root = temporaryCaptureRoot()
-    const statement = writeCapture(root, 'drive-read/tramontana/2026/e.xls', inventedStatementXls)
-    writeCapture(root, 'drive-read/tramontana/2026/e.xlsx', inventedZipBytes)
-
-    expect(captureFiles(join(root, 'drive-read'))).toEqual([statement])
-    expect(readCapture(statement).readable).toBe(true)
-  })
-
-  it('compares what a markup capture SAYS, not the tags of the bank format', () => {
-    const root = temporaryCaptureRoot()
-    const statement = writeCapture(root, 'drive-read/tramontana/2026/e.xls', inventedStatementXls)
-    const content = captureContent(statement)
-
-    expect(looksLikeMarkup(inventedStatementXls)).toBe(true)
-    // The tags are the bank's format, which our own parser has to reproduce.
-    expect(content).not.toContain('<td')
-    expect(content).not.toContain('class="cell"')
-    // What the document shows is his, and it is compared.
-    expect(content).toContain(inventedConcept)
-    expect(content).toContain(inventedAmount)
-    // And the IBAN line he writes lives inside an HTML COMMENT: it must survive.
-    expect(content).toContain(inventedIban)
-  })
-
-  it('reads the real .xls of Openbank, the file that was never opened until today', (context) => {
-    const openbank = join(driveReadRoot, 'openbank')
-    if (!existsSync(openbank)) {
-      context.skip('no var/drive-read/openbank/ on this machine (it is gitignored, by design)')
-      return
-    }
-
-    const files = allFiles(openbank)
-    expect(files.length).toBeGreaterThan(0)
-    expect(files.filter((file) => readCapture(file).readable)).toEqual(files)
-  })
-})
-
-/**
- * HOW THE DECLARED HOLE IS SAID OUT LOUD, AND WHY NOT WITH `console.warn`.
- *
- * It WAS a `console.warn`, and that was a bug caught in review: vitest INTERCEPTS the
- * console, so with the default reporter —the one `pnpm test` and therefore `./init.sh`
- * use— nothing was printed at all. The suite ended green and silent over an unwatched
- * bank, which is the exact thing feature 23 exists to stop; the declaration had become
- * the note nobody reads, same as the note that caused all this.
- *
- * `writeSync(2, …)` writes to FILE DESCRIPTOR 2: it does not pass through `console`, nor
- * through the reporter, nor through anything vitest owns, so no reporter, pool or config
- * change can take it away. MEASURED, and said without inflating it: `process.stderr.write`
- * comes out too today. This is not «the only thing that works», it is ONE mechanism
- * chosen and FIXED, because what has to survive a year is a guarantee and not a
- * preference. Changing it means measuring again, on purpose — there is a test below that
- * goes red if anyone swaps it while tidying up.
- *
- * Folder names only, never a value of his.
- */
-function unwatchedAnnouncement(unwatched: string[]): string | null {
-  if (unwatched.length === 0) return null
-  const lines = [
-    `[no-real-data] THE COMPARISON LAYER DOES NOT WATCH: ${unwatched.join(', ')}`,
-    '[no-real-data]   a value copied from that bank into the repository is caught by ' +
-      'NOTHING: it has to be checked by hand.',
-    '[no-real-data]   why, and how each one closes: `unwatchedBanks` in ' +
-      'src/no-real-data.test.ts',
-  ]
-  return `\n${lines.join('\n')}\n\n`
-}
-
-function announceUnwatched(unwatched: string[]): void {
-  const announcement = unwatchedAnnouncement(unwatched)
-  if (announcement) writeSync(2, announcement)
-}
-
-describe('the guardian says out loud what it cannot watch (feature 23)', () => {
-  it('tells a bank folder it cannot read apart from an empty one', () => {
-    const root = temporaryCaptureRoot()
-    const driveRead = join(root, 'drive-read')
-    const parsed = join(root, 'parsed')
-    mkdirSync(join(driveRead, 'vacio'), { recursive: true })
-    writeCapture(root, 'drive-read/opaco/2026/e.xlsx', inventedZipBytes)
-    writeCapture(root, 'drive-read/volcado/2026/e.xlsx', inventedZipBytes)
-    writeCapture(root, 'parsed/volcado/2026/e.xlsx.json', `{"importe":"${inventedAmount}"}`)
-
-    const coverage = bankCoverage(driveRead, parsed)
-
-    expect(coverage.find((bank) => bank.bank === 'vacio')).toEqual({
-      bank: 'vacio',
-      files: 0,
-      captured: 0,
-      parsedCaptures: 0,
-    })
-    // An EMPTY folder has nothing of his to guard: it is not a hole.
-    // A folder with files where nothing could be read and there is no dump IS one.
-    // A binary with its dump in `parsed/` is watched through the dump (ADR-017).
-    expect(unwatchedNow(coverage)).toEqual(['opaco'])
-  })
-
-  it('announces the hole with the names of the folders and nothing else', () => {
-    const announcement = unwatchedAnnouncement(['opaco', 'otro'])
-
-    expect(announcement).toContain('DOES NOT WATCH: opaco, otro')
-    // It has to say what it means, not just name a folder: a line nobody can act on
-    // is the note nobody reads, which is what this feature exists to stop.
-    expect(announcement).toContain('checked by hand')
-    expect(announcement).toContain('unwatchedBanks')
-    // Silence when there is nothing to say: an announcement on every run about
-    // nothing is how a run stops being read.
-    expect(unwatchedAnnouncement([])).toBeNull()
-  })
-
-  it('writes that announcement to the file descriptor, NOT through the console', () => {
-    // THE REGRESSION THIS GUARDS, because it already happened once (feature 23, first
-    // pass): it was a `console.warn`, vitest INTERCEPTS the console, and with the
-    // default reporter — the one `./init.sh` uses — nothing was printed at all. The
-    // suite ended green and silent over an unwatched bank.
-    //
-    // WHY THE ASSERTION IS THIS STRICT, said straight: `process.stderr.write` DOES come
-    // out too (measured by the reviewer: 3 lines with `pnpm test`). This is not «the
-    // other one does not work» — it is ONE blessed mechanism, fixed on purpose, because
-    // what has to survive a year is not a preference but a guarantee: `writeSync(2, …)`
-    // goes to the file descriptor without passing through anything vitest owns, so no
-    // reporter, pool or config can take it away. A rewrite to another mechanism has to
-    // be MEASURED again and this line changed on purpose, never «tidied up» in passing.
-    const source = readFileSync(join(repoRoot, 'src/no-real-data.test.ts'), 'utf8')
-    // The window is the BODY of the function, not a number of characters: it starts at
-    // its signature and ends at the first line that is just `}`. A magic length breaks
-    // the day somebody adds a comment inside, which is a red that means nothing.
-    const start = source.indexOf('function announceUnwatched')
-    const announce = source.slice(start, source.indexOf('\n}\n', start))
-
-    expect(announce).toContain('writeSync(2,')
-    expect(announce).not.toContain('console.')
-    expect(announce).not.toContain('process.stderr')
-  })
-
-  it('holds the inventory of unwatched banks EXACTLY, so bank number seven turns it red', (context) => {
-    if (!existsSync(driveReadRoot)) {
-      context.skip('no var/drive-read/ on this machine (it is gitignored, by design)')
-      return
-    }
-
-    const unwatched = unwatchedNow()
-    announceUnwatched(unwatched)
-
-    // Both directions on purpose: a new unreadable bank fails here, and a bank that
-    // became readable fails until its entry is deleted.
-    expect(unwatched).toEqual(unwatchedBanks.map((entry) => entry.bank).sort())
-    expect(unwatchedBanks.every((entry) => entry.reason.length > 80)).toBe(true)
-  })
-})
-
-describe('the mechanism that missed the leak of feature 19 (feature 23)', () => {
-  it('catches an amount of a bank file copied into a versioned file', () => {
-    const root = temporaryCaptureRoot()
-    writeCapture(root, 'drive-read/tramontana/2026/e.xls', inventedStatementXls)
-    const secrets = amountsOf(captureText(root))
-
-    // A fixture like the one of feature 19: the amount copied from the statement.
+    // A fixture like the one of feature 19: the amount copied, in Spanish notation.
     const fixture: SourceFile = {
       file: 'src/modules/tramontana/tramontana.fixture.ts',
       text: ['export function rows() {', `  return [{ amount: '${inventedAmount}' }]`, '}'].join(
@@ -1316,72 +832,184 @@ describe('the mechanism that missed the leak of feature 19 (feature 23)', () => 
       ),
     }
 
-    const findings = scanSources([fixture], amountLeak(secrets), true)
+    const findings = scanSources([fixture], amountLeak(amounts), true)
 
     expect(report(findings)).toEqual([
       'src/modules/tramontana/tramontana.fixture.ts:2 — ' +
-        'an amount on this line is in a file of var/: it is real data, invent another one',
+        'an amount on this line is in the database: it is real data, invent another one',
     ])
     // WHERE and WHAT KIND, never the value: this message gets printed and pasted.
     expect(findings[0]?.reason).not.toContain('7.531')
+    expect(findings[0]?.reason).not.toContain('7531')
     expect(findings[0]?.reason).not.toContain(inventedAmount)
   })
 
-  it('says nothing about an amount that is not in the bank file', () => {
-    const root = temporaryCaptureRoot()
-    writeCapture(root, 'drive-read/tramontana/2026/e.xls', inventedStatementXls)
-    const secrets = amountsOf(captureText(root))
-
-    const invented: SourceFile = {
-      file: 'src/modules/tramontana/other.fixture.ts',
-      text: "const amount = '2.468,13'\n",
-    }
-
-    expect(report(scanSources([invented], amountLeak(secrets), true))).toEqual([])
-  })
-
-  it('catches a concept of a bank file copied into a versioned document', () => {
-    const root = temporaryCaptureRoot()
-    writeCapture(root, 'drive-read/tramontana/2026/e.xls', inventedStatementXls)
-    const phrases = comparablePhrases(capturePhraseSources(root), ownSourceVocabulary())
+  it('catches a concept of the database copied into a versioned document', () => {
+    const { phrases } = comparisonOf(inventedReference, emptyVocabulary)
 
     const document: SourceFile = {
       file: 'docs/example.md',
-      text: `El movimiento ${inventedConcept} del extracto.`,
+      text: ['# Ejemplo', '', `El movimiento ${inventedConcept} del extracto.`].join('\n'),
     }
 
-    expect(report(scanSources([document], phraseLeak(phrases), true, 2))).toEqual([
-      'docs/example.md:1 — ' +
-        'a three-word sequence copied from a file of var/ (a concept of his statement?)',
+    const findings = scanSources([document], phraseLeak(phrases), true, 2)
+
+    // The window joins each line with the next one, so the empty line above it
+    // reports the same copy too.
+    expect(report(findings)).toEqual([
+      'docs/example.md:2 — ' +
+        'a three-word sequence copied from the database (a concept of his movements?)',
+      'docs/example.md:3 — ' +
+        'a three-word sequence copied from the database (a concept of his movements?)',
     ])
-    expect(
-      report(
-        scanSources(
-          [{ file: 'docs/other.md', text: 'Valor de mercado' }],
-          phraseLeak(phrases),
-          true,
-          2,
-        ),
-      ),
-    ).toEqual([])
+    for (const finding of findings) {
+      expect(finding.reason).not.toContain('TRAMONTANA')
+      expect(finding.reason.toLowerCase()).not.toContain('tramontana')
+    }
   })
 
-  it('would have caught it through the .xls, which the old extension list never opened', () => {
-    // The regression in one line: the file is named `.xls`, and `.xls` was not on the
-    // list of extensions that decided the capture until 2026-08-19.
-    const root = temporaryCaptureRoot()
-    writeCapture(root, 'drive-read/tramontana/2026/e.xls', inventedStatementXls)
+  it('catches an IBAN of the database copied into a versioned file', () => {
+    const { ibans } = comparisonOf(inventedReference, emptyVocabulary)
 
-    expect(captureFiles(root)).toHaveLength(1)
-    expect(amountsOf(captureText(root)).size).toBeGreaterThan(0)
+    // Written as a person writes it: in groups of four and in lower case.
+    const document: SourceFile = {
+      file: 'progress/reviews/example.md',
+      text: ['# Review', `La cuenta ${inventedForeignIbanAsWritten} recibe el traspaso.`].join(
+        '\n',
+      ),
+    }
+
+    const findings = scanSources([document], ibanLeak(ibans), false)
+
+    expect(report(findings)).toEqual([
+      'progress/reviews/example.md:2 — ' +
+        'an IBAN of the database is on this line: it is real data, invent another one',
+    ])
+    expect(findings[0]?.reason).not.toContain(inventedForeignIban)
+    expect(findings[0]?.reason.toLowerCase()).not.toContain('zeph')
+    // The check by shape says nothing about it: it is not a Spanish IBAN.
+    expect(ibansOf(inventedForeignIbanAsWritten)).toEqual([])
+  })
+
+  it('says nothing about an invented amount, concept or IBAN that is not in the database', () => {
+    const { amounts, phrases, ibans } = comparisonOf(inventedReference, emptyVocabulary)
+
+    const invented: SourceFile = {
+      file: 'src/modules/tramontana/other.fixture.ts',
+      text: [
+        "const amount = '2.468,13'",
+        "const description = 'RECIBO TRIMESTRAL GARBINADA'",
+        "const iban = 'NL52 ZEPH 0741 2290 63'",
+      ].join('\n'),
+    }
+
+    expect(report(scanSources([invented], amountLeak(amounts), true))).toEqual([])
+    expect(report(scanSources([invented], phraseLeak(phrases), true, 2))).toEqual([])
+    expect(report(scanSources([invented], ibanLeak(ibans), false))).toEqual([])
+    // Not vacuous: there was something of each kind to compare against.
+    expect(kindsWithNothingToCompare(comparisonOf(inventedReference, emptyVocabulary))).toEqual([])
+  })
+
+  it('compares an amount by its absolute value, and leaves a short or round one out', () => {
+    const { amounts } = comparisonOf(
+      { ...emptyReference, amounts: ['-7531.86', '10.00', '4000.00', '2026.00', '2.7500'] },
+      emptyVocabulary,
+    )
+
+    expect([...amounts]).toEqual([7531.86])
+  })
+
+  it('compares neither of the two documented synthetic IBANs, even if an account has one', () => {
+    const { ibans } = comparisonOf(
+      { ...emptyReference, ibans: [...allowedIbans, inventedForeignIban] },
+      emptyVocabulary,
+    )
+
+    expect(ibans).toEqual([inventedForeignIban])
+  })
+
+  it('keeps the path and marker exceptions for amounts and phrases, never for an IBAN', () => {
+    const { amounts, phrases, ibans } = comparisonOf(inventedReference, emptyVocabulary)
+    const leakingLine = `${inventedAmount} ${inventedConcept} ${inventedForeignIbanAsWritten}`
+
+    const marked: SourceFile = {
+      file: 'docs/example.md',
+      text: `${leakingLine} <!-- ${skipMarker}: invented collision -->`,
+    }
+    const migration: SourceFile = {
+      file: 'prisma/migrations/20260101000000_example/migration.sql',
+      text: `-- ${leakingLine}`,
+    }
+    const plain: SourceFile = { file: 'docs/plain.md', text: leakingLine }
+
+    // Not vacuous: without the exceptions the same line is caught by the three.
+    expect(report(scanSources([plain], amountLeak(amounts), true))).toHaveLength(1)
+    expect(report(scanSources([plain], phraseLeak(phrases), true, 2))).toHaveLength(1)
+    expect(report(scanSources([plain], ibanLeak(ibans), false))).toHaveLength(1)
+
+    for (const excepted of [marked, migration]) {
+      expect(report(scanSources([excepted], amountLeak(amounts), true))).toEqual([])
+      expect(report(scanSources([excepted], phraseLeak(phrases), true, 2))).toEqual([])
+      // The IBAN is scanned with no exception at all, like the check by shape.
+      expect(report(scanSources([excepted], ibanLeak(ibans), false))).toEqual([
+        `${excepted.file}:1 — ` +
+          'an IBAN of the database is on this line: it is real data, invent another one',
+      ])
+    }
+  })
+})
+
+describe('the guardian says out loud what it could not compare (feature 51)', () => {
+  it('skips the comparison and says so when the database has nothing to compare against', () => {
+    // An empty database, or one without the tables: the reader gives four empty lists.
+    const nothing = kindsWithNothingToCompare(comparisonOf(emptyReference, emptyVocabulary))
+    expect(nothing).toEqual(['amounts', 'phrases', 'IBAN'])
+
+    const announcement = skippedAnnouncement(nothing)
+    expect(announcement).toContain('NOTHING TO COMPARE AGAINST FOR: amounts, phrases, IBAN')
+    // It has to say what it means: a line nobody can act on is the note nobody reads.
+    expect(announcement).toContain('SKIPPED')
+    expect(announcement).toContain('by their shape did run')
+
+    // One kind missing is said by its name, and only that one.
+    const onlyIban = kindsWithNothingToCompare(
+      comparisonOf({ ...inventedReference, ibans: [] }, emptyVocabulary),
+    )
+    expect(onlyIban).toEqual(['IBAN'])
+    expect(skippedAnnouncement(onlyIban)).toContain('FOR: IBAN\n')
+
+    // Silence when there is data: an announcement on every run about nothing is how a
+    // run stops being read.
+    expect(kindsWithNothingToCompare(comparisonOf(inventedReference, emptyVocabulary))).toEqual([])
+    expect(skippedAnnouncement([])).toBeNull()
+
+    // THE REGRESSION THIS GUARDS, because it already happened once (feature 23, first
+    // pass): it was a `console.warn`, vitest INTERCEPTS the console, and with the
+    // default reporter — the one `./init.sh` uses — nothing was printed at all.
+    // `writeSync(2, …)` is ONE blessed mechanism, fixed on purpose: a rewrite to
+    // another one has to be MEASURED again and this line changed on purpose.
+    const source = readFileSync(join(repoRoot, 'src/no-real-data.test.ts'), 'utf8')
+    // The window is the BODY of the function: from its signature to the first line
+    // that is just `}`.
+    const start = source.indexOf('function announceSkipped')
+    const announce = source.slice(start, source.indexOf('\n}\n', start))
+
+    expect(announce).toContain('writeSync(2,')
+    expect(announce).not.toContain('console.')
+    expect(announce).not.toContain('process.stderr')
+    // And each of the three comparisons announces before it skips.
+    const announcedSkips = source.match(
+      /announceSkipped\(\['(?:amounts|phrases|IBAN)'\]\)\s+context\.skip\(/g,
+    )
+    expect(announcedSkips).toHaveLength(3)
   })
 })
 
 /**
- * OUR OWN WORDS INSIDE HIS DUMP (feature 24). EVERYTHING HERE IS INVENTED: the bank,
- * the file, the amounts and the concept. What is REAL is the SHAPE — a dump of ours
- * that carries a rejection message of ours — and the sentences of the message, which
- * are ours to write and ours to publish.
+ * OUR OWN WORDS INSIDE HIS DATA (feature 24). EVERYTHING HERE IS INVENTED: the bank,
+ * the amounts and the concept. What is REAL is the SHAPE — a message of ours stored
+ * with a value of his inside — and the sentences of the message, which are ours to
+ * write and ours to publish.
  */
 const inventedBank = 'monte-tramontana'
 const inventedProduct = 'PLAZO TRAMONTANA GLOBAL'
@@ -1414,23 +1042,6 @@ const inventedOwnSources: SourceFile[] = [
   { file: `src/modules/${inventedBank}/${inventedBank}.parser.ts`, text: inventedParserSource },
 ]
 
-function inventedRejectionDump(reason: string): string {
-  return JSON.stringify({
-    bank: inventedBank,
-    year: '2026',
-    products: [],
-    failed: [{ bank: inventedBank, year: '2026', file: 'cuenta.json', reason }],
-    ignored: [
-      {
-        bank: inventedBank,
-        year: '2026',
-        file: 'extracto.pdf',
-        reason: "extensión no soportada por este parser ('.pdf')",
-      },
-    ],
-  })
-}
-
 /** The message of the 2026-08-20 run, in shape: a date and the balance mismatch. */
 const inventedMismatchReason =
   'openedAt: se espera el formato AAAA-MM-DD, recibido "<AAAA-MM-DD>"; ' +
@@ -1454,110 +1065,116 @@ const inventedDocument: SourceFile = {
   ].join('\n'),
 }
 
-const emptyVocabulary: OwnVocabulary = { phrases: new Set(), words: new Set() }
-
-function dumpRoot(reason: string): string {
-  const root = temporaryCaptureRoot()
-  writeCapture(root, `drive-read/${inventedBank}/2026/cuenta.json`, '{"saldo": 7408.41}')
-  writeCapture(root, `parsed/${inventedBank}/2026/products.json`, inventedRejectionDump(reason))
-  return root
+/** A database whose only content is ONE of our messages, as the reader hands it over. */
+function messageReference(reason: string): RealDataReference {
+  return { ...emptyReference, ownMessages: [reason] }
 }
 
-function phrasesOf(root: string, own = ownSourceVocabulary(inventedOwnSources)): string[] {
-  return comparablePhrases(capturePhraseSources(root), own)
+function phrasesOf(
+  reference: RealDataReference,
+  own = ownSourceVocabulary(inventedOwnSources),
+): string[] {
+  return comparisonOf(reference, own).phrases
 }
 
-describe('the guardian tells our own words from his data inside the dump (feature 24)', () => {
+describe('the guardian tells our own words from his data inside a message (feature 24)', () => {
   it('reports NOTHING about a rejection message of ours that the documentation publishes', () => {
-    // THE REGRESSION OF 2026-08-20, with invented data: his file was rejected, the dump
-    // kept OUR message, and the docs publish that message word for word. 270 false
-    // warnings in one run — and a guardian nobody reads is a guardian that is off.
-    const root = dumpRoot(inventedMismatchReason)
+    // THE REGRESSION OF 2026-08-20, with invented data: OUR message was stored next to
+    // his data, and the docs publish that message word for word. 270 false warnings in
+    // one run — and a guardian nobody reads is a guardian that is off.
+    const reference = messageReference(inventedMismatchReason)
 
-    expect(report(scanSources([inventedDocument], phraseLeak(phrasesOf(root)), true, 2))).toEqual(
-      [],
-    )
+    expect(
+      report(scanSources([inventedDocument], phraseLeak(phrasesOf(reference)), true, 2)),
+    ).toEqual([])
   })
 
   it('would have reported it without the rule, so the test above is not vacuous', () => {
-    const root = dumpRoot(inventedMismatchReason)
+    const reference = messageReference(inventedMismatchReason)
 
     const naive = report(
-      scanSources([inventedDocument], phraseLeak(phrasesOf(root, emptyVocabulary)), true, 2),
+      scanSources([inventedDocument], phraseLeak(phrasesOf(reference, emptyVocabulary)), true, 2),
     )
 
     expect(naive.length).toBeGreaterThan(0)
   })
 
   it('KEEPS WATCHING the five amounts that live inside that same message', () => {
-    // THE HOLE THIS FEATURE REFUSED TO OPEN. Dropping the whole `reason` would have
-    // been one line, and it would have stopped watching the five real amounts the
-    // mismatch message carries inside it. The amount layer never sees this split: it
-    // compares against the RAW text of the capture, message included.
-    const root = dumpRoot(inventedMismatchReason)
-    const secrets = amountsOf(captureText(root))
+    // THE HOLE FEATURE 24 REFUSED TO OPEN. Dropping the whole message would have been
+    // one line, and it would have stopped watching the amounts it carries inside it.
+    // The amounts of a message are compared with no split at all.
+    const { amounts } = comparisonOf(
+      messageReference(inventedMismatchReason),
+      ownSourceVocabulary(inventedOwnSources),
+    )
 
     const copied: SourceFile = {
       file: 'docs/example.md',
       text: `El saldo inicial de ese mes era ${inventedOpening} euros.`,
     }
 
-    expect(report(scanSources([copied], amountLeak(secrets), true))).toEqual([
+    expect(report(scanSources([copied], amountLeak(amounts), true))).toEqual([
       'docs/example.md:1 — ' +
-        'an amount on this line is in a file of var/: it is real data, invent another one',
+        'an amount on this line is in the database: it is real data, invent another one',
     ])
     // The five of the equation, not only the one copied above.
-    expect(secrets.has(Number(toNumber(inventedExpected)?.toFixed(4)))).toBe(true)
-    expect(secrets.has(Number(toNumber(inventedDeviation)?.toFixed(4)))).toBe(true)
+    expect(amounts.has(Number(toNumber(inventedExpected)?.toFixed(4)))).toBe(true)
+    expect(amounts.has(Number(toNumber(inventedDeviation)?.toFixed(4)))).toBe(true)
   })
 
   it('KEEPS WATCHING a value of his echoed inside the message, quoted', () => {
-    const root = dumpRoot(`descripcion: se espera un texto no vacío, recibido "${inventedProduct}"`)
+    const reference = messageReference(
+      `descripcion: se espera un texto no vacío, recibido "${inventedProduct}"`,
+    )
 
     const copied: SourceFile = { file: 'docs/example.md', text: `Su ${inventedProduct} de 2026.` }
 
-    expect(report(scanSources([copied], phraseLeak(phrasesOf(root)), true, 2))).toHaveLength(1)
+    expect(report(scanSources([copied], phraseLeak(phrasesOf(reference)), true, 2))).toHaveLength(1)
   })
 
   it('KEEPS WATCHING a value of his echoed WITHOUT quotes: the second condition', () => {
     // The quotes are a convention of ours, and a convention is not a guarantee. When a
     // parser forgets them, the value lands in the template half — and it stays watched
     // there, because its words are in no message literal of our source.
-    const root = dumpRoot(`descripcion no reconocida: ${inventedProduct} sin más detalle`)
+    const reference = messageReference(
+      `descripcion no reconocida: ${inventedProduct} sin más detalle`,
+    )
 
     const copied: SourceFile = { file: 'docs/example.md', text: `Su ${inventedProduct} de 2026.` }
 
-    expect(report(scanSources([copied], phraseLeak(phrasesOf(root)), true, 2))).toHaveLength(1)
+    expect(report(scanSources([copied], phraseLeak(phrasesOf(reference)), true, 2))).toHaveLength(1)
   })
 
-  it('only lets `reason` off: a name of his is compared even if we use those words too', () => {
-    // The exclusion is not «this file» nor «this dump»: it is the ONE key whose value
-    // we compose. A product name lands in `name`, and it is his however familiar its
-    // words look to our own vocabulary.
-    const root = temporaryCaptureRoot()
-    writeCapture(root, `drive-read/${inventedBank}/2026/cuenta.json`, '{"saldo": 7408.41}')
-    writeCapture(
-      root,
-      `parsed/${inventedBank}/2026/products.json`,
-      JSON.stringify({ bank: inventedBank, year: '2026', products: [{ name: inventedProduct }] }),
-    )
+  it('only lets our messages off: a name of his is compared even if we use those words too', () => {
+    // The exclusion is not «this table»: it is the ONE column whose value we compose.
+    // A product name arrives among the texts, and it is his however familiar its words
+    // look to our own vocabulary.
+    const reference: RealDataReference = { ...emptyReference, texts: [inventedProduct] }
 
     const own = ownSourceVocabulary([
       { file: 'src/x/x.ts', text: "const label = 'plazo tramontana global'" },
     ])
     const copied: SourceFile = { file: 'docs/example.md', text: `Su ${inventedProduct} de 2026.` }
 
-    expect(report(scanSources([copied], phraseLeak(phrasesOf(root, own)), true, 2))).toHaveLength(1)
+    expect(
+      report(scanSources([copied], phraseLeak(phrasesOf(reference, own)), true, 2)),
+    ).toHaveLength(1)
+    // The very same words stored as one of OUR messages are proved ours and let off.
+    expect(phrasesOf(messageReference(inventedProduct), own)).toEqual([])
   })
 
-  it('invents no phrase across the seam between two values of the dump', () => {
-    // `bank` repeats once per entry, so the joined values of a dump «contained»
-    // `monte tramontana monte`, a phrase written in no file of his. That is what
-    // flagged every document naming the bank twice.
-    const root = dumpRoot(inventedMismatchReason)
+  it('invents no phrase across the seam between two values of the database', () => {
+    // Two values glued together would «contain» `monte tramontana monte`, a phrase
+    // written in no value of his: every document naming that bank twice would be
+    // reported. A phrase of his lives INSIDE one value.
+    const reference: RealDataReference = {
+      ...emptyReference,
+      texts: ['Monte Tramontana', 'Monte Tramontana Ventolera'],
+    }
 
-    const phrases = phrasesOf(root)
+    const phrases = phrasesOf(reference)
 
+    expect(phrases).toEqual(['monte tramontana ventolera'])
     expect(phrases).not.toContain('monte tramontana monte')
     expect(phrases).not.toContain('tramontana monte tramontana')
   })
@@ -1571,18 +1188,17 @@ describe('the guardian tells our own words from his data inside the dump (featur
   })
 
   it('KEEPS WATCHING a value of his with an APOSTROPHE inside single quotes', () => {
-    // THE SILENCE THE REVIEW OF THIS FEATURE FOUND, and the reason the message is no
+    // THE SILENCE THE REVIEW OF FEATURE 24 FOUND, and the reason the message is no
     // longer chopped up. `'…'` is the quoting every parser uses except `display()`, and
     // a concept of his can carry an apostrophe — real card concepts do (`L'…`, `D'…`,
     // `O'…`). The cut then fell INSIDE the value, each half landed in a different
-    // bucket, neither reached three words, and the concept stopped being compared: a
-    // REGRESSION, because before this feature the whole message was compared as one.
+    // bucket, neither reached three words, and the concept stopped being compared.
     const concept = "COMPRA D'ALIMENTS VENTOLERA"
-    const root = dumpRoot(`extensión no soportada por este parser ('${concept}')`)
+    const reference = messageReference(`extensión no soportada por este parser ('${concept}')`)
 
     const copied: SourceFile = { file: 'docs/example.md', text: `Su ${concept} de 2026.` }
 
-    expect(report(scanSources([copied], phraseLeak(phrasesOf(root)), true, 2))).toHaveLength(1)
+    expect(report(scanSources([copied], phraseLeak(phrasesOf(reference)), true, 2))).toHaveLength(1)
   })
 
   it('keeps watching it however the value is quoted, and however long it is', () => {
@@ -1597,11 +1213,11 @@ describe('the guardian tells our own words from his data inside the dump (featur
       [long, `no reconocido ('${long}')`],
       [long, `no reconocido ("${long}")`],
     ] as Array<[string, string]>) {
-      const root = dumpRoot(quoted)
+      const reference = messageReference(quoted)
       const copied: SourceFile = { file: 'docs/example.md', text: `Su ${concept} de 2026.` }
 
       expect(
-        report(scanSources([copied], phraseLeak(phrasesOf(root)), true, 2)).length,
+        report(scanSources([copied], phraseLeak(phrasesOf(reference)), true, 2)).length,
       ).toBeGreaterThan(0)
     }
   })
@@ -1610,9 +1226,8 @@ describe('the guardian tells our own words from his data inside the dump (featur
     // The invariant that replaces the promise the old comment could not keep: whatever
     // `echoedSpans` decides, the message itself is in the compared bucket, WHOLE.
     const message = "no reconocido ('COMPRA D'ALIMENTS VENTOLERA')"
-    const root = dumpRoot(message)
 
-    const sources = capturePhraseSources(root)
+    const sources = referencePhraseSources(messageReference(message))
 
     expect(sources.ourProse).toContain(message)
   })
@@ -1623,7 +1238,7 @@ describe('the guardian tells our own words from his data inside the dump (featur
     // What is interpolated is a VALUE, never our words.
     expect(prose.join(' ')).not.toContain('${')
     expect(prose.join(' ')).not.toContain('euros(')
-    // A sentence the formatter split across three lines is ONE sentence in the dump.
+    // A sentence the formatter split across three lines is ONE sentence in the stored message.
     const equation = prose.find((message) => message.includes('cuadran')) ?? ''
     expect(trigramsOf(equation)).toContain('esperado escrito saldo')
   })
@@ -1643,7 +1258,7 @@ describe('the guardian tells our own words from his data inside the dump (featur
 
     expect(isOurOwnPhrase('los importes no', own)).toBe(true)
     // Word by word also counts, because a message is composed AROUND its holes: the
-    // source says `${key}: fecha inválida` and the dump says `openedAt: fecha inválida`.
+    // source says `${key}: fecha inválida` and the stored message says `openedAt: fecha inválida`.
     expect(isOurOwnPhrase('recibido escrito esperado', own)).toBe(true)
     // One word that is not in our source and the phrase stays watched.
     expect(isOurOwnPhrase('recibido tramontana esperado', own)).toBe(false)
@@ -1657,182 +1272,5 @@ describe('the guardian tells our own words from his data inside the dump (featur
 
     expect(own.phrases.size).toBeGreaterThan(100)
     expect(own.words.has('cuadran')).toBe(true)
-  })
-})
-
-/**
- * OUR OWN NAMING CONVENTION INSIDE HIS DUMP (feature 34). EVERYTHING HERE IS INVENTED:
- * the bank, the page, the convention it publishes, the product and the file names. What
- * is REAL is the SHAPE — a dump of ours carrying the NAME of the file it parsed, and a
- * page of ours publishing how that file is to be named.
- */
-const inventedConventionDoc: SourceFile = {
-  file: 'docs/monte-tramontana-product-files.md',
-  text: [
-    '# Ficheros de producto de Monte Tramontana',
-    '',
-    '**El nombre del archivo no se valida nunca**: la cuenta y la fecha salen de dentro.',
-    '',
-    '**Convención recomendada (no obligatoria):** `cuenta-ventolera-<AAAA-MM-DD>.json`.',
-  ].join('\n'),
-}
-
-/** A page that publishes a pattern with a hole HIS words fall into: it exempts nothing. */
-const inventedOpenConventionDoc: SourceFile = {
-  file: 'docs/otro-banco-product-files.md',
-  text: '**Convención recomendada (no obligatoria):** `<producto>-<AAAA-MM-DD>.json`, p. ej.',
-}
-
-const inventedOwnName = 'cuenta-ventolera-2026-08-31.json'
-/** A name of HIS: the product he keeps calling like that, written into the file name. */
-const inventedHisName = 'renta-ventolera-tramontana-2026-08-31.json'
-
-function fileNameDump(name: string, key = 'file'): string {
-  return JSON.stringify({
-    bank: inventedBank,
-    year: '2026',
-    products: [{ [key]: name, type: 'savings-account' }],
-  })
-}
-
-/** A dump whose only interesting value is the NAME of the file it parsed. */
-function fileNameRoot(name: string, key = 'file'): string {
-  const root = temporaryCaptureRoot()
-  writeCapture(root, `drive-read/${inventedBank}/2026/${name}`, '{"saldo": 7408.41}')
-  writeCapture(root, `parsed/${inventedBank}/2026/products.json`, fileNameDump(name, key))
-  return root
-}
-
-function fileNamePhrases(
-  root: string,
-  published: PublishedFilename[] = publishedFilenames([inventedConventionDoc]),
-): string[] {
-  return comparablePhrases(
-    capturePhraseSources(root, published),
-    ownSourceVocabulary(inventedOwnSources),
-  )
-}
-
-describe('the guardian knows our own published file names (feature 34)', () => {
-  it('reads the conventions from our own docs, never from a list written by hand', () => {
-    const published = publishedFilenames([inventedConventionDoc])
-
-    expect(published).toHaveLength(1)
-    expect(published[0]?.doc).toBe(inventedConventionDoc.file)
-    // The pattern matches WHOLE and anchored: our literal words plus a date, no more.
-    expect(published[0]?.pattern.test(inventedOwnName)).toBe(true)
-    expect(published[0]?.pattern.test(`x-${inventedOwnName}`)).toBe(false)
-    expect(published[0]?.pattern.test('cuenta-ventolera.json')).toBe(false)
-    expect(published[0]?.pattern.test(inventedHisName)).toBe(false)
-  })
-
-  it('DISCARDS a published pattern whose placeholder is not a date', () => {
-    // `<producto>` is the name HE gives his fund: a pattern with that hole in it would
-    // exempt any word of his. Only a date is admitted, because a date carries none.
-    expect(compilePublishedFilename('<producto>-<AAAA-MM-DD>.json')).toBeNull()
-    expect(publishedFilenames([inventedOpenConventionDoc])).toEqual([])
-    expect(compilePublishedFilename('cuenta-ventolera-<AAAA-MM-DD>.json')).not.toBeNull()
-  })
-
-  it('the real docs of this repository do feed it, and none of them opens a hole', () => {
-    // Not a tautology, and the same guard feature 24 put on its vocabulary: if the line
-    // of the docs ever changes shape, this empties in silence and the false positive is
-    // back on every real parse. The patterns are NOT written here: each example is built
-    // from the page itself, so no name of the convention is copied into this file.
-    const published = publishedFilenames()
-
-    expect(published.length).toBeGreaterThan(0)
-    for (const entry of published) {
-      expect(entry.pattern.test(entry.source.replace(datePlaceholder, '2026-08-31'))).toBe(true)
-      // DECISION 4, checked and not assumed: no real published pattern accepts a name
-      // that carries a product of his. The one that could (`<producto>-…`, MyInvestor)
-      // is discarded above, so its dump stays watched exactly as before.
-      expect(entry.pattern.test(inventedHisName)).toBe(false)
-      expect(entry.pattern.test('plazo-tramontana-global-2026-08-31.json')).toBe(false)
-    }
-  })
-
-  it('reports NOTHING about a file name our own documentation publishes', () => {
-    // THE REGRESSION MEASURED ON 2026-08-25, with invented data: the dump keeps the NAME
-    // of the file, the name is the convention we publish, and our own texts repeat it.
-    // 52 warnings out of one trigram — and a guardian nobody reads is a guardian that is
-    // off. It is not a leftover: every real parse of his writes that name again.
-    const root = fileNameRoot(inventedOwnName)
-
-    const ourText: SourceFile = {
-      file: 'docs/api-contract.md',
-      text: `Un archivo llamado ${inventedOwnName} entra como producto.`,
-    }
-
-    expect(report(scanSources([ourText], phraseLeak(fileNamePhrases(root)), true, 2))).toEqual([])
-  })
-
-  it('would have reported it without the rule, so the test above is not vacuous', () => {
-    const root = fileNameRoot(inventedOwnName)
-
-    const ourText: SourceFile = {
-      file: 'docs/api-contract.md',
-      text: `Un archivo llamado ${inventedOwnName} entra como producto.`,
-    }
-
-    const naive = report(scanSources([ourText], phraseLeak(fileNamePhrases(root, [])), true, 2))
-
-    expect(naive.length).toBeGreaterThan(0)
-  })
-
-  it('KEEPS CATCHING a real datum of his inside a file name, with file and line', () => {
-    // THE CENTRAL TEST OF THIS FEATURE: a name that is NOT our convention is his, and it
-    // is compared exactly as before. Without this the change would be indistinguishable
-    // from switching the alarm off.
-    const root = fileNameRoot(inventedHisName)
-
-    const leak: SourceFile = {
-      file: 'docs/example.md',
-      text: 'El movimiento RENTA VENTOLERA TRAMONTANA del extracto.',
-    }
-    const findings = report(scanSources([leak], phraseLeak(fileNamePhrases(root)), true, 2))
-
-    expect(findings).toEqual([
-      'docs/example.md:1 — ' +
-        'a three-word sequence copied from a file of var/ (a concept of his statement?)',
-    ])
-    // WHERE and WHAT KIND, never the value (ADR-017).
-    expect(findings[0]).not.toContain('VENTOLERA')
-  })
-
-  it('KEEPS CATCHING the very same name under a key that is not a file name', () => {
-    // The provenance half of the rule: `name` is where a product of his lands, and the
-    // exemption does not reach it however our own the words look.
-    const root = fileNameRoot(inventedOwnName, 'name')
-
-    const copied: SourceFile = { file: 'docs/example.md', text: `Su ${inventedOwnName} de 2026.` }
-
-    expect(report(scanSources([copied], phraseLeak(fileNamePhrases(root)), true, 2))).toHaveLength(
-      1,
-    )
-  })
-
-  it('KEEPS CATCHING his amounts: the amount layer never sees this split', () => {
-    const root = fileNameRoot(inventedOwnName)
-    const secrets = amountsOf(captureText(root))
-
-    const copied: SourceFile = { file: 'docs/example.md', text: 'El saldo era 7.408,41 euros.' }
-
-    expect(report(scanSources([copied], amountLeak(secrets), true))).toEqual([
-      'docs/example.md:1 — ' +
-        'an amount on this line is in a file of var/: it is real data, invent another one',
-    ])
-    // The raw capture is what that layer reads, file names included.
-    expect(captureText(root)).toContain(inventedOwnName)
-  })
-
-  it('says WHAT it let through and WHICH page says so: no silent exception', () => {
-    const published = publishedFilenames([inventedConventionDoc])
-
-    const { letThrough } = capturePhraseSources(fileNameRoot(inventedOwnName), published)
-
-    expect(letThrough).toEqual([{ value: inventedOwnName, doc: inventedConventionDoc.file }])
-    // And nothing is let through when the name is his.
-    expect(capturePhraseSources(fileNameRoot(inventedHisName), published).letThrough).toEqual([])
   })
 })

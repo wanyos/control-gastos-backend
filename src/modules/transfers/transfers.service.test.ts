@@ -482,7 +482,7 @@ describe('detectTransfers (database)', () => {
     const lonely = await seedMovement({
       accountId: source.id,
       type: 'expense',
-      amount: '19.99',
+      amount: '83.57',
       description: 'SYNTHETIC BIZUM OUT',
     })
 

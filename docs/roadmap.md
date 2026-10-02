@@ -102,7 +102,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 
 | # | Etapa | Estado | Features |
 |---|---|---|---|
-| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2, F14, **F33**, **F34** |
+| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2, F14, **F33**, **F34**, **F51** |
 | E1 | **El remoto** — hablar con Google Drive y organizarlo | ✅ | F3, F4 |
 | E2 | **Traer los ficheros** — detectar pendientes y descargarlos | ✅ (deuda saldada por la F12) | F5 |
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
@@ -132,6 +132,10 @@ Prettier, config de entorno validada al arrancar y errores centralizados
   con archivo, línea y motivo si reaparece uno. El mismo escape había ocurrido
   **tres veces** (F6, F12, F13) y las tres las cazó el reviewer leyendo, nunca la
   suite, pese a estar la regla escrita en dos sitios. ADR-017.
+- **F51 `no-real-data-from-db`** ✅ (2026-10-02) — la comprobación de la F14 deja de
+  leer los archivos de `var/` y compara contra la base de datos. Primer paso de
+  quitar `var/` entera; el segundo es la **F52 `remove-var`** (`pending`), que
+  cierra los cabos 14 y 16.
 - **Tooling al día (2026-08-13, tarea directa):** TypeScript **7**, pnpm
   **11.21.0** y el linter cambiado de ESLint a **oxlint**, porque
   `typescript-eslint` tenía TypeScript congelado en 6.0.3. La regla que salió de

@@ -19,7 +19,7 @@ usa ni una línea del parser de MyInvestor.
 | 2 | **Cadencia: un archivo por abono de intereses**, o sea uno al mes. Los tres valores que tecleas (`date`, `balance`, `interest`) salen de **la misma fila** del extracto; el resto se copia. Si un extracto cubre cuatro meses, escribes cuatro archivos. | Un archivo por extracto, con fecha de inicio y de fin: tendrías que **sumar los intereses a mano** cuando cubra varios meses, y se pierde la serie mes a mes. |
 | 3 | **El IBAN NO va en la plantilla.** Es el único banco que lo da solo, pero hoy no hay quien lo use: sin base de datos, un IBAN no crea ninguna cuenta. Se añadirá el día de la importación. | Escribirlo igualmente: un dato real más, a mano, todos los meses, sin consumidor. |
 | 4 | **El tipo de interés (TAE) NO va en la plantilla:** no está en el extracto. | Escribirlo: tendrías que ir a buscarlo a la app y acordarte de cambiarlo cada vez que el banco lo mueva. |
-| 5 | **El archivo lleva `"type": "savings_account"`** aunque de momento sea el único valor admitido. | Quitarlo: un campo menos, pero el archivo deja de parecerse a los de MyInvestor y no queda sitio si algún día Trade Republic te aporta un segundo producto. |
+| 5 | **El archivo lleva `"type": "savings_account"`** aunque de momento sea el único valor admitido. | Quitarlo: un campo menos, pero el archivo deja de parecerse a los de MyInvestor y no queda sitio si Trade Republic te aporta algún día un segundo producto. |
 | 6 | **El `.pdf` del extracto que sigue bajando a esa carpeta se lista como «ignorado», no como fallo.** | Tratarlo como fallo: tendrías un error rojo todos los meses por un archivo que hace bien en estar ahí. |
 
 ## ✅ Ya las cerraste tú (5, el 2026-08-17)
