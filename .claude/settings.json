@@ -1,5 +1,6 @@
 {
   "$schema_comment": "Hooks que automatizan la verificación. El harness los ejecuta, no el agente, así que no se pueden saltar. init.sh detecta el stack automáticamente y corre los tests apropiados. Regla de diseño: rápido donde el ciclo es apretado (tras editar), completo donde se toman decisiones (al cerrar el trabajo de un implementer).",
+  "agent": "leader",
   "hooks": {
     "PreToolUse": [
       {
@@ -30,8 +31,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./init.sh > \"${TMPDIR:-/tmp}/harness_init.log\" 2>&1 && echo '[harness] init.sh OK (verificación completa)' || (echo '[harness] init.sh FALLÓ — el implementer no puede darse por terminado' && tail -20 \"${TMPDIR:-/tmp}/harness_init.log\")",
-            "description": "Verificación COMPLETA (tipos + suite entera) una sola vez, cuando el implementer termina. Sustituye al antiguo hook Stop, que disparaba al final de CADA turno de respuesta aunque no se hubiera tocado un archivo."
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-full.sh\"",
+            "description": "Verificación COMPLETA (tipos + suite entera) cuando el implementer termina. Si falla sale con 2: Claude Code no le deja pararse y le pasa el motivo. Una sola vez por parada, para no entrar en bucle."
           }
         ]
       }

@@ -16,7 +16,9 @@
 4. Lee `feature_list.json` y elige **una** tarea. Si tiene `"sdd": true`
    pasa por **Spec Driven Development** (ver `docs/specs.md` y §4 de este
    archivo). Si no, sigue el flujo simple.
-5. Lee `docs/specs.md` antes de tocar cualquier spec o feature `sdd: true`.
+5. Si vas a redactar un spec (`spec-author`), lee antes `docs/specs.md`. El
+   `implementer` y el `reviewer` no lo necesitan: lo que les toca de un spec
+   está en su propia definición.
 
 ## 2. Mapa del repositorio
 
@@ -37,7 +39,7 @@
 | `docs/conventions.md`         | Reglas de estilo, nombres, estructura                                                                     | Antes de escribir código |
 | `docs/lessons.md`           | Correcciones que el humano ya hizo en este proyecto. Las `activa` dirigidas a tu agente se cumplen como reglas | Siempre, al empezar |
 | `docs/vocabulary.md`         | Los términos de este proyecto que el humano ha aprobado (los del harness, en `CLAUDE.md` §Vocabulario). Si una palabra no está en ninguno, **no se usa**: se describe la cosa literalmente | Antes de ponerle nombre a cualquier cosa, en código o al escribirle a él |
-| `docs/specs.md`               | Proceso SDD: EARS notation, los 4 archivos, las 4 reglas de revisabilidad, puerta de aprobación humana    | Antes de redactar o leer un spec |
+| `docs/specs.md`               | Proceso SDD: EARS notation, los 4 archivos, las 4 reglas de revisabilidad, puerta de aprobación humana    | Antes de redactar un spec |
 | `docs/decisions-template.md`  | Plantilla y reglas de la hoja de decisiones (formato fijo, máx. 6 puntos 🔴)                              | Antes de escribir un `decisions.md` |
 | `docs/verification.md`        | Cómo verificar que tu trabajo funciona (incluye trazabilidad requirements para SDD)                       | Antes de declarar una tarea como `done` |
 | `docs/related-projects.md`    | Proyectos hermanos (frontend↔backend, etc.)                                                               | Si tu cambio afecta a otro proyecto |
@@ -51,15 +53,11 @@
 - **Una sola feature a la vez.** No mezcles cambios de varias tareas en la misma sesión.
 - **No declares una tarea `done` sin pruebas verdes.** Ejecuta `./init.sh` y
   asegúrate de que el bloque de tests pasa al 100%.
-- **No saltes la fase de spec.** Toda feature con `"sdd": true` debe pasar
-  por `spec-author` y obtener aprobación humana antes de tocar código.
-- **No saltes la puerta de aprobación humana.** El leader detiene el flujo
-  en `spec_ready` y espera.
-- **En la puerta se enlaza `decisions.md` y nada más.** Un spec sin su hoja no
-  es entregable, y un spec de más de ~15 requirements es señal de que la feature
-  hay que partirla (ver `docs/specs.md §Las cuatro reglas de revisabilidad`).
+- **Nada de código en una feature `"sdd": true` sin spec aprobado por el
+  humano.** Quién para el flujo y qué se le enseña en la puerta lo dice
+  `.claude/agents/leader.md`; cómo se escribe el spec, `docs/specs.md`.
 - **Documenta lo que haces** en `progress/current.md` mientras trabajas, no al final.
-- **Deja el repositorio limpio** antes de cerrar la sesión (ver §6).
+- **Deja el repositorio limpio** antes de cerrar la sesión (ver §5).
 - **Si no sabes algo, busca en `docs/`** antes de inventarlo.
 - **Cambios fuera de scope:** anótalos como sugerencia en tu informe, NO los apliques.
 - **Cada cosa se apunta donde dice `CLAUDE.md` §Dónde se apunta cada cosa.** Nunca

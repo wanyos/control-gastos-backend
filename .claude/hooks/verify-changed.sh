@@ -96,9 +96,26 @@ EOF
 
 LOG="${TMPDIR:-/tmp}/harness_verify.log"
 if ./init.sh --fast > "$LOG" 2>&1; then
-  tail -3 "$LOG"
-else
-  echo "[harness] verificación rápida FALLÓ — detalle en $LOG"
-  tail -20 "$LOG"
+  exit 0
 fi
+
+# Falló. Con exit 0 y texto suelto en stdout Claude Code no le enseña nada al
+# agente (era el fallo de la versión anterior). Tampoco se sale con 2: en
+# PostToolBatch eso detiene el bucle del agente, y un fallo de tipos a mitad de
+# una task es normal. Se devuelve un JSON con additionalContext, que Claude Code
+# entrega al agente junto al resultado de las herramientas.
+MSG=$(
+  echo "[harness] verificación rápida (./init.sh --fast) FALLÓ tras tus últimos cambios. Detalle en $LOG:"
+  tail -20 "$LOG"
+)
+# Escapa el texto para JSON sin depender de Node ni Python: quita colores, \r y
+# otros caracteres de control, pasa tabuladores a espacio, escapa \ y ", y une
+# las líneas con \n. Solo sed y tr portables (también el sed de macOS).
+JSON_MSG=$(printf '%s\n' "$MSG" \
+  | sed -e $'s/\033\\[[0-9;]*m//g' \
+  | tr '\t' ' ' \
+  | tr -d '\000-\010\013-\037' \
+  | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+  | awk 'NR > 1 { printf "\\n" } { printf "%s", $0 }')
+printf '{"hookSpecificOutput":{"hookEventName":"PostToolBatch","additionalContext":"%s"}}\n' "$JSON_MSG"
 exit 0

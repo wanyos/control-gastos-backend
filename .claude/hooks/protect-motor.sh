@@ -81,6 +81,7 @@ Lo propio del proyecto va donde dice CLAUDE.md §Dónde se apunta cada cosa:
   - mejora que valdría en todos los proyectos → docs/lessons.md (alcance harness)
     y avisa al humano para llevarla a harness-template
   - estilo del código → docs/conventions.md · verificación → docs/verification.md
+  - un paso propio que tiene que ejecutar ./init.sh → init.local.sh
   - decisión técnica → docs/architecture.md · versiones → docs/stack.md
   - término → docs/vocabulary.md · deber o cabo suelto → docs/roadmap.md
 Si no encaja en ninguna, pregúntale al humano. Si él quiere cambiar este archivo

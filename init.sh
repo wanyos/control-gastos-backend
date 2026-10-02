@@ -250,6 +250,29 @@ else
   fi
 fi
 
+# ─── Lo propio del proyecto: init.local.sh ───────────────────────────
+# WHY: cada proyecto verifica alguna cosa a su manera (tests con otro script,
+# un lint que no arregla, un E2E). Si eso se escribe aquí, el siguiente update
+# lo borra: init.sh es del motor. init.local.sh es del proyecto y el update no
+# lo toca nunca. Si existe, se carga aquí y puede definir:
+#   LOCAL_TEST_CMD    sustituye al comando de tests detectado (paso 6)
+#   LOCAL_STYLE_CMDS  sustituye al paso de lint y formato (paso 5): un comando
+#                     por línea; cada uno pone la pasada en rojo si falla
+#   local_steps()     pasos extra tras los tests (paso 6b), solo en la pasada
+#                     completa. Puede usar ok, warn, fail, info, $PKG, $STACK y
+#                     poner EXIT_CODE=1
+# No se carga en --checks ni afecta a --state ni a --fast.
+LOCAL_TEST_CMD=""
+LOCAL_STYLE_CMDS=""
+if [ -f "init.local.sh" ]; then
+  # shellcheck disable=SC1091
+  . ./init.local.sh
+  info "Cargado init.local.sh (verificación propia del proyecto)"
+  if [ -n "$LOCAL_TEST_CMD" ]; then
+    TEST_CMD="$LOCAL_TEST_CMD"
+  fi
+fi
+
 # ─────────────────────────────────────────────────────────────────────
 # 2. Verificación de archivos base del arnés
 # ─────────────────────────────────────────────────────────────────────
@@ -526,7 +549,16 @@ run_style() {
 }
 
 STYLE_DONE=0
-case "$STACK" in
+if [ -n "$LOCAL_STYLE_CMDS" ]; then
+  while IFS= read -r _cmd; do
+    [ -z "$_cmd" ] && continue
+    run_style "$_cmd"
+  done <<EOF_LOCAL_STYLE
+$LOCAL_STYLE_CMDS
+EOF_LOCAL_STYLE
+  STYLE_DONE=1
+fi
+[ $STYLE_DONE -eq 0 ] && case "$STACK" in
   node)
     if grep -q '"lint"' package.json 2>/dev/null; then
       run_style "$PKG run lint"; STYLE_DONE=1
@@ -598,6 +630,15 @@ else
     fail "Hay tests rotos"
     EXIT_CODE=1
   fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# 6b. Pasos propios del proyecto (init.local.sh)
+# ─────────────────────────────────────────────────────────────────────
+if declare -F local_steps >/dev/null 2>&1; then
+  echo ""
+  echo "── 6b. Pasos propios del proyecto (init.local.sh) ──────"
+  local_steps
 fi
 
 # ─────────────────────────────────────────────────────────────────────

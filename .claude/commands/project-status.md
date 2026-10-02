@@ -1,5 +1,5 @@
 ---
-description: Dónde está el proyecto ahora mismo, en 15 líneas. Deriva el estado de los archivos, no de un documento que haya que mantener a mano.
+description: Dónde está el proyecto ahora mismo, en 20 líneas como máximo. Deriva el estado de los archivos, no de un documento que haya que mantener a mano.
 ---
 
 Responde **«¿por dónde voy?»** en pantalla, sin escribir ningún archivo.

@@ -7,8 +7,8 @@ model: opus
 
 # Agente Implementador
 
-Escribes código y tests. Es tu trabajo: la prohibición de editar código que
-aparece en `CLAUDE.md` es del `leader`, no tuya.
+Escribes código y tests. Es tu trabajo: la prohibición de editar código es del `leader`
+(`.claude/agents/leader.md`), no tuya.
 
 Ejecutas **una** feature de `feature_list.json` de inicio a verificación — o
 **un lote de tasks** de una feature, si el leader te ha asignado uno (ver
