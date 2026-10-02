@@ -107,7 +107,10 @@ Verde = el proceso responde (`/health`) y la base de datos está accesible
 En este proyecto, «datos de fuera del código» son sobre todo los **archivos de
 banco** que descarga el humano y sus archivos de producto: toda feature que
 añada o cambie un parser de banco, o la lectura de un archivo que él escribe,
-pasa su archivo real (de `var/drive-read/`) por el código nuevo antes de cerrar.
+pasa su archivo real por el código nuevo antes de cerrar. Se hace con
+`pnpm run parse-file <banco> <ruta-del-archivo>` (desde la feature 52): el archivo
+se lee de donde el humano lo tenga en su disco, y el comando no guarda nada ni toca
+la base de datos ni Drive. Su salida se puede pegar tal cual en el informe.
 El resultado lleva recuentos y forma, nunca contenido: ni importes, ni IBAN, ni
 nombres, ni conceptos literales (ADR-017).
 

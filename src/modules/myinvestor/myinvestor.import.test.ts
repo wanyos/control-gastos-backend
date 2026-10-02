@@ -5,18 +5,14 @@
 // 🔒 Nothing here is real (ADR-017): every product name is generated on the
 // spot and every amount comes from the synthetic fixtures of feature 13. The
 // suite runs against a throwaway database (ADR-027), never the owner's.
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
 import type { FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { bankParsers, buildApp, productParsers } from '../../app.js'
 import type { AppDriveClient } from '../../lib/drive.js'
-import { importLocalCopies } from '../import/import.local.service.js'
+import { driveWithPendingFiles, type PendingFileFixture } from '../../lib/drive.fixture.js'
 import { importPending } from '../import/import.service.js'
-import type { LocalFileReport } from '../import/import.types.js'
+import type { ImportedFileReport } from '../import/import.types.js'
 import {
   buildProductDeposit,
   buildProductFund,
@@ -29,8 +25,9 @@ const bank = 'myinvestor'
 const folderMime = 'application/vnd.google-apps.folder'
 
 let app: FastifyInstance
-let rawCopyBaseDir: string
 let counter = 0
+/** What is pending in this bank's 2026 folder of the Drive double, per test. */
+let pending: PendingFileFixture[] = []
 
 /** A name nothing else in the suite (or in his database) can collide with. */
 function uniqueName(): string {
@@ -38,24 +35,24 @@ function uniqueName(): string {
   return `Producto Sintetico ${Date.now()}-${counter}-${Math.floor(Math.random() * 1_000_000)}`
 }
 
-/** Writes a local copy where the download step leaves it: `<base>/<bank>/<year>/`. */
-async function localCopy(name: string, file: ProductFile, year = '2026'): Promise<void> {
-  const dir = join(rawCopyBaseDir, bank, year)
-  await mkdir(dir, { recursive: true })
-  await writeFile(join(dir, name), buildProductJson(file), 'utf8')
+/** Leaves a product file pending in the year folder, as the human uploads it. */
+function pendingFile(name: string, file: ProductFile): void {
+  pending.push({ name, content: Buffer.from(buildProductJson(file), 'utf8') })
 }
 
+/** Imports what is pending -- or only the file named -- as `POST /api/import` does. */
 function run(name?: string) {
-  return importLocalCopies({
+  const files = name === undefined ? pending : pending.filter((file) => file.name === name)
+  return importPending({
+    client: driveWithPendingFiles(bank, '2026', files).client,
     prisma: app.prisma,
-    rawCopyBaseDir,
+    rootFolderId: 'root',
     parsers: bankParsers,
     productParsers,
-    selection: name === undefined ? { bank } : { bank, year: '2026', name },
   })
 }
 
-function reportOf(result: { files: LocalFileReport[] }, name: string): LocalFileReport {
+function reportOf(result: { files: ImportedFileReport[] }, name: string): ImportedFileReport {
   const file = result.files.find((candidate) => candidate.name === name)
   if (file === undefined) {
     throw new Error(`no report for ${name}`)
@@ -82,12 +79,11 @@ beforeAll(async () => {
   await app.ready()
 })
 
-beforeEach(async () => {
-  rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'myinvestor-import-'))
+beforeEach(() => {
+  pending = []
 })
 
 afterEach(async () => {
-  await rm(rawCopyBaseDir, { recursive: true, force: true })
   if (createdNames.length > 0) {
     const products = await productsNamed(createdNames)
     const ids = products.map((product) => product.id)
@@ -110,10 +106,10 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
       managed_portfolio: trackedName(),
       deposit: trackedName(),
     }
-    await localCopy('fondo.json', buildProductFund({ name: names.fund }))
-    await localCopy('etf.json', buildProductFund({ type: 'etf', name: names.etf }))
-    await localCopy('cartera.json', buildProductPortfolio({ name: names.managed_portfolio }))
-    await localCopy('deposito.json', buildProductDeposit({ name: names.deposit }))
+    pendingFile('fondo.json', buildProductFund({ name: names.fund }))
+    pendingFile('etf.json', buildProductFund({ type: 'etf', name: names.etf }))
+    pendingFile('cartera.json', buildProductPortfolio({ name: names.managed_portfolio }))
+    pendingFile('deposito.json', buildProductDeposit({ name: names.deposit }))
 
     const result = await run()
 
@@ -135,7 +131,7 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
 
   it('gives every product that fluctuates one valuation per date (C2)', async () => {
     const name = trackedName()
-    await localCopy('fondo.json', buildProductFund({ name, date: '2026-08-31' }))
+    pendingFile('fondo.json', buildProductFund({ name, date: '2026-08-31' }))
 
     await run()
 
@@ -149,7 +145,7 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
 
   it('gives a deposit its conditions on the product and NO valuation (C2)', async () => {
     const name = trackedName()
-    await localCopy('deposito.json', buildProductDeposit({ name }))
+    pendingFile('deposito.json', buildProductDeposit({ name }))
 
     const result = await run()
 
@@ -165,7 +161,7 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
 
   it('does not duplicate anything when the same month is uploaded twice (C4)', async () => {
     const name = trackedName()
-    await localCopy('fondo.json', buildProductFund({ name }))
+    pendingFile('fondo.json', buildProductFund({ name }))
 
     const first = await run()
     const second = await run()
@@ -185,9 +181,9 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
 
   it('adds a valuation for the next month without creating a product (C4)', async () => {
     const name = trackedName()
-    await localCopy('julio.json', buildProductFund({ name, date: '2026-07-31' }))
+    pendingFile('julio.json', buildProductFund({ name, date: '2026-07-31' }))
     await run('julio.json')
-    await localCopy('agosto.json', buildProductFund({ name, date: '2026-08-31' }))
+    pendingFile('agosto.json', buildProductFund({ name, date: '2026-08-31' }))
 
     const second = await run('agosto.json')
 
@@ -211,7 +207,7 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
     const name = trackedName()
     const broken = buildProductFund({ name, uninvestedcash: 5 })
     delete broken.marketValue
-    await localCopy('roto.json', broken)
+    pendingFile('roto.json', broken)
 
     const result = await run()
 
@@ -276,7 +272,6 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
       client,
       prisma: app.prisma,
       rootFolderId: 'root',
-      rawCopyBaseDir,
       parsers: bankParsers,
       productParsers,
     })
@@ -291,8 +286,8 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
   it('writes no Account and no Movement (C8)', async () => {
     const accountsBefore = await app.prisma.account.count()
     const movementsBefore = await app.prisma.movement.count()
-    await localCopy('fondo.json', buildProductFund({ name: trackedName() }))
-    await localCopy('deposito.json', buildProductDeposit({ name: trackedName() }))
+    pendingFile('fondo.json', buildProductFund({ name: trackedName() }))
+    pendingFile('deposito.json', buildProductDeposit({ name: trackedName() }))
 
     await run()
 
@@ -301,9 +296,7 @@ describe('the product files of MyInvestor entering the database (feature 29)', (
   })
 
   it('still sends anything that is not a .csv or a .json nowhere (C1)', async () => {
-    const dir = join(rawCopyBaseDir, bank, '2026')
-    await mkdir(dir, { recursive: true })
-    await writeFile(join(dir, 'extracto.pdf'), 'not a product', 'utf8')
+    pending.push({ name: 'extracto.pdf', content: Buffer.from('not a product', 'utf8') })
 
     const result = await run()
 

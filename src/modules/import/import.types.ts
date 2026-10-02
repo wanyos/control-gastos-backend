@@ -138,9 +138,8 @@ export interface ImportRunResult {
 
 /**
  * The minimum a file report needs for the totals of a run to be computed
- * (feature 25). It is structural so the two ways in -- Drive and the local
- * copies -- share the arithmetic without sharing the shape: a local file has no
- * Drive id, and a skipped one carries no counters at all.
+ * (feature 25). It is structural so the three kinds of report share the
+ * arithmetic without sharing the shape: a skipped one carries no counters at all.
  */
 export interface FileCounts {
   status: 'imported' | 'failed' | 'skipped'
@@ -169,8 +168,7 @@ export interface FileCounts {
 
 /**
  * What happened to ONE file once parsed, mapped and stored, with Drive left
- * out (feature 25). It is the part of the report both ways in share; the Drive
- * way adds the file id and whether it moved.
+ * out (feature 25). The Drive half adds the file id and whether it moved.
  */
 export interface StatementResult {
   status: 'imported' | 'failed'
@@ -199,55 +197,4 @@ export interface StatementResult {
    */
   balanceMismatches: BalanceMismatch[]
   error?: FileErrorReport
-}
-
-/**
- * Where a local copy lives: bank folder, year and file name. There is NO Drive
- * id here, on purpose -- the local copy is identified by its path, and this way
- * in never talks to Drive.
- */
-interface LocalFileReportBase {
-  bank: string
-  year: string
-  name: string
-  /**
-   * ALWAYS `false`, and typed as the literal so the compiler says it too: the
-   * local reimport moves nothing and deletes nothing in Drive (feature 25).
-   */
-  movedToProcessed: false
-}
-
-/** No parser for the bank of the folder, or an extension that parser does not read. */
-export interface SkippedLocalFileReport extends LocalFileReportBase {
-  status: 'skipped'
-  reason: string
-}
-
-/** A local copy the importer did try to import, whether it succeeded or not. */
-export interface AttemptedLocalFileReport extends LocalFileReportBase, StatementResult {}
-
-/** A local product copy the importer did try to import (feature 26). */
-export interface AttemptedLocalProductFileReport extends LocalFileReportBase, ProductResult {}
-
-export type LocalFileReport =
-  SkippedLocalFileReport | AttemptedLocalFileReport | AttemptedLocalProductFileReport
-
-/** Outcome of one local reimport run: the totals plus the report of every copy seen. */
-export interface LocalImportRunResult {
-  importedCount: number
-  duplicateCount: number
-  unparsedCount: number
-  failedCount: number
-  skippedCount: number
-  /** Same counter and same meaning as the Drive way in (feature 32, R11). */
-  balanceMismatchCount: number
-  /** Same three counters and same meaning as the Drive way in (feature 45). */
-  importedProductCount: number
-  anchoredCount: number
-  balanceFilledCount: number
-  files: LocalFileReport[]
-  /** Same detection and same shape as the Drive way in (feature 40). */
-  transfers: TransferDetectionResult
-  /** Same categorization run and same shape as the Drive way in (feature 43). */
-  categorization: CategorizationResult
 }

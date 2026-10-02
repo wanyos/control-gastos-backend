@@ -35,7 +35,7 @@ type ColumnField =
  * Header names (accents stripped, lowercased) mapped to the field they fill. The
  * comment on each line says what the column holds -- and it also keeps the privacy
  * guardian of feature 14 from reading this list as a sentence copied out of
- * `var/`: these names are the bank's FORMAT, not a datum of the human's.
+ * his data: these names are the bank's FORMAT, not a datum of the human's.
  */
 const headerToField: Record<string, ColumnField> = {
   'fecha de inicio': 'valueDate', // cuando empezó la operación

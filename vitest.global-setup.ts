@@ -7,18 +7,16 @@
 //   - After:  compare his database with the photo taken before, and put the run
 //     in RED if a single row -- or even a single sequence -- moved.
 //
-// Since feature 33 it does the same with `var/`, the other thing of his the suite
-// can reach: a photo before, a photo after, and RED if one file changed content
-// or even just its modification time.
-//
-// HOW ALL THREE CHECKS FAIL THE RUN (rewritten 2026-08-26, review of feature 33):
+// HOW THE TWO CHECKS FAIL THE RUN (rewritten 2026-08-26, review of feature 33):
 // they do NOT throw. An exception thrown in this teardown is reported as `error
 // during close` and `vitest run` still exits 0 -- measured end to end -- so
-// `init.sh` printed «Todos los tests pasan» over a touched folder. Since the F27
-// guardian had been failing the same way since the day it was written, the three
-// problems are now COLLECTED and handed to `failRun`, which writes them to file
-// descriptor 2 and sets the exit code. Collected, and not the first one only, so
-// a change in his database no longer hides one in his `var/`.
+// `init.sh` printed «Todos los tests pasan» over a failed check. The problems
+// are COLLECTED and handed to `failRun`, which writes them to file descriptor 2
+// and sets the exit code. Collected, and not the first one only, so a change in
+// his database no longer hides rows left in a throwaway one.
+//
+// Until feature 52 there was a third check, on a folder of his disk the project
+// no longer uses: nothing of this suite reads, lists or compares his disk now.
 //
 // Since feature 51 it has a third job: it reads from HIS database, through a
 // connection PostgreSQL opens READ-ONLY, the values of the columns the privacy
@@ -28,8 +26,8 @@
 // that opens his database.
 //
 // It is deliberately thin: the logic it calls lives in `src/lib/test-db.ts`,
-// `src/lib/test-var.ts`, `src/lib/test-guard.ts` and `src/lib/test-real-data.ts`,
-// type-checked by `tsc` and each with its own tests.
+// `src/lib/test-guard.ts` and `src/lib/test-real-data.ts`, type-checked by `tsc`
+// and each with its own tests.
 import './src/lib/load-env-file.js'
 import { availableParallelism } from 'node:os'
 
@@ -44,7 +42,6 @@ import {
 import { failRun } from './src/lib/test-guard.js'
 import { readRealDataReference } from './src/lib/test-real-data.js'
 import type { RealDataReference } from './src/lib/test-real-data.js'
-import { describeVarDifferences, snapshotVarDir } from './src/lib/test-var.js'
 
 /** The one thing this file needs of vitest's `TestProject`. */
 interface ProvidingProject {
@@ -67,10 +64,6 @@ export default async function setup(project: ProvidingProject) {
   // What the privacy guardian compares against (feature 51), read through a
   // read-only connection. An empty or table-less database gives empty lists.
   project.provide('realDataReference', await readRealDataReference(realDatabaseUrl))
-  // Read-only photo of HIS `var/` (feature 33): the downloads of his banks and
-  // the dumps the parser writes over them, gitignored and with no copy anywhere.
-  // Empty snapshot on a machine that has no `var/`, which is every machine but his.
-  const varBefore = snapshotVarDir()
 
   return async () => {
     // Every check runs, and every problem found is collected: the first one no
@@ -98,17 +91,6 @@ export default async function setup(project: ProvidingProject) {
       problems.push(
         `La suite ha dejado filas en sus bases de prueba:\n  - ${dirty.join('\n  - ')}\n` +
           `Cada test limpia lo que crea (docs/conventions.md §Tests con base de datos).`,
-      )
-    }
-
-    // Its message carries no datum of his: the path and what moved, nothing else.
-    const varDifferences = describeVarDifferences(varBefore, snapshotVarDir())
-    if (varDifferences.length > 0) {
-      problems.push(
-        `LA SUITE HA TOCADO TU CARPETA var/. Ningún test escribe ahí: es lo único tuyo que no ` +
-          `tiene copia en git. Diferencias:\n  - ${varDifferences.join('\n  - ')}\n` +
-          `Casi siempre es un test que llama a buildApp() sin inyectarle sourceBaseDir/dumpBaseDir ` +
-          `y acaba parseando tus archivos de verdad (feature 33). Si estabas importando algo a la vez, esa es la causa.`,
       )
     }
 

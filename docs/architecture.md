@@ -77,42 +77,43 @@ src/
       movements.types.ts   #   (sin *.schema.ts: no hay body que validar)
     health/
       health.routes.ts
-    ingestion/             # lectura de archivos de banco desde Drive (drive-read)
-      ingestion.routes.ts  #   GET /api/ingestion/pending + POST /api/ingestion/process
-      ingestion.service.ts #   detección + descarga tal cual + copia local (NO mueve, ADR-015)
-      ingestion.types.ts   #   tipos de la respuesta (DetectionResult, ProcessResult, ...)
+    ingestion/             # detección de archivos pendientes en Drive (drive-read)
+      ingestion.routes.ts  #   GET /api/ingestion/pending
+      ingestion.service.ts #   detectPending: cuenta y lista los pendientes; no descarga,
+                           #   no mueve y no usa el disco (ADR-032)
+      ingestion.types.ts   #   tipos de la respuesta (DetectionResult, ...)
     import/                # el importador: Drive -> parser -> base de datos (ADR-015)
       import.routes.ts     #   POST /api/import
-      import.service.ts    #   recorrido, mapeo, dedup y movimiento a procesados/
+      import.service.ts    #   recorrido, descarga a memoria, mapeo, dedup y movimiento
+                           #   a procesados/; no escribe ningún archivo (ADR-032)
       import.types.ts      #   BankParserAdapter (registro inyectado) + informe por fichero
+      import.parse-file.ts #   lo que ejecuta `pnpm run parse-file`: pasa UN archivo por el
+                           #   parser de su banco y resume recuentos y forma, sin base de
+                           #   datos ni Drive (ADR-032)
     bankinter/             # parser del extracto .xlsx de Bankinter (bankinter-parser)
       bankinter.parser.ts  #   parser puro (buffer .xlsx -> movimientos + IBAN), sin BD/Drive
-      bankinter.service.ts #   lee copias locales de la f5, parsea y vuelca JSON (read-only)
-      bankinter.routes.ts  #   POST /api/parser/bankinter
       bankinter.types.ts   #   SOLO lo suyo: BankinterParseResult = ParsedStatement<'bankinter'>
-                           #   + resúmenes de su ejecución local (ADR-013)
+                           #   (ADR-013)
       bankinter.fixture.ts #   helper de test: genera .xlsx sintético en memoria (exceljs)
     myinvestor/            # las DOS entradas de MyInvestor: extracto .csv + productos .json
       myinvestor.format.ts #   números y fechas de ESTE banco (compartido solo dentro)
       myinvestor.statement.parser.ts # parser puro (buffer .csv -> movimientos), sin BD/Drive
       myinvestor.product.parser.ts   # parser puro de UN .json de producto escrito a mano,
                            #   sin BD/Drive y sin usar el normalizador del .csv (ADR-016)
-      myinvestor.service.ts #  lee copias locales de la f5, encamina por extensión y vuelca
-                           #   JSON: uno por extracto + un products.json por año (read-only)
-      myinvestor.routes.ts #   POST /api/parser/myinvestor (un solo disparo, las dos entradas)
+      myinvestor.service.ts #  parseMyinvestorProductFile: lo que el registro de productos
+                           #   de src/app.ts entrega al importador
       myinvestor.types.ts  #   SOLO lo suyo: MyinvestorStatementResult =
                            #   ParsedStatement<'myinvestor'> + los tipos de producto
-                           #   (ParsedProduct, ParsedValuation, ...) + resúmenes (ADR-014/016)
+                           #   (ParsedProduct, ParsedValuation, ...) (ADR-014/016)
       myinvestor.fixture.ts #  helper de test: CSV y JSON de producto sintéticos en memoria
     trade-republic/        # el ÚNICO banco sin parser de lo que emite el banco (ADR-024):
-                           #   su .pdf no se abre nunca y se lista como ignorado
+                           #   su .pdf no se abre nunca
       trade-republic.product.parser.ts # parser puro de UN .json de cuenta remunerada
                            #   escrito a mano, con el CUADRE aritmético que rechaza el
                            #   mes cuyos cinco importes no encajan
-      trade-republic.service.ts  # lee copias locales, encamina por extensión (.json) y
-                           #   vuelca un products.json por año (read-only, sin BD)
-      trade-republic.routes.ts   # POST /api/parser/trade-republic
-      trade-republic.types.ts    # SOLO lo suyo: ParsedSavingsAccount y sus resúmenes;
+      trade-republic.service.ts  # parseTradeRepublicProductFile: lo que el registro de
+                           #   productos de src/app.ts entrega al importador
+      trade-republic.types.ts    # SOLO lo suyo: ParsedSavingsAccount;
                            #   NO comparte tipo con los productos de MyInvestor (ADR-024)
       trade-republic.fixture.ts  # helper de test: archivos de cuenta sintéticos en memoria
     investments/           # inversiones: productos y su valoración (ADR-012)
@@ -436,6 +437,12 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-009: Lectura de banco desde Drive (`drive-read`) — endpoints HTTP de ingesta, proceso archivo-a-archivo con volcado local gitignoreado
 
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** se quitan `POST /api/ingestion/process` y la copia en disco que
+> escribía (el «volcado local gitignoreado» del título). De este ADR queda
+> `GET /api/ingestion/pending`, con su descubrimiento dinámico de bancos y años. Lo que
+> aquí se dice del proceso archivo a archivo, del volcado y de su idempotencia queda
+> como historia. Ver ADR-032.
+
 - **Fecha:** 2026-08-03
 - **Estado:** aceptada (implementada en la feature #5), **retocada por ADR-015**
   (F12, 2026-08-12) en dos puntos: el módulo y sus rutas se llaman ahora
@@ -515,6 +522,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     distinto en Drive y se mueve igual, así que no se pierde el original.
 
 ### ADR-010: Parser de Bankinter — `exceljs` para leer `.xlsx`, parser puro en `modules/bankinter/`, volcado JSON local gitignoreado
+
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** se quitan la ruta `POST /api/parser/bankinter`, el servicio
+> que recorría las copias en disco y el volcado JSON (el final del título). El parser
+> puro de `modules/bankinter/` y la elección de `exceljs` siguen igual, sin cambiar una
+> línea: lo llama el importador de `POST /api/import`. Ver ADR-032.
 
 - **Fecha:** 2026-08-04
 - **Estado:** aceptada (implementada en la feature #6)
@@ -997,6 +1009,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-014: Parser del extracto de MyInvestor — módulo por banco, CSV leído sin librería, sin saldo y sin IBAN
 
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** se quitan la ruta `POST /api/parser/myinvestor`, el
+> recorrido de las copias en disco y el volcado (decisión 8). El parser del extracto
+> sigue igual, sin cambiar una línea; de `myinvestor.service.ts` queda solo la función
+> que el registro de productos de `src/app.ts` entrega al importador. Ver ADR-032.
+
 - **Fecha:** 2026-08-11
 - **Estado:** aceptada (implementada en la feature #10, spec re-especificado contra
   el contrato de la F11 y **cortado** en dos: los archivos JSON de producto son la
@@ -1120,6 +1137,12 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-015: Importación — módulo `import/` con registro de parsers inyectado, dedup delegado en el índice parcial, `procesados/` como consecuencia del guardado, IBAN obligatorio e `ingesta` renombrado a `ingestion`
 
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** la importación ya **no escribe la copia** del archivo
+> descargado: lo baja a memoria y le pasa esos bytes al parser, que es lo que ya hacía.
+> `POST /api/ingestion/process` desaparece. El resto de este ADR (registro de parsers
+> inyectado, dedup en el índice parcial, `procesados/` como consecuencia del guardado,
+> IBAN obligatorio) sigue vigente. Ver ADR-032.
+
 - **Estado:** aceptada (feature 12 `import`, 2026-08-12).
 - **Contexto:** los parsers (F6, F10), el modelo de datos (F8, F9), el contrato
   común (F11) y la fontanería de Drive (F4, F5) existían **sin tocarse entre sí**:
@@ -1180,6 +1203,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     Sin dueño todavía.
 
 ### ADR-016: Archivos de producto de MyInvestor — un JSON por producto escrito a mano, números JSON nativos, fechas ISO estrictas y claves cerradas
+
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** la ruta que devolvía `products[]` y escribía un
+> `products.json` por año desaparece. El parser de producto y el formato del archivo
+> (números JSON nativos, fechas ISO estrictas, claves cerradas) siguen igual; los
+> productos entran por `POST /api/import` desde la feature 29. Ver ADR-032.
 
 - **Fecha:** 2026-08-12.
 - **Estado:** aceptada (feature 13 `myinvestor-products`).
@@ -1294,6 +1322,12 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 > historia. Con la base sin datos de un tipo, la comparación de ese tipo se salta y lo
 > escribe en el descriptor 2. Por qué: el humano no quiere conservar `var/` solo para
 > esto, y la base es la que está siempre al día.
+
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** `.gitignore` pasa de tres líneas a una sola, `var/`, que
+> ignora la carpeta entera, y **nada del proyecto escribe ni lee ahí**. La línea se
+> mantiene para que, mientras la carpeta siga en el disco del humano, sus archivos no se
+> puedan versionar; lo comprueba el test `has the var folder gitignored whole, and
+> versions nothing under it` de `src/no-real-data.test.ts`. Ver ADR-032.
 
 - **Fecha:** 2026-08-12.
 - **Estado:** aceptada (feature 14 `no-real-data`).
@@ -1619,6 +1653,10 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-020: N26 — lector de CSV entrecomillado **dentro** del módulo del banco, preámbulo con `;` en un fichero de comas y concepto **compuesto**
 
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** se quita `POST /api/parser/n26` con el recorrido de las
+> copias en disco y su volcado. El lector de CSV, el preámbulo con `;` y el concepto
+> compuesto siguen igual, sin cambiar una línea de código del parser. Ver ADR-032.
+
 - **Fecha:** 2026-08-17.
 - **Estado:** aceptada (feature 18 `n26-statement`).
 - **Contexto:** el tercer banco exporta un `.csv` **separado por comas y con los
@@ -1907,6 +1945,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 > `var/`, así que lo que este banco guarda en la base se compara como lo de cualquier
 > otro (ver la revisión del ADR-017).
 
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** Trade Republic deja de tener ruta propia
+> (`POST /api/parser/trade-republic`) y volcado. **Sigue en el registro de productos**
+> de `src/app.ts`, leyendo solo su `.json`, y sigue fuera del registro de extractos; el
+> cuadre aritmético que rechaza no cambia. Ver ADR-032.
+
 - **Fecha:** 2026-08-19.
 - **Estado:** aceptada (feature 20 `trade-republic-product-file`; las tres decisiones
   delegadas del `intent` y los seis puntos de la puerta de aprobación, uno de ellos
@@ -2006,6 +2049,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-025: `procesados/` deja de ser una puerta de un solo sentido — reimportación desde la copia local en `POST /api/import/local`, sin Drive, y un archivo sin movimientos ni se cuenta como importado ni se mueve
 
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** se quita la **reimportación desde la copia local**
+> (`POST /api/import/local`), el error `LOCAL_COPY_NOT_FOUND` y la copia misma: para
+> volver a importar un archivo que ya está en `procesados/`, el humano lo devuelve a
+> mano a la carpeta del año en Drive. **Sigue vigente la otra mitad de este ADR:** un
+> archivo sin movimientos ni se cuenta como importado ni se mueve. Por eso este ADR se
+> revisa y no queda superado. Ver ADR-032.
+
 - **Fecha:** 2026-08-20.
 - **Estado:** aceptada (feature 25 `reimport-from-local-copy`).
 - **Contexto:** los 39 movimientos de Bankinter no estaban en la base de datos con la
@@ -2091,6 +2141,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     dependa de una posición recalculable) es otra feature, con su migración.
 
 ### ADR-026: La cuenta remunerada entra como `InvestmentProductType` nuevo con su propia serie (`SavingsSnapshot`), el importador gana un SEGUNDO registro y `var/parsed/` pasa a ser el ENSAYO
+
+> **Revisado el 2026-10-02 por la feature 52 `remove-var`:** la decisión 10 (`var/parsed/` como sitio donde mirar lo
+> que entiende un parser sin guardar nada, el final del título) desaparece con las
+> rutas `POST /api/parser/<banco>`. Para eso hay ahora un comando de terminal,
+> `pnpm run parse-file <banco> <ruta-del-archivo>`. El resto (el tipo
+> `savings_account`, `SavingsSnapshot` y el segundo registro del importador) sigue
+> vigente. Ver ADR-032.
 
 - **Fecha:** 2026-08-20
 - **Estado:** aceptada (implementada en la feature #26; las 6 decisiones 🔴 se
@@ -2372,7 +2429,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 ### ADR-029: La suite fotografía `var/` antes y después, y cualquier cambio la pone roja
 
 - **Fecha:** 2026-08-25
-- **Estado:** aceptada (implementada en la feature #33 `tests-dont-touch-real-var`)
+- **Estado:** superada por ADR-032 (feature 52 `remove-var`, 2026-10-02). Fue aceptada
+  e implementada en la feature #33 `tests-dont-touch-real-var`. Lo que se va es la foto
+  de `var/` y `src/lib/test-var.ts`; lo que este ADR dice de `failRun` (un `throw` en
+  el cierre de `globalSetup` no tumba la pasada) **sigue en uso** para la comprobación
+  de la base de datos del ADR-027.
 - **Contexto:** un test comprobaba que la ruta de Trade Republic está registrada en
   la app real **invocándola** (`buildApp()` sin inyectar `sourceBaseDir` /
   `dumpBaseDir`). Esos parámetros caen por defecto en `var/`, así que **cada pasada
@@ -2584,6 +2645,95 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     `balanceMismatches` y `balanceMismatchCount` siguen viajando igual, sin `id` ni
     `status`. Lo nuevo se lee por la ruta nueva, descrita en
     [`docs/api-contract.md`](api-contract.md).
+
+### ADR-032: El backend no guarda en disco ningún archivo de banco — se quitan `var/`, la copia de la importación y las ocho rutas que solo trabajaban con ella
+
+- **Fecha:** 2026-10-02
+- **Estado:** aceptada (implementada en la feature #52 `remove-var`, SDD). **Supera al
+  ADR-029** y revisa los ADR-009, 010, 014, 015, 016, 017, 020, 024, 025 y 026, que
+  llevan encima su línea de revisión.
+- **Contexto:** la carpeta `var/` nació como algo temporal, para simular cómo se
+  leerían los archivos antes de poder leer de Google Drive. Hoy se lee de Drive, los
+  datos van a la base de datos y el archivo original queda en `procesados/`. En
+  palabras del humano: «los archivos en var no sirven para nada», las rutas que
+  trabajan con ellos «nadie las llama» y «lo mejor sería quitar var entero». Tener ahí
+  sus archivos reales era además un riesgo: un test que olvidaba decir qué carpeta usar
+  los leía y los reescribía (el origen de la feature 33, ADR-029). El frontend solo
+  llama a `GET /api/ingestion/pending`.
+- **Decisión:**
+  1. **La importación no escribe ni lee ningún archivo del disco.** `POST /api/import`
+     descarga cada archivo de Drive a memoria, le pasa esos bytes al parser, guarda en
+     la base y mueve el original a `procesados/`. La copia que dejaba en
+     `var/drive-read/` no la volvía a leer ese camino, así que quitarla no cambia lo
+     que devuelve. Lo vigila el test `keeps the importer off the filesystem` de
+     [`src/architecture.test.ts`](../src/architecture.test.ts): ningún archivo de
+     `src/modules/import/` ni de `src/modules/ingestion/` que no sea un test usa
+     `node:fs`.
+  2. **Se quitan las ocho rutas que solo trabajaban con esa copia:** las seis
+     `POST /api/parser/<banco>` (bankinter, myinvestor, n26, openbank, revolut,
+     trade-republic), `POST /api/import/local` y `POST /api/ingestion/process`.
+     Responden **404 `NOT_FOUND`** por el manejador central, como las demás rutas
+     retiradas antes; no se añade ningún error y desaparece `LOCAL_COPY_NOT_FOUND`. El
+     contrato lo anuncia en su sección «Rutas retiradas».
+  3. **De cada módulo de banco queda lo que lee el formato:** sus `*.parser.ts`, sus
+     lectores de formato, sus fixtures y sus tests de parser, **sin cambiar una línea
+     de código de ningún parser**. Se van sus `*.routes.ts` y, en Bankinter, N26,
+     Openbank y Revolut, el `*.service.ts`, que solo recorría la copia. En MyInvestor y
+     Trade Republic ese archivo se queda con la única función que usa `src/app.ts`.
+  4. **El código no nombra la carpeta `var/`.** El test `mentions the var folder
+     nowhere in the code` recorre `src/`, `scripts/`, `prisma/*.ts`, la configuración
+     de vitest y `package.json`, con tres excepciones declaradas con su motivo: los
+     tres tests que vigilan precisamente eso (`src/architecture.test.ts`,
+     `src/no-real-data.test.ts` y `src/retired-routes.docs.test.ts`).
+  5. **La foto de `var/` de la feature 33 se quita entera** (`src/lib/test-var.ts` y su
+     parte de `vitest.global-setup.ts`): ya nada del proyecto puede escribir ahí, y
+     mantenerla obligaba a seguir nombrando la carpeta. La suite no lee, lista ni
+     compara ninguna carpeta del disco del humano. `failRun` se queda: lo usa la
+     comprobación de la base de datos (ADR-027).
+  6. **`.gitignore` conserva una sola línea, `var/`.** La carpeta sigue en el disco
+     del humano hasta que él la borre; sin esa línea, git ofrecería sus archivos para
+     versionar.
+  7. **Para pasar un archivo real por un parser sin importarlo hay un comando de
+     terminal, no una ruta:** `pnpm run parse-file <banco> <ruta-del-archivo>`
+     ([`scripts/parse-bank-file.ts`](../scripts/parse-bank-file.ts), con la lógica y
+     sus tests en
+     [`src/modules/import/import.parse-file.ts`](../src/modules/import/import.parse-file.ts)).
+     Elige el parser con las mismas funciones y en el mismo orden que la importación,
+     no recibe ni base de datos ni cliente de Drive, y enseña **solo recuentos y
+     forma**: nunca un importe, un IBAN, un nombre ni un concepto, y de un rechazo solo
+     su código. Así su salida se puede pegar en un informe.
+- **Alternativas descartadas:**
+  - **Mantener la foto de `var/` hasta que el humano borre la carpeta.** Dejaría
+    código nombrando `var/` y vigilaría una carpeta en la que nada del proyecto puede
+    ya escribir. Lo que causó la feature 33 —un valor por defecto que apunta ahí— lo
+    impide el test de la decisión 4.
+  - **Dejar las rutas y pasar el valor por defecto a `src/app.ts`** (lo que proponía el
+    cabo suelto 16 del roadmap). Arregla el accidente de los tests y conserva ocho
+    rutas que nadie llama y la carpeta con sus archivos reales.
+  - **Que el comando de la decisión 7 fuera una ruta HTTP que recibe el archivo.**
+    Volvería a poner en el contrato una ruta que el frontend no usa y obligaría a
+    añadir subida de archivos, que el proyecto no tiene.
+  - **No dar ningún comando: que la prueba sea la primera importación de verdad.** Un
+    parser que falla deja el archivo sin mover y no guarda nada, pero uno que lee mal
+    **sin fallar** guarda datos erróneos en la base del humano y mueve el archivo.
+  - **Quitar `var/` de `.gitignore`.** Mientras la carpeta siga en su disco,
+    `git status` ofrecería sus archivos de banco para versionar.
+- **Consecuencias:**
+  - **Reimportar un archivo que ya está en `procesados/` es devolverlo a mano a la
+    carpeta del año en Drive** y volver a llamar a `POST /api/import`. No hay un flujo
+    nuevo para eso, por decisión del humano.
+  - `POST /api/import` y `GET /api/ingestion/pending` devuelven lo mismo que antes.
+  - La prueba con un archivo real de `docs/verification.md` se hace con el comando de
+    la decisión 7 y el archivo donde el humano lo tenga.
+  - Dos comportamientos desaparecen con el recorrido de la copia y no existen en
+    `POST /api/import`: «si dos archivos declaran el mismo producto y fecha, se queda
+    el primero por orden alfabético» y el volcado byte a byte idéntico.
+  - **La carpeta `var/` del disco la borra el humano**, no un agente. Hasta entonces
+    sigue ahí, ignorada por git y sin que nada la use.
+  - **Las menciones de pasada a estas rutas y a `var/` en los ADR-013, 018 y 019 son
+    históricas:** cuentan lo que había cuando se escribieron y no llevan línea de
+    revisión. Los títulos de los ADR-009, 010, 017, 025, 026 y 029 siguen nombrando
+    `var/` o las rutas porque un ADR no se reescribe.
 
 
 ## Qué NO hacer

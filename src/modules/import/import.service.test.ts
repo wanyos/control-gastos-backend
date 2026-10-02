@@ -1,9 +1,5 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
 import type { FastifyInstance } from 'fastify'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { buildApp } from '../../app.js'
 import { InvalidIbanError, NotUtf8Error } from '../../errors/app-error.js'
@@ -206,7 +202,6 @@ describe('toMovementRows (mapping of specs/08-data-model/design.md §9)', () => 
 
 describe('importPending', () => {
   let app: FastifyInstance
-  let rawCopyBaseDir: string
   const usedBanks: string[] = []
   let bankCounter = 0
 
@@ -235,7 +230,7 @@ describe('importPending', () => {
     parsers: BankParserAdapter[],
     rootFolderId = 'root',
   ): ReturnType<typeof importPending> {
-    return importPending({ client, prisma: app.prisma, rootFolderId, rawCopyBaseDir, parsers })
+    return importPending({ client, prisma: app.prisma, rootFolderId, parsers })
   }
 
   function attempted(report: { files: unknown[] }, index = 0): AttemptedFileReport {
@@ -249,12 +244,7 @@ describe('importPending', () => {
     await app.ready()
   })
 
-  beforeEach(async () => {
-    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-raw-'))
-  })
-
   afterEach(async () => {
-    await rm(rawCopyBaseDir, { recursive: true, force: true })
     if (usedBanks.length > 0) {
       const accounts = await app.prisma.account.findMany({
         // Case-insensitive: one test registers its account with the bank name in
@@ -717,17 +707,6 @@ describe('importPending', () => {
     expect(create).not.toHaveBeenCalled()
   })
 
-  it('writes the raw copy of the downloaded file before parsing it', async () => {
-    const bank = uniqueBank()
-    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
-    const parsers = [fakeAdapter(bank, () => statement(bank, { accountIban: uniqueIban() }))]
-
-    await run(client, parsers)
-
-    const copy = await readFile(join(rawCopyBaseDir, bank, '2026', 'movs.csv'))
-    expect(copy.equals(Buffer.from('content-of-f1'))).toBe(true)
-  })
-
   it('reports nothing and touches nothing when there is no pending file', async () => {
     const bank = uniqueBank()
     const tree = treeWith(bank, [])
@@ -765,6 +744,46 @@ describe('importPending', () => {
 
     await expect(run(client, [])).rejects.toMatchObject({ code: 'DRIVE_CONNECTION_ERROR' })
   })
+  it('hands the parser the bytes of the download and reads the bank from the FOLDER (C1)', async () => {
+    // The Drive folder is written in capitals, like a real one: the parser is
+    // found through the normalized slug, never through the raw folder name.
+    const bank = uniqueBank()
+    const folder = bank.toUpperCase()
+    const tree = treeWith(bank, [{ id: 'f1', name: 'movs.csv' }])
+    tree.folders.root = [{ id: `b-${bank}`, name: folder }]
+    const { client } = buildDrive(tree)
+    const seen: string[] = []
+    const parsers = [
+      fakeAdapter(bank, (content) => {
+        seen.push(content.toString('utf8'))
+        return statement(bank, { accountIban: uniqueIban() })
+      }),
+    ]
+
+    const result = await run(client, parsers)
+
+    expect(seen).toEqual(['content-of-f1'])
+    // The report keeps the folder as it is in Drive; the parser was chosen by slug.
+    expect(attempted(result)).toMatchObject({ bank: folder, status: 'imported', imported: 1 })
+  })
+
+  it('imports the pending files of every year folder of a bank (C1)', async () => {
+    const bank = uniqueBank()
+    const tree = treeWith(bank, [{ id: 'f-old', name: 'old.csv' }], '2025')
+    tree.folders[`b-${bank}`].push({ id: `y2-${bank}`, name: '2026' })
+    tree.files[`y2-${bank}`] = [{ id: 'f-new', name: 'new.csv', mimeType: 'text/csv' }]
+    const { client } = buildDrive(tree)
+    const parsers = [fakeAdapter(bank, () => statement(bank, { accountIban: uniqueIban() }))]
+
+    const result = await run(client, parsers)
+
+    expect(result.files.map((file) => [file.year, file.name])).toEqual([
+      ['2025', 'old.csv'],
+      ['2026', 'new.csv'],
+    ])
+    expect(result.importedCount).toBe(2)
+  })
+
   // ── Feature 25 `reimport-from-local-copy`: the zero-movements rule ───────
   //
   // The hole the diagnosis of 2026-08-20 left alive (its section 1.4): a file
@@ -1045,7 +1064,6 @@ describe('totals (feature 45: the three totals the per-file reports already carr
 
 describe('importPending: the product files (feature 26)', () => {
   let app: FastifyInstance
-  let rawCopyBaseDir: string
   const usedBanks: string[] = []
   let bankCounter = 0
 
@@ -1070,7 +1088,6 @@ describe('importPending: the product files (feature 26)', () => {
       client,
       prisma: app.prisma,
       rootFolderId: 'root',
-      rawCopyBaseDir,
       parsers,
       productParsers,
     })
@@ -1089,12 +1106,7 @@ describe('importPending: the product files (feature 26)', () => {
     await app.ready()
   })
 
-  beforeEach(async () => {
-    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-product-'))
-  })
-
   afterEach(async () => {
-    await rm(rawCopyBaseDir, { recursive: true, force: true })
     if (usedBanks.length > 0) {
       const products = await app.prisma.investmentProduct.findMany({
         where: { bank: { in: usedBanks } },
@@ -1156,6 +1168,48 @@ describe('importPending: the product files (feature 26)', () => {
     // The double returns `bank: 'never-this-one'` on purpose.
     expect(await app.prisma.investmentProduct.count({ where: { bank: 'never-this-one' } })).toBe(0)
     expect((await productsOfTheBank(bank))[0]?.bank).toBe(bank)
+  })
+
+  it('adds one row for the next month and keeps the same account (R11, R7)', async () => {
+    const bank = uniqueBank()
+    const name = uniqueAccountName()
+    const months: Record<string, ProductFile> = {
+      july: productFile({ name, date: '2026-07-31' }),
+      august: productFile({
+        name,
+        date: '2026-08-31',
+        openingBalance: 4006.4,
+        balance: 4012.9,
+        interest: 6.5,
+      }),
+    }
+    const { client } = buildDrive(
+      treeWith(bank, [
+        { id: 'july', name: 'cuenta-07.json' },
+        { id: 'august', name: 'cuenta-08.json' },
+      ]),
+      {
+        get: vi.fn(async ({ fileId }: { fileId: string }) => ({
+          data: productBytes(months[fileId]),
+        })),
+      },
+    )
+
+    const result = await run(client, [], [fakeProductAdapter(bank)])
+
+    expect(result.files).toHaveLength(2)
+    expect(productReport(result, 0).product?.created).toBe(true)
+    expect(productReport(result, 1).product?.created).toBe(false)
+    expect(result.importedProductCount).toBe(2)
+    expect(await productsOfTheBank(bank)).toHaveLength(1)
+    const photos = await app.prisma.savingsSnapshot.findMany({
+      where: { product: { bank } },
+      orderBy: { date: 'asc' },
+    })
+    expect(photos.map((photo) => photo.date.toISOString().slice(0, 10))).toEqual([
+      '2026-07-31',
+      '2026-08-31',
+    ])
   })
 
   it('leaves NO trace when the five amounts do not add up (R8, R9, R12)', async () => {
@@ -1407,7 +1461,6 @@ describe('deriveAnchorFromStatement (pure: no database, no clock)', () => {
 
 describe('the importer anchors the account and fills the balances it left empty', () => {
   let app: FastifyInstance
-  let rawCopyBaseDir: string
   const usedBanks: string[] = []
   let bankCounter = 0
 
@@ -1426,7 +1479,6 @@ describe('the importer anchors the account and fills the balances it left empty'
       client,
       prisma: app.prisma,
       rootFolderId: 'root',
-      rawCopyBaseDir,
       parsers,
     })
   }
@@ -1442,12 +1494,7 @@ describe('the importer anchors the account and fills the balances it left empty'
     await app.ready()
   })
 
-  beforeEach(async () => {
-    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-anchor-'))
-  })
-
   afterEach(async () => {
-    await rm(rawCopyBaseDir, { recursive: true, force: true })
     if (usedBanks.length > 0) {
       const accounts = await app.prisma.account.findMany({
         where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
@@ -1773,7 +1820,6 @@ function recordingPrisma(prisma: AppPrismaClient, calls: AccountCall[]): AppPris
 
 describe('the importer reports the descuadres of a file and lets nothing else change', () => {
   let app: FastifyInstance
-  let rawCopyBaseDir: string
   const usedBanks: string[] = []
   let bankCounter = 0
 
@@ -1792,7 +1838,6 @@ describe('the importer reports the descuadres of a file and lets nothing else ch
       client,
       prisma: app.prisma,
       rootFolderId: 'root',
-      rawCopyBaseDir,
       parsers,
     })
   }
@@ -1816,12 +1861,7 @@ describe('the importer reports the descuadres of a file and lets nothing else ch
     await app.ready()
   })
 
-  beforeEach(async () => {
-    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-mismatch-'))
-  })
-
   afterEach(async () => {
-    await rm(rawCopyBaseDir, { recursive: true, force: true })
     if (usedBanks.length > 0) {
       const accounts = await app.prisma.account.findMany({
         where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
@@ -2076,11 +2116,155 @@ describe('the importer reports the descuadres of a file and lets nothing else ch
   })
 })
 
+// ── Feature 43: the categorization run inside an import (R12) ───────────────
+
+describe('importPending: the categorization run of the report (feature 43, R12)', () => {
+  let app: FastifyInstance
+  const usedBanks: string[] = []
+  const createdCategoryIds: number[] = []
+  const createdRuleIds: number[] = []
+  let counter = 0
+
+  function uniqueBank(): string {
+    counter += 1
+    const slug = `zz-import-catrules-${Date.now()}-${counter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function run(
+    parsers: BankParserAdapter[],
+    bank: string,
+    prisma: AppPrismaClient = app.prisma,
+  ): ReturnType<typeof importPending> {
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    return importPending({ client, prisma, rootFolderId: 'root', parsers })
+  }
+
+  async function createRule(matchText: string) {
+    counter += 1
+    const category = await app.prisma.category.create({
+      data: { name: `Import rules ${Date.now()}-${counter}`, kind: 'expense' },
+    })
+    createdCategoryIds.push(category.id)
+    const rule = await app.prisma.categoryRule.create({
+      data: { categoryId: category.id, matchText },
+    })
+    createdRuleIds.push(rule.id)
+    return { category, rule }
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    await app.prisma.categoryRule.deleteMany({ where: { id: { in: createdRuleIds } } })
+    if (usedBanks.length > 0) {
+      const accounts = await app.prisma.account.findMany({
+        where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
+      })
+      const ids = accounts.map((account) => account.id)
+      // Feature 48: the warnings an import now stores are deleted FIRST, both
+      // because a descuadre holds a foreign key to the account and because a
+      // leftover row would turn up in the listing of another test.
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+    await app.prisma.category.deleteMany({ where: { id: { in: createdCategoryIds } } })
+    createdRuleIds.length = 0
+    createdCategoryIds.length = 0
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('categorizes the movements this run just imported, after the detection (R12)', async () => {
+    const bank = uniqueBank()
+    const { category } = await createRule('sintetico importado')
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: syntheticIban(),
+          movements: [movement({ description: 'PAGO SINTETICO IMPORTADO 7' })],
+        }),
+      ),
+    ]
+
+    const result = await run(parsers, bank)
+
+    expect(result.importedCount).toBe(1)
+    expect(result.categorization.categorized).toBeGreaterThanOrEqual(1)
+    expect(result.categorization.error).toBeUndefined()
+    const account = await app.prisma.account.findFirstOrThrow({
+      where: { bank: { equals: bank, mode: 'insensitive' } },
+    })
+    const stored = await app.prisma.movement.findFirstOrThrow({
+      where: { accountId: account.id },
+    })
+    expect(stored.categoryId).toBe(category.id)
+    // The run writes NOTHING else: the movement stays pending, no transfer link.
+    expect(stored.status).toBe('pending_review')
+    expect(stored.transferId).toBeNull()
+  })
+
+  it('reports a categorization failure inside the report, with the import intact (R12)', async () => {
+    const bank = uniqueBank()
+    const parsers = [fakeAdapter(bank, () => statement(bank, { accountIban: syntheticIban() }))]
+    // Fails ONLY the eligible-movements read of the categorization run (the one
+    // that filters by `categoryId`); every other query passes through untouched.
+    const real = app.prisma
+    const bound = (holder: object, property: string | symbol): unknown => {
+      const value = Reflect.get(holder, property)
+      return typeof value === 'function' ? value.bind(holder) : value
+    }
+    const wrapped = new Proxy(real, {
+      get(target, property) {
+        if (property === 'movement') {
+          const movementDelegate = target.movement
+          return new Proxy(movementDelegate, {
+            get(movementTarget, movementProperty) {
+              if (movementProperty === 'findMany') {
+                return (args: { where?: Record<string, unknown> }) => {
+                  if (args?.where !== undefined && 'categoryId' in args.where) {
+                    throw new Error('synthetic categorization failure')
+                  }
+                  return movementTarget.findMany(args)
+                }
+              }
+              return bound(movementTarget, movementProperty)
+            },
+          })
+        }
+        return bound(target, property)
+      },
+    }) as typeof real
+
+    const result = await run(parsers, bank, wrapped)
+
+    // The import itself stands, and so does the transfer detection.
+    expect(result.importedCount).toBe(1)
+    expect(result.failedCount).toBe(0)
+    expect(result.transfers.error).toBeUndefined()
+    expect(result.categorization).toEqual({
+      categorized: 0,
+      conflictCount: 0,
+      conflicts: [],
+      unmatched: 0,
+      error: { code: 'INTERNAL_SERVER_ERROR', message: 'synthetic categorization failure' },
+    })
+  })
+})
+
 // ── Feature 48: the warnings of an imported file stop dying with the report ──
 
 describe('the importer stores the warnings of the files that entered (feature 48)', () => {
   let app: FastifyInstance
-  let rawCopyBaseDir: string
   const usedBanks: string[] = []
   let bankCounter = 0
 
@@ -2096,7 +2280,7 @@ describe('the importer stores the warnings of the files that entered (feature 48
     parsers: BankParserAdapter[],
     prisma: AppPrismaClient = app.prisma,
   ): ReturnType<typeof importPending> {
-    return importPending({ client, prisma, rootFolderId: 'root', rawCopyBaseDir, parsers })
+    return importPending({ client, prisma, rootFolderId: 'root', parsers })
   }
 
   function attempted(report: { files: unknown[] }, index = 0): AttemptedFileReport {
@@ -2152,12 +2336,7 @@ describe('the importer stores the warnings of the files that entered (feature 48
     await app.ready()
   })
 
-  beforeEach(async () => {
-    rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-warnings-'))
-  })
-
   afterEach(async () => {
-    await rm(rawCopyBaseDir, { recursive: true, force: true })
     if (usedBanks.length > 0) {
       const accounts = await app.prisma.account.findMany({
         where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
@@ -2262,6 +2441,77 @@ describe('the importer stores the warnings of the files that entered (feature 48
     expect(mismatches[0]?.bookingDate).toEqual(new Date('2026-07-21T00:00:00.000Z'))
     expect(mismatches[0]?.computed.toFixed(2)).toBe('-40.00')
     expect(mismatches[0]?.fromFile.toFixed(2)).toBe('-20.00')
+  })
+
+  // ── Importing the same file again updates, never duplicates (R1, R2, R6) ──
+
+  it('stores the warnings with the file they came out of and does not duplicate them on a second run (R1, R2, R6)', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    // The folder is spelled in capitals on purpose: what identifies a warning is
+    // the SLUG, so the same file under a differently spelled folder is the same
+    // file and must not store a second set of warnings.
+    const tree = () => {
+      const drive = treeWith(bank, [{ id: 'f1', name: 'reimportado.csv' }])
+      drive.folders.root = [{ id: `b-${bank}`, name: bank.toUpperCase() }]
+      return drive
+    }
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          movements: chainThatDoesNotAddUp(),
+          unparsedRows: [{ row: 11, reason: 'el importe trae dos separadores decimales' }],
+        }),
+      ),
+    ]
+
+    const first = await run(buildDrive(tree()).client, parsers)
+
+    const account = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    const firstFile = attempted(first)
+    expect(firstFile.status).toBe('imported')
+    expect(firstFile.imported).toBe(2)
+    expect(firstFile.unparsedCount).toBe(1)
+    expect(firstFile.balanceMismatches).toHaveLength(1)
+
+    const [unparsed, mismatches] = await storedWarningsOf(bank)
+    expect(unparsed).toHaveLength(1)
+    expect(unparsed[0]).toMatchObject({
+      bank,
+      year: '2026',
+      fileName: 'reimportado.csv',
+      rowNumber: 11,
+      reason: 'el importe trae dos separadores decimales',
+    })
+    expect(mismatches).toHaveLength(1)
+    expect(mismatches[0]).toMatchObject({
+      bank,
+      year: '2026',
+      fileName: 'reimportado.csv',
+      accountId: account.id,
+      check: 'per-line',
+      status: 'pending',
+    })
+    expect(mismatches[0]?.computed.toFixed(2)).toBe('-40.00')
+    expect(mismatches[0]?.fromFile.toFixed(2)).toBe('-20.00')
+
+    // The human put the file back in the year folder and imported it again.
+    const second = await run(buildDrive(tree()).client, parsers)
+
+    // The same file again: every movement is a duplicate the database drops...
+    const secondFile = attempted(second)
+    expect(secondFile.status).toBe('imported')
+    expect(secondFile.imported).toBe(0)
+    expect(secondFile.duplicates).toBe(2)
+    // ...and the two warnings are the SAME two rows, updated, not two more.
+    const [unparsedAgain, mismatchesAgain] = await storedWarningsOf(bank)
+    expect(unparsedAgain).toHaveLength(1)
+    expect(mismatchesAgain).toHaveLength(1)
+    expect(unparsedAgain[0]?.id).toBe(unparsed[0]?.id)
+    expect(mismatchesAgain[0]?.id).toBe(mismatches[0]?.id)
+    expect(unparsedAgain[0]?.createdAt).toEqual(unparsed[0]?.createdAt)
+    expect(mismatchesAgain[0]?.createdAt).toEqual(mismatches[0]?.createdAt)
   })
 
   // ── T10: a file that did not enter leaves nothing behind (R4) ─────────────

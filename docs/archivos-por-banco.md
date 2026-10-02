@@ -60,7 +60,7 @@ se toma por un banco.
 ## Y una regla que no es de formato
 
 🔴 **Cuando sustituyes un archivo roto, el viejo se borra en ese momento** — en
-Drive (también dentro de `procesados/`) y en `var/drive-read/`. Un archivo roto
+Drive, también dentro de `procesados/`. Un archivo roto
 que se queda sale como `failed` en **cada** importación, para siempre, y
 acostumbra a ver rojos que «son normales». Regla escrita el 2026-08-30, después
 de tropezar con ella.

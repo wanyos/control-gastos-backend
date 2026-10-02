@@ -11,13 +11,9 @@ dist/
 # Cliente de Prisma generado
 src/generated/
 
-# Volcado local de la lectura de Drive (feature drive-read): datos bancarios
-# reales. PRIVACIDAD: nunca se versiona ni se sube al remoto.
-var/drive-read/
-
-# Volcado local del parser (feature bankinter-parser): JSON con movimientos
-# reales. PRIVACIDAD: nunca se versiona ni se sube al remoto.
-var/parsed/
+# Carpeta local que el proyecto dejó de usar en la feature 52. Se mantiene
+# ignorada entera: si queda en el disco con archivos de banco, nunca se versiona.
+var/
 
 # Logs
 *.log
@@ -32,6 +28,3 @@ Thumbs.db
 
 # Artefacto de compilacion incremental de TypeScript: cambia en cada tsc.
 tsconfig.tsbuildinfo
-
-# Copias de seguridad de la base de datos: datos reales, NUNCA se versionan
-var/backups/

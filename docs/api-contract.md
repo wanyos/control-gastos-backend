@@ -28,6 +28,40 @@
   `{ "statusCode": NUMBER, "code": "STRING", "message": "STRING" }`
   (ver la sección [Errores](#errores)).
 
+## Rutas retiradas
+
+> ⚠️ **BREAKING CHANGE (feature 52 `remove-var`, 2026-10-02).** El backend ha
+> dejado de guardar archivos de banco en el disco de la máquina, y las **ocho
+> rutas** que solo trabajaban con esa copia **han desaparecido**. Una petición a
+> cualquiera de ellas responde ahora **404** con el cuerpo de error estándar
+> (`{ "statusCode": 404, "code": "NOT_FOUND", "message": "…" }`). No se mantienen
+> alias. **El frontend no llamaba a ninguna de las ocho**, así que no necesita
+> cambios.
+
+| # | Ruta retirada | Qué hacía | Qué se usa ahora |
+| --- | --- | --- | --- |
+| 1 | `POST /api/parser/bankinter` | Leía los `.xlsx` de la copia en disco y escribía en disco lo que entendía el parser, sin guardar nada en la base | Nada en la API |
+| 2 | `POST /api/parser/myinvestor` | Lo mismo con el `.csv` y los `.json` de producto | Nada en la API |
+| 3 | `POST /api/parser/n26` | Lo mismo con el `.csv` | Nada en la API |
+| 4 | `POST /api/parser/openbank` | Lo mismo con el `.xls` | Nada en la API |
+| 5 | `POST /api/parser/revolut` | Lo mismo con el `.csv` | Nada en la API |
+| 6 | `POST /api/parser/trade-republic` | Lo mismo con el `.json` de la cuenta remunerada | Nada en la API |
+| 7 | `POST /api/import/local` | Importaba desde la copia en disco, sin llamar a Drive | [`POST /api/import`](#post-apiimport). Para volver a importar un archivo que ya está en `procesados/`, se devuelve a mano a la carpeta del año en Drive |
+| 8 | `POST /api/ingestion/process` | Descargaba los archivos pendientes al disco, sin importarlos | Nada en la API. La descarga la hace `POST /api/import`, a memoria |
+
+- **Código de error retirado:** `LOCAL_COPY_NOT_FOUND` (404). Solo lo devolvía la
+  ruta 7; ya no lo emite ninguna ruta.
+- **Lo que NO cambia:** [`POST /api/import`](#post-apiimport) devuelve el mismo
+  informe, con los mismos campos; lo único distinto es que ya no deja una copia
+  del archivo en el disco. [`GET /api/ingestion/pending`](#get-apiingestionpending)
+  devuelve lo mismo que antes.
+- **Qué lee cada parser** sigue descrito en las secciones «Qué lee el parser de
+  `<banco>`», más abajo: es lo que `POST /api/import` aplica a cada archivo.
+- **Para ver qué entiende un parser de un archivo sin importarlo** ya no hay ruta:
+  hay un comando de terminal, `pnpm run parse-file <banco> <ruta-del-archivo>`,
+  que enseña solo recuentos y forma y no guarda nada.
+- El porqué está en el ADR-032 de `docs/architecture.md`.
+
 ## Errores
 
 Toda respuesta de error de la API (validación, no encontrado, error interno,
@@ -116,9 +150,7 @@ Códigos estables:
 > fallo y dejaba `SUSCRIPCI�N PREMIUM` de forma irreversible. El backend **no
 > aprende cp1252** ni adivina codificaciones: el `message` dice qué byte y qué
 > línea, y pide volver a guardar el fichero en UTF-8. Aparece en
-> `files[].error.code` de `POST /api/import` y, como motivo de texto, en
-> `failed[].reason` de `POST /api/parser/myinvestor`, de `POST /api/parser/n26` y
-> de `POST /api/parser/revolut`.
+> `files[].error.code` de `POST /api/import`.
 >
 > **Nota (`UNEXPECTED_ENCODING`, feature "openbank-statement", 2026-08-19):** la
 > regla de arriba se **acota, no se rompe** (ADR-022). Lo que escribe **el humano**
@@ -130,8 +162,7 @@ Códigos estables:
 > declara, o declara otra, el fichero se rechaza entero con este código. Sin esa
 > guardia, un fichero que llegara en UTF-8 entraría con los 200 conceptos en
 > mojibake y **sin un solo error**. Aparece en `files[].error.code` de
-> `POST /api/import` y, como texto, en `failed[].reason` de
-> `POST /api/parser/openbank`.
+> `POST /api/import`.
 >
 > **Nota (`UNEXPECTED_ENCODING`, feature "encoding-mismatch-guard", 2026-08-19):**
 > el mismo código cubre el desajuste **al revés**, que es el que pasó de verdad ese
@@ -149,8 +180,8 @@ Códigos estables:
 >
 > **Nota (`DRIVE_CONNECTION_ERROR`, actualizada en la feature "drive-read",
 > 2026-08-03):** desde la feature 5 este código **sí** sale en el cuerpo de error
-> estándar. Los endpoints de ingesta (`GET /api/ingestion/pending` y
-> `POST /api/ingestion/process`) lo devuelven con `{ statusCode, code, message }`
+> estándar. El endpoint de ingesta (`GET /api/ingestion/pending`) lo devuelve con
+> `{ statusCode, code, message }`
 > cuando falla una operación de Drive de nivel superior (p. ej. no se pueden ni
 > listar los bancos). El `message` va **sanitizado** (nunca incluye token ni URL
 > firmada). Nota histórica: hasta la feature 4 ningún endpoint de dominio lo
@@ -267,8 +298,8 @@ Un apunte del extracto. **Solo entra por importación** (ver
 > como ingreso** en los totales globales. El `type` que reportó el banco **no se
 > muta** al identificarlo. Además del enlace manual, `transferId` lo escribe la
 > **detección de traspasos**
-> (feature 40), que corre sola al final de cada pasada de `POST /api/import` y de
-> `POST /api/import/local`: empareja las parejas inequívocas (mismo importe,
+> (feature 40), que corre sola al final de cada pasada de `POST /api/import`:
+> empareja las parejas inequívocas (mismo importe,
 > `type` opuesto, cuentas distintas, fechas contables a ≤ 3 días naturales, y cada
 > pierna es el único candidato posible de la otra) y, desde la feature 41, también
 > los grupos dudosos con el **mismo número de salidas que de entradas** en los que
@@ -630,8 +661,7 @@ sin reimportar nada. Sin body.
 ```
 
 Es el mismo objeto que viaja en el campo `categorization` del informe de
-`POST /api/import` y de `POST /api/import/local` (ver allí el detalle campo a
-campo).
+`POST /api/import` (ver allí el detalle campo a campo).
 
 > **Reglas de arranque.** Existe un borrador de reglas iniciales que se siembra
 > con `pnpm run seed:category-rules` (idempotente: la segunda ejecución crea 0;
@@ -1555,24 +1585,22 @@ direccionable que dé 404. Solo los genéricos (500) del handler central.
 > desde Drive, **sin parsear y sin base de datos**. El banco y el año se saben por
 > la carpeta (`notas-banco/<banco>/<año>/`), no por el contenido; los bancos se
 > descubren dinámicamente (las subcarpetas de la raíz SON los bancos). Sin
-> autenticación nueva. El contenido descargado se copia a una carpeta local del
-> repo **gitignoreada** (nunca se versiona); estos endpoints no exponen esa ruta
-> absoluta, solo la ruta relativa `<banco>/<año>/<archivo>`.
+> autenticación nueva. **Desde la feature 52 (2026-10-02) esta sección tiene una
+> sola ruta**, la detección de pendientes: la que descargaba los archivos al disco
+> está en [§Rutas retiradas](#rutas-retiradas).
 
 > ⚠️ **BREAKING CHANGE (feature "import", 2026-08-12).** Las rutas en español
 > **han desaparecido**: `/api/ingesta/pending` y `/api/ingesta/process` responden
-> ahora **404 `NOT_FOUND`** con el cuerpo de error estándar. Las mismas
-> capacidades están en `/api/ingestion/pending` y `/api/ingestion/process`. No se
+> ahora **404 `NOT_FOUND`** con el cuerpo de error estándar. La detección de
+> pendientes está en `/api/ingestion/pending` (la otra ruta que se renombró ese día
+> se retiró en la feature 52: ver [§Rutas retiradas](#rutas-retiradas)). No se
 > mantienen alias. Motivo: la norma del proyecto es que todo identificador va en
 > inglés (`docs/conventions.md` §Idioma) y este era el último resto en español de
 > la API. **Aún NO consumido por el frontend**, así que el coste es cero.
 >
-> ⚠️ **Segundo cambio de comportamiento en la misma feature:**
-> `POST /api/ingestion/process` **ya no mueve** el archivo a `procesados/`; se
-> queda en descargar y copiar. Mover es ahora consecuencia de **guardar los
-> movimientos**, y eso lo hace [`POST /api/import`](#post-apiimport). Este endpoint
-> sigue existiendo porque es lo que permite inspeccionar el archivo de un banco del
-> que todavía no hay parser.
+> ⚠️ **Segundo cambio de comportamiento en la misma feature:** mover un archivo a
+> `procesados/` es desde entonces consecuencia de **guardar sus movimientos**, y
+> eso lo hace [`POST /api/import`](#post-apiimport).
 
 ### `GET /api/ingestion/pending`
 
@@ -1607,47 +1635,6 @@ listan los bancos/años que tienen algún pendiente.
 
 ---
 
-### `POST /api/ingestion/process`
-
-Acción **explícita** de descarga. Por cada archivo pendiente (uno a uno): descarga
-su contenido **tal cual** (sin parsear) y guarda una copia local. **No mueve nada
-en Drive**: el archivo sigue pendiente hasta que la importación guarde sus
-movimientos. El fallo de un archivo (lectura o copia) se **aísla**: se reporta en
-`failed` y el resto continúa. Reejecutarlo sin pendientes no hace nada; con
-pendientes reescribe la misma copia local, sin duplicarla.
-
-Sin cuerpo de petición.
-
-**Respuesta 200**
-```json
-{
-  "processedCount": 1,
-  "failedCount": 1,
-  "processed": [
-    { "bank": "bankinter", "year": "2026", "fileId": "1AbC...", "name": "movs.xlsx", "path": "bankinter/2026/movs.xlsx" }
-  ],
-  "failed": [
-    { "bank": "santander", "year": "2025", "fileId": "9XyZ...", "name": "roto.xlsx", "error": "Cannot reach Google Drive" }
-  ]
-}
-```
-
-- `processedCount` / `processed`: archivos **descargados y copiados**, no
-  «procesados» en el sentido de Drive (ninguno se ha movido).
-- `path`: ruta de la copia **relativa** a la carpeta de volcado local (no se
-  expone la ruta absoluta de la máquina).
-- `error`: mensaje **sanitizado** para humanos; nunca contiene tokens ni secretos.
-- Un fallo por archivo NO cambia el código HTTP: la respuesta es 200 con el
-  detalle en `failed`. Solo un fallo de Drive de nivel superior (no se pueden ni
-  listar los bancos) devuelve 503.
-
-**Errores**
-| Código HTTP | `code`                   | Cuándo                                            |
-| ----------- | ------------------------ | ------------------------------------------------- |
-| 503         | `DRIVE_CONNECTION_ERROR` | Fallo de Drive de nivel superior (mensaje sanitizado). |
-
----
-
 ## Importación (Drive → parser → base de datos)
 
 > **Feature "import" (2026-08-12).** El eslabón que faltaba: baja cada archivo
@@ -1662,8 +1649,8 @@ Sin cuerpo de petición y sin autenticación nueva. Por cada archivo pendiente d
 cada `<banco>/<año>/`, en el orden en que Drive los lista (por nombre):
 
 1. elige el parser por el **banco de la carpeta** y por la **extensión**;
-2. descarga el contenido y escribe su copia cruda local (re-parseable sin volver a
-   bajar nada);
+2. descarga el contenido **a memoria** (desde la feature 52 no se escribe ninguna
+   copia en el disco de la máquina);
 3. parsea;
 4. resuelve la cuenta: con el `iban` del archivo la crea si no existía; sin `iban`
    usa la **única** cuenta ya dada de alta de ese banco;
@@ -1996,8 +1983,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 > feature 31: donde manda el archivo, sigue mandando el archivo. Un descuadre **no**
 > mueve ese saldo, **no** toca el ancla y **no** añade ninguna columna a la base de
 > datos. Los descuadres solo existen mientras dura la respuesta de la importación:
-> si quieres volver a verlos, se vuelve a importar (o se lanza
-> `POST /api/import/local`, que no toca Drive).
+> si quieres volver a verlos, se vuelve a importar.
 - **En un archivo `failed` no se ancla ni se rellena nada**: `anchored` es `false`,
   `balancesFilled` es `0` y `account.balanceAnchor` puede venir `null` aunque la
   cuenta sí esté anclada, porque el ancla se lee **después** de guardar los
@@ -2008,10 +1994,15 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 - Un fallo por archivo **NO** cambia el código HTTP: la respuesta es 200 con el
   detalle. Solo un fallo de Drive de nivel superior (no se pueden ni listar los
   bancos) devuelve 503.
-- Reimportar un archivo ya movido **ya no exige tocar Drive**: se pide por
-  `POST /api/import/local`, que lee la copia local (ver más abajo). Devolverlo a
-  mano de `procesados/` a la carpeta del año sigue funcionando, pero es el
-  camino largo.
+- Reimportar un archivo ya movido es **devolverlo a mano** de `procesados/` a la
+  carpeta del año en Drive y volver a llamar a esta ruta: desde la feature 52 no
+  hay otra vía (ver [§Rutas retiradas](#rutas-retiradas)). Repetirlo no duplica
+  movimientos **mientras el parser de ese banco sea el mismo** con el que se
+  importó la primera vez: la deduplicación distingue dos líneas del mismo día por
+  su posición dentro del día (`daySequence`), que se recalcula al parsear, así que
+  un parser que hoy lee una línea que antes dejaba sin interpretar renumera ese día
+  y sus líneas entran como movimientos nuevos (límite heredado del modelo,
+  ADR-011 / ADR-015). Mira `imported` / `duplicates` del archivo en la respuesta.
 
 **Errores**
 | Código HTTP | `code`                   | Cuándo                                                 |
@@ -2031,145 +2022,6 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 tipo**—. **No se guarda ni el producto ni la foto** y **no** se mueve a `procesados/`: corrígelo y vuelve a subirlo. |
 | `DRIVE_CONNECTION_ERROR` | Falló la descarga de **ese** archivo.                                              |
 | `INTERNAL_SERVER_ERROR`  | Cualquier otro fallo de ese archivo (mensaje sanitizado).                          |
-
-### `POST /api/import/local`
-
-> **Feature "reimport-from-local-copy" (2026-08-20).** `procesados/` **deja de ser
-> una puerta de un solo sentido.** Cada archivo que se descarga deja una copia
-> cruda en `var/drive-read/<banco>/<año>/`; esta vía importa **desde esa copia**,
-> sin depender de que el archivo siga pendiente en Drive y **sin mover ni borrar
-> nada en Drive** (no hace ni una llamada a Drive).
-
-Cuerpo **opcional**, todas sus claves opcionales:
-
-```json
-{ "bank": "mibanco", "year": "2026", "name": "movs.csv" }
-```
-
-| Campo  | Qué hace                                                                                 |
-| ------ | ---------------------------------------------------------------------------------------- |
-| `bank` | Limita al banco indicado. Se normaliza igual que la carpeta de Drive (`MiBanco` → `mibanco`). |
-| `year` | Limita al año indicado (cuatro dígitos).                                                  |
-| `name` | Limita al archivo con **ese nombre exacto** dentro de las carpetas que queden.             |
-
-Sin cuerpo (o con `{}`) recorre **todas** las copias locales. No mueve nada nunca, y
-repetirlo **no duplica nada mientras el parser de ese banco sea el mismo con el que se
-importó el archivo la primera vez**.
-
-> ⚠️ **Si el parser ha cambiado desde aquella importación, reimportar ese archivo SÍ
-> puede insertar copias.** La deduplicación distingue dos líneas del mismo día por su
-> posición dentro del día (`daySequence`), y esa posición **se recalcula al parsear**: si
-> el parser antiguo dejaba una línea sin interpretar y el de hoy la lee, el día entero se
-> renumera y esas líneas entran como movimientos nuevos, con el mismo importe y el mismo
-> concepto que los que ya estaban. Es un límite heredado del modelo (ADR-011 / ADR-015),
-> no de esta vía, pero esta vía lo pone a una llamada de distancia y justo sobre el caso
-> que la motiva: **copias antiguas, importadas con parsers anteriores**.
->
-> **Qué hacer en su lugar:** no dispares la llamada sin cuerpo sobre copias viejas. Pide
-> **un archivo concreto** con `{ bank, year, name }`, mira su `imported` / `duplicates` en
-> la respuesta y comprueba el recuento de ese periodo en `GET /api/movements` antes de
-> seguir con el siguiente. Si `imported` no es 0 en un archivo que creías ya importado,
-> eso es exactamente este caso.
-
-Por cada copia hace lo mismo que la importación normal **menos los pasos de
-Drive**: elige el parser por el banco de la **carpeta** y la extensión, parsea,
-resuelve la cuenta, guarda en una sola operación — y **no mueve nada**.
-
-> **También los archivos de producto** (feature 26): consulta los **dos** registros en el
-> mismo orden que `POST /api/import`, y un `.json` de `trade-republic` bajo
-> `var/drive-read/trade-republic/<año>/` se persiste por el mismo camino, **sin una sola
-> llamada a Drive**. Es **la** forma de volver a subir un mes cuyo archivo ya llegó a
-> `procesados/`: repetirlo sobrescribe la foto de ese mes y no duplica nada, porque su
-> identidad son el `name` y la `date` que escribes tú, y no se renumeran (a diferencia del
-> aviso de arriba sobre `daySequence`).
-
-**Respuesta 200** — mismo informe que `POST /api/import`, con dos diferencias:
-no hay `fileId` (una copia local se identifica por su ruta) y `movedToProcessed`
-es **siempre `false`**.
-
-```json
-{
-  "importedCount": 0,
-  "duplicateCount": 39,
-  "unparsedCount": 0,
-  "failedCount": 0,
-  "skippedCount": 0,
-  "balanceMismatchCount": 0,
-  "importedProductCount": 0,
-  "anchoredCount": 0,
-  "balanceFilledCount": 12,
-  "files": [
-    {
-      "bank": "MiBanco", "year": "2026", "name": "movs.xlsx",
-      "status": "imported",
-      "account": {
-        "id": 3, "iban": "ES9820385778983000760236", "bank": "mibanco",
-        "alias": "mibanco ···0236", "type": "checking",
-        "created": false, "appliedDefaults": { "alias": false, "type": false },
-        "balanceAnchor": "1500.00"
-      },
-      "imported": 0,
-      "duplicates": 39,
-      "anchored": false,
-      "balancesFilled": 12,
-      "unparsedCount": 0,
-      "unparsedRows": [],
-      "balanceMismatches": [],
-      "movedToProcessed": false
-    }
-  ],
-  "transfers": { "pairsCreated": 0, "ambiguousCount": 0, "ambiguous": [] },
-  "categorization": { "categorized": 0, "conflictCount": 0, "conflicts": [], "unmatched": 0 }
-}
-```
-
-- **Reimportar dos veces no duplica** —con el **mismo parser**—. La segunda pasada sale
-  `imported: 0` y `duplicates: n`, porque el descarte lo hace el mismo índice único
-  parcial que usa la importación normal (`Movement_imported_dedup_key`, ADR-011). Ese
-  índice incluye `daySequence`, así que la garantía **vale mientras la numeración del día
-  no cambie**; ver el aviso de arriba.
-- **Los estados por archivo son los mismos** (`imported` / `skipped` / `failed`),
-  con la misma regla de cero movimientos, y un fallo por archivo **no** cambia el
-  código HTTP.
-- **Los descuadres salen exactamente igual que por Drive** (feature 32, R11):
-  `balanceMismatches` en cada archivo —siempre un array, `[]` cuando no hubo
-  ninguno— y `balanceMismatchCount` en la raíz, con los mismos campos y los mismos
-  dos valores de `check` (`"per-line"` y `"statement-balance"`) descritos en
-  `POST /api/import`. No es una copia: las dos vías comparten el mismo importador,
-  así que **esta es la forma de mirar los descuadres sin tocar Drive**. Aquí
-  tampoco cambia `GET /api/accounts`.
-- **La detección de traspasos corre aquí exactamente igual que por Drive**
-  (feature 40): al final de la pasada, sobre todos los movimientos sin marcar, con
-  el mismo campo `transfers` descrito en `POST /api/import`. No es una copia: las
-  dos vías llaman a la misma detección. **Esta llamada sin cuerpo es, además, la
-  forma de emparejar lo que ya está guardado** sin esperar a la siguiente
-  importación mensual: reimporta las copias (todo sale `duplicates`) y al final
-  corre la detección.
-- **La pasada de categorización por reglas corre aquí exactamente igual que por
-  Drive** (feature 43): después de la detección de traspasos, con el mismo campo
-  `categorization` descrito en `POST /api/import`. Para categorizar lo pendiente
-  sin reimportar nada hay un gesto más directo:
-  [`POST /api/category-rules/apply`](#post-apicategory-rulesapply).
-- **Esta es la vía que repara lo que ya está dentro** (feature 31). Como pasa por
-  el mismo importador, una reimportación local **ancla** las cuentas cuyos archivos
-  traen saldo y **rellena** los saldos por línea que falten, sin crear un solo
-  movimiento nuevo: por eso el ejemplo de arriba sale con `imported: 0`,
-  `duplicates: 39` y `balancesFilled: 12`, y en la raíz `balanceFilledCount: 12`
-  y `anchoredCount: 0` (la cuenta ya estaba anclada). Los tres totales de la
-  feature 45 (`importedProductCount`, `anchoredCount`, `balanceFilledCount`)
-  salen aquí con el mismo significado que en `POST /api/import`: es la misma
-  suma sobre los mismos informes por archivo. No hay script de migración de
-  datos ni hace falta volver a subir nada a Drive.
-
-**Errores**
-| Código HTTP | `code`                  | Cuándo                                                                 |
-| ----------- | ----------------------- | ---------------------------------------------------------------------- |
-| 404         | `LOCAL_COPY_NOT_FOUND`  | **No existe la copia local de lo que has pedido.** Nunca se responde «0 archivos importados»: el mensaje dice qué falta (el banco, el año o el archivo), qué **sí** hay ahí y dónde viven las copias. Ocurre si ese archivo nunca se descargó en esta máquina, si se borró `var/drive-read/`, o si te has equivocado de nombre. |
-| 400         | `VALIDATION_ERROR`      | `bank`, `year` o `name` no son un nombre simple (llevan `/`, `\` o `..`), o `year` no son cuatro dígitos. |
-
-> **Lo que esta vía NO hace:** no descarga nada, no mueve ni borra nada en Drive,
-> no crea la carpeta `procesados/` y no reemplaza a `POST /api/import`, que sigue
-> siendo la importación de cada mes y se comporta exactamente igual que antes.
 
 ---
 
@@ -2320,15 +2172,14 @@ revisión se guarda pero **no** se serializa.
 
 ---
 
-## Parser de Bankinter (sin base de datos)
+## Qué lee el parser de Bankinter
 
 > **Feature "bankinter-parser" (2026-08-04).** Convierte el `.xlsx` de Bankinter
-> (el que la ingesta de la f5 dejó como copia local) en movimientos
-> estructurados **sin parsear a base de datos, sin deduplicar y sin mover nada en
-> Drive**. Solo Bankinter. El resultado se vuelca a un archivo JSON local del repo
-> **gitignoreado** (`var/parsed/`, nunca se versiona); estos endpoints no exponen
-> esa ruta absoluta, solo la ruta relativa `<banco>/<año>/<archivo>.json`. Sin
-> autenticación nueva.
+> en movimientos estructurados. El parser **no toca la base de datos, no deduplica
+> y no mueve nada en Drive**: lo que devuelve lo guarda
+> [`POST /api/import`](#post-apiimport). Hasta la feature 52 (2026-10-02) este banco
+> tenía además una ruta propia, que escribía ese resultado en disco: está en
+> [§Rutas retiradas](#rutas-retiradas).
 
 > ⚠️ Breaking change (feature "parser-english", 2026-08-05): los campos del modelo
 > del parser pasan de español a inglés (`fechaContable`→`bookingDate`,
@@ -2373,7 +2224,8 @@ Divisa`; un banco que no reporte saldo (o IBAN) deja esos campos en `null`.
 > El resultado completo de un archivo tiene la forma `{ bank: "bankinter",
 > accountIban, accountBalance, movements: ParsedMovement[], unparsedRows: { row,
 > reason }[] }`, con `accountIban` a `null` cuando el archivo no lo trae (nunca `""`),
-> y es lo que se escribe en el JSON local. De dónde sale ese `accountIban` es
+> y es lo que recibe el importador de `POST /api/import`. De dónde sale ese
+> `accountIban` es
 > conocimiento de cada banco: Bankinter lo trae en el preámbulo de su `.xlsx`; en
 > MyInvestor lo escribe el humano **una vez**, como línea `iban;<IBAN>` encima de la
 > cabecera del `.csv` (feature 12). Ningún parser lo infiere de un concepto con
@@ -2410,58 +2262,18 @@ no se cuadra contra ellos—.
 > extracto posterior **no** lo reescribe. Sigue sin cuadrarse contra los importes:
 > comparar el saldo calculado con el del archivo es otra feature (ver ADR-028).
 
-### `POST /api/parser/bankinter`
-
-Acción **explícita** de parseo. Recorre las copias locales de Bankinter que dejó
-la ingesta (`var/drive-read/bankinter/<año>/*.xlsx`), parsea cada una y escribe su
-resultado a `var/parsed/bankinter/<año>/<archivo>.json`. Read-only respecto a
-Drive y a la base de datos: **no** descarga, **no** mueve, **no** persiste en BD.
-Un fallo por archivo (no es un extracto reconocible, etc.) se **aísla** en
-`failed` y no detiene al resto. Reejecutarlo sin copias locales no hace nada.
-
-Sin cuerpo de petición.
-
-**Respuesta 200**
-```json
-{
-  "parsedCount": 1,
-  "failedCount": 0,
-  "parsed": [
-    {
-      "bank": "bankinter",
-      "year": "2026",
-      "file": "movs.xlsx",
-      "accountIban": "ES9820385778983000760236",
-      "movements": 42,
-      "unparsedRows": 1,
-      "dumpPath": "bankinter/2026/movs.xlsx.json"
-    }
-  ],
-  "failed": []
-}
-```
-
-- `movements` / `unparsedRows`: número de movimientos parseados y de filas no
-  reconocidas; el detalle completo está en el JSON volcado.
-- `accountIban`: puede ser **`null`** si ese archivo no trae la línea del IBAN
-  (antes de 2026-08-11 era `""`; ver el breaking change de arriba).
-- `dumpPath`: ruta del JSON volcado **relativa** a la carpeta de volcado local (no
-  se expone la ruta absoluta de la máquina).
-- `failed[]`: `{ bank, year, file, error }` con el `error` sanitizado (sin
-  secretos). Un fallo por archivo NO cambia el código HTTP: la respuesta es 200.
-
 ---
 
-## Parser de MyInvestor (sin base de datos)
+## Qué lee el parser de MyInvestor
 
 > **Feature "myinvestor-statement" (2026-08-11, ADR-014).** Convierte el
-> **extracto CSV de la cuenta corriente** de MyInvestor (la copia local que dejó
-> la ingesta de la f5) en movimientos estructurados, **sin base de datos, sin
-> deduplicar y sin mover nada en Drive**. Devuelve el **mismo contrato**
-> `ParsedMovement` / `ParsedStatement` que Bankinter (ver §Modelo `ParsedMovement`
-> más arriba): el módulo del banco no declara su propia forma de movimiento.
-> El volcado va al mismo `var/parsed/` **gitignoreado**; el endpoint solo expone la
-> ruta relativa `<banco>/<año>/<archivo>.json`. Sin autenticación nueva.
+> **extracto CSV de la cuenta corriente** de MyInvestor en movimientos
+> estructurados. El parser **no toca la base de datos, no deduplica y no mueve nada
+> en Drive**: lo que devuelve lo guarda [`POST /api/import`](#post-apiimport).
+> Devuelve el **mismo contrato** `ParsedMovement` / `ParsedStatement` que Bankinter
+> (ver §Modelo `ParsedMovement` más arriba): el módulo del banco no declara su
+> propia forma de movimiento. La ruta propia que tuvo este banco hasta la feature
+> 52 está en [§Rutas retiradas](#rutas-retiradas).
 
 > 📌 **Dos datos que este banco NO aporta y que salen como `null` explícito**
 > (nunca `0`, nunca `""` y **sin ningún campo aparte que lo anuncie** —ADR-013
@@ -2535,14 +2347,14 @@ cabecera) sin detener el resto, y **no consume `daySequence`**.
 > **Feature "myinvestor-products" (2026-08-12, ADR-016).** El mismo banco aporta
 > además **archivos `.json` de producto de inversión escritos a mano** por el
 > humano (fondos, ETF, cartera automatizada y depósitos), uno por producto y por
-> foto. **El mismo endpoint los devuelve**: se distinguen del extracto **por la
-> extensión** (`.csv` → extracto, `.json` → producto) y el banco sigue saliendo de
-> la carpeta. Sigue sin haber base de datos: solo parseo y volcado.
+> foto. Se distinguen del extracto **por la extensión** (`.csv` → extracto,
+> `.json` → producto) y el banco sigue saliendo de la carpeta. Desde la feature 29
+> `POST /api/import` los guarda (ver §Importación, «Archivos de producto»).
 >
 > El **formato del archivo** (plantillas, tabla de campos, reglas de números y
 > fechas) es `docs/myinvestor-product-files.md`, no este contrato.
 
-Modelo de un producto parseado, tal como aparece en el volcado:
+Modelo de un producto parseado, tal como lo devuelve el parser:
 
 ```json
 {
@@ -2590,100 +2402,18 @@ Todos los importes son **números**, emitidos **tal cual se escribieron**: sin
 redondear, sin fijar decimales y sin recalcular nada. Si los valores de un archivo no
 cuadran entre ellos, salen como están: el parser **no calcula**.
 
-### `POST /api/parser/myinvestor`
-
-Acción **explícita** de parseo. Recorre las copias locales de MyInvestor
-(`var/drive-read/myinvestor/<año>/`), aplica el parser **por extensión**
-(`.csv` → extracto; `.json` → producto de inversión; cualquier otra → `ignored`) y
-escribe el resultado de cada extracto en
-`var/parsed/myinvestor/<año>/<archivo>.json` y el de **todos los productos del año**
-en `var/parsed/myinvestor/<año>/products.json`. Read-only respecto a Drive y a la
-base de datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo
-sobre los mismos archivos produce **exactamente el mismo resultado**.
-
-Sin cuerpo de petición.
-
-**Respuesta 200**
-```json
-{
-  "parsedCount": 1,
-  "productCount": 1,
-  "failedCount": 0,
-  "ignoredCount": 1,
-  "statements": [
-    {
-      "bank": "myinvestor",
-      "year": "2026",
-      "file": "extracto.csv",
-      "accountIban": null,
-      "accountBalance": 1500,
-      "movements": 12,
-      "unparsedRows": 0,
-      "dumpPath": "myinvestor/2026/extracto.csv.json"
-    }
-  ],
-  "products": [
-    {
-      "bank": "myinvestor",
-      "year": "2026",
-      "file": "mi-fondo-2026-08-31.json",
-      "type": "fund",
-      "name": "Mi Fondo de Ejemplo",
-      "date": "2026-08-31",
-      "dumpPath": "myinvestor/2026/products.json"
-    }
-  ],
-  "failed": [],
-  "ignored": [
-    {
-      "bank": "myinvestor",
-      "year": "2026",
-      "file": "deposito.txt",
-      "reason": "extensión no soportada por este parser ('.txt')"
-    }
-  ]
-}
-```
-
-- `accountIban`: `null` salvo que el archivo traiga la línea de preámbulo
-  `iban;<IBAN>` que escribe el humano (ver la nota de arriba).
-- `accountBalance`: saldo **de la cuenta** en la fecha del extracto, de la línea de
-  preámbulo `saldo;<importe>`; `null` si esa línea no está (feature 16). **No** es el
-  `balance` de cada movimiento, que en este banco es `null` siempre.
-- `parsedCount` cuenta **extractos**; `productCount`, **productos**.
-- `products[]`: un **resumen** por producto parseado (`bank`, `year`, `file`, `type`,
-  `name`, `date`, `dumpPath`). El producto completo, con su `valuation` o sus
-  `depositTerms`, vive en el volcado del año.
-- `dumpPath`: ruta del JSON volcado **relativa** a la carpeta de volcado local (no
-  se expone la ruta absoluta de la máquina). Todos los productos de un año comparten
-  `<banco>/<año>/products.json`: **un volcado por año**, no uno por archivo. Ese
-  volcado contiene `{ bank, year, products[], failed[], ignored[] }` de ese año, y
-  solo se escribe si el año tiene algún `.json` de producto.
-- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado, para las dos
-  entradas. Un extracto cuyos bytes no sean UTF-8 cae aquí entero, con el motivo
-  «el archivo no está guardado en UTF-8 (byte 0xD3 no válido en la línea N)…» y sin
-  escribir volcado. Un archivo de producto mal escrito acumula **todos** sus problemas en un
-  solo `reason` (campos obligatorios que faltan, valores que no son números, un
-  número escrito **como texto**, fechas en otro formato, claves desconocidas, o el
-  choque con otro archivo que declara el mismo producto y fecha). Un fallo por
-  archivo NO cambia el código HTTP: la respuesta es **200** con el fallo dentro.
-- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
-  no maneja (los `.txt` con notas, una hoja de cálculo suelta…). **No** son un
-  fallo: son visibles y quedan fuera de la lista de cosas que arreglar. Los `.json`
-  de producto **ya no caen aquí**: tienen su parser desde la feature 13.
-
 ---
 
-## Parser de N26 (sin base de datos)
+## Qué lee el parser de N26
 
 > **Feature "n26-statement" (2026-08-17).** Convierte el **extracto `.csv` de la
-> cuenta de N26** (la copia local que dejó la ingesta de la f5) en movimientos
-> estructurados, **sin base de datos, sin deduplicar y sin mover nada en Drive**.
-> Devuelve el **mismo contrato** `ParsedMovement` / `ParsedStatement` que los
-> otros dos bancos (ver §Modelo `ParsedMovement`): el módulo del banco no declara
-> su propia forma de movimiento. El volcado va al mismo `var/parsed/`
-> **gitignoreado**; el endpoint solo expone la ruta relativa
-> `<banco>/<año>/<archivo>.json`. Sin autenticación nueva.
+> cuenta de N26** en movimientos estructurados. El parser **no toca la base de
+> datos, no deduplica y no mueve nada en Drive**: lo que devuelve lo guarda
+> [`POST /api/import`](#post-apiimport). Devuelve el **mismo contrato**
+> `ParsedMovement` / `ParsedStatement` que los otros dos bancos (ver §Modelo
+> `ParsedMovement`): el módulo del banco no declara su propia forma de movimiento.
+> La ruta propia que tuvo este banco hasta la feature 52 está en
+> [§Rutas retiradas](#rutas-retiradas).
 
 **Qué tiene de distinto este fichero** (y por qué tiene su propio lector, en
 `src/modules/n26/n26.csv.ts`):
@@ -2753,62 +2483,17 @@ cabecera) sin detener el resto y **sin consumir `daySequence`**, y `daySequence`
 se numera con `1` = el **más antiguo** del día (este banco exporta de más antiguo
 a más reciente).
 
-### `POST /api/parser/n26`
-
-Acción **explícita** de parseo. Recorre las copias locales de N26
-(`var/drive-read/n26/<año>/`), parsea los `.csv` (cualquier otra extensión →
-`ignored`) y escribe el resultado de cada uno en
-`var/parsed/n26/<año>/<archivo>.json`. Read-only respecto a Drive y a la base de
-datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo sobre
-los mismos archivos produce **exactamente el mismo resultado**.
-
-Sin cuerpo de petición.
-
-**Respuesta 200**
-```json
-{
-  "parsedCount": 1,
-  "failedCount": 0,
-  "ignoredCount": 0,
-  "statements": [
-    {
-      "bank": "n26",
-      "year": "2026",
-      "file": "extracto.csv",
-      "accountIban": "ES9820385778983000760236",
-      "accountBalance": 1500,
-      "movements": 90,
-      "unparsedRows": 0,
-      "dumpPath": "n26/2026/extracto.csv.json"
-    }
-  ],
-  "failed": [],
-  "ignored": []
-}
-```
-
-- `accountIban` / `accountBalance`: `null` salvo que el archivo traiga sus líneas
-  de preámbulo (ver arriba). El IBAN del ejemplo es sintético.
-- `dumpPath`: ruta **relativa** a la carpeta de volcado local (nunca la absoluta
-  de la máquina).
-- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un fallo
-  por archivo **no** cambia el código HTTP: la respuesta es 200 con el fallo
-  dentro. Un fichero que no esté en UTF-8, o que no tenga cabecera reconocible,
-  cae aquí entero y **no** se escribe volcado.
-- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
-  no maneja. **No** son un fallo.
-
 ---
 
-## Parser de Openbank (sin base de datos)
+## Qué lee el parser de Openbank
 
 > **Feature "openbank-statement" (2026-08-19).** Convierte el **extracto de la
-> cuenta de Openbank** (la copia local que dejó la ingesta de la f5) en
-> movimientos estructurados, **sin base de datos, sin deduplicar y sin mover nada
-> en Drive**. Devuelve el **mismo contrato** `ParsedMovement` / `ParsedStatement`
-> que los otros tres bancos (ver §Modelo `ParsedMovement`). El volcado va al mismo
-> `var/parsed/` **gitignoreado**; el endpoint solo expone la ruta relativa
-> `<banco>/<año>/<archivo>.json`. Sin autenticación nueva.
+> cuenta de Openbank** en movimientos estructurados. El parser **no toca la base de
+> datos, no deduplica y no mueve nada en Drive**: lo que devuelve lo guarda
+> [`POST /api/import`](#post-apiimport). Devuelve el **mismo contrato**
+> `ParsedMovement` / `ParsedStatement` que los otros tres bancos (ver §Modelo
+> `ParsedMovement`). La ruta propia que tuvo este banco hasta la feature 52 está en
+> [§Rutas retiradas](#rutas-retiradas).
 
 **Qué tiene de distinto este fichero** (y por qué tiene su propio lector, en
 `src/modules/openbank/openbank.html.ts`):
@@ -2897,68 +2582,19 @@ fila con forma de movimiento que no se entiende va a `unparsedRows`
 las decorativas) sin detener el resto y **sin consumir `daySequence`**. Un
 fichero sin cabecera reconocible se rechaza entero con `VALIDATION_ERROR`.
 
-### `POST /api/parser/openbank`
-
-Acción **explícita** de parseo. Recorre las copias locales de Openbank
-(`var/drive-read/openbank/<año>/`), parsea los `.xls` (cualquier otra extensión →
-`ignored`) y escribe el resultado de cada uno en
-`var/parsed/openbank/<año>/<archivo>.json`. Read-only respecto a Drive y a la
-base de datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo
-sobre los mismos archivos produce **exactamente el mismo resultado**.
-
-Sin cuerpo de petición.
-
-**Respuesta 200**
-```json
-{
-  "parsedCount": 1,
-  "failedCount": 0,
-  "ignoredCount": 0,
-  "statements": [
-    {
-      "bank": "openbank",
-      "year": "2026",
-      "file": "movimientos.xls",
-      "accountIban": "ES9820385778983000760236",
-      "accountBalance": 1234.56,
-      "movements": 200,
-      "unparsedRows": 0,
-      "dumpPath": "openbank/2026/movimientos.xls.json"
-    }
-  ],
-  "failed": [],
-  "ignored": []
-}
-```
-
-- `accountIban`: `null` salvo que el archivo traiga el comentario del IBAN. El del
-  ejemplo es **sintético**.
-- `accountBalance`: sale del propio fichero (fila `Saldo:`), no de una línea
-  escrita a mano.
-- `dumpPath`: ruta **relativa** a la carpeta de volcado local (nunca la absoluta
-  de la máquina).
-- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un fallo
-  por archivo **no** cambia el código HTTP: la respuesta es 200 con el fallo
-  dentro. Un fichero que no declare la codificación del banco, que no tenga
-  cabecera reconocible o cuyo IBAN escrito no sea válido, cae aquí **entero** y
-  **no** se escribe volcado.
-- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
-  no maneja. **No** son un fallo.
-
 ---
 
-## Parser de Revolut (sin base de datos)
+## Qué lee el parser de Revolut
 
 > **Feature "revolut-statement" (2026-09-15).** Convierte el **extracto `.csv` de
-> la cuenta de Revolut** (la copia local que dejó la ingesta) en movimientos
-> estructurados, **sin base de datos, sin deduplicar y sin mover nada en Drive**.
-> Devuelve el **mismo contrato** `ParsedMovement` / `ParsedStatement` que los demás
-> bancos (ver §Modelo `ParsedMovement`). El volcado va al mismo `var/parsed/`
-> **gitignoreado**; el endpoint solo expone la ruta relativa
-> `<banco>/<año>/<archivo>.json`. Sin autenticación nueva. Desde esta feature el
-> banco está también en el registro de `src/app.ts`, así que `POST /api/import` y
-> `POST /api/import/local` **importan** sus `.csv` en vez de reportarlos como
-> `skipped`.
+> la cuenta de Revolut** en movimientos estructurados. El parser **no toca la base
+> de datos, no deduplica y no mueve nada en Drive**: lo que devuelve lo guarda
+> [`POST /api/import`](#post-apiimport). Devuelve el **mismo contrato**
+> `ParsedMovement` / `ParsedStatement` que los demás bancos (ver §Modelo
+> `ParsedMovement`). Desde esta feature el banco está en el registro de
+> `src/app.ts`, así que `POST /api/import` **importa** sus `.csv` en vez de
+> reportarlos como `skipped`. La ruta propia que tuvo este banco hasta la feature
+> 52 está en [§Rutas retiradas](#rutas-retiradas).
 
 **Qué tiene este fichero** (y por qué tiene su propio lector, en
 `src/modules/revolut/revolut.csv.ts`):
@@ -3018,63 +2654,19 @@ interpretable va a `unparsedRows` (`{ row, reason }`, `row` 1-based contando la
 línea del IBAN y la cabecera) sin detener el resto y **sin consumir
 `daySequence`**.
 
-### `POST /api/parser/revolut`
-
-Acción **explícita** de parseo. Recorre las copias locales de Revolut
-(`var/drive-read/revolut/<año>/`), parsea los `.csv` (cualquier otra extensión →
-`ignored`) y escribe el resultado de cada uno en
-`var/parsed/revolut/<año>/<archivo>.json`. Read-only respecto a Drive y a la base
-de datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo sobre
-los mismos archivos produce **exactamente el mismo resultado**.
-
-Sin cuerpo de petición.
-
-**Respuesta 200**
-```json
-{
-  "parsedCount": 1,
-  "failedCount": 0,
-  "ignoredCount": 0,
-  "statements": [
-    {
-      "bank": "revolut",
-      "year": "2025",
-      "file": "extracto.csv",
-      "accountIban": "ES9121000418450200051332",
-      "accountBalance": null,
-      "movements": 6,
-      "unparsedRows": 3,
-      "dumpPath": "revolut/2025/extracto.csv.json"
-    }
-  ],
-  "failed": [],
-  "ignored": []
-}
-```
-
-- `accountIban`: `null` salvo que el archivo traiga la línea `iban;`. El del
-  ejemplo es el **público de la documentación**.
-- `accountBalance`: **siempre `null`** en este banco (el saldo va por línea).
-- `dumpPath`: ruta **relativa** a la carpeta de volcado local (nunca la absoluta
-  de la máquina).
-- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un fallo
-  por archivo **no** cambia el código HTTP: la respuesta es 200 con el fallo
-  dentro. Un fichero que no esté en UTF-8, sin cabecera reconocible o con un IBAN
-  escrito no válido cae aquí **entero** y **no** se escribe volcado.
-- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser
-  no maneja. **No** son un fallo.
-
 ---
 
-## Parser de Trade Republic (sin base de datos)
+## Qué lee el parser de Trade Republic
 
 > **Feature "trade-republic-product-file" (2026-08-19, ADR-024).** Este banco es el
 > **único que entra sin parser de lo que emite el banco**: su extracto es un `.pdf`
 > cuya tabla no sobrevive a la extracción de texto y la cuenta tiene uno o dos apuntes
 > al mes, así que **no se abre nunca**. Lo que se lee es un **`.json` de cuenta
 > remunerada que el humano escribe a mano cada mes**, igual que los productos de
-> MyInvestor. Sigue sin haber base de datos: solo parseo y volcado, y el `.pdf` que
-> sigue bajando a esa carpeta se lista como **`ignored`, no como fallo**.
+> MyInvestor. Desde la feature 26 `POST /api/import` guarda ese `.json` (ver
+> §Importación, «Archivos de producto»); el `.pdf` que sigue bajando a esa carpeta
+> **no lo lee ningún parser**. La ruta propia que tuvo este banco hasta la feature
+> 52 está en [§Rutas retiradas](#rutas-retiradas).
 >
 > El **formato del archivo** (plantilla, tabla de campos, el cuadre aritmético y las
 > reglas de escritura) es `docs/trade-republic-product-files.md`, no este contrato.
@@ -3082,7 +2674,7 @@ Sin cuerpo de petición.
 > ⚠️ **Provisional por decisión del humano:** el día que esa cuenta tenga movimientos
 > de verdad se escribe el parser del PDF y esta vía desaparece.
 
-Modelo de una cuenta parseada, tal como aparece en el volcado (**valores inventados**):
+Modelo de una cuenta parseada, tal como la devuelve el parser (**valores inventados**):
 
 ```json
 {
@@ -3125,82 +2717,16 @@ sin fijar decimales y sin recalcular nada. **Pero sí se comprueban entre ellos:
 openingBalance + moneyIn − moneyOut + interest = balance
 ```
 
-Si no cuadra, **el archivo de ese mes se RECHAZA** (cae en `failed[]`) y el motivo dice
+Si no cuadra, **el archivo de ese mes se RECHAZA** (sale `failed` en el informe de
+`POST /api/import`, con `VALIDATION_ERROR`) y el motivo dice
 la desviación con signo, el saldo esperado frente al escrito y los cinco importes. La
 comparación se hace en **céntimos enteros** con **1 céntimo de tolerancia**, y **no se
 evalúa** cuando falta alguno de los cinco importes o alguno es inválido: ese archivo ya
 se rechaza por su campo, sin un descuadre encima.
 
-Este banco **no** está en el registro de parsers que recibe el importador
-(`POST /api/import`): no tiene extracto que importar.
-
-### `POST /api/parser/trade-republic`
-
-Acción **explícita** de parseo. Recorre las copias locales de Trade Republic
-(`var/drive-read/trade-republic/<año>/`), aplica el parser **por extensión** (`.json` →
-cuenta remunerada; cualquier otra, incluido el `.pdf` del extracto → `ignored`) y
-escribe **todas las cuentas del año** en
-`var/parsed/trade-republic/<año>/products.json`. Read-only respecto a Drive y a la base
-de datos: **no** descarga, **no** mueve, **no** persiste en BD. Reejecutarlo sobre los
-mismos archivos produce **exactamente el mismo resultado**.
-
-Sin cuerpo de petición.
-
-**Respuesta 200**
-```json
-{
-  "productCount": 1,
-  "failedCount": 1,
-  "ignoredCount": 1,
-  "products": [
-    {
-      "bank": "trade-republic",
-      "year": "2026",
-      "file": "cuenta-remunerada-2026-08-31.json",
-      "type": "savings_account",
-      "name": "Cuenta Sintetica Remunerada",
-      "date": "2026-08-31",
-      "dumpPath": "trade-republic/2026/products.json"
-    }
-  ],
-  "failed": [
-    {
-      "bank": "trade-republic",
-      "year": "2026",
-      "file": "cuenta-remunerada-2026-07-31.json",
-      "reason": "los importes no cuadran: se desvía +100.00 € (saldo final esperado 4006.40, escrito 4106.40); saldo inicial + entradas - salidas + intereses = saldo final; openingBalance 4000.00, moneyIn 0.00, moneyOut 0.00, interest 6.40, balance 4106.40"
-    }
-  ],
-  "ignored": [
-    {
-      "bank": "trade-republic",
-      "year": "2026",
-      "file": "extracto-2026.pdf",
-      "reason": "extensión no soportada por este parser ('.pdf')"
-    }
-  ]
-}
-```
-
-- `productCount` cuenta **cuentas parseadas**; `products[]` es un **resumen** por
-  cuenta (`bank`, `year`, `file`, `type`, `name`, `date`, `dumpPath`). La cuenta
-  completa, con sus cinco importes, vive en el volcado del año.
-- `dumpPath`: ruta del JSON volcado **relativa** a la carpeta de volcado local (no se
-  expone la ruta absoluta de la máquina). Todas las cuentas de un año comparten
-  `<banco>/<año>/products.json`: **un volcado por año**, no uno por archivo. Ese volcado
-  contiene `{ bank, year, products[], failed[], ignored[] }` de ese año, y solo se
-  escribe si el año tiene algún `.json`.
-- `failed[]`: `{ bank, year, file, reason }` con el motivo sanitizado. Un archivo mal
-  escrito acumula **todos** sus problemas en un solo `reason` (marcadores `<…>` sin
-  sustituir, campos obligatorios que faltan, valores que no son números, un número
-  escrito **como texto**, fechas en otro formato, claves desconocidas, **el descuadre de
-  los cinco importes**, o el choque con otro archivo que declara la misma cuenta y
-  fecha). Un archivo cuyos bytes no estén en UTF-8 cae aquí entero con el código
-  `NOT_UTF8` del §Errores. Un fallo por archivo **NO cambia el código HTTP**: la
-  respuesta es **200** con el fallo dentro.
-- `ignored[]`: `{ bank, year, file, reason }` para las extensiones que este parser no
-  maneja. El **`.pdf` del extracto cae siempre aquí**, y es lo correcto: no es un fallo,
-  es un archivo que hace bien en estar en esa carpeta y que nadie abre.
+Este banco **no** está en el registro de parsers de **extracto** que recibe el
+importador (`POST /api/import`): no tiene extracto que importar. **Sí** está en el
+de **archivos de producto**, leyendo solo su `.json` (feature 26).
 
 ---
 

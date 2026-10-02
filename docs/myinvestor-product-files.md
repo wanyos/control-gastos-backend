@@ -8,8 +8,8 @@
 > Antes se leían y se dejaban en un volcado; ahora `POST /api/import` guarda cada
 > producto con su tipo y su foto. **No tienes que escribir ni un campo nuevo**: el
 > formato de este documento es exactamente el mismo. Lo que cambia es a dónde va.
-> Sigue habiendo un camino que solo lee y no guarda nada, `POST /api/parser/myinvestor`
-> (ver §Dónde acaba lo que escribes).
+> Para mirar qué entiende el sistema de un archivo sin guardarlo hay un comando de
+> terminal (ver §Dónde acaba lo que escribes).
 >
 > ⚠️ **Este documento NO es la plantilla que copias cada mes.** Tu plantilla vive en
 > **Drive, en una carpeta HERMANA de `notas-banco/`** (nunca dentro: todo lo que cuelga
@@ -261,20 +261,19 @@ la aportación mensual que todavía no se ha invertido. El patrimonio de un prod
 y el nombre solo se usa para reportar y como procedencia.
 
 **Convención recomendada (no obligatoria):** `<producto>-<AAAA-MM-DD>.json`, p. ej.
-`mi-fondo-2026-08-31.json`. Ordena cronológicamente sola y evita un límite
-real: la ingesta **sobrescribe la copia local** si dos archivos del mismo
-`<banco>/<año>/` se llaman igual, así que subiendo `fondo.json` todos los meses cada
-descarga pisaría la anterior.
+`mi-fondo-2026-08-31.json`. Ordena cronológicamente sola y deja ver a simple vista
+de qué mes es cada archivo.
 
 **Si dos archivos declaran el mismo `name` y la misma `date`** (el caso típico:
-`fondo.json` y `fondo (1).json`, que Drive crea al subir dos veces), se conserva el
-**primero por orden alfabético** y el otro se reporta diciendo con cuál choca. El mismo
-producto con **otra** fecha es lo normal y no choca nunca.
+`fondo.json` y `fondo (1).json`, que Drive crea al subir dos veces), **nadie te avisa
+del choque**: la importación trata cada archivo por separado y la foto de esa fecha se
+sobrescribe (ver §Dónde acaba lo que escribes). Borra el que sobra. El mismo producto
+con **otra** fecha es lo normal.
 
 ## Qué pasa cuando un archivo está mal
 
-Un archivo roto **no tumba a los demás**: se reporta en `failed[]` con su nombre y su
-motivo, y el resto se parsea igual. Y **un archivo roto reporta todos sus problemas de
+Un archivo roto **no tumba a los demás**: sale con `status: "failed"` en el informe de
+`POST /api/import`, con su nombre y su motivo, y el resto se importa igual. Y **un archivo roto reporta todos sus problemas de
 golpe**, no el primero, para que arreglarlo sea un solo viaje.
 
 | Qué pasa | Qué dice el motivo |
@@ -288,27 +287,8 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 | Una clave desconocida (o de otro tipo de producto) | las claves sobrantes, por su nombre |
 | Un campo se quedó con el marcador `<…>` de la plantilla | *«campos sin sustituir, siguen con el marcador …»* y **cuáles** |
 | Un campo se quedó con **medio** marcador (`"<nombre del producto"`) | *«A MEDIO SUSTITUIR, te dejaste un símbolo suelto»*, el campo y el valor recibido |
-| Dos archivos con el mismo producto y fecha | con qué archivo choca |
 
 ## Dónde acaba lo que escribes
-
-```
-Drive: notas-banco/MyInvestor/<año>/<producto>.json
-   │  (ingesta)
-   ▼
-var/drive-read/myinvestor/<año>/<producto>.json     ← el origen, gitignoreado
-   │  POST /api/parser/myinvestor
-   ▼
-var/parsed/myinvestor/<año>/products.json           ← UN archivo por año, gitignoreado
-```
-
-El volcado **no es una copia** del origen: es lo que el sistema **ha entendido** —la
-estructura interpretada (`valuation` y `depositTerms` separados, más el banco y el
-archivo de procedencia), las fechas ya validadas, todos los productos del año juntos y
-la lista de lo que salió mal—. Revisarlo es la forma de comprobar que lo que escribiste
-y lo que el sistema entendió son lo mismo.
-
-### Y desde la feature 29, en la base de datos
 
 ```
 Drive: notas-banco/MyInvestor/<año>/<producto>.json
@@ -330,5 +310,8 @@ InvestmentProduct  (uno por producto, identificado por su "name")
 - **O entra entero o no entra:** un archivo con una errata no deja medio producto
   detrás, no se guarda nada y **no** se mueve a `procesados/`; lo corriges y lo vuelves
   a subir.
-- `POST /api/parser/myinvestor` **sigue sin guardar nada**: es el ensayo, para mirar
-  qué ha entendido el sistema antes de que entre.
+- **Para mirar qué ha entendido el sistema antes de que entre** hay un comando de
+  terminal que no guarda nada: `pnpm run parse-file myinvestor <ruta-del-archivo>`. Lee
+  el archivo de donde lo tengas, le aplica el mismo parser que la importación y dice si
+  lo ha leído (y de qué tipo de producto es) o, si lo rechaza, el código del rechazo. El
+  motivo entero, con tus valores, lo da la importación.

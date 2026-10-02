@@ -1,13 +1,10 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-
 /**
  * Test helper (not a test): builds synthetic Trade Republic account files in
  * memory (ADR-017).
  *
  * EVERYTHING HERE IS INVENTED. The real sample of this bank is a `.pdf` that
- * lives in the gitignored `var/drive-read/`, it is never opened by this project
- * and not one of its figures, names or dates is copied into the repository. What
+ * is never opened by this project, and not one of its figures, names or dates is
+ * copied into the repository. What
  * these fixtures keep from it is only the SHAPE: a balance of a few thousand, an
  * interest of a few euros, and the five amounts adding up.
  *
@@ -122,18 +119,4 @@ export const mandatoryKeys = [
 /** Serializes an account file the way the human would write it. */
 export function buildAccountJson(account: AccountFile): string {
   return `${JSON.stringify(account, null, 2)}\n`
-}
-
-/** Writes a local copy where the drive-read feature would leave it. */
-export async function writeLocalCopy(
-  sourceBaseDir: string,
-  year: string,
-  file: string,
-  content: Buffer | string,
-): Promise<string> {
-  const dir = join(sourceBaseDir, 'trade-republic', year)
-  await mkdir(dir, { recursive: true })
-  const path = join(dir, file)
-  await writeFile(path, content)
-  return path
 }

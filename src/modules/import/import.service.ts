@@ -1,5 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, extname, join } from 'node:path'
+import { extname } from 'node:path'
 
 import type { FastifyInstance } from 'fastify'
 
@@ -67,8 +66,6 @@ export interface ImportPendingDeps {
   client: AppDriveClient
   prisma: AppPrismaClient
   rootFolderId: string
-  /** Where the raw copy of each downloaded file is written before parsing. */
-  rawCopyBaseDir: string
   parsers: BankParserRegistry
   /**
    * SECOND registry (feature 26): the parsers of PRODUCT files. It is consulted
@@ -338,8 +335,8 @@ export async function anchorAccountIfMissing(
 
 /**
  * Imports every pending file of every bank/year, one by one:
- * download → raw local copy → parse → resolve account → store → move to
- * `procesados/`. The move is a CONSEQUENCE of storing: it never happens before
+ * download → parse → resolve account → store → move to `procesados/`. The bytes
+ * go from the download to the parser in memory: nothing is written to disk. The move is a CONSEQUENCE of storing: it never happens before
  * (R9) and never happens at all when a step fails (R10), so a failed file stays
  * pending in Drive and can be retried.
  *
@@ -349,7 +346,7 @@ export async function anchorAccountIfMissing(
  * ordered by name from `drive-structure`; the order is not touched.
  */
 export async function importPending(deps: ImportPendingDeps): Promise<ImportRunResult> {
-  const { client, prisma, rootFolderId, rawCopyBaseDir, parsers } = deps
+  const { client, prisma, rootFolderId, parsers } = deps
   const productParsers = deps.productParsers ?? []
   const files: ImportedFileReport[] = []
 
@@ -372,7 +369,6 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
         const location = { bank: bank.name, year: year.name, fileId: file.id, name: file.name }
         const drive = {
           client,
-          rawCopyBaseDir,
           location,
           yearFolderId: year.id,
           bankFolderId: bank.id,
@@ -460,7 +456,6 @@ interface AttemptOutcome {
 
 interface DriveFileDeps<T extends AttemptOutcome> {
   client: AppDriveClient
-  rawCopyBaseDir: string
   location: FileLocation
   yearFolderId: string
   bankFolderId: string
@@ -472,9 +467,8 @@ interface DriveFileDeps<T extends AttemptOutcome> {
 }
 
 /**
- * The Drive half of importing ONE file: download, keep the raw copy, hand the
- * bytes to `store`, and move the original to `procesados/` ONLY if that
- * succeeded. It is generic over what a file means (a statement or, since feature
+ * The Drive half of importing ONE file: download, hand the bytes to `store`,
+ * and move the original to `procesados/` ONLY if that succeeded. It is generic over what a file means (a statement or, since feature
  * 26, a product photo) precisely so the rule of ADR-025 -- the move is a
  * CONSEQUENCE of storing, never the other way round -- lives in ONE place and
  * cannot drift between the two kinds of file.
@@ -491,15 +485,8 @@ async function importDriveFile<T extends AttemptOutcome>(
 
   try {
     const content = await downloadFileContent(client, location.fileId)
-    // The raw copy is kept (and overwritten, so it stays idempotent) because it
-    // is what allows re-parsing a file without downloading it from Drive again
-    // -- and, since feature 25, re-IMPORTING it without Drive at all.
-    const targetPath = join(deps.rawCopyBaseDir, location.bank, location.year, location.name)
-    await mkdir(dirname(targetPath), { recursive: true })
-    await writeFile(targetPath, content)
 
-    // Everything that is not Drive happens in the shared core, so this way in
-    // and the local one cannot drift apart on what a file means.
+    // Everything that is not Drive happens in `store`, with the bytes in memory.
     const stored = await deps.store(content)
     Object.assign(report, stored)
     if (stored.status === 'failed') {
@@ -605,9 +592,8 @@ export interface ImportStatementDeps {
 
 /**
  * The core of an import with Drive taken out (feature 25): parse, resolve the
- * account, map and store. Shared by the two ways in -- the pending files of
- * Drive and the local copies of `var/drive-read/` -- so what a file means is
- * decided in ONE place and the two cannot drift apart.
+ * account, map and store. What a statement file means is decided here, in ONE
+ * place.
  *
  * It never throws: a per-file failure comes back as `status: 'failed'` plus its
  * sanitized error, exactly as it travelled inside the report before. The rows
@@ -777,7 +763,7 @@ async function readStoredAnchor(
 /**
  * Picks the parser of a file by the bank of its FOLDER (never by the content:
  * the folder is what says the bank, ADR-009) and by its extension. Exported
- * since feature 25: the local way in chooses the parser with the same rule.
+ * so the `parse-file` command chooses the parser with the same rule.
  */
 export function selectAdapter(
   parsers: BankParserRegistry,
@@ -818,9 +804,9 @@ export function selectProductAdapter(
 }
 
 /**
- * The totals of a run. Structural on purpose (feature 25): the report of a
- * local file has no Drive id, so the two ways in share the arithmetic without
- * sharing the shape. A skipped file counts zero movements, never `undefined`.
+ * The totals of a run. Structural on purpose: it asks of a file report only
+ * the counters it adds up. A skipped file counts zero movements, never
+ * `undefined`.
  */
 export function totals(files: FileCounts[]) {
   return {
@@ -829,8 +815,7 @@ export function totals(files: FileCounts[]) {
     unparsedCount: sum(files.map((file) => file.unparsedCount ?? 0)),
     failedCount: files.filter((file) => file.status === 'failed').length,
     skippedCount: files.filter((file) => file.status === 'skipped').length,
-    // Feature 32, R10 and R11: the local way in gains it without one line of its
-    // own, because it already shares `importStatement` and this very function.
+    // Feature 32, R10: the descuadres of every file of the run.
     balanceMismatchCount: sum(files.map((file) => file.balanceMismatches?.length ?? 0)),
     // Feature 45: the three totals the per-file reports already carried. A
     // `failed` file reports `anchored: false`, `balancesFilled: 0` and
@@ -850,8 +835,9 @@ function sum(values: number[]): number {
  * Turns a caught error into the stable code plus a safe message. Drive failures
  * arrive already wrapped as a sanitized AppError; anything else is reported
  * generically so no internal detail (or token) can leak into the report.
+ * Exported since feature 52: the `parse-file` command reports the same `code`.
  */
-function describeError(error: unknown): FileErrorReport {
+export function describeError(error: unknown): FileErrorReport {
   if (error instanceof AppError) {
     return { code: error.code, message: error.message }
   }

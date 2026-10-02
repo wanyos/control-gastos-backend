@@ -1,15 +1,16 @@
 // THE END-TO-END PROOF that a guardian of the suite can actually stop a run
 // (feature 33, second pass, after the review of 2026-08-26).
 //
-// Testing `describeVarDifferences` or `failRun` in isolation proves the DETECTION
-// works, which was never the part that was broken: the run kept exiting 0 while
-// printing the alarm. The only way to prove the opposite is to RUN A WHOLE VITEST
-// PASS and look at its exit code, so that is what this file does: it writes a tiny
-// throwaway project that wires the REAL guardian code, runs it in a child process,
-// and asserts the code the shell would see.
+// Testing `failRun` in isolation proves the REPORT works, which was never the
+// part that was broken: the run kept exiting 0 while printing the alarm. The only
+// way to prove the opposite is to RUN A WHOLE VITEST PASS and look at its exit
+// code, so that is what this file does: it writes a tiny throwaway project that
+// wires the REAL `failRun`, runs it in a child process, and asserts the code the
+// shell would see.
 //
-// It never goes near `var/`: the guardian watches a folder of its own, invented,
-// created and deleted by this test (ADR-017 and the rule of feature 33 itself).
+// What that project watches is a file of its own, invented, created and deleted
+// by this test: since feature 52 nothing of the suite watches a folder of the
+// human's disk, and this test needs none to prove what it proves.
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -36,23 +37,21 @@ export default defineConfig({
 })
 `
 
-// The same three lines the real `vitest.global-setup.ts` runs, with the real
-// production code: photo, comparison, and `failRun` to fail the pass.
-const guardSetup = `import { fileURLToPath } from 'node:url'
+// The same shape the real `vitest.global-setup.ts` has: a photo before, a
+// comparison in the teardown, and the REAL `failRun` to fail the pass. The photo
+// here is the modification time of one invented file.
+const guardSetup = `import { statSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 import { failRun } from '../../src/lib/test-guard.js'
-import { describeVarDifferences, snapshotVarDir } from '../../src/lib/test-var.js'
 
-const watched = fileURLToPath(new URL('./watched', import.meta.url))
+const watched = fileURLToPath(new URL('./watched/producto-inventado.json', import.meta.url))
 
 export default function setup() {
-  const before = snapshotVarDir(watched)
+  const before = statSync(watched).mtimeMs
   return () => {
-    failRun(
-      describeVarDifferences(before, snapshotVarDir(watched)).map(
-        (difference) => 'LA SUITE HA TOCADO TU CARPETA var/. ' + difference,
-      ),
-    )
+    const after = statSync(watched).mtimeMs
+    failRun(after === before ? [] : ['EL ARCHIVO VIGILADO HA CAMBIADO DE FECHA DURANTE LA PASADA.'])
   }
 }
 `
@@ -61,7 +60,7 @@ const touchingCheck = `import { utimesSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 
-it('rewrites a watched file with the very same bytes, as the feature 33 bug did', () => {
+it('changes the date of the watched file and nothing else', () => {
   const file = fileURLToPath(new URL('./watched/producto-inventado.json', import.meta.url))
   const later = new Date(Date.now() + 60_000)
   utimesSync(file, later, later)
@@ -118,7 +117,7 @@ describe('a guardian of the suite stops the pass, and the shell finds out', () =
     // The tests themselves pass: what fails the pass is the guardian, which is
     // exactly the case that used to exit 0 (review of feature 33).
     expect(output).toContain('1 passed')
-    expect(output).toContain('LA SUITE HA TOCADO TU CARPETA var/')
+    expect(output).toContain('EL ARCHIVO VIGILADO HA CAMBIADO DE FECHA DURANTE LA PASADA.')
     expect(output).toContain('La pasada se marca como FALLIDA')
     expect(status).not.toBe(0)
   }, 120_000)

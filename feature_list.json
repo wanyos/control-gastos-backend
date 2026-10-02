@@ -2162,8 +2162,46 @@
         ]
       },
       "acceptance": [],
+      "checks": [
+        {
+          "descripcion": "POST /api/import importa igual que hoy y no escribe nada en var/.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts src/modules/import/import.routes.test.ts"
+        },
+        {
+          "descripcion": "POST /api/import importa igual que hoy y no escribe nada en var/.",
+          "comando": "pnpm exec vitest run src/architecture.test.ts -t \"keeps the importer off the filesystem\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Las ocho rutas responden 404.",
+          "comando": "pnpm exec vitest run src/architecture.test.ts -t \"answers 404 to the eight routes retired by feature 52\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "En el código de la aplicación no queda ninguna referencia a var/.",
+          "comando": "pnpm exec vitest run src/architecture.test.ts -t \"mentions the var folder nowhere in the code\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md ya no describe las ocho rutas, y dice de forma visible que se han quitado.",
+          "comando": "pnpm exec vitest run src/retired-routes.docs.test.ts"
+        },
+        {
+          "descripcion": "GET /api/ingestion/pending sigue funcionando igual: es lo que usa el frontend para el aviso de archivos nuevos.",
+          "comando": "pnpm exec vitest run src/modules/ingestion/ingestion.service.test.ts src/modules/ingestion/ingestion.routes.test.ts"
+        },
+        {
+          "descripcion": "La suite entera pasa con la carpeta var/ borrada.",
+          "comando": "pnpm exec vitest run src/architecture.test.ts -t \"has none of the files feature 52 removed\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "La suite entera pasa con la carpeta var/ borrada.",
+          "comando": "pnpm test"
+        },
+        {
+          "descripcion": "(añadido) El comando pnpm run parse-file enseña recuentos y forma de un archivo sin guardar nada.",
+          "comando": "pnpm exec vitest run src/modules/import/import.parse-file.test.ts"
+        }
+      ],
       "sdd": true,
-      "status": "pending"
+      "status": "done"
     }
   ]
 }

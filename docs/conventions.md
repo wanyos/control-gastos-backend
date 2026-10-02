@@ -214,44 +214,21 @@ export default async function accountRoutes(fastify: FastifyInstance) {
   que avanzó por una fila insertada y borrada— la pasada termina en **rojo**. Desde
   la F51 el `globalSetup` lee además, por una conexión que PostgreSQL abre en solo
   lectura, las columnas con las que compara `src/no-real-data.test.ts` (ver §Tests).
+- **Si escribes otra comprobación que se ejecute al final de la suite, no la hagas
+  con un `throw`.** En el cierre de `globalSetup` un `throw` se reporta como `error
+  during close` y **`vitest run` sale con 0**: el aviso se imprime y no para nada.
+  Se usa [`failRun`](../src/lib/test-guard.ts), que escribe al descriptor 2 y fija
+  el código de salida. Lo aprendimos en la review de la F33, y con él se arregló
+  también la comprobación de la base de datos de la F27, que llevaba desde su primer
+  día sin poder tumbar una pasada. Que la pasada sale de verdad con código ≠ 0 lo
+  comprueba de punta a punta
+  [`src/lib/test-guard.e2e.test.ts`](../src/lib/test-guard.e2e.test.ts).
 - **No pases `--maxWorkers` a mano.** El número lo fija `vitest.config.ts` para que
   haya exactamente una base preparada por worker; si lo subes, la suite falla con ese
   mensaje en vez de compartir base en silencio.
 - **Si añades una migración**, no tienes que hacer nada: la plantilla
   `gastos_test_template` se vuelve a migrar sola en la siguiente pasada (~1,7 s) y
   las bases de worker se reclonan de ella.
-
-### Tests que tocan `var/`
-
-> Cómo se escribe, a partir del 2026-08-25 (F33, ADR-029), un test que ejercita una
-> ruta o un servicio que lee o escribe archivos.
-
-- **Un test no toca `var/`. Nunca.** Ahí viven las descargas de los bancos y los
-  volcados del parser, y es lo único del proyecto que **no tiene copia en git**.
-- **Si el código que pruebas tiene `sourceBaseDir` / `dumpBaseDir`, INYÉCTALOS**,
-  con un `mkdtemp` que borras en el `afterEach`. Un valor por defecto que apunta a
-  `var/` no es una comodidad: es el bug de la F33.
-- **Para comprobar que una ruta está registrada en la app real, se usa
-  `app.hasRoute({ method, url })`, no un `inject`.** La garantía es la misma —es
-  `buildApp()`, no una app de mentira— y no ejecuta el handler, que es lo que
-  acababa parseando los archivos del humano. Los cinco bancos lo hacen así.
-- **No depende de que te acuerdes:** `vitest.global-setup.ts` fotografía `var/`
-  antes y después de la suite y la pone **roja** si un archivo cambió de contenido
-  o **solo de fecha**, nombrando la ruta y nunca su contenido
-  ([`src/lib/test-var.ts`](../src/lib/test-var.ts), ADR-029). «Roja» quiere decir
-  **código de salida ≠ 0 y `./init.sh` en `[FAIL]`**, aunque los ~950 tests estén
-  verdes: lo comprueba de punta a punta
-  [`src/lib/test-guard.e2e.test.ts`](../src/lib/test-guard.e2e.test.ts).
-- **Si escribes otro guardián que se ejecute al final de la suite, no lo hagas con
-  un `throw`.** En el *teardown* de `globalSetup` un `throw` se reporta como `error
-  during close` y **`vitest run` sale con 0**: el aviso se imprime y no para nada.
-  Se usa [`failRun`](../src/lib/test-guard.ts), que escribe al descriptor 2 y fija
-  el código de salida. Lo aprendimos en la review de la F33, y con él se arregló
-  también el guardián de base de datos de la F27, que llevaba desde su primer día
-  sin poder tumbar una pasada.
-- **Vigila escrituras, no lecturas.** Un test que lea `var/` no cambia una fecha y
-  esta red no lo ve; lo que impide que un dato suyo acabe versionado sigue siendo
-  el guardián del ADR-017.
 
 ## Manejo de errores
 
@@ -312,9 +289,10 @@ class NotFoundError extends AppError {
   tiene uno o dos apuntes al mes, así que **no se escribe parser de lo que emite el
   banco**: el humano rellena un `.json` mensual
   ([`docs/trade-republic-product-files.md`](./trade-republic-product-files.md)) y el
-  `.pdf` que sigue bajando se lista como `ignored`, nunca como fallo. Sigue siendo un
-  módulo de banco con todas las de la ley (`src/modules/trade-republic/`, su ruta y sus
-  guardianes); lo que no tiene es parser del fichero del banco. Es **provisional y está
+  `.pdf` que sigue bajando sale como `skipped`, nunca como fallo. Sigue siendo un
+  módulo de banco con todas las de la ley (`src/modules/trade-republic/`, su línea en
+  el registro de productos de `src/app.ts` y sus guardianes); lo que no tiene es parser
+  del fichero del banco. Es **provisional y está
   escrito** dónde se revierte: el día que esa cuenta tenga movimientos de verdad. Y como
   el archivo lo escribe una persona, **lleva un cuadre aritmético que lo rechaza si los
   importes no encajan** — la red que en un extracto pone el banco, aquí hay que ponerla.
@@ -455,9 +433,8 @@ class NotFoundError extends AppError {
   [`architecture.test.ts`](../src/architecture.test.ts) rechaza cualquier segunda
   declaración de esos tipos en `src/`. El módulo de un banco solo declara **lo
   suyo**: p. ej.
-  [`bankinter.types.ts`](../src/modules/bankinter/bankinter.types.ts#L14) se queda
-  con `BankinterParseResult = ParsedStatement<'bankinter'>` y los resúmenes de su
-  ejecución local.
+  [`bankinter.types.ts`](../src/modules/bankinter/bankinter.types.ts#L17) se queda
+  con `BankinterParseResult = ParsedStatement<'bankinter'>`.
 - **Por qué no contradice lo anterior:** la norma prohíbe compartir el *código que
   lee el formato*, porque el formato cambia sin avisar y un parser compartido
   convierte el cambio de un banco en una regresión para todos. El *tipo de salida*

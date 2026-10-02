@@ -10,7 +10,7 @@ import { normalizeForMatch } from './category-rules.service.js'
  *
  * Every matchText here is a PUBLIC brand or an everyday Spanish statement word
  * of one or two words — NEVER a literal concept copied from the human's real
- * statements (`var/` was not opened to write this list; see design §5 and
+ * statements (no file of his was opened to write this list; see design §5 and
  * ADR-017). It is a draft to be corrected by API, not an encyclopedia: the
  * human adds, changes and deletes rules through `/api/category-rules` and
  * re-runs `POST /api/category-rules/apply`.

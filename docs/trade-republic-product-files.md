@@ -99,7 +99,7 @@ openingBalance + moneyIn − moneyOut + interest = balance
 ```
 
 - 🔴 **Si no cuadra, el archivo de ese mes se RECHAZA.** No es un aviso: un aviso
-  dentro de un volcado que no lees cada mes no impide que el dato malo entre.
+  dentro de un informe que no lees cada mes no impide que el dato malo entre.
 - El motivo te dice **cuánto se desvía (con signo)**, **el saldo final esperado frente
   al que escribiste** y **los cinco importes con su valor**, porque el parser no puede
   saber cuál de los cinco está mal y verlos juntos es lo que deja ver cuál chirría.
@@ -169,19 +169,18 @@ forma del archivo.
 y el nombre solo se usa para reportar y como procedencia.
 
 **Convención recomendada (no obligatoria):** `cuenta-remunerada-<AAAA-MM-DD>.json`.
-Ordena cronológicamente sola y evita un límite real: la ingesta **sobrescribe la copia
-local** si dos archivos del mismo `<banco>/<año>/` se llaman igual, así que subiendo
-`cuenta.json` todos los meses cada descarga pisaría la anterior.
+Ordena cronológicamente sola y deja ver a simple vista de qué mes es cada archivo.
 
 **Si dos archivos declaran la misma cuenta (`name`) y la misma fecha (`date`)** —el caso
-típico: `cuenta.json` y `cuenta (1).json`, que Drive crea al subir dos veces—, se
-conserva el **primero por orden alfabético** y el otro se reporta diciendo con cuál
-choca. La misma cuenta con **otra** fecha es lo normal y no choca nunca.
+típico: `cuenta.json` y `cuenta (1).json`, que Drive crea al subir dos veces—, **nadie te
+avisa del choque**: la importación trata cada archivo por separado y la foto de ese mes
+se sobrescribe (ver §Dónde acaba lo que escribes). Borra el que sobra. La misma cuenta
+con **otra** fecha es lo normal.
 
 ## Qué pasa cuando un archivo está mal
 
-Un archivo roto **no tumba a los demás**: se reporta en `failed[]` con su nombre y su
-motivo, y el resto se parsea igual. Y **un archivo roto reporta todos sus problemas de
+Un archivo roto **no tumba a los demás**: sale con `status: "failed"` en el informe de
+`POST /api/import`, con su nombre y su motivo, y el resto se importa igual. Y **un archivo roto reporta todos sus problemas de
 golpe**, no el primero, para que arreglarlo sea un solo viaje.
 
 | Qué pasa | Qué dice el motivo |
@@ -197,7 +196,6 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 | Una fecha en otro formato, o que no existe (`2026-02-31`) | el campo y `AAAA-MM-DD` |
 | Una clave desconocida | las claves sobrantes, por su nombre |
 | **Los cinco importes no cuadran** | la desviación con signo, el saldo esperado frente al escrito y los cinco importes |
-| Dos archivos con la misma cuenta y fecha | con qué archivo choca |
 
 > **El símbolo a medio borrar es la errata número uno** al rellenar a mano (pasó en el primer
 > archivo real, en dos campos a la vez). Por eso tiene motivo propio: el de antes decía
@@ -211,8 +209,8 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 
 ## El `.pdf` del extracto no molesta
 
-Puedes seguir subiendo el extracto en PDF a esa misma carpeta: **se lista como
-`ignored`, no como fallo**. Si fuera un fallo, tendrías un error rojo todos los meses
+Puedes seguir subiendo el extracto en PDF a esa misma carpeta: **sale como
+`skipped`, no como fallo**. Si fuera un fallo, tendrías un error rojo todos los meses
 por un archivo que hace bien en estar ahí. **Nadie lo abre.**
 
 ## Dónde acaba lo que escribes
@@ -223,29 +221,26 @@ más, con **una foto por mes**.
 
 ```
 Drive: notas-banco/Trade Republic/<año>/cuenta-remunerada-<AAAA-MM-DD>.json
-   │  (ingesta)
+   │  POST /api/import
    ▼
-var/drive-read/trade-republic/<año>/…json     ← el origen, gitignoreado
-   │
-   ├── POST /api/import ──────────► BASE DE DATOS
-   │   (el camino de verdad)        InvestmentProduct + SavingsSnapshot
-   │                                y el original se mueve a procesados/
-   │
-   └── POST /api/parser/trade-republic ─► var/parsed/trade-republic/<año>/products.json
-       (el ENSAYO: no escribe nada en la base)
+BASE DE DATOS: InvestmentProduct + SavingsSnapshot
+   y el original se mueve a procesados/
 ```
 
-**Los dos caminos leen el archivo igual** —el mismo decodificado UTF-8, las mismas
-comprobaciones, el mismo cuadre— y se diferencian en qué hacen después.
+### Mirar un mes antes de meterlo
 
-### `var/parsed/` es el **ensayo**, no el destino
+Desde la feature 52 el backend **no deja ninguna copia de tu archivo en su disco**, y ya
+no hay una ruta que solo lo lea. Para ver **qué ha entendido el sistema de tu archivo,
+sin escribir nada**, hay un comando de terminal:
 
-Sigue existiendo y sigue siendo un `products.json` por año, gitignoreado, pero **cambió de
-oficio**: dejó de ser «la base de datos falsa» y pasó a ser el sitio donde mirar **qué ha
-entendido el sistema de tu archivo, sin escribir nada**. Úsalo cuando quieras revisar un
-mes antes de meterlo. El volcado **no es una copia** del origen: es lo interpretado —las
-cuentas del año ya validadas, con el banco y el archivo de procedencia, más la lista de lo
-que salió mal y lo que se ignoró—.
+```
+pnpm run parse-file trade-republic <ruta-del-archivo>
+```
+
+Lee el archivo de donde lo tengas y le aplica **el mismo parser que la importación** —el
+mismo decodificado UTF-8, las mismas comprobaciones, el mismo cuadre—. Dice si lo ha
+leído (y de qué tipo es) o, si lo rechaza, el código del rechazo; el motivo entero, con
+tus importes, lo da la importación. No guarda nada y no toca la base de datos ni Drive.
 
 ### Qué pasa cuando el archivo entra de verdad
 

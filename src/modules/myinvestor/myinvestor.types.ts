@@ -22,44 +22,6 @@ import type { ParsedStatement } from '../../lib/parsed-statement.js'
  */
 export type MyinvestorStatementResult = ParsedStatement<'myinvestor'>
 
-/** A local copy whose parse or dump failed; isolated so the rest still run. */
-export interface FailedFile {
-  bank: string
-  year: string
-  file: string
-  /** Sanitized reason (never leaks secrets). */
-  reason: string
-}
-
-/** A local copy this parser does not handle (unsupported extension); not a failure. */
-export interface IgnoredFile {
-  bank: string
-  year: string
-  file: string
-  reason: string
-}
-
-/** Summary of one local statement copy that was parsed and dumped to JSON. */
-export interface ParsedStatementSummary {
-  bank: string
-  year: string
-  file: string
-  /** `null` unless the file carries the hand-written `iban;` preamble line. */
-  accountIban: string | null
-  /**
-   * Balance of the ACCOUNT at the date of the statement, from the hand-written
-   * `saldo;` preamble line; `null` when it is absent. Not the per-movement
-   * balance, which this bank never reports (feature 16).
-   */
-  accountBalance: number | null
-  /** Number of parsed movements. */
-  movements: number
-  /** Number of rows that could not be interpreted. */
-  unparsedRows: number
-  /** Path of the JSON dump relative to the dump base dir (`<bank>/<year>/<file>.json`). */
-  dumpPath: string
-}
-
 /**
  * The four investment products this bank holds (feature 9 `InvestmentProductType`).
  * A fund, an ETF and a managed portfolio carry exactly the same fields; a deposit
@@ -125,7 +87,7 @@ export interface ParsedProduct {
  *    both fields nullable on every type because that is what a half-read file
  *    looks like while the parser is still accumulating reasons; by the time a
  *    file is stored, that hole no longer exists and the compiler can say so.
- *  - It drops `file`, which is provenance of the dump and identifies nothing in
+ *  - It drops `file`, which is provenance of the file and identifies nothing in
  *    the database (the name and the date do, R24).
  *  - `bank` widens to `string`: the importer overwrites it with the slug of the
  *    FOLDER the file came from, never with what its contents claim (ADR-009).
@@ -157,36 +119,3 @@ export interface MyinvestorDepositInput extends MyinvestorProductCommon {
 }
 
 export type MyinvestorProductInput = MyinvestorValuationInput | MyinvestorDepositInput
-
-/** The dump of every product of one year: one `products.json` per year (R53). */
-export interface MyinvestorProductsResult {
-  bank: 'myinvestor'
-  year: string
-  products: ParsedProduct[]
-  failed: FailedFile[]
-  ignored: IgnoredFile[]
-}
-
-/** Summary of one parsed product, as the run result reports it. */
-export interface ParsedProductSummary {
-  bank: string
-  year: string
-  file: string
-  type: InvestmentProductType
-  name: string
-  date: string
-  /** Path of the year dump relative to the dump base dir (`<bank>/<year>/products.json`). */
-  dumpPath: string
-}
-
-/** Outcome of parsing every local MyInvestor copy under the source dir. */
-export interface MyinvestorParseRunResult {
-  parsedCount: number
-  productCount: number
-  failedCount: number
-  ignoredCount: number
-  statements: ParsedStatementSummary[]
-  products: ParsedProductSummary[]
-  failed: FailedFile[]
-  ignored: IgnoredFile[]
-}

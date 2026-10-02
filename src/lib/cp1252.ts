@@ -30,7 +30,7 @@ import { assertNoReplacementCharacter } from './utf8.js'
  *
  *  - the scar guard below is the ONLY layer here that catches a `U+FFFD` already
  *    baked into the file by an earlier failed decoding — without it a concept
- *    could reach the dump with a scar inside, which is the one thing feature 17
+ *    could reach the database with a scar inside, which is the one thing feature 17
  *    exists to prevent and which this feature must not weaken;
  *  - and the declared-charset check of the bank module is the only layer that
  *    catches the file arriving in ANOTHER encoding (see below).

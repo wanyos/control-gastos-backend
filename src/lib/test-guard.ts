@@ -1,14 +1,14 @@
 // How a guardian of the suite PUTS THE RUN IN RED (feature 33, second pass).
 //
-// The two nets that protect the human's data -- his database (ADR-027) and his
-// `var/` (ADR-029) -- can only check what they check AFTER the last test file
-// has run, so they live in the teardown of `vitest.global-setup.ts`.
+// The checks that protect the human's database (ADR-027) can only check what
+// they check AFTER the last test file has run, so they live in the teardown of
+// `vitest.global-setup.ts`.
 //
 // And a teardown cannot fail the run by throwing. Measured end to end on
 // 2026-08-26, after the review of feature 33 found it: an exception thrown there
 // is reported as `error during close` and `vitest run` STILL EXITS 0, so
 // `init.sh` reads a zero, prints «Todos los tests pasan» and carries on with his
-// folder touched. A net that detects and does not stop anything is worse than no
+// data touched. A net that detects and does not stop anything is worse than no
 // net, because it is trusted.
 //
 // So the run is failed the only way that survives that path: SETTING THE EXIT

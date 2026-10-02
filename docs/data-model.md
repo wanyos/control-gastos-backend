@@ -248,7 +248,7 @@ model Movement {
 
 | Columna | Quién la rellenará |
 | --- | --- |
-| ~~`transferId`~~ | 🔄 **ya lo escribe la detección de traspasos** (F40): corre al final de cada pasada de importación (las dos vías), empareja las parejas inequívocas —y desde la F41 también los grupos dudosos con el mismo número de salidas que de entradas en los que cada salida podría casar con cada entrada— y escribe el mismo `transferId` en las dos piernas, en una transacción por pareja. **Cero migración**: la columna y su índice existen desde la F8. Desde la **F44** tiene además **escritor manual**: `POST /api/transfers` enlaza dos movimientos por id y `DELETE /api/transfers/:transferId` deshace la pareja (manual o de la detección) apuntando la memoria del deshecho en `undoneTransferId` (esa sí trajo migración: una columna nullable, la primera desde la F9) |
+| ~~`transferId`~~ | 🔄 **ya lo escribe la detección de traspasos** (F40): corre al final de cada pasada de importación, empareja las parejas inequívocas —y desde la F41 también los grupos dudosos con el mismo número de salidas que de entradas en los que cada salida podría casar con cada entrada— y escribe el mismo `transferId` en las dos piernas, en una transacción por pareja. **Cero migración**: la columna y su índice existen desde la F8. Desde la **F44** tiene además **escritor manual**: `POST /api/transfers` enlaza dos movimientos por id y `DELETE /api/transfers/:transferId` deshace la pareja (manual o de la detección) apuntando la memoria del deshecho en `undoneTransferId` (esa sí trajo migración: una columna nullable, la primera desde la F9) |
 | ~~`categoryId`~~ | 🔄 **ya tiene los dos escritores**: el **manual** desde la F37 (`PATCH /api/movements/:id` la escribe, y la pone a `NULL` para quitar la categoría) y el **automático** desde la F43 —la **pasada de categorización por reglas** sobre el `description` (tabla `CategoryRule`), que corre al final de cada importación y con `POST /api/category-rules/apply`, y solo toca movimientos sin categoría, sin confirmar y no neutrales. Esa sí trajo migración: la tabla `CategoryRule` |
 | `paymentMethod` | la misma feature de reglas (`RECIBO` → `direct_debit`, `PAGO TARJETA` → `card`…) |
 | `note` | anotación manual sobre un movimiento, cuando exista pantalla |
@@ -443,7 +443,7 @@ puede volver a enlazar a mano lo que él mismo deshizo.
 
 `transferId` **lo escribe también la detección de traspasos** (F40,
 `src/modules/transfers/transfers.service.ts`), que corre sola al final de cada
-pasada de importación —`POST /api/import` y `POST /api/import/local`— sobre todos
+pasada de importación —`POST /api/import`— sobre todos
 los movimientos sin marcar. Empareja las parejas inequívocas —mismo importe,
 `type` opuesto, cuentas distintas, fechas contables a ≤ 3 días naturales, y cada
 pierna es el **único** candidato posible de la otra— y, desde la F41, también los
@@ -899,8 +899,7 @@ aritmética de las muestras reales**:
 | fondo | 2.000,00 | 150,00 | **2.150,00** | **2.150,00** ✅ | — |
 
 > **Cifras inventadas** (saneado el 2026-08-12, F14). La relación que la tabla
-> demuestra es la que se observó en las muestras reales de
-> `var/drive-read/myinvestor/2026/` (gitignoreada); los importes del humano **no se
+> demuestra es la que se observó en las muestras reales del humano; sus importes **no se
 > versionan** — ver `docs/conventions.md` §Tests y `src/no-real-data.test.ts`.
 
 El valor de mercado cuadra **al céntimo** con `invertido + ganancia`, sin el

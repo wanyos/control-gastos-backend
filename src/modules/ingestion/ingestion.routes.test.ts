@@ -1,7 +1,3 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
 import Fastify, { type FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -49,32 +45,22 @@ function driveDouble() {
   return { client: { files: { list, get, update, create } } as unknown as AppDriveClient, update }
 }
 
-async function buildTestApp(drive: AppDriveClient, dumpBaseDir: string): Promise<FastifyInstance> {
+async function buildTestApp(drive: AppDriveClient): Promise<FastifyInstance> {
   // buildApp() decorates `drive` with the real client and decorate cannot be
   // overridden, so the ingestion routes are exercised on a bare app with a double.
   const app = Fastify()
   app.decorate('config', { driveRootFolderId: 'root' } as unknown as AppConfig)
   app.decorate('drive', drive)
   app.register(errorHandlerPlugin)
-  app.register(ingestionRoutes, { prefix: '/api/ingestion', dumpBaseDir })
+  app.register(ingestionRoutes, { prefix: '/api/ingestion' })
   await app.ready()
   return app
 }
 
-let dumpDir: string
-
-beforeEach(async () => {
-  dumpDir = await mkdtemp(join(tmpdir(), 'drive-read-routes-'))
-})
-
-afterEach(async () => {
-  await rm(dumpDir, { recursive: true, force: true })
-})
-
 describe('GET /api/ingestion/pending', () => {
   it('returns 200 with the pending detection', async () => {
     const { client } = driveDouble()
-    const app = await buildTestApp(client, dumpDir)
+    const app = await buildTestApp(client)
 
     const response = await app.inject({ method: 'GET', url: '/api/ingestion/pending' })
 
@@ -99,32 +85,12 @@ describe('GET /api/ingestion/pending', () => {
       throw new Error('network down')
     })
     const client = { files: { list } } as unknown as AppDriveClient
-    const app = await buildTestApp(client, dumpDir)
+    const app = await buildTestApp(client)
 
     const response = await app.inject({ method: 'GET', url: '/api/ingestion/pending' })
 
     expect(response.statusCode).toBe(503)
     expect(response.json()).toMatchObject({ statusCode: 503, code: 'DRIVE_CONNECTION_ERROR' })
-
-    await app.close()
-  })
-})
-
-describe('POST /api/ingestion/process', () => {
-  it('returns 200, writes the local copy and does NOT move the original (R15)', async () => {
-    const { client, update } = driveDouble()
-    const app = await buildTestApp(client, dumpDir)
-
-    const response = await app.inject({ method: 'POST', url: '/api/ingestion/process' })
-
-    expect(response.statusCode).toBe(200)
-    expect(response.json()).toMatchObject({ processedCount: 1, failedCount: 0 })
-
-    const copy = await readFile(join(dumpDir, 'bankinter', '2026', 'movs.xlsx'))
-    expect(copy.equals(Buffer.from('raw-bytes'))).toBe(true)
-    // The file stays pending in Drive: only the importer moves it, and only
-    // after storing its movements.
-    expect(update).not.toHaveBeenCalled()
 
     await app.close()
   })
@@ -162,7 +128,6 @@ describe('retired /api/ingesta/* surface (R20)', () => {
     // Asserted on the real app (not the double) so it is the wiring of
     // `src/app.ts` that is checked, without touching the network.
     expect(app.hasRoute({ method: 'GET', url: '/api/ingestion/pending' })).toBe(true)
-    expect(app.hasRoute({ method: 'POST', url: '/api/ingestion/process' })).toBe(true)
     expect(app.hasRoute({ method: 'POST', url: '/api/import' })).toBe(true)
   })
 })

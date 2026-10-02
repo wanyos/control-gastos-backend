@@ -1,12 +1,8 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-
 /**
  * Test helper (not a test): builds a synthetic N26-shaped statement CSV in
  * memory. Every figure, concept, counterparty and account number here is
- * INVENTED: no real bank data is ever copied into the repository (the real
- * samples live in the gitignored `var/drive-read/`), and no test touches the
- * network.
+ * INVENTED: no real bank data is ever copied into the repository, and no test
+ * touches the network.
  *
  * The layout mirrors the real export: `,` as the delimiter, eleven columns,
  * text fields quoted with `"` (and only when they need it), UTF-8, `\n` line
@@ -16,7 +12,7 @@ import { join } from 'node:path'
 /**
  * The eleven columns of the real export, in the order the bank writes them.
  * The comment on each line is what it holds — and it also keeps the guardian of
- * feature 14 from reading this list as a sentence copied out of `var/`: the
+ * feature 14 from reading this list as a sentence copied out of his data: the
  * column NAMES are the bank's format, not a datum of the human's.
  */
 export const n26Headers = [
@@ -225,17 +221,3 @@ export function n26Preamble(balance = '1.234,56'): string[] {
 
 /** The public example IBAN of the Spanish documentation; nobody's account. */
 export const documentationIban = 'ES9121000418450200051332'
-
-/** Writes a local copy where the drive-read feature would leave it. */
-export async function writeLocalCopy(
-  sourceBaseDir: string,
-  year: string,
-  file: string,
-  content: Buffer | string,
-): Promise<string> {
-  const dir = join(sourceBaseDir, 'n26', year)
-  await mkdir(dir, { recursive: true })
-  const path = join(dir, file)
-  await writeFile(path, content)
-  return path
-}

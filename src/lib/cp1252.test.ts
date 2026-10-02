@@ -55,8 +55,8 @@ describe('decodeCp1252Strict — the scar of an earlier failed decoding (R3)', (
   ])
 
   it('never lets a replacement character through into the decoded text', () => {
-    // This is the guarantee the criterion asks for: no concept reaches the dump
-    // with a `U+FFFD` inside. It holds for every input, valid or not.
+    // This is the guarantee the criterion asks for: no concept reaches the
+    // database with a `U+FFFD` inside. It holds for every input, valid or not.
     for (const input of [
       scarred,
       Buffer.from([0xd3]),

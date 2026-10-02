@@ -45,6 +45,7 @@ El servidor queda escuchando en `http://localhost:3000` (configurable con `PORT`
 | `pnpm run prisma:migrate`  | Crea y aplica migraciones (`prisma migrate dev`).             |
 | `pnpm run prisma:generate` | Regenera el cliente de Prisma.                                |
 | `pnpm run prisma:studio`   | Abre Prisma Studio para explorar los datos.                   |
+| `pnpm run parse-file <banco> <ruta-del-archivo>` | Pasa **un** archivo de tu disco por el parser de ese banco y enseña solo recuentos y forma (cuántos movimientos, qué filas no se leyeron, si trae IBAN y saldo, primera y última fecha). No guarda nada, no toca la base ni Drive y no imprime importes ni conceptos. |
 
 > `bash ./init.sh` lo ejecuta todo de una vez (typecheck + suite) y es la
 > verificación que debe quedar en verde antes de cerrar cualquier feature.
@@ -83,19 +84,19 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `GET`    | `/api/investments/overview`    | Las inversiones del mes: la foto de cada producto, cuánto cambió desde la anterior y la ganancia del periodo. |
 | `GET`    | `/api/investments/deposits`    | Cada depósito con su archivo de producto y, si ya venció, lo que generó (importe del vencimiento menos el principal), con el total. Solo lectura. |
 | `GET`    | `/api/ingestion/pending`       | Archivos de banco pendientes en Drive. |
-| `POST`   | `/api/ingestion/process`       | Descarga los pendientes y guarda una copia local. **No mueve nada.** |
 | `POST`   | `/api/import`                  | **Importa:** descarga, parsea, guarda los movimientos y solo entonces mueve el archivo a `procesados/`. |
-| `POST`   | `/api/import/local`            | **Reimporta desde la copia local** de `var/drive-read/`, sin cliente de Drive: no descarga, no mueve y no borra nada. Es la vuelta atrás cuando un archivo ya está en `procesados/`. |
-| `POST`   | `/api/parser/bankinter`        | Parsea un extracto `.xlsx` de Bankinter a movimientos (**ensayo**: vuelca a `var/parsed/`, sin BD). |
-| `POST`   | `/api/parser/myinvestor`       | Parsea el extracto `.csv` y los `.json` de producto de MyInvestor (ensayo, sin BD). |
-| `POST`   | `/api/parser/n26`              | Parsea un extracto `.csv` de N26 (ensayo, sin BD). |
-| `POST`   | `/api/parser/openbank`         | Parsea un extracto `.xls` de Openbank —que por dentro es HTML— (ensayo, sin BD). |
-| `POST`   | `/api/parser/trade-republic`   | Parsea el `.json` de cuenta remunerada escrito a mano; su `.pdf` se ignora (ensayo, sin BD). |
 
-> **Dos caminos, y conviene no confundirlos.** `POST /api/parser/<banco>` es el
-> **ensayo**: lee el archivo, vuelca a `var/parsed/` lo que ha entendido y **no toca la
-> base de datos**. `POST /api/import` es el camino de verdad: parsea, **guarda** y solo
-> entonces mueve el archivo a `procesados/`.
+> **Un solo camino para los archivos de banco.** `POST /api/import` descarga cada
+> archivo de Drive a memoria, lo parsea, **guarda** y solo entonces lo mueve a
+> `procesados/`. El backend **no deja ninguna copia en el disco**. Para ver qué
+> entiende un parser de un archivo sin importarlo hay un comando de terminal,
+> `pnpm run parse-file` (ver §Scripts disponibles).
+>
+> ⚠️ **Breaking change (2026-10-02, feature 52):** se han retirado **ocho rutas**, las
+> que solo trabajaban con una copia de los archivos en el disco. Responden 404. La
+> lista, y qué se usa ahora en lugar de cada una, está en
+> [`docs/api-contract.md`](docs/api-contract.md) §Rutas retiradas. El frontend no
+> llamaba a ninguna.
 
 > **Los filtros por categoría y por texto de `GET /api/movements` y el
 > `PATCH /api/movements` en bloque (feature 47, 2026-09-18) son lo que el
@@ -108,11 +109,8 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 
 > ⚠️ **Breaking change (2026-08-12, feature 12):** las rutas en español
 > `/api/ingesta/*` **ya no existen** (responden 404); son ahora
-> `/api/ingestion/*`. Y `POST /api/ingestion/process` **ha dejado de mover** los
-> archivos a `procesados/`: mover es ahora consecuencia de **guardar** los
-> movimientos, y eso lo hace `POST /api/import`. Ese endpoint sigue existiendo
-> porque es lo que permite inspeccionar el archivo de un banco del que todavía no
-> hay parser.
+> `/api/ingestion/*`. Y mover un archivo a `procesados/` es desde entonces
+> consecuencia de **guardar** sus movimientos, y eso lo hace `POST /api/import`.
 
 Ejemplo de creación de una cuenta:
 

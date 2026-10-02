@@ -1,15 +1,12 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
 import Fastify, { type FastifyInstance } from 'fastify'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { bankParsers, productParsers } from '../../app.js'
 import { loadConfig } from '../../config/env.js'
 import type { AppDriveClient } from '../../lib/drive.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
 import type { ParsedStatement } from '../../lib/parsed-statement.js'
+import { createPrismaClient, type AppPrismaClient } from '../../lib/prisma.js'
 import errorHandlerPlugin from '../../plugins/error-handler.js'
 import prismaPlugin from '../../plugins/prisma.js'
 import movementsRoutes from '../movements/movements.routes.js'
@@ -86,7 +83,7 @@ function statement(): ParsedStatement {
   }
 }
 
-async function buildTestApp(drive: AppDriveClient, rawCopyBaseDir: string) {
+async function buildTestApp(drive: AppDriveClient, prismaOverride?: AppPrismaClient) {
   // buildApp() decorates `drive` with the real client and a decoration cannot be
   // overridden, so the importer is exercised on a bare app with a double, over
   // the same real database.
@@ -94,23 +91,25 @@ async function buildTestApp(drive: AppDriveClient, rawCopyBaseDir: string) {
   app.decorate('config', { ...loadConfig(), driveRootFolderId: 'root' })
   app.decorate('drive', drive)
   app.register(errorHandlerPlugin)
-  app.register(prismaPlugin)
+  if (prismaOverride === undefined) {
+    app.register(prismaPlugin)
+  } else {
+    // A test that needs to fail ONE query decorates its own wrapped client.
+    app.decorate('prisma', prismaOverride)
+    app.addHook('onClose', async () => {
+      await prismaOverride.$disconnect()
+    })
+  }
   app.register(movementsRoutes, { prefix: '/api/movements' })
   app.register(importRoutes, {
     prefix: '/api/import',
-    rawCopyBaseDir,
     parsers: [{ bank, extensions: ['.csv'], parse: () => statement() }],
   })
   await app.ready()
   return app
 }
 
-let rawCopyBaseDir: string
 let app: FastifyInstance
-
-beforeEach(async () => {
-  rawCopyBaseDir = await mkdtemp(join(tmpdir(), 'import-routes-'))
-})
 
 afterEach(async () => {
   const accounts = await app.prisma.account.findMany({ where: { bank } })
@@ -123,13 +122,12 @@ afterEach(async () => {
   await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
   await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
   await app.close()
-  await rm(rawCopyBaseDir, { recursive: true, force: true })
 })
 
 describe('POST /api/import', () => {
   it('returns 200 with the report of every file (R2)', async () => {
     const { client, update } = driveDouble()
-    app = await buildTestApp(client, rawCopyBaseDir)
+    app = await buildTestApp(client)
 
     const response = await app.inject({ method: 'POST', url: '/api/import' })
 
@@ -164,7 +162,7 @@ describe('POST /api/import', () => {
 
   it('lists the imported movements most recent first (R3)', async () => {
     const { client } = driveDouble()
-    app = await buildTestApp(client, rawCopyBaseDir)
+    app = await buildTestApp(client)
 
     await app.inject({ method: 'POST', url: '/api/import' })
     const response = await app.inject({ method: 'GET', url: '/api/movements' })
@@ -182,7 +180,7 @@ describe('POST /api/import', () => {
 
   it('pairs an imported leg with its stored mirror and reports it (feature 40, R1)', async () => {
     const { client } = driveDouble()
-    app = await buildTestApp(client, rawCopyBaseDir)
+    app = await buildTestApp(client)
     // The mirror of the file's expense (10.00 on 2026-07-24) already stored in
     // ANOTHER account of the human: the detection reads the whole table, so an
     // import is what links the two.
@@ -216,9 +214,140 @@ describe('POST /api/import', () => {
     expect(legs[0]?.transferId).toBe(legs[1]?.transferId)
   })
 
+  it('changes nothing when the same file is imported again after pairing (feature 40, R8)', async () => {
+    const { client } = driveDouble()
+    app = await buildTestApp(client)
+    const mirrorAccount = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank, alias: 'Mirror account' },
+    })
+    const mirror = await app.prisma.movement.create({
+      data: {
+        accountId: mirrorAccount.id,
+        type: 'income',
+        amount: '10.00',
+        description: 'TRANSFERENCIA RECIBIDA',
+        bookingDate: new Date('2026-07-25T00:00:00.000Z'),
+        valueDate: new Date('2026-07-25T00:00:00.000Z'),
+        daySequence: 1,
+        origin: 'imported',
+      },
+    })
+    // The double keeps listing the file: the human put it back in the year folder.
+    const call = () => app.inject({ method: 'POST', url: '/api/import' })
+
+    const first = await call()
+
+    expect(first.json<ImportRunResult>().transfers).toMatchObject({ pairsCreated: 1 })
+    const legsAfterFirst = await app.prisma.movement.findMany({
+      where: { OR: [{ id: mirror.id }, { description: 'OLDEST OF THE DAY' }] },
+      orderBy: { id: 'asc' },
+    })
+    expect(legsAfterFirst).toHaveLength(2)
+
+    // Importing the same file again re-runs the detection and changes NOTHING:
+    // the linked legs are no candidates anymore (R8).
+    const second = await call()
+    expect(second.json<ImportRunResult>().transfers).toMatchObject({ pairsCreated: 0 })
+    const legsAfterSecond = await app.prisma.movement.findMany({
+      where: { id: { in: legsAfterFirst.map((leg) => leg.id) } },
+      orderBy: { id: 'asc' },
+    })
+    expect(legsAfterSecond.map((leg) => leg.transferId)).toEqual(
+      legsAfterFirst.map((leg) => leg.transferId),
+    )
+  })
+
+  it('links nobody when two mirrors compete, and lists the group in the report (feature 40, R5, R6)', async () => {
+    const { client } = driveDouble()
+    app = await buildTestApp(client)
+    for (const day of ['2026-07-24', '2026-07-25']) {
+      const account = await app.prisma.account.create({
+        data: { iban: syntheticIban(), bank, alias: `Mirror of ${day}` },
+      })
+      await app.prisma.movement.create({
+        data: {
+          accountId: account.id,
+          type: 'income',
+          amount: '10.00',
+          description: 'TRANSFERENCIA RECIBIDA',
+          bookingDate: new Date(`${day}T00:00:00.000Z`),
+          valueDate: new Date(`${day}T00:00:00.000Z`),
+          daySequence: 1,
+          origin: 'imported',
+        },
+      })
+    }
+
+    const response = await app.inject({ method: 'POST', url: '/api/import' })
+
+    expect(response.statusCode).toBe(200)
+    const transfers = response.json<ImportRunResult>().transfers
+    expect(transfers.pairsCreated).toBe(0)
+    expect(transfers.ambiguousCount).toBe(1)
+    expect(transfers.ambiguous[0]?.amount).toBe('10.00')
+    expect(transfers.ambiguous[0]?.movements).toHaveLength(3)
+    expect(transfers.ambiguous[0]?.movements.map((movement) => movement.description)).toContain(
+      'OLDEST OF THE DAY',
+    )
+    // Nobody was linked: the doubtful case stays unmarked on purpose.
+    const marked = await app.prisma.movement.count({
+      where: { transferId: { not: null }, account: { bank } },
+    })
+    expect(marked).toBe(0)
+  })
+
+  it('reports a detection failure inside the 200, with the import intact (feature 40, R15)', async () => {
+    const real = createPrismaClient(process.env.DATABASE_URL ?? '')
+    // Fails ONLY the read of the detection (the one that filters by
+    // `transferId`); every query of the import itself passes through.
+    const bound = (holder: object, property: string | symbol): unknown => {
+      const value = Reflect.get(holder, property)
+      return typeof value === 'function' ? value.bind(holder) : value
+    }
+    const wrapped = new Proxy(real, {
+      get(target, property) {
+        if (property === 'movement') {
+          const movement = target.movement
+          return new Proxy(movement, {
+            get(movementTarget, movementProperty) {
+              if (movementProperty === 'findMany') {
+                return (args: { where?: Record<string, unknown> }) => {
+                  if (args?.where !== undefined && 'transferId' in args.where) {
+                    throw new Error('synthetic detection failure')
+                  }
+                  return movementTarget.findMany(args)
+                }
+              }
+              return bound(movementTarget, movementProperty)
+            },
+          })
+        }
+        return bound(target, property)
+      },
+    }) as AppPrismaClient
+    const { client } = driveDouble()
+    app = await buildTestApp(client, wrapped)
+
+    const response = await app.inject({ method: 'POST', url: '/api/import' })
+
+    // The HTTP status and the per-file report do not change: the movements are
+    // stored and only the detection reports its own failure.
+    expect(response.statusCode).toBe(200)
+    const body = response.json<ImportRunResult>()
+    expect(body.importedCount).toBe(2)
+    expect(body.failedCount).toBe(0)
+    expect(body.files[0]?.status).toBe('imported')
+    expect(body.transfers).toEqual({
+      pairsCreated: 0,
+      ambiguousCount: 0,
+      ambiguous: [],
+      error: { code: 'INTERNAL_SERVER_ERROR', message: 'synthetic detection failure' },
+    })
+  })
+
   it('exposes no way to create or delete a movement by API (R16)', async () => {
     const { client } = driveDouble()
-    app = await buildTestApp(client, rawCopyBaseDir)
+    app = await buildTestApp(client)
 
     const created = await app.inject({
       method: 'POST',

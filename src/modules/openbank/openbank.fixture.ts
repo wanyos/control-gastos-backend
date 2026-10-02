@@ -1,14 +1,11 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-
 /**
  * Test helper (not a test): builds a synthetic Openbank-shaped statement in
  * memory. Every concept, account number, holder name AND FIGURE here is
  * INVENTED, and this file is the reason it can stay that way: the real export
  * of this bank carries THE NAME OF ITS HOLDER, the names of third parties inside
  * the concepts and, on every row, an amount and a running balance of a real
- * account. None of them is ever copied into the repository (the real samples
- * live in the gitignored `var/drive-read/`). No test touches the network.
+ * account. None of them is ever copied into the repository. No test touches
+ * the network.
  *
  * 🔴 THE FIGURES ARE THE EASY ONE TO GET WRONG, and this file already did once
  * (review of feature 19): the concepts and the names were invented from the
@@ -218,20 +215,6 @@ export function toCp1252(text: string): Buffer {
       throw new Error(`character '${character}' cannot be written in cp1252`)
     }),
   )
-}
-
-/** Writes a local copy where the drive-read feature would leave it. */
-export async function writeLocalCopy(
-  sourceBaseDir: string,
-  year: string,
-  file: string,
-  content: Buffer | string,
-): Promise<string> {
-  const dir = join(sourceBaseDir, 'openbank', year)
-  await mkdir(dir, { recursive: true })
-  const path = join(dir, file)
-  await writeFile(path, content)
-  return path
 }
 
 /**

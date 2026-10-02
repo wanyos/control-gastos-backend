@@ -82,8 +82,6 @@ backend sepa **leerlos**, ese banco necesita **su propio módulo de parser**:
 src/modules/<banco>/          ← mismo slug que la carpeta de Drive
   <banco>.<entrada>.parser.ts #   parser puro: Buffer -> resultado (sin BD, sin Drive)
   <banco>.format.ts           #   números/fechas de ESE banco (si los necesita)
-  <banco>.service.ts          #   recorre var/drive-read/<banco>/<año>/ y vuelca JSON
-  <banco>.routes.ts           #   POST /api/parser/<banco>
   <banco>.types.ts            #   SOLO lo suyo (ver abajo)
   <banco>.fixture.ts          #   fixtures SINTÉTICOS en memoria (nunca datos reales)
 ```
@@ -125,6 +123,20 @@ const parsers: BankParserRegistry = [
 ]
 ```
 
+**Quinto paso, antes de cerrar: pasar un archivo real por el parser.**
+
+```
+pnpm run parse-file <banco> <ruta-del-archivo>
+```
+
+Lee el archivo de donde lo tengas en tu disco, lo pasa por el parser que acabas de
+registrar y enseña **solo recuentos y forma**: cuántos movimientos, qué filas no se
+han podido leer (por su número), si trae IBAN y saldo, y la primera y la última
+fecha. No guarda nada, no toca la base de datos ni Drive, y no imprime importes,
+IBAN, nombres ni conceptos, así que su salida se puede pegar en un informe. Es la
+prueba real que pide [`docs/verification.md`](verification.md); el módulo de un banco
+ya no lleva ruta propia ni recorrido de archivos en disco (feature 52, ADR-032).
+
 > **Un CSV no es «el CSV».** Antes de escribir el parser, mira con qué separa el
 > fichero y si entrecomilla. MyInvestor separa por `;` y no entrecomilla, así que
 > partir la línea basta; N26 separa por `,` **y entrecomilla los campos de texto,
@@ -158,8 +170,7 @@ cuenta: no cambia nunca, así que los ficheros siguientes ya no lo necesitan.
 
   > El IBAN de este ejemplo es el **público de la documentación española**, no el
   > tuyo: en el repositorio (docs, specs y tests) nunca se escribe un IBAN real.
-  > El tuyo va solo en tu fichero de Drive y en su copia local de
-  > `var/drive-read/`, que está gitignoreada.
+  > El tuyo va solo en tu fichero de Drive.
 
   La etiqueta se compara sin distinguir mayúsculas ni espacios sobrantes y los `;`
   de relleno que añade Excel al final son inocuos.
@@ -235,8 +246,7 @@ la primera línea del fichero**, con esta forma exacta:
 ```
 
 > Ese IBAN es el **público de la documentación española**, no el tuyo. El tuyo va
-> solo en tu fichero de Drive y en su copia local de `var/drive-read/`, que está
-> gitignoreada.
+> solo en tu fichero de Drive.
 
 Por qué ahí y no en otro sitio:
 
@@ -480,12 +490,9 @@ Regla del humano, escrita el **2026-08-30** después de tropezar con ella.
 
 Si vuelves a bajar un fichero del banco porque el anterior estaba roto, o si
 generas un histórico que sustituye a varios sueltos, **el fichero viejo se borra
-en los dos sitios a la vez**:
-
-- en **Drive**, esté donde esté — también dentro de `procesados/`, que es donde
-  acaba un fichero que llegó a importarse antes de romperse;
-- en **`var/drive-read/`**, que es la copia local desde la que trabajan el
-  ensayo y la reimportación.
+de Drive**, esté donde esté — también dentro de `procesados/`, que es donde acaba un
+fichero que llegó a importarse antes de romperse. (Hasta la feature 52 había que
+borrarlo además de una copia en el disco del backend; esa copia ya no existe.)
 
 Y **se dice en voz alta al hacerlo**, no se deja para luego.
 

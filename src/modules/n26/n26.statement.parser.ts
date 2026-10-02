@@ -18,7 +18,7 @@ type ColumnField =
 /**
  * Header names (case-insensitive) mapped to the fields they fill. The comment on
  * each line says what the column holds — and it also keeps the privacy guardian
- * of feature 14 from reading this list as a sentence copied out of `var/`: these
+ * of feature 14 from reading this list as a sentence copied out of his data: these
  * names are the bank's FORMAT, not a datum of the human's.
  */
 const headerToField: Record<string, ColumnField> = {

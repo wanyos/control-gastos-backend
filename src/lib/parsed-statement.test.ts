@@ -108,7 +108,7 @@ describe('the parsed statement contract', () => {
     expect(statement.accountBalance).toBe(1500)
     expect(statement.movements[0].balance).toBeNull()
     // Nothing named `balance` at the top level, so neither can be mistaken for
-    // the other by a consumer reading the JSON dump.
+    // the other by whoever reads the parsed statement.
     expect(Object.keys(statement).sort()).toEqual([
       'accountBalance',
       'accountIban',

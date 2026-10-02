@@ -674,11 +674,12 @@ describe('no real financial data of the human is versioned', () => {
     expect(report(offenders)).toEqual([])
   })
 
-  it('has the local captures gitignored, so a capture is never versioned', () => {
+  it('has the var folder gitignored whole, and versions nothing under it', () => {
+    // The project stopped using that folder in feature 52, but it may still be
+    // on his disk with bank files inside: ONE line ignores all of it.
     const gitignore = readFileSync(join(repoRoot, '.gitignore'), 'utf8')
 
-    expect(gitignore).toContain('var/drive-read/')
-    expect(gitignore).toContain('var/parsed/')
+    expect(gitignore.split(/\r?\n/)).toContain('var/')
     expect(versionedFiles().filter((file) => file.startsWith('var/'))).toEqual([])
   })
 

@@ -1,11 +1,7 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-
 /**
  * Test helper (not a test): builds a synthetic MyInvestor-shaped statement CSV
  * in memory. Every figure, concept and account number here is INVENTED: no real
- * bank data is ever copied into the repository (the real samples live in the
- * gitignored `var/drive-read/`), and no test touches the network.
+ * bank data is ever copied into the repository, and no test touches the network.
  *
  * The layout mirrors the real export: `;` as the delimiter, five columns, UTF-8,
  * `\n` line endings and no balance column.
@@ -124,7 +120,7 @@ export const documentationIban = 'ES9121000418450200051332'
 /**
  * Synthetic product files (feature 13). Same rule as the CSV above and one step
  * stricter: NOTHING here is real. Product names, FIGURES, rates and dates are
- * invented, and no real file of `var/drive-read/` is ever copied into a test.
+ * invented, and no real file of the human is ever copied into a test.
  *
  * A figure is a personal datum on its own: an invented product name next to a
  * real amount still discloses the position. So the numbers below are round,
@@ -183,18 +179,4 @@ export function buildProductDeposit(overrides: ProductFile = {}): ProductFile {
 /** Serializes a product file the way the human would write it. */
 export function buildProductJson(product: ProductFile): string {
   return `${JSON.stringify(product, null, 2)}\n`
-}
-
-/** Writes a local copy where the drive-read feature would leave it. */
-export async function writeLocalCopy(
-  sourceBaseDir: string,
-  year: string,
-  file: string,
-  content: Buffer | string,
-): Promise<string> {
-  const dir = join(sourceBaseDir, 'myinvestor', year)
-  await mkdir(dir, { recursive: true })
-  const path = join(dir, file)
-  await writeFile(path, content)
-  return path
 }

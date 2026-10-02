@@ -19,12 +19,12 @@ describe('failRun', () => {
   it('fails the run and reports every problem, not just the first', () => {
     const sink = fakeSink()
 
-    const failed = failRun(['la base ha cambiado', 'var/ ha cambiado'], sink)
+    const failed = failRun(['la base ha cambiado', 'han quedado filas sueltas'], sink)
 
     expect(failed).toBe(true)
     expect(sink.failed).toBe(1)
     expect(sink.written).toContain('la base ha cambiado')
-    expect(sink.written).toContain('var/ ha cambiado')
+    expect(sink.written).toContain('han quedado filas sueltas')
     expect(sink.written).toContain('La pasada se marca como FALLIDA')
   })
 

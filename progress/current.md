@@ -25,13 +25,14 @@
 
 **Nivel de consumo:** medio _(bajo / medio / alto; en alto, qué fases usan `fable`)_
 
-_Ninguna._ Última cerrada: **F51 `no-real-data-from-db`** (2026-10-02, sin commitear
-todavía) → [resumen](summaries/no-real-data-from-db.md).
+_Ninguna._ Última cerrada: **F52 `remove-var`** (2026-10-02) →
+[resumen](summaries/remove-var.md). Antes, el mismo día, la **F51
+`no-real-data-from-db`** (commit `d8c0a6d`).
 
-**Siguiente (acordado con el humano el 2026-10-02):** F52 `remove-var`, `pending`
-con intent en borrador del leader y sin spec; cierra los cabos 14 y 16. Después,
-en este orden, los cabos 21, 23, 10, 6 y 22 de `docs/roadmap.md`. El cabo 20 queda
-aparcado hasta que el humano decida qué quiere ver.
+**Siguiente (acordado con el humano el 2026-10-02):** los cabos sueltos 21, 23,
+10, 6 y 22 de [`docs/roadmap.md`](../docs/roadmap.md), en ese orden y cada uno
+como una feature. El cabo 20 queda aparcado hasta que el humano decida qué
+quiere ver.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:

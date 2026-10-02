@@ -102,7 +102,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 
 | # | Etapa | Estado | Features |
 |---|---|---|---|
-| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2, F14, **F33**, **F34**, **F51** |
+| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2, F14, **F33**, **F34**, **F51**, **F52** |
 | E1 | **El remoto** — hablar con Google Drive y organizarlo | ✅ | F3, F4 |
 | E2 | **Traer los ficheros** — detectar pendientes y descargarlos | ✅ (deuda saldada por la F12) | F5 |
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
@@ -134,8 +134,11 @@ Prettier, config de entorno validada al arrancar y errores centralizados
   suite, pese a estar la regla escrita en dos sitios. ADR-017.
 - **F51 `no-real-data-from-db`** ✅ (2026-10-02) — la comprobación de la F14 deja de
   leer los archivos de `var/` y compara contra la base de datos. Primer paso de
-  quitar `var/` entera; el segundo es la **F52 `remove-var`** (`pending`), que
-  cierra los cabos 14 y 16.
+  quitar `var/` entera; el segundo es la F52.
+- **F52 `remove-var`** ✅ (2026-10-02) — el backend deja de usar la carpeta `var/`: la
+  importación ya no deja copia en el disco y se retiran las ocho rutas que solo
+  trabajaban con ella (lista en `docs/api-contract.md` §Rutas retiradas). Cierra los
+  cabos 14 y 16. ADR-032.
 - **Tooling al día (2026-08-13, tarea directa):** TypeScript **7**, pnpm
   **11.21.0** y el linter cambiado de ESLint a **oxlint**, porque
   `typescript-eslint` tenía TypeScript congelado en 6.0.3. La regla que salió de
@@ -155,10 +158,11 @@ Prettier, config de entorno validada al arrancar y errores centralizados
 
 ### E2 — Traer los ficheros ✅
 
-**F5** — `GET /api/ingestion/pending` cuenta lo pendiente sin tocarlo;
-`POST /api/ingestion/process` descarga a `var/drive-read/`.
+**F5** — `GET /api/ingestion/pending` cuenta lo pendiente sin tocarlo. La otra ruta
+de la F5, que descargaba los pendientes a una carpeta del disco, **se retiró en la
+F52** (2026-10-02): la descarga la hace `POST /api/import`, a memoria.
 
-> ✅ **Deuda saldada por la F12** (2026-08-12): este endpoint **ya no mueve** nada
+> ✅ **Deuda saldada por la F12** (2026-08-12): la ingesta **dejó de mover** archivos
 > ([`ingestion.service.ts`](../src/modules/ingestion/ingestion.service.ts)), y
 > mover a `procesados/` pasó a ser consecuencia de **guardar** los movimientos
 > (`POST /api/import`). Un fallo de importación deja el fichero pendiente en Drive
@@ -187,7 +191,7 @@ la salida**, no el código que lee el formato.
 |---|---|---|
 | Bankinter | `.xlsx` de la cuenta | ✅ F6 + F7 (renombrado a inglés) |
 | MyInvestor · extracto | CSV de la cuenta corriente | ✅ **F10 `myinvestor-statement`** (2026-08-11) — primer parser nacido ya contra el contrato. **F17** (2026-08-15) rechaza el fichero que no venga en UTF-8 y **F16** (2026-08-16) lee el **saldo de la cuenta** de una segunda línea de preámbulo `saldo;…` |
-| MyInvestor · productos | un JSON por producto de inversión | ✅ **F13 `myinvestor-products`** (2026-08-12, ADR-016) — misma ruta `POST /api/parser/myinvestor`, encaminado por extensión; **no toca base de datos**. **F15** (2026-08-13) le añadió `openedAt` **obligatorio en los cuatro tipos**. 🔴 **Sus 5 `.json` SIGUEN sin llegar a la base de datos** tras la F26, que entró solo con Trade Republic: entran en una feature hermana que reutiliza la misma vía de persistencia (ADR-026) |
+| MyInvestor · productos | un JSON por producto de inversión | ✅ **F13 `myinvestor-products`** (2026-08-12, ADR-016) — mismo módulo que el extracto, encaminado por extensión (la ruta propia que tuvo se retiró en la F52). **F15** (2026-08-13) le añadió `openedAt` **obligatorio en los cuatro tipos**. 🔴 **Sus 5 `.json` SIGUEN sin llegar a la base de datos** tras la F26, que entró solo con Trade Republic: entran en una feature hermana que reutiliza la misma vía de persistencia (ADR-026) |
 | N26 | `.csv` de la cuenta (comas, con comillas) | ✅ **F18 `n26-statement`** (2026-08-18, ADR-020) — sin spec. El humano pone el IBAN y el saldo en el preámbulo con `;`, como en MyInvestor. Primer **lector de CSV entrecomillado** del repo (vive dentro del módulo) y **concepto compuesto** porque N26 no exporta ninguna columna de concepto |
 | Openbank | «`.xls`» de la cuenta, que **es HTML en cp1252** | ✅ **F19 `openbank-statement`** (2026-08-19, ADR-022) — **con spec**. Se lee tal cual, sin conversión manual: lector de HTML propio **sin dependencias nuevas** y **cp1252 declarado por el parser** (la regla «siempre UTF-8» queda acotada a lo que escribe el humano). Trae el **saldo de la cuenta** en su propio preámbulo; el IBAN lo escribe el humano una vez, en un **comentario HTML** de la primera línea. ~~El saldo por movimiento existe y **no se guarda**~~ → ⛔ **revertido por la F31 `real-account-balance`** (2026-08-25, ADR-028): la quinta columna de cada fila **sí se guarda** desde entonces, en `Movement.balanceAfter`, porque es el **ancla** del saldo real de esta cuenta y tirarla obligaba a releer el fichero para saber cuánto hay. 🔴 No «restaures» el `null` del parser porque este texto dijera lo contrario hasta hoy |
 | Revolut | `.csv` de la cuenta (comas) | ✅ **F46 `revolut-statement`** (2026-09-15) — sin spec. El humano pone solo el IBAN con `;`; el saldo lo trae el fichero en cada línea. Las filas `DEVUELTO` no entran. Prueba real: 35 movimientos, cuenta anclada, sin descuadres ([informe](../progress/explorations/prueba-real-revolut-2026-09-15.md)) |
@@ -359,10 +363,9 @@ Por cada banco nuevo:
 
 1. Su carpeta en Drive ([`docs/dar-de-alta-un-banco.md`](./dar-de-alta-un-banco.md)) — **tú**.
 2. Una muestra real del fichero delante — **tú** (sin ella no se escribe el spec:
-   [`docs/specs.md`](./specs.md) §Regla 4). Las que ya hay viven **gitignoreadas**
-   en `var/drive-read/` (crudo) y `var/parsed/` (parseado): el `.xlsx` de
-   Bankinter y, en `var/drive-read/myinvestor/2026/`, el CSV del extracto de
-   MyInvestor más tres capturas de producto.
+   [`docs/specs.md`](./specs.md) §Regla 4). Desde la F52 las muestras **no se guardan
+   en ninguna carpeta del proyecto**: están en tu Drive, y para pasar una por un
+   parser nuevo se usa `pnpm run parse-file <banco> <ruta-del-archivo>`.
 3. Su módulo `src/modules/<banco>/`, que emite el contrato común — **una feature**.
 4. Su cuenta en la base de datos: automática si el extracto trae IBAN, **a mano
    si no** (le pasa a MyInvestor).
@@ -379,10 +382,12 @@ es agnóstica del banco, el modelo existe (F8) y a partir de F11 hay un contrato
 al que adaptarse. Del tercer banco en adelante no se aprende nada separándolo:
 **una feature = su parser + su alta en el importador.**
 
-> ⚠️ **Juntar la feature no es juntar los pasos.** La copia cruda en
-> `var/drive-read/` y el fichero conservado en `procesados/` siguen siendo lo que
-> te deja **re-parsear cuando mejores el parser** sin volver a bajar nada del
-> banco. Eso está decidido en [`docs/ideas.md`](../../docs/ideas.md) y no cambia.
+> ⚠️ **Juntar la feature no es juntar los pasos.** El fichero conservado en
+> `procesados/` sigue siendo lo que te deja **volver a importar cuando mejores el
+> parser** sin volver a bajar nada del banco: lo devuelves a mano a la carpeta del
+> año. La copia cruda en el disco que acompañaba a ese fichero se quitó en la F52.
+> Conservar el original está decidido en [`docs/ideas.md`](../../docs/ideas.md) y no
+> cambia.
 
 ### Por qué el contrato común no contradice «un parser por banco»
 
@@ -423,12 +428,12 @@ tiene etapa, es que se va a perder.
 | ~~11~~ | ~~Lo que el humano deja en Drive **no llega a la base de datos**: los `.json` de producto morían en `var/parsed/`~~ | ✅ **cerrado del todo**: para Trade Republic por la **F26** (2026-08-20, ADR-026) y para los 5 `.json` de MyInvestor por la **F29** (2026-08-21). Los dos entran por `POST /api/import` y se guardan como `InvestmentProduct` (+ `SavingsSnapshot` o `Valuation`); sus dos parsers están en el registro de productos de [`src/app.ts`](../src/app.ts). ⚠️ Esta fila siguió diciendo «sigue abierto para MyInvestor» **diez días después de cerrarse**, hasta el 2026-09-01 |
 | ~~12~~ | ~~**Nada LEE la capa de inversiones.**~~ | ✅ **cerrado por la F39** (2026-09-05): `GET /api/investments/overview` lee productos, valoraciones y los intereses de la cuenta remunerada. La consulta de **patrimonio neto total** sigue sin existir, a propósito (fuera del alcance de la F39); anotada en la fila E7 |
 | ~~13~~ | ~~**Los contadores de `POST /api/import` cuentan movimientos, no productos.** Un archivo de producto que ha entrado bien sale con `status: "imported"` y su `product`/`snapshot` creados, pero el resumen de arriba dice `importedCount: 0`~~ | ✅ **cerrado por la F45** (2026-09-11): `importedProductCount` en la raíz de `POST /api/import` y `POST /api/import/local` cuenta los archivos de producto guardados; `importedCount` sigue contando solo movimientos. Encontrado en la **prueba real de la F26** ([informe](../progress/explorations/prueba-real-cuenta-remunerada-2026-08-20.md)) |
-| 14 | **Los dos inquilinos de `var/drive-read/` no saben volver a Drive.** Esa carpeta es una **caché**: la importación no la necesita (descarga a memoria, escribe la copia y parsea el buffer), pero **el ensayo** (`POST /api/parser/<banco>`) y **la reimportación local** (`POST /api/import/local`, F25) leen SOLO de ella. En producción la caché es efímera —se pierde en cada despliegue— y los dos dejan de funcionar en cuanto no está. El almacén duradero ya existe y es Drive: los ficheros ya importados viven en `procesados/`, que **hoy no lee ningún endpoint**. Anotado el 2026-08-22 a petición del humano, «para que no se me olvide», con la decisión explícita de **no construirlo todavía**: la forma del arreglo depende de cómo se despliegue y de si esas dos rutas tienen sentido en producción | **sin abrir, hasta que haya despliegue** |
+| ~~14~~ | ~~**Los dos inquilinos de `var/drive-read/` no saben volver a Drive.** Esa carpeta es una **caché**: la importación no la necesita (descarga a memoria, escribe la copia y parsea el buffer), pero **el ensayo** (`POST /api/parser/<banco>`) y **la reimportación local** (`POST /api/import/local`, F25) leen SOLO de ella. En producción la caché es efímera —se pierde en cada despliegue— y los dos dejan de funcionar en cuanto no está. El almacén duradero ya existe y es Drive: los ficheros ya importados viven en `procesados/`, que **hoy no lee ningún endpoint**. Anotado el 2026-08-22 a petición del humano, «para que no se me olvide», con la decisión explícita de **no construirlo todavía**: la forma del arreglo depende de cómo se despliegue y de si esas dos rutas tienen sentido en producción~~ | ✅ **cerrado por la F52** (2026-10-02): la carpeta deja de usarse y las rutas que solo leían de ella se retiran (ADR-032). Reimportar un archivo que ya está en `procesados/` es devolverlo a mano a la carpeta del año en Drive |
 | ~~3~~ | ~~Todo lo importado nace `pending_review` y **nada lo pasa a `confirmed`**~~ | ✅ **cerrado por la F37** (2026-09-02): `PATCH /api/movements/:id` cambia `status` en los dos sentidos |
 | ~~4~~ | ~~`src/modules/ingesta/` y `/api/ingesta/*` están en español~~ | ✅ **cerrado por la F12** (2026-08-12): `src/modules/ingestion/` y `/api/ingestion/*`; las rutas viejas responden 404 |
 | 10 | `daySequence` numera solo las filas parseadas: reimportar un fichero tras arreglar su parser puede renumerar ese día y dejar duplicados **visibles** | sin dueño |
 | ~~15~~ | ~~**`bankinter.routes.test.ts` es el único banco que NO comprueba que su ruta esté registrada en la app real.** Encontrado en la **F33** (2026-08-26) al arreglar el test hermano de Trade Republic~~ | ✅ **cerrado el 2026-09-11** (commit 83dc791, sin feature): el test comprueba con `hasRoute` que `POST /api/parser/bankinter` está registrada en la app real, como los otros bancos |
-| 16 | **El valor por defecto que apunta a `var/` vive en seis módulos de rutas.** Mientras exista, un test que olvide inyectar directorios cae en los datos reales del humano — que es exactamente lo que pasó y originó la F33. La red que puso la F33 lo **caza**, pero no lo **impide**. Pasar esos valores por defecto a inyectarse desde `src/app.ts` haría que un test no pudiera caer en `var/` ni queriendo. Es un cambio de firma en seis módulos | **sin abrir** |
+| ~~16~~ | ~~**El valor por defecto que apunta a `var/` vive en seis módulos de rutas.** Mientras exista, un test que olvide inyectar directorios cae en los datos reales del humano — que es exactamente lo que pasó y originó la F33. La red que puso la F33 lo **caza**, pero no lo **impide**. Pasar esos valores por defecto a inyectarse desde `src/app.ts` haría que un test no pudiera caer en `var/` ni queriendo. Es un cambio de firma en seis módulos~~ | ✅ **cerrado por la F52** (2026-10-02): ya no existe ningún valor por defecto que apunte a `var/`; las rutas que lo tenían se retiraron y un guardián de `src/architecture.test.ts` pone la suite roja si el código vuelve a nombrar la carpeta (ADR-032) |
 | ~~18~~ | ~~`./init.sh` no ejecuta `format:check`~~ | ✅ **cerrado el 2026-09-01**, y era peor de lo escrito: **tampoco ejecutaba el linter**. Ahora hay un **paso 5, «Lint y formato»**, que corre `pnpm run lint` y `pnpm run format:check` y **pone la pasada en rojo** — comprobado metiendo un archivo mal formateado a propósito, no deducido. Va después de la salida del modo `--fast` para no cargar el ciclo corto del hook. ⚠️ **Y la última frase de este cabo era falsa**: `scripts/bankinter-pdf-a-xlsx.mjs` **no** incumple el estándar en `HEAD` (`prettier --check` lo da por bueno tal y como está commiteado; le quedan 5 líneas de más de 100 columnas, pero son cadenas y comentarios que el formateador no puede partir, y el formateador es quien hace cumplir la regla). Lo que fallaba era **la copia del árbol de trabajo, con finales de línea CRLF** — exactamente el caso que `.gitattributes` describe en su propio comentario. Se normalizó al vuelo y el commit no cambia ni un byte de ese archivo |
 | ~~17~~ | ~~**Los contadores de `POST /api/import` no distinguen anclaje ni relleno en el total del run.** La F31 añadió `anchored` y `balancesFilled` por archivo, pero `ImportRunResult` no los agrega~~ | ✅ **cerrado por la F45** (2026-09-11), con el cabo 13: `anchoredCount` (archivos con `anchored: true`) y `balanceFilledCount` (suma de `balancesFilled`) en la raíz de las dos vías, y la nota del contrato que decía que no había total se sustituyó por su descripción |
 | ~~5~~ | ~~El histórico del Excel de años~~ | ✅ **descartado (2026-08-22, reafirmado el 2026-08-23)**, ver `../../docs/ideas.md` §6. El vacío se llena con extractos de los bancos de varios años atrás, no con el Excel: una sola fuente, sin solape ni duplicados incasables |
@@ -447,6 +452,18 @@ tiene etapa, es que se va a perder.
 
 ## Deberes tuyos pendientes (no son código)
 
+- **Borrar la carpeta `var/` de tu disco** (F52 `remove-var`, 2026-10-02). El backend
+  ya no la usa y ningún agente la borra. En este orden:
+  1. Mira que no haya en `var/drive-read/` ningún archivo que no esté también en
+     Drive (en la carpeta del año o en `procesados/`). No está comprobado: hace
+     falta listar tu Drive.
+  2. Borra `var/` entera.
+  3. Pasa `./init.sh` una vez: es la prueba de que la suite pasa con la carpeta
+     borrada, que ningún comando ha podido hacer.
+- **Probar `pnpm run parse-file <banco> <ruta>` con un archivo real tuyo** (F52,
+  2026-10-02). Solo está probado con archivos inventados. Hazlo antes de borrar
+  `var/` o con un archivo que tengas descargado: tiene que enseñar recuentos y
+  fechas, sin importes ni conceptos, y no guardar nada.
 - **Probar el harness v3.0.0 en el Mac y en Linux** (2026-10-01). Solo se ha
   probado en este Windows (Git Bash). En cada sistema, desde el proyecto:
   `./init.sh` (tiene que acabar en `[OK] Entorno listo`) y

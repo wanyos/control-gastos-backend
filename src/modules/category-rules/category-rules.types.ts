@@ -2,7 +2,7 @@
  * Types of the auto-categorization by rules (feature 43): the CRUD shapes of
  * `/api/category-rules` and the result of the categorization run — the pass
  * that walks the eligible movements applying the rules. The run's result
- * travels inside the import report (both ways in) and is also what
+ * travels inside the import report and is also what
  * `POST /api/category-rules/apply` answers, same pattern as the transfer
  * detection of F40.
  */

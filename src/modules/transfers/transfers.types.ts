@@ -3,8 +3,8 @@
  * the candidates the pairing works on, the report every import run carries
  * back, and the shapes of the manual link endpoints.
  *
- * The detection itself still has NO endpoint: both import ways call it after
- * their file loop, and its result travels inside the import report. What DOES
+ * The detection itself still has NO endpoint: the importer calls it after
+ * its file loop, and its result travels inside the import report. What DOES
  * have an endpoint since F44 is the manual writer of the link
  * (`POST /api/transfers`, `DELETE /api/transfers/:transferId`). Since F49 there
  * are also two reads: the list of pairs (`GET /api/transfers`) and the doubtful

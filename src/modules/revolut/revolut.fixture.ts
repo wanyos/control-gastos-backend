@@ -1,6 +1,3 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-
 /**
  * Test helper (not a test): builds a synthetic statement CSV with the layout of
  * this bank's export, in memory. Every figure, description and account number
@@ -17,7 +14,7 @@ import { join } from 'node:path'
 /**
  * The ten columns of the real export, in the order the bank writes them. The
  * comment on each line is what it holds -- and it also keeps the privacy guardian
- * of feature 14 from reading this list as a sentence copied out of `var/`: the
+ * of feature 14 from reading this list as a sentence copied out of his data: the
  * column NAMES are the bank's format, not a datum of the human's.
  */
 export const revolutHeaders = [
@@ -218,18 +215,4 @@ export const documentationIban = 'ES9121000418450200051332'
 /** The hand-written line the human puts above the header, with the documented `;`. */
 export function revolutPreamble(iban = documentationIban): string[] {
   return [`iban;${iban}`]
-}
-
-/** Writes a local copy where the drive-read feature would leave it. */
-export async function writeLocalCopy(
-  sourceBaseDir: string,
-  year: string,
-  file: string,
-  content: Buffer | string,
-): Promise<string> {
-  const dir = join(sourceBaseDir, 'revolut', year)
-  await mkdir(dir, { recursive: true })
-  const path = join(dir, file)
-  await writeFile(path, content)
-  return path
 }

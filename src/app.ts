@@ -3,7 +3,6 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import { loadConfig, type AppConfig } from './config/env.js'
 import accountsRoutes from './modules/accounts/accounts.routes.js'
 import { parseBankinterXlsx } from './modules/bankinter/bankinter.parser.js'
-import bankinterRoutes from './modules/bankinter/bankinter.routes.js'
 import categoriesRoutes from './modules/categories/categories.routes.js'
 import categoryRulesRoutes from './modules/category-rules/category-rules.routes.js'
 import healthRoutes from './modules/health/health.routes.js'
@@ -17,19 +16,14 @@ import type {
 import ingestionRoutes from './modules/ingestion/ingestion.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
 import { isMyinvestorDepositMaturity } from './modules/myinvestor/myinvestor.deposit-maturity.js'
-import myinvestorRoutes from './modules/myinvestor/myinvestor.routes.js'
 import netWorthRoutes from './modules/net-worth/net-worth.routes.js'
 import { parseMyinvestorProductFile } from './modules/myinvestor/myinvestor.service.js'
 import { parseMyinvestorStatement } from './modules/myinvestor/myinvestor.statement.parser.js'
-import n26Routes from './modules/n26/n26.routes.js'
 import { parseN26Statement } from './modules/n26/n26.statement.parser.js'
-import openbankRoutes from './modules/openbank/openbank.routes.js'
 import overviewRoutes from './modules/overview/overview.routes.js'
 import { parseOpenbankStatement } from './modules/openbank/openbank.statement.parser.js'
-import revolutRoutes from './modules/revolut/revolut.routes.js'
 import { parseRevolutStatement } from './modules/revolut/revolut.statement.parser.js'
 import { parseTradeRepublicProductFile } from './modules/trade-republic/trade-republic.service.js'
-import tradeRepublicRoutes from './modules/trade-republic/trade-republic.routes.js'
 import transfersRoutes from './modules/transfers/transfers.routes.js'
 import drivePlugin from './plugins/drive.js'
 import errorHandlerPlugin from './plugins/error-handler.js'
@@ -112,16 +106,6 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(ingestionRoutes, { prefix: '/api/ingestion' })
   app.register(transfersRoutes, { prefix: '/api/transfers' })
   app.register(importRoutes, { prefix: '/api/import', parsers: bankParsers, productParsers })
-  app.register(bankinterRoutes, { prefix: '/api/parser' })
-  app.register(myinvestorRoutes, { prefix: '/api/parser' })
-  app.register(n26Routes, { prefix: '/api/parser' })
-  app.register(openbankRoutes, { prefix: '/api/parser' })
-  app.register(revolutRoutes, { prefix: '/api/parser' })
-  // Trade Republic is a parser route and, since feature 26, an entry of the
-  // PRODUCT registry -- never of the statement one: it has no statement to
-  // import, only the hand-written account file (ADR-024). This route stays the
-  // DRY RUN: it parses and dumps to `var/parsed/`, and persists nothing.
-  app.register(tradeRepublicRoutes, { prefix: '/api/parser' })
 
   return app
 }

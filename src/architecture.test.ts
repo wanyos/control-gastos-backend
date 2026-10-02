@@ -72,6 +72,9 @@ describe('architecture invariants', () => {
       // vitest.config.ts: before vitest.setup.ts rewrites DATABASE_URL.
       'lib/load-env-file.ts',
       'lib/load-env-file.test.ts',
+      // The Drive double of the tests that import through `importPending`
+      // (feature 52): a fixture, next to `iban.fixture.ts`.
+      'lib/drive.fixture.ts',
       'plugins/drive.ts',
       'plugins/error-handler.ts',
       'modules/accounts/accounts.routes.ts',
@@ -108,27 +111,21 @@ describe('architecture invariants', () => {
       'modules/import/import.routes.ts',
       'modules/import/import.service.test.ts',
       'modules/import/import.routes.test.ts',
-      // The second way in of the importer (feature 25): the same core, reading
-      // the local copy instead of Drive. Its own file because it is the half
-      // that must NOT be able to touch Drive, and a file is what makes that
-      // checkable (see the test below).
-      'modules/import/import.local.service.ts',
-      'modules/import/import.schema.ts',
-      'modules/import/import.local.service.test.ts',
-      'modules/import/import.local.routes.test.ts',
+      // The logic of `pnpm run parse-file` (feature 52): one file through the
+      // parser of its bank, summarized as counts and shape, storing nothing.
+      'modules/import/import.parse-file.ts',
+      'modules/import/import.parse-file.test.ts',
+      // Since feature 52 a bank module is its parser, its format readers, its
+      // fixtures and their tests: no route and no walk over files on disk.
       'modules/bankinter/bankinter.parser.ts',
-      'modules/bankinter/bankinter.service.ts',
-      'modules/bankinter/bankinter.routes.ts',
       'modules/bankinter/bankinter.types.ts',
       'modules/bankinter/bankinter.parser.test.ts',
-      'modules/bankinter/bankinter.service.test.ts',
-      'modules/bankinter/bankinter.routes.test.ts',
       // Second bank with its own parser module (feature 10): same pattern, its
       // own format-reading code, the same shared output contract.
       'modules/myinvestor/myinvestor.format.ts',
       'modules/myinvestor/myinvestor.statement.parser.ts',
+      // What is left of this file is the adapter of the product registry.
       'modules/myinvestor/myinvestor.service.ts',
-      'modules/myinvestor/myinvestor.routes.ts',
       'modules/myinvestor/myinvestor.types.ts',
       'modules/myinvestor/myinvestor.fixture.ts',
       // Second ENTRY of the same bank (feature 13): the hand-written product
@@ -138,63 +135,53 @@ describe('architecture invariants', () => {
       'modules/myinvestor/myinvestor.format.test.ts',
       'modules/myinvestor/myinvestor.statement.parser.test.ts',
       'modules/myinvestor/myinvestor.service.test.ts',
-      'modules/myinvestor/myinvestor.routes.test.ts',
       // Third bank with its own parser module (feature 18): the first file of
       // the repo that is a REAL quoted CSV, so it brings its own reader — which
       // stays inside the bank folder, like every other piece of format reading.
       'modules/n26/n26.csv.ts',
       'modules/n26/n26.format.ts',
       'modules/n26/n26.statement.parser.ts',
-      'modules/n26/n26.service.ts',
-      'modules/n26/n26.routes.ts',
       'modules/n26/n26.types.ts',
       'modules/n26/n26.fixture.ts',
       'modules/n26/n26.csv.test.ts',
       'modules/n26/n26.format.test.ts',
       'modules/n26/n26.statement.parser.test.ts',
-      'modules/n26/n26.service.test.ts',
-      'modules/n26/n26.routes.test.ts',
+      'modules/n26/n26.registry.test.ts',
       // Fourth bank with its own parser module (feature 19): its file is called
       // `.xls` and is an HTML page, so it brings its own HTML reader — which
       // stays inside the bank folder, like every other piece of format reading.
       'modules/openbank/openbank.html.ts',
       'modules/openbank/openbank.format.ts',
       'modules/openbank/openbank.statement.parser.ts',
-      'modules/openbank/openbank.service.ts',
-      'modules/openbank/openbank.routes.ts',
       'modules/openbank/openbank.types.ts',
       'modules/openbank/openbank.fixture.ts',
       'modules/openbank/openbank.html.test.ts',
       'modules/openbank/openbank.format.test.ts',
       'modules/openbank/openbank.statement.parser.test.ts',
-      'modules/openbank/openbank.service.test.ts',
-      'modules/openbank/openbank.routes.test.ts',
+      'modules/openbank/openbank.registry.test.ts',
       // Sixth bank with its own parser module (feature 46): a CSV of commas that
       // may carry quotes, so it brings its own reader inside its folder.
       'modules/revolut/revolut.csv.ts',
       'modules/revolut/revolut.format.ts',
       'modules/revolut/revolut.statement.parser.ts',
-      'modules/revolut/revolut.service.ts',
-      'modules/revolut/revolut.routes.ts',
       'modules/revolut/revolut.types.ts',
       'modules/revolut/revolut.fixture.ts',
       'modules/revolut/revolut.csv.test.ts',
       'modules/revolut/revolut.format.test.ts',
       'modules/revolut/revolut.statement.parser.test.ts',
-      'modules/revolut/revolut.service.test.ts',
-      'modules/revolut/revolut.routes.test.ts',
+      'modules/revolut/revolut.registry.test.ts',
       'modules/revolut/revolut.import.test.ts',
       // Fifth bank with its own module (feature 20, ADR-024), and the first one
       // that enters WITHOUT a parser of what the bank emits: its statement is a
       // `.pdf` that is never opened, and the entry is a `.json` the human writes.
       'modules/trade-republic/trade-republic.product.parser.ts',
+      // What is left of this file is the adapter of the product registry.
       'modules/trade-republic/trade-republic.service.ts',
-      'modules/trade-republic/trade-republic.routes.ts',
       'modules/trade-republic/trade-republic.types.ts',
       'modules/trade-republic/trade-republic.fixture.ts',
       'modules/trade-republic/trade-republic.product.parser.test.ts',
       'modules/trade-republic/trade-republic.service.test.ts',
-      'modules/trade-republic/trade-republic.routes.test.ts',
+      'modules/trade-republic/trade-republic.registry.test.ts',
       'modules/trade-republic/trade-republic.docs.test.ts',
       // investments is a partial folder on purpose: feature 9 is schema plus
       // migration, with no HTTP surface (no routes/service/schema/types).
@@ -228,8 +215,8 @@ describe('architecture invariants', () => {
       'modules/net-worth/net-worth.types.ts',
       'modules/net-worth/net-worth.test.ts',
       // Feature 40: the transfer detection. The detection itself has no
-      // endpoint -- both import ways call it after their file loop and its
-      // result travels inside the import report. The routes/schema files are
+      // endpoint -- the importer calls it after its file loop and its result
+      // travels inside the import report. The routes/schema files are
       // of feature 44: the MANUAL writer of the link, which does have one.
       'modules/transfers/transfers.types.ts',
       'modules/transfers/transfers.service.ts',
@@ -345,24 +332,16 @@ describe('architecture invariants', () => {
     }
   })
 
-  it('keeps the local reimport away from Drive: it moves and deletes nothing (feature 25)', () => {
-    // The promise of the feature said out loud: «no quiero que la reimportación
-    // mueva ni borre nada en mi Drive». A report can claim it; this checks it.
-    const source = readFileSync(join(srcDir, 'modules/import/import.local.service.ts'), 'utf8')
+  it('keeps the importer off the filesystem', () => {
+    // Feature 52: an import goes from the download to the parser to the database
+    // in memory. If this fails, something of the importer (or of the detection
+    // of pending files) reads or writes the disk of the machine again.
+    const offenders = ['modules/import', 'modules/ingestion']
+      .flatMap((dir) => sourceFiles(join(srcDir, dir)))
+      .filter((file) => readFileSync(file, 'utf8').includes('node:fs'))
+      .map((file) => relative(srcDir, file).replace(/\\/g, '/'))
 
-    for (const forbidden of [
-      'moveFileToProcessed',
-      'downloadFileContent',
-      'ensureFolder',
-      'listPendingFiles',
-      'AppDriveClient',
-      'unlink',
-      'rename',
-      'rmdir',
-      'writeFile',
-    ]) {
-      expect(source).not.toContain(forbidden)
-    }
+    expect(offenders).toEqual([])
   })
 
   it('never creates an account from the importer: only the accounts service does (R19)', () => {
@@ -375,12 +354,7 @@ describe('architecture invariants', () => {
   })
 
   it('keeps the bankinter parser module free of data access (no "prisma" reference)', () => {
-    const files = [
-      'modules/bankinter/bankinter.parser.ts',
-      'modules/bankinter/bankinter.service.ts',
-      'modules/bankinter/bankinter.routes.ts',
-      'modules/bankinter/bankinter.types.ts',
-    ]
+    const files = ['modules/bankinter/bankinter.parser.ts', 'modules/bankinter/bankinter.types.ts']
 
     for (const file of files) {
       expect(readFileSync(join(srcDir, file), 'utf8').toLowerCase()).not.toContain('prisma')
@@ -394,7 +368,6 @@ describe('architecture invariants', () => {
       'modules/myinvestor/myinvestor.statement.parser.ts',
       'modules/myinvestor/myinvestor.product.parser.ts',
       'modules/myinvestor/myinvestor.service.ts',
-      'modules/myinvestor/myinvestor.routes.ts',
       'modules/myinvestor/myinvestor.types.ts',
     ]
 
@@ -408,8 +381,6 @@ describe('architecture invariants', () => {
       'modules/n26/n26.csv.ts',
       'modules/n26/n26.format.ts',
       'modules/n26/n26.statement.parser.ts',
-      'modules/n26/n26.service.ts',
-      'modules/n26/n26.routes.ts',
       'modules/n26/n26.types.ts',
     ]
 
@@ -423,8 +394,6 @@ describe('architecture invariants', () => {
       'modules/openbank/openbank.html.ts',
       'modules/openbank/openbank.format.ts',
       'modules/openbank/openbank.statement.parser.ts',
-      'modules/openbank/openbank.service.ts',
-      'modules/openbank/openbank.routes.ts',
       'modules/openbank/openbank.types.ts',
     ]
 
@@ -438,8 +407,6 @@ describe('architecture invariants', () => {
       'modules/revolut/revolut.csv.ts',
       'modules/revolut/revolut.format.ts',
       'modules/revolut/revolut.statement.parser.ts',
-      'modules/revolut/revolut.service.ts',
-      'modules/revolut/revolut.routes.ts',
       'modules/revolut/revolut.types.ts',
     ]
 
@@ -455,7 +422,6 @@ describe('architecture invariants', () => {
     const files = [
       'modules/trade-republic/trade-republic.product.parser.ts',
       'modules/trade-republic/trade-republic.service.ts',
-      'modules/trade-republic/trade-republic.routes.ts',
       'modules/trade-republic/trade-republic.types.ts',
     ]
 
@@ -629,16 +595,117 @@ describe('architecture invariants', () => {
     }
   })
 
-  it('gitignores the local Drive dump dir so bank data is never versioned (privacy)', () => {
-    const gitignore = readFileSync(join(srcDir, '..', '.gitignore'), 'utf8')
+  it('mentions the var folder nowhere in the code', () => {
+    // Feature 52: the project stopped using that folder of the human's disk.
+    // What caused feature 33 was a default value pointing there; this keeps one
+    // from coming back, in the code, the tests, the fixtures, the scripts and
+    // the configuration of the suite.
+    const repoRoot = join(srcDir, '..')
+    const allowed: Record<string, string> = {
+      'src/architecture.test.ts': 'this very test has to name what it looks for',
+      'src/no-real-data.test.ts':
+        'it checks that .gitignore ignores that folder and that nothing under it is versioned',
+      'src/retired-routes.docs.test.ts':
+        'it looks for the name of that folder in the documents, to check none describes it as something of today',
+    }
+    const everyFile = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const fullPath = join(dir, entry.name)
+        if (!entry.isDirectory()) return [fullPath]
+        return entry.name === 'generated' ? [] : everyFile(fullPath)
+      })
+    const files = [
+      ...everyFile(srcDir),
+      ...everyFile(join(repoRoot, 'scripts')),
+      ...readdirSync(join(repoRoot, 'prisma'))
+        .filter((name) => name.endsWith('.ts'))
+        .map((name) => join(repoRoot, 'prisma', name)),
+      ...['vitest.config.ts', 'vitest.setup.ts', 'vitest.global-setup.ts', 'package.json'].map(
+        (name) => join(repoRoot, name),
+      ),
+    ]
+    const asPath = /(?<![\w/.-])var\//
+    const asSegment = /['"]var['"]/
 
-    expect(gitignore).toContain('var/drive-read/')
+    const mentions = files.flatMap((file) => {
+      const name = relative(repoRoot, file).replace(/\\/g, '/')
+      if (name in allowed) return []
+      return readFileSync(file, 'utf8')
+        .split('\n')
+        .flatMap((line, index) =>
+          asPath.test(line) || asSegment.test(line) ? [`${name}:${index + 1}`] : [],
+        )
+    })
+
+    expect(files.length).toBeGreaterThan(100)
+    expect(mentions).toEqual([])
   })
 
-  it('gitignores the local parser dump dir so parsed bank data is never versioned (privacy)', () => {
-    const gitignore = readFileSync(join(srcDir, '..', '.gitignore'), 'utf8')
+  it('has none of the files feature 52 removed', () => {
+    const banks = ['bankinter', 'myinvestor', 'n26', 'openbank', 'revolut', 'trade-republic']
+    const removed = [
+      // The route of each bank, which read and wrote copies on disk.
+      ...banks.flatMap((bank) => [
+        `modules/${bank}/${bank}.routes.ts`,
+        `modules/${bank}/${bank}.routes.test.ts`,
+      ]),
+      // The services that only walked those copies.
+      ...['bankinter', 'n26', 'openbank', 'revolut'].flatMap((bank) => [
+        `modules/${bank}/${bank}.service.ts`,
+        `modules/${bank}/${bank}.service.test.ts`,
+      ]),
+      // POST /api/import/local.
+      'modules/import/import.local.service.ts',
+      'modules/import/import.local.service.test.ts',
+      'modules/import/import.local.routes.test.ts',
+      'modules/import/import.schema.ts',
+      // The comparison of that folder before and after the suite (feature 33).
+      'lib/test-var.ts',
+      'lib/test-var.test.ts',
+    ]
 
-    expect(gitignore).toContain('var/parsed/')
+    expect(removed).toHaveLength(26)
+    expect(removed.filter((file) => existsSync(join(srcDir, file)))).toEqual([])
+  })
+})
+
+// The eight routes that only worked with the copies on disk are gone (feature
+// 52, breaking change): they fall through to the central 404 handler.
+describe('retired routes of feature 52 (R3)', () => {
+  let app: FastifyInstance
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('answers 404 to the eight routes retired by feature 52', async () => {
+    const retired = [
+      '/api/parser/bankinter',
+      '/api/parser/myinvestor',
+      '/api/parser/n26',
+      '/api/parser/openbank',
+      '/api/parser/revolut',
+      '/api/parser/trade-republic',
+      '/api/import/local',
+      '/api/ingestion/process',
+    ]
+
+    const wrong: string[] = []
+    for (const url of retired) {
+      const response = await app.inject({ method: 'POST', url })
+      const body = response.json<{ statusCode?: number; code?: string }>()
+      if (response.statusCode !== 404 || body.statusCode !== 404 || body.code !== 'NOT_FOUND') {
+        wrong.push(`POST ${url} -> ${response.statusCode} ${body.code ?? ''}`)
+      }
+    }
+
+    expect(retired).toHaveLength(8)
+    expect(wrong).toEqual([])
   })
 })
 

@@ -134,16 +134,3 @@ export class UnreadableStatementError extends AppError {
     super(message, 'ALL_ROWS_UNPARSED', 422)
   }
 }
-
-/**
- * The local copy asked for is not on disk (feature 25). It is its own code, and
- * not an empty report, because "nothing to import" and "what you asked for is
- * not here" are different answers and only one of them tells the human what to
- * do (the lesson of feature 22: a message that sends you to look in the wrong
- * place costs a whole round).
- */
-export class LocalCopyNotFoundError extends AppError {
-  constructor(message = 'No local copy for what was asked') {
-    super(message, 'LOCAL_COPY_NOT_FOUND', 404)
-  }
-}
