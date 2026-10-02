@@ -33,7 +33,7 @@ aceptado por el humano, sin código.
 **Cabos sueltos tras el 2026-10-02:** cerrados el 6, 14, 16, 21 y 23 (F51 a F55,
 última en `8e78654`); el 10 es riesgo aceptado y el 22 queda aparcado hasta que
 `exceljs` falle, los dos por decisión del humano; el 20 espera a que decida qué
-quiere ver. Queda abierto el 24 (borrar un producto o un valor desde la API).
+quiere ver. El 24 (borrar un producto o un valor desde la API) queda aparcado por el humano hasta que sea un problema. No queda ningún cabo en el que trabajar ahora.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
