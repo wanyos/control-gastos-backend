@@ -18,6 +18,8 @@
     "seed:categories": "tsx prisma/seed-categories.ts",
     "seed:category-rules": "tsx prisma/seed-category-rules.ts",
     "parse-file": "tsx scripts/parse-bank-file.ts",
+    "db:backup": "tsx scripts/db-backup.ts",
+    "db:restore": "tsx scripts/db-restore.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"

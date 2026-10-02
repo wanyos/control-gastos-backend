@@ -89,6 +89,12 @@
   ~2 s más (crear y migrar la plantilla). Dos guardianes la ponen roja: uno si un
   archivo de test deja una fila, otro si la base del humano cambia durante la pasada
   (foto de solo lectura antes/después, recuentos **y** secuencias).
+- **La suite necesita el programa `docker`, no solo el PostgreSQL del contenedor**
+  (desde la F55, 2026-10-02): los tests de `src/modules/backup/` sacan y restauran
+  copias con `docker exec gastos-postgres`, sobre bases desechables
+  `gastos_test_backup_<n>_<sufijo>` que el propio archivo crea y borra, y con un
+  cliente de Drive simulado en memoria. No llaman al Drive real ni abren la base
+  `gastos`. Coste medido: entre 2,3 y 3 s más por pasada.
 - **Estilo:** tests de integración con `buildApp()` + `app.inject()` de
   Fastify contra el PostgreSQL real, sin mocks; limpian las filas que crean.
   Cómo se escribe uno: `docs/conventions.md` §Tests con base de datos.
@@ -110,6 +116,14 @@
   Historial en `prisma/migrations/`.
 - **Conexión:** el CLI la lee de `prisma.config.ts` (Prisma 7); en runtime se
   pasa vía el driver adapter en [`src/lib/prisma.ts`](../src/lib/prisma.ts).
+- **Copia de la base de datos (F55, 2026-10-02; ver ADR-034):**
+  `pnpm run db:backup` y `pnpm run db:restore`. **Los dos necesitan Docker en
+  marcha y el contenedor `gastos-postgres` arrancado:** no se conectan a
+  PostgreSQL por el puerto, ejecutan `docker exec gastos-postgres` con el
+  `pg_dump`, el `pg_restore` y el `psql` que trae el contenedor (17.9; en el host
+  Windows no hay `pg_dump` en el `PATH`). Sin dependencia nueva de npm. Solo sirven
+  mientras la base sea ese contenedor. Pasos para el humano:
+  [`database-backup.md`](./database-backup.md).
 
 ## Restricciones / decisiones de versionado
 
@@ -142,11 +156,14 @@
 | `GOOGLE_DRIVE_CLIENT_SECRET` | Client secret OAuth de Google Cloud.     | **sí**              | `GOCSPX-…`                                                          |
 | `GOOGLE_DRIVE_REFRESH_TOKEN` | Refresh token OAuth de larga duración.   | **sí**              | `1//…`                                                              |
 | `GOOGLE_DRIVE_ROOT_FOLDER_ID` | Carpeta raíz `notas-banco/` creada a mano. Acepta el fileId pelado **o** la URL de la carpeta (se normaliza al arrancar al fileId). | **sí** | `1AbCdEfGhIj...` o `https://drive.google.com/drive/folders/1AbCdEfGhIj...` |
+| `GOOGLE_DRIVE_BACKUP_FOLDER_ID` | Carpeta de Drive `backup-control-gastos`, creada a mano **fuera** de `notas-banco/`, a la que `pnpm run db:backup` sube las copias de la base de datos y de la que `pnpm run db:restore` las lee (F55, ADR-034). Acepta el fileId pelado **o** la URL de la carpeta; **el nombre de la carpeta no sirve**. Sin la variable, el servidor y la suite funcionan igual y solo fallan esos dos comandos. Una línea sin valor o con espacios sí impide arrancar. | no (solo la usan `db:backup` y `db:restore`) | `1AbCdEfGhIj...` o `https://drive.google.com/drive/folders/1AbCdEfGhIj...` |
 
 > Fuente: `.env.example`, [`src/server.ts`](../src/server.ts) (`PORT`, `HOST`),
 > [`src/app.ts`](../src/app.ts) (`LOG_LEVEL`) y
-> [`src/config/env.ts`](../src/config/env.ts) (las tres de Drive y
-> `GOOGLE_DRIVE_ROOT_FOLDER_ID`). Cómo obtener las de Drive:
+> [`src/config/env.ts`](../src/config/env.ts) (las tres de Drive,
+> `GOOGLE_DRIVE_ROOT_FOLDER_ID` y `GOOGLE_DRIVE_BACKUP_FOLDER_ID`). Cómo preparar
+> la carpeta de copias y qué poner en su variable:
+> [`database-backup.md`](./database-backup.md) §1. Cómo obtener las de Drive:
 > `specs/03-drive-connection/design.md` §10 (pasos manuales del humano); cómo obtener
 > el fileId de la raíz: `specs/04-drive-structure/design.md` §9 (de la URL de la
 > carpeta). `GOOGLE_DRIVE_ROOT_FOLDER_ID` admite tanto el fileId pelado como la

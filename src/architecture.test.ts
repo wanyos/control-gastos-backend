@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { buildApp } from './app.js'
 import { normalizeBankName } from './lib/drive-structure.js'
+import { dumpDatabase } from './modules/backup/backup.database.js'
 
 const srcDir = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
@@ -224,6 +225,17 @@ describe('architecture invariants', () => {
       'modules/transfers/transfers.schema.ts',
       'modules/transfers/transfers.routes.ts',
       'modules/transfers/transfers.routes.test.ts',
+      // Feature 55: the copy of the database to Drive and its restore. No
+      // route: two scripts of `scripts/` are its only callers.
+      'modules/backup/backup.types.ts',
+      'modules/backup/backup.database.ts',
+      'modules/backup/backup.database.test.ts',
+      'modules/backup/backup.drive.ts',
+      'modules/backup/backup.service.ts',
+      'modules/backup/backup.service.test.ts',
+      'modules/backup/backup.confirm.ts',
+      'modules/backup/backup.confirm.test.ts',
+      'modules/backup/backup.fixture.ts',
     ]
 
     const missing = expected.filter((file) => !existsSync(join(srcDir, file)))
@@ -639,6 +651,91 @@ describe('architecture invariants', () => {
 
     expect(files.length).toBeGreaterThan(100)
     expect(mentions).toEqual([])
+  })
+
+  it('keeps the backup out of the app: no route and no import outside its module', () => {
+    // Feature 55: a copy is made or restored ONLY by `pnpm run db:backup` and
+    // `pnpm run db:restore`. If this fails, the app (a route, the startup, the
+    // importer) reaches the code of the copy.
+    const backupDir = join(srcDir, 'modules/backup')
+    const routes = readdirSync(backupDir).filter((name) => name.endsWith('.routes.ts'))
+
+    const outsideImporters = sourceFiles(srcDir)
+      .filter((file) => !relative(srcDir, file).replace(/\\/g, '/').startsWith('modules/backup/'))
+      .filter((file) => {
+        const source = readFileSync(file, 'utf8')
+        return source.includes('modules/backup') || source.includes('/backup.')
+      })
+      .map((file) => relative(srcDir, file).replace(/\\/g, '/'))
+
+    const repoRoot = join(srcDir, '..')
+    const scriptCallers = readdirSync(join(repoRoot, 'scripts'))
+      .filter((name) => readFileSync(join(repoRoot, 'scripts', name), 'utf8').includes('/backup.'))
+      .sort()
+    const packageLines = readFileSync(join(repoRoot, 'package.json'), 'utf8')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => /backup|restore/i.test(line))
+
+    expect(routes).toEqual([])
+    expect(sourceFiles(srcDir).length).toBeGreaterThan(50)
+    expect(outsideImporters).toEqual([])
+    expect(scriptCallers).toEqual(['db-backup.ts', 'db-restore.ts'])
+    expect(packageLines).toEqual([
+      '"db:backup": "tsx scripts/db-backup.ts",',
+      '"db:restore": "tsx scripts/db-restore.ts",',
+    ])
+  })
+
+  it('keeps the backup off the filesystem', async () => {
+    // Feature 55: the copy goes from the container to Drive, and back, through
+    // the memory of the process. If this fails, something of the two commands
+    // can write it to the disk of the machine.
+    const repoRoot = join(srcDir, '..')
+    const files = [
+      ...sourceFiles(join(srcDir, 'modules/backup')).filter(
+        (file) => !file.endsWith('.fixture.ts'),
+      ),
+      join(repoRoot, 'scripts/db-backup.ts'),
+      join(repoRoot, 'scripts/db-restore.ts'),
+    ]
+    const forbidden = ['node:fs', "'fs'", '"fs"', 'tmpdir', 'writeFile', 'createWriteStream']
+
+    const offenders = files.flatMap((file) => {
+      const source = readFileSync(file, 'utf8')
+      return forbidden
+        .filter((word) => source.includes(word))
+        .map((word) => `${relative(repoRoot, file).replace(/\\/g, '/')}: ${word}`)
+    })
+
+    // And pg_dump is never told to write a file: its output is the stdout.
+    const dumpArguments: string[][] = []
+    await dumpDatabase(
+      async (args) => {
+        dumpArguments.push(args)
+        return { exitCode: 0, stdout: Buffer.from('PGDMP'), stderr: '' }
+      },
+      { user: 'postgres', database: 'gastos_test_1' },
+    )
+
+    expect(files).toHaveLength(7)
+    expect(offenders).toEqual([])
+    expect(dumpArguments).toHaveLength(1)
+    expect(dumpArguments[0][0]).toBe('pg_dump')
+    expect(
+      dumpArguments[0].filter(
+        (arg) => arg === '-f' || arg.startsWith('--file') || arg.includes('>'),
+      ),
+    ).toEqual([])
+  })
+
+  it('.env.example lists the backup folder variable with a placeholder', () => {
+    const lines = readFileSync(join(srcDir, '..', '.env.example'), 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('GOOGLE_DRIVE_BACKUP_FOLDER_ID'))
+
+    // Once, and with a value that cannot be the id of anybody's folder.
+    expect(lines).toEqual(['GOOGLE_DRIVE_BACKUP_FOLDER_ID=your-backup-folder-id'])
   })
 
   it('has none of the files feature 52 removed', () => {

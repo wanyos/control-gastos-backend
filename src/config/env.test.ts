@@ -186,6 +186,38 @@ describe('loadConfig', () => {
       /GOOGLE_DRIVE_CLIENT_ID[\s\S]*GOOGLE_DRIVE_CLIENT_SECRET[\s\S]*GOOGLE_DRIVE_REFRESH_TOKEN/,
     )
   })
+
+  it('loads the configuration without GOOGLE_DRIVE_BACKUP_FOLDER_ID', () => {
+    const config = loadConfig(baseEnv)
+
+    expect(config.driveBackupFolderId).toBeUndefined()
+    expect('driveBackupFolderId' in config).toBe(false)
+  })
+
+  it('accepts the backup folder as an id or as a folder URL', () => {
+    const fromId = loadConfig({ ...baseEnv, GOOGLE_DRIVE_BACKUP_FOLDER_ID: syntheticFolderId })
+    const fromUrl = loadConfig({
+      ...baseEnv,
+      GOOGLE_DRIVE_BACKUP_FOLDER_ID: `https://drive.google.com/drive/folders/${syntheticFolderId}?usp=sharing`,
+    })
+
+    expect(fromId.driveBackupFolderId).toBe(syntheticFolderId)
+    expect(fromUrl.driveBackupFolderId).toBe(syntheticFolderId)
+  })
+
+  it('throws naming GOOGLE_DRIVE_BACKUP_FOLDER_ID when it is empty, has spaces or is not a folder URL', () => {
+    for (const value of ['', 'copias de prueba', 'https://drive.google.com/drive/']) {
+      expect(() => loadConfig({ ...baseEnv, GOOGLE_DRIVE_BACKUP_FOLDER_ID: value })).toThrowError(
+        /GOOGLE_DRIVE_BACKUP_FOLDER_ID/,
+      )
+    }
+  })
+
+  it('cannot tell a folder name without spaces from a folder id: that one is left to Drive', () => {
+    const config = loadConfig({ ...baseEnv, GOOGLE_DRIVE_BACKUP_FOLDER_ID: 'copias-de-prueba' })
+
+    expect(config.driveBackupFolderId).toBe('copias-de-prueba')
+  })
 })
 
 describe('normalizeDriveFolderId', () => {

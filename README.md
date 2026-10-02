@@ -7,7 +7,9 @@ sobre **PostgreSQL**.
 ## Requisitos
 
 - Node.js >= 24 (probado con Node 24.18). vitest 5 exige `^22.12` y `@googleapis/drive` 25 exige `>=22`, y la carga del `.env` usa `process.loadEnvFile()`, estable desde Node 24.10
-- PostgreSQL (o Docker para levantarlo con `docker-compose.yml`)
+- PostgreSQL (o Docker para levantarlo con `docker-compose.yml`). La suite y los
+  comandos `db:backup` y `db:restore` sí necesitan Docker: usan el contenedor
+  `gastos-postgres` de `docker-compose.yml`
 
 ## Puesta en marcha
 
@@ -38,7 +40,7 @@ El servidor queda escuchando en `http://localhost:3000` (configurable con `PORT`
 | `pnpm run dev`             | Servidor en desarrollo con recarga en caliente (`tsx watch`). |
 | `pnpm run build`           | Genera el cliente de Prisma y compila TypeScript a `dist/`.   |
 | `pnpm start`               | Ejecuta la versión compilada (`dist/server.js`).              |
-| `pnpm test`                | Suite completa con Vitest. Necesita PostgreSQL levantado, pero **no escribe en tu base**: cada worker usa una base desechable `gastos_test_<n>` (F27). |
+| `pnpm test`                | Suite completa con Vitest. Necesita PostgreSQL levantado, pero **no escribe en tu base**: cada worker usa una base desechable `gastos_test_<n>` (F27). Desde la F55 necesita además Docker: los tests de la copia de la base de datos ejecutan `docker exec gastos-postgres`. |
 | `pnpm run typecheck`       | Comprueba tipos sin emitir archivos.                          |
 | `pnpm run lint`            | oxlint sobre el proyecto (`lint:fix` para autocorregir).      |
 | `pnpm run format:check`    | Prettier en modo comprobación (`format` para escribir).       |
@@ -46,6 +48,8 @@ El servidor queda escuchando en `http://localhost:3000` (configurable con `PORT`
 | `pnpm run prisma:generate` | Regenera el cliente de Prisma.                                |
 | `pnpm run prisma:studio`   | Abre Prisma Studio para explorar los datos.                   |
 | `pnpm run parse-file <banco> <ruta-del-archivo>` | Pasa **un** archivo de tu disco por el parser de ese banco y enseña solo recuentos y forma (cuántos movimientos, qué filas no se leyeron, si trae IBAN y saldo, primera y última fecha). No guarda nada, no toca la base ni Drive y no imprime importes ni conceptos. |
+| `pnpm run db:backup` | Saca una copia completa de la base de datos y la sube, como un archivo nuevo con la fecha y la hora en el nombre, a la carpeta de Drive de `GOOGLE_DRIVE_BACKUP_FOLDER_ID`. No deja ningún archivo en el disco y no borra las copias anteriores. Necesita Docker en marcha. Pasos: [`docs/database-backup.md`](docs/database-backup.md). |
+| `pnpm run db:restore` | Sin argumentos, lista las copias que hay en esa carpeta. Con `<archivo> <base>`, restaura esa copia en esa base de datos; si la base ya tiene tablas, pide escribir su nombre en el terminal y conserva lo que había como `<base>_before_restore_<fecha y hora>`. Necesita Docker en marcha. Pasos: [`docs/database-backup.md`](docs/database-backup.md). |
 
 > `bash ./init.sh` lo ejecuta todo de una vez (typecheck + suite) y es la
 > verificación que debe quedar en verde antes de cerrar cualquier feature.
@@ -155,6 +159,7 @@ gastos-backend/
 │   │   ├── openbank/        #   Parser del extracto .xls de Openbank (por dentro, HTML)
 │   │   ├── trade-republic/  #   Parser del .json de cuenta remunerada escrito a mano
 │   │   ├── investments/     #   Productos de inversión: el ÚNICO que escribe en sus tablas
+│   │   ├── backup/          #   Copia de la base de datos a Drive y su restauración (sin rutas)
 │   │   └── health/          #   Rutas de estado
 │   └── generated/prisma/    # Cliente de Prisma generado (no se versiona)
 ├── prisma.config.ts         # Configuración del CLI de Prisma (Prisma 7)

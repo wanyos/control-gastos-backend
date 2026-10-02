@@ -122,6 +122,23 @@ src/
                                  #   health/). La completará la feature de
                                  #   importación con su *.service.ts, y más
                                  #   adelante las rutas de patrimonio.
+    backup/                # la copia de la base de datos a Drive y su restauración
+                           #   (ADR-034). SIN rutas y sin que nada de src/ lo importe:
+                           #   lo ejecutan scripts/db-backup.ts y scripts/db-restore.ts
+      backup.service.ts    #   createBackup, listBackups, restoreBackup y los textos
+                           #   que imprimen los dos comandos
+      backup.database.ts   #   lo que se ejecuta dentro del contenedor, siempre con
+                           #   `docker exec gastos-postgres` (pg_dump, pg_restore, psql)
+      backup.drive.ts      #   lo que se le pide a Drive: localizar la carpeta, añadir
+                           #   un archivo y listar; nada que borre, mueva o renombre
+      backup.confirm.ts    #   la pregunta del nombre de la base, solo en un terminal
+      backup.types.ts      #   tipos del módulo (BackupDeps, ContainerCommand, ...)
+      backup.fixture.ts    #   helper de test: cliente de Drive simulado en memoria
+      backup.docs.test.ts  #   comprueba que docs/database-backup.md tiene los pasos
+      backup.scripts.test.ts #  lanza los dos scripts con un .env mal escrito y fija
+                           #   qué imprimen y con qué código salen
+      backup.drive.test.ts #   sube una copia con el cliente de Drive de verdad y sin red:
+                           #   el contenido tiene que ir como flujo de lectura
   generated/prisma/      # cliente Prisma generado (no se versiona)
 ```
 
@@ -2821,6 +2838,135 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     difieren en mayúsculas o espacios (son productos distintos).
   - Borrar un producto o uno de sus valores desde la API sigue sin existir: es el cabo
     suelto 24 de `docs/roadmap.md`.
+
+### ADR-034: La copia de la base de datos se saca con el `pg_dump` del contenedor, sube a Drive sin pasar por el disco, y restaurar sobre una base con tablas exige escribir su nombre en un terminal
+
+- **Fecha:** 2026-10-02
+- **Estado:** aceptada (implementada en la feature #55 `db-backup`, SDD). No revisa
+  ningún ADR anterior.
+- **Contexto:** la base de datos no tenía copia (cabo suelto 6 de `docs/roadmap.md`).
+  Los archivos de banco de Drive permiten volver a importar los movimientos, pero no
+  las categorías puestas a mano, las reglas, los alias ni las notas. El humano pidió
+  una copia en una carpeta de Drive que crea él (`backup-control-gastos`), hecha a
+  mano con un comando, el comando contrario para restaurarla, que la copia no se
+  quede en su ordenador ni en el repositorio, que no haya ruta de la API y que nada
+  restaure sobre su base sin que él lo confirme. Comprobado el 2026-10-02: en el
+  Windows del humano no hay `pg_dump` en el `PATH`; dentro del contenedor
+  `gastos-postgres` están `pg_dump`, `pg_restore` y `psql` 17.9 y se entra sin
+  contraseña; la base ocupaba 9310 kB.
+- **Decisión:**
+  1. **Dos comandos de terminal y nada más:** `pnpm run db:backup` y
+     `pnpm run db:restore` (`scripts/db-backup.ts` y `scripts/db-restore.ts`). El
+     código vive en `src/modules/backup/`, sin rutas, y ningún otro archivo de `src/`
+     lo importa: ni el arranque del servidor, ni la importación. Lo comprueba
+     `src/architecture.test.ts`.
+  2. **La copia se obtiene dentro del contenedor**, con
+     `docker exec gastos-postgres pg_dump --format=custom --no-owner --no-privileges`,
+     y llega a Node por la salida estándar como un `Buffer`. El `pg_dump` del
+     contenedor es siempre de la misma versión que el servidor.
+  3. **Sin archivo intermedio, en los dos sentidos.** La copia va del contenedor a
+     Drive, y de Drive a `pg_restore`, por la memoria del proceso. Ningún archivo del
+     módulo ni de los dos scripts usa `node:fs` ni el directorio temporal; lo comprueba
+     `src/architecture.test.ts`.
+  4. **Todo lo que estos comandos hacen sobre PostgreSQL pasa por la misma función,
+     `runInContainer`,** que lanza `docker exec gastos-postgres` con `pg_dump`,
+     `pg_restore` o `psql`. No se abre una conexión con `pg` ni con Prisma.
+  5. **La carpeta se localiza por su identificador**, en la variable
+     `GOOGLE_DRIVE_BACKUP_FOLDER_ID`, que admite el identificador o la dirección de
+     la carpeta (`normalizeDriveFolderId`, el mismo de la raíz). Es **opcional** en
+     `loadConfig`: sin ella el servidor arranca y la suite pasa; solo fallan los dos
+     comandos, diciendo qué falta. La carpeta va **fuera de `notas-banco/`**, porque
+     toda subcarpeta de la raíz es un banco para `listBankFolders`.
+  6. **Cada copia es un archivo nuevo**, `control-gastos-AAAA-MM-DD-HHMMSS.dump`, con
+     la hora local. `backup.drive.ts` solo llama a `files.get`, `files.create` y
+     `files.list`: el código no borra, mueve, renombra ni sustituye ningún archivo de
+     la carpeta. Las copias antiguas las borra el humano en Drive.
+  7. **Tras subir, se compara el tamaño que Drive dice haber guardado con los bytes
+     enviados.** Si no coinciden, el comando falla.
+  8. **La copia se elige por el nombre exacto del archivo y la base de destino es
+     obligatoria.** Sin argumentos, `db:restore` lista las copias, de la más reciente
+     a la más antigua, sin tocar ninguna base. El nombre que escribe el humano no
+     entra en una consulta a Drive: se compara en código con la lista de la carpeta.
+  9. **Se restaura siempre en una base que no tiene nada que perder.** Destino que no
+     existe: se crea, y si la restauración falla se borra. Destino sin tablas: se
+     restaura dentro, en una sola transacción (`--single-transaction
+     --exit-on-error`). Destino con tablas: la copia se restaura primero en
+     `<base>_restore_<AAAAMMDDHHMMSS>`; solo si termina bien se renombra el destino a
+     `<base>_before_restore_<AAAAMMDDHHMMSS>` y la base nueva toma su nombre. Lo que
+     había no se borra: lo borra el humano cuando quiera.
+  10. **Restaurar sobre una base con tablas exige escribir su nombre exacto en el
+      terminal** cuando el comando lo pide (`askDatabaseName`). No hay argumento ni
+      variable que lo sustituya, y si la entrada del comando no es un terminal
+      (`process.stdin.isTTY` distinto de `true`) no pregunta y se niega, sin haber
+      descargado nada.
+  11. **Los nombres de base se validan antes de llegar a SQL**, porque se interpolan
+      en las órdenes de `psql`. El que escribe el humano: una minúscula seguida de
+      minúsculas, números o guiones bajos, 30 caracteres como mucho
+      (`assertDatabaseName`). Los que deriva el comando (los dos sufijos de arriba)
+      pasan de 30, así que toda función que interpola un nombre lo comprueba con el
+      tope de PostgreSQL, 63. Esto último se aparta del design del spec, que pedía la
+      regla de 30 para todos y hacía fallar siempre la restauración sobre una base con
+      tablas.
+  12. **Los mensajes son nuestros.** Un código de salida distinto de 0 se convierte en
+      un `BackupError` (`BACKUP_FAILED`; no llega nunca a una respuesta HTTP) que dice
+      qué paso falló. Del texto del programa del contenedor solo se reconocen síntomas
+      conocidos (no se puede ejecutar `docker`, el contenedor no existe o está parado,
+      la base está en uso, el archivo no es una copia válida, la base ya existe, la
+      base o el usuario no existen); el texto crudo no se imprime, y de un error de
+      Drive tampoco.
+  13. **Los tests usan el PostgreSQL de verdad del contenedor**, por el mismo
+      `docker exec`, sobre las bases desechables de la suite (`gastos_test_<n>` como
+      origen y `gastos_test_backup_<n>_<sufijo>` como destino, que el propio archivo
+      crea y borra), y un cliente de Drive simulado en memoria
+      (`backup.fixture.ts`). Ningún test llama al Drive real ni abre la base `gastos`.
+- **Alternativas descartadas:**
+  1. *`pg_dump` desde el host contra `localhost:5434`:* no hay `pg_dump` en el `PATH`;
+     instalarlo o fijar una ruta de Windows ata el comando a esta máquina y abre el
+     fallo de versiones distintas entre cliente y servidor.
+  2. *Buscar la carpeta por su nombre en todo Drive:* sin variable nueva, pero dos
+     carpetas con ese nombre, una en la papelera o un cambio de nombre vuelven la
+     búsqueda ambigua.
+  3. *Archivo intermedio en el directorio temporal, borrado al terminar:* solo hace
+     falta si la copia no cabe en memoria, y un fallo a mitad dejaría el archivo en el
+     disco, contra lo que pidió el humano.
+  4. *`pg_restore --clean` sobre el destino con tablas:* borra antes de saber si la
+     copia se puede restaurar y deja las tablas que no estén en la copia.
+  5. *Confirmar con un argumento (`--yes`, `--confirm=<base>`):* lo puede pasar un
+     agente o un script; lo tecleado en un terminal, no.
+  6. *Operar sobre PostgreSQL con `pg` o Prisma desde Node:* serían dos mecanismos
+     (uno para `pg_dump`, otro para lo demás), y `pg` suelto es dependencia de
+     desarrollo.
+  7. *Conservar solo las N últimas copias:* el backend pasaría a borrar archivos del
+     Drive del humano.
+  8. *Cifrar la copia con una contraseña:* habría que guardar esa contraseña en otro
+     sitio, y sin ella la copia no sirve.
+- **Consecuencias:**
+  - No hay migración, ni dependencia nueva, ni ruta nueva; `docs/api-contract.md` y
+    `docs/data-model.md` no cambian.
+  - **Los dos comandos necesitan Docker en marcha y solo sirven mientras PostgreSQL
+    sea el contenedor `gastos-postgres` de `docker-compose.yml`.** Si `DATABASE_URL`
+    apuntara a otro servidor, operarían igualmente sobre el contenedor local: de la
+    URL solo se leen el usuario y el nombre de la base. Se revisa en la etapa E9.
+  - La suite pasa a ejecutar `docker` desde Node, además de conectarse al PostgreSQL
+    del contenedor. La pasada tarda unos 2,3 s más (medido el 2026-10-02 por el
+    implementer del código; el reviewer midió ese día unos 3 s). El test más lento es el de la base en uso: PostgreSQL
+    espera unos 5 s antes de negarse a renombrarla, y por eso los tests de
+    `restoreBackup` se ejecutan a la vez y no uno detrás de otro.
+  - **La copia sube sin cifrar**, igual que los archivos de banco que ya están en ese
+    Drive, y lleva todas las tablas, también `_prisma_migrations`.
+  - **El `.env` no va en la copia.** Si se pierde el disco, las credenciales de Drive
+    hay que volver a sacarlas.
+  - Las bases `<base>_before_restore_<AAAAMMDDHHMMSS>` y las copias antiguas de Drive se
+    acumulan hasta que el humano las borra.
+  - Un valor de `GOOGLE_DRIVE_BACKUP_FOLDER_ID` que sea el nombre de la carpeta, sin
+    espacios, no se distingue de un identificador al cargar la configuración: el
+    servidor arranca, y son los dos comandos los que fallan al preguntarle a Drive.
+  - **No comprobado sin el Drive y la base del humano**, y queda para su prueba real
+    (`docs/roadmap.md` §Deberes tuyos): que `files.create` devuelva `size`, que su
+    acceso a Drive pueda escribir fuera de `notas-banco/`, y que bajo `pnpm run` la
+    entrada del comando sea un terminal.
+  - Los pasos para el humano están en [`database-backup.md`](./database-backup.md);
+    `src/modules/backup/backup.docs.test.ts` comprueba que el documento los tiene.
 
 
 ## Qué NO hacer

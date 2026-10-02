@@ -149,3 +149,15 @@ export class DuplicateProductFileError extends AppError {
     super(message, 'DUPLICATE_PRODUCT_FILE', 422)
   }
 }
+
+/**
+ * A step of `pnpm run db:backup` or `pnpm run db:restore` failed (feature 55).
+ * It never reaches an HTTP response: those two commands are not part of the
+ * app. It exists so they do not throw bare `Error`s, and its message is what
+ * the command prints.
+ */
+export class BackupError extends AppError {
+  constructor(message = 'The database backup failed') {
+    super(message, 'BACKUP_FAILED', 500)
+  }
+}

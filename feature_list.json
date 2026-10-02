@@ -2335,6 +2335,90 @@
         }
       ],
       "status": "done"
+    },
+    {
+      "id": 55,
+      "name": "db-backup",
+      "title": "Copia de seguridad de la base de datos en Google Drive, a mano con un comando, y poder restaurarla",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-02) a partir del cabo suelto 6 de docs/roadmap.md y de la respuesta del humano de ese día: «me parece bien, la hacemos en google drive, creo una nueva carpeta con el nombre: backup-control-gastos; lo hacemos a mano con el comando recomendado» (el leader le había propuesto `pnpm run db:backup`). Restaurar y probar la restauración lo propuso el leader en el mismo mensaje y el humano no lo objetó. El nombre de la feature es propuesta del leader. El humano lo revisa en la puerta del spec.",
+        "que_quiero": "Un comando que lanzo yo cuando quiero, `pnpm run db:backup`, que hace una copia completa de mi base de datos y la sube a una carpeta de Google Drive que creo yo, llamada backup-control-gastos. Y el comando contrario, para restaurar la base desde una de esas copias.",
+        "por_que": "Hoy la base de datos no tiene ninguna copia. Si se pierde, los movimientos se pueden reconstruir reimportando los archivos de Drive, pero no lo que he puesto yo a mano: categorías y sus reglas, alias de las cuentas, movimientos confirmados, traspasos marcados a mano y notas. Y si se rompe el disco de mi ordenador se pierden a la vez la base y cualquier copia que estuviera en él: por eso la copia va a Drive.",
+        "como_se_que_esta_bien": [
+          "Cuando lanzo `pnpm run db:backup`, aparece en la carpeta backup-control-gastos de Drive un archivo nuevo con la fecha y la hora en el nombre, y el comando me dice su nombre y su tamaño.",
+          "Lanzar el comando otra vez crea otro archivo y no borra ni sustituye los anteriores.",
+          "Si la carpeta de Drive no existe o no se puede subir, el comando falla con un mensaje claro y no dice que la copia está hecha.",
+          "Puedo restaurar una copia en una base de datos vacía y quedan las mismas tablas con el mismo número de filas que cuando se hizo la copia.",
+          "El comando de restaurar no pisa mi base de datos de verdad sin que yo lo confirme de forma explícita.",
+          "Hay un documento que explica paso a paso cómo hacer la copia y cómo restaurarla."
+        ],
+        "que_no_quiero": [
+          "No quiero que la copia se haga sola: ni al importar ni con ningún temporizador.",
+          "No quiero que la copia se quede guardada en mi ordenador ni dentro del repositorio.",
+          "No quiero ninguna ruta nueva en la API para esto: son comandos de terminal.",
+          "No quiero que ningún test ni ningún agente restaure sobre mi base de datos de verdad."
+        ],
+        "delego_en_agente": [
+          "Cómo encuentra el backend la carpeta backup-control-gastos: por su nombre o por un identificador en la configuración. Yo la creo a mano en Drive.",
+          "El formato del archivo de la copia y cómo se hace (la base corre en Docker, y el contenedor trae pg_dump).",
+          "Cómo se elige qué copia restaurar y a qué base de datos, y cómo se pide la confirmación.",
+          "Si se borran alguna vez las copias antiguas; yo no he pedido que se borren.",
+          "Cómo se prueba todo esto en la suite sin tocar mi Drive ni mi base de datos de verdad."
+        ]
+      },
+      "acceptance": [],
+      "checks": [
+        {
+          "descripcion": "Cuando lanzo `pnpm run db:backup`, aparece en la carpeta backup-control-gastos de Drive un archivo nuevo con la fecha y la hora en el nombre, y el comando me dice su nombre y su tamaño.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.service.test.ts -t \"uploads a new dump file named with the local date and time into the configured folder\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cuando lanzo `pnpm run db:backup`, aparece en la carpeta backup-control-gastos de Drive un archivo nuevo con la fecha y la hora en el nombre, y el comando me dice su nombre y su tamaño.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.service.test.ts -t \"reports the name and the size of the uploaded copy and the name of the folder\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lanzar el comando otra vez crea otro archivo y no borra ni sustituye los anteriores.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.service.test.ts -t \"adds a second file on a second backup and leaves the first one as it was\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lanzar el comando otra vez crea otro archivo y no borra ni sustituye los anteriores.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.service.test.ts -t \"calls nothing of Drive that deletes, moves or renames a file\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Si la carpeta de Drive no existe o no se puede subir, el comando falla con un mensaje claro y no dice que la copia está hecha.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.service.test.ts -t \"fails without claiming a copy when the folder\" | grep -E \"Tests +2 passed\""
+        },
+        {
+          "descripcion": "Si la carpeta de Drive no existe o no se puede subir, el comando falla con un mensaje claro y no dice que la copia está hecha.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.service.test.ts -t \"fails without claiming a copy when the upload fails\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Puedo restaurar una copia en una base de datos vacía y quedan las mismas tablas con el mismo número de filas que cuando se hizo la copia.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.service.test.ts -t \"restores a copy into an empty database with the same tables and the same row counts\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "El comando de restaurar no pisa mi base de datos de verdad sin que yo lo confirme de forma explícita.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.service.test.ts -t \"leaves a database that has tables untouched unless its name is typed\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "El comando de restaurar no pisa mi base de datos de verdad sin que yo lo confirme de forma explícita.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.confirm.test.ts -t \"refuses to ask when the input is not a terminal\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Al confirmar, la base que había no se borra: queda con otro nombre.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.service.test.ts -t \"keeps the previous database under another name when the overwrite is confirmed\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Hay un documento que explica paso a paso cómo hacer la copia y cómo restaurarla.",
+          "comando": "pnpm exec vitest run src/modules/backup/backup.docs.test.ts -t \"documents step by step how to make a copy and how to restore it\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) De lo que no quiero: la copia no se hace sola ni tiene ruta en la API, y no se queda en mi ordenador.",
+          "comando": "pnpm exec vitest run src/architecture.test.ts -t \"keeps the backup o\" | grep -E \"Tests +2 passed\""
+        }
+      ],
+      "sdd": true,
+      "status": "done"
     }
   ]
 }

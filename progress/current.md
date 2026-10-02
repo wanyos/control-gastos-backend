@@ -25,14 +25,14 @@
 
 **Nivel de consumo:** medio _(bajo / medio / alto; en alto, qué fases usan `fable`)_
 
-_Ninguna._ Última cerrada: **F54 `unparsed-row-review`** (2026-10-02) →
-[resumen](summaries/unparsed-row-review.md). Antes, el mismo día: F51 (`d8c0a6d`),
-F52 (`55d574d`) y F53 (`24784b7`).
+_Ninguna._ Última cerrada: **F55 `db-backup`** (2026-10-02) →
+[resumen](summaries/db-backup.md). Antes, el mismo día: F51 (`d8c0a6d`), F52
+(`55d574d`), F53 (`24784b7`) y F54 (`44797d6`); el cabo 10 quedó como riesgo
+aceptado por el humano, sin código.
 
-**Siguiente (acordado con el humano el 2026-10-02):** los cabos sueltos 10, 6 y
-22 de [`docs/roadmap.md`](../docs/roadmap.md), en ese orden y cada uno como una
-feature; luego el 24. El cabo 20 queda aparcado hasta que el humano decida qué
-quiere ver.
+**Siguiente (acordado con el humano el 2026-10-02):** el cabo suelto 22 de
+[`docs/roadmap.md`](../docs/roadmap.md) (sustituir `exceljs`) y luego el 24. El
+cabo 20 queda aparcado hasta que el humano decida qué quiere ver.
 
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:

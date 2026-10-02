@@ -15,6 +15,8 @@ export interface AppConfig {
   logLevel: LogLevel
   drive: DriveCredentials
   driveRootFolderId: string
+  /** Only `pnpm run db:backup` and `pnpm run db:restore` need it (feature 55). */
+  driveBackupFolderId?: string
 }
 
 const defaults = {
@@ -119,6 +121,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     }
   }
 
+  // Optional: the server and the suite do not depend on that folder existing.
+  const rawDriveBackupFolderId = env.GOOGLE_DRIVE_BACKUP_FOLDER_ID
+  let driveBackupFolderId: string | undefined
+  if (rawDriveBackupFolderId !== undefined) {
+    driveBackupFolderId = normalizeDriveFolderId(rawDriveBackupFolderId)
+    if (driveBackupFolderId === '' || /[\s/]/.test(driveBackupFolderId)) {
+      problems.push(
+        `GOOGLE_DRIVE_BACKUP_FOLDER_ID must be a bare Drive folder id or a folder URL (not the folder name), got '${rawDriveBackupFolderId}'; remove the line if the backup commands are not used`,
+      )
+    }
+  }
+
   // Each `|| !x` is redundant at runtime (already a problem) but narrows the type.
   if (
     problems.length > 0 ||
@@ -144,6 +158,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       refreshToken: driveRefreshToken,
     },
     driveRootFolderId,
+    ...(driveBackupFolderId === undefined ? {} : { driveBackupFolderId }),
   }
 }
 

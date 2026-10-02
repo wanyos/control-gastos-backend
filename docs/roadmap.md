@@ -102,7 +102,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 
 | # | Etapa | Estado | Features |
 |---|---|---|---|
-| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2, F14, **F33**, **F34**, **F51**, **F52** |
+| E0 | **Cimientos** — arranque, config, errores, tests, lint | ✅ | F1, F2, F14, **F33**, **F34**, **F51**, **F52**, **F55** |
 | E1 | **El remoto** — hablar con Google Drive y organizarlo | ✅ | F3, F4 |
 | E2 | **Traer los ficheros** — detectar pendientes y descargarlos | ✅ (deuda saldada por la F12) | F5 |
 | E3 | **Dónde viven los datos** — el modelo y su migración | ✅ | F8, F9 |
@@ -139,6 +139,13 @@ Prettier, config de entorno validada al arrancar y errores centralizados
   importación ya no deja copia en el disco y se retiran las ocho rutas que solo
   trabajaban con ella (lista en `docs/api-contract.md` §Rutas retiradas). Cierra los
   cabos 14 y 16. ADR-032.
+- **F55 `db-backup`** (2026-10-02) — la base de datos tiene copia: `pnpm run db:backup`
+  sube una copia completa a la carpeta `backup-control-gastos` de Drive y
+  `pnpm run db:restore` la restaura en la base que se le diga. Se lanzan a mano, no
+  hay ruta de la API y la copia no pasa por el disco. Cierra el cabo 6. ADR-034.
+  Pasos: [`database-backup.md`](./database-backup.md). Probada solo con un Drive
+  simulado y bases de pruebas: la prueba con tu Drive y tu base está en §Deberes
+  tuyos pendientes.
 - **Tooling al día (2026-08-13, tarea directa):** TypeScript **7**, pnpm
   **11.21.0** y el linter cambiado de ESLint a **oxlint**, porque
   `typescript-eslint` tenía TypeScript congelado en 6.0.3. La regla que salió de
@@ -248,7 +255,8 @@ Decisiones en el **ADR-015** de [`docs/architecture.md`](./architecture.md).
 > ⚠️ **Límite que sigue vivo:** `daySequence` numera **solo las filas parseadas**
 > (ADR-013). Si algún día arreglas un parser y reimportas un fichero que tenía
 > líneas raras, ese día se renumera y puede aparecer algún movimiento **duplicado
-> visible** de ese día — nunca una pérdida silenciosa. Sin dueño todavía.
+> visible** de ese día — nunca una pérdida silenciosa. Riesgo aceptado por el humano el
+> 2026-10-02 (cabo suelto 10).
 
 **Orden acordado (2026-08-11):** F9 → F11 → F10 → F12. Las cuatro ✅.
 
@@ -438,13 +446,13 @@ tiene etapa, es que se va a perder.
 | ~~14~~ | ~~**Los dos inquilinos de `var/drive-read/` no saben volver a Drive.** Esa carpeta es una **caché**: la importación no la necesita (descarga a memoria, escribe la copia y parsea el buffer), pero **el ensayo** (`POST /api/parser/<banco>`) y **la reimportación local** (`POST /api/import/local`, F25) leen SOLO de ella. En producción la caché es efímera —se pierde en cada despliegue— y los dos dejan de funcionar en cuanto no está. El almacén duradero ya existe y es Drive: los ficheros ya importados viven en `procesados/`, que **hoy no lee ningún endpoint**. Anotado el 2026-08-22 a petición del humano, «para que no se me olvide», con la decisión explícita de **no construirlo todavía**: la forma del arreglo depende de cómo se despliegue y de si esas dos rutas tienen sentido en producción~~ | ✅ **cerrado por la F52** (2026-10-02): la carpeta deja de usarse y las rutas que solo leían de ella se retiran (ADR-032). Reimportar un archivo que ya está en `procesados/` es devolverlo a mano a la carpeta del año en Drive |
 | ~~3~~ | ~~Todo lo importado nace `pending_review` y **nada lo pasa a `confirmed`**~~ | ✅ **cerrado por la F37** (2026-09-02): `PATCH /api/movements/:id` cambia `status` en los dos sentidos |
 | ~~4~~ | ~~`src/modules/ingesta/` y `/api/ingesta/*` están en español~~ | ✅ **cerrado por la F12** (2026-08-12): `src/modules/ingestion/` y `/api/ingestion/*`; las rutas viejas responden 404 |
-| 10 | `daySequence` numera solo las filas parseadas: reimportar un fichero tras arreglar su parser puede renumerar ese día y dejar duplicados **visibles** | sin dueño |
+| 10 | `daySequence` numera solo las filas parseadas: reimportar un fichero tras arreglar su parser puede renumerar ese día y dejar duplicados **visibles** | **riesgo aceptado por el humano el 2026-10-02**, sin tocar código: «es un riesgo mínimo, quizás para más adelante si veo que es más de lo que pienso». Solo pasa si coinciden una fila que el parser no pudo leer, un arreglo del parser y la reimportación de ese archivo. Se reabre si llega a pasar |
 | ~~15~~ | ~~**`bankinter.routes.test.ts` es el único banco que NO comprueba que su ruta esté registrada en la app real.** Encontrado en la **F33** (2026-08-26) al arreglar el test hermano de Trade Republic~~ | ✅ **cerrado el 2026-09-11** (commit 83dc791, sin feature): el test comprueba con `hasRoute` que `POST /api/parser/bankinter` está registrada en la app real, como los otros bancos |
 | ~~16~~ | ~~**El valor por defecto que apunta a `var/` vive en seis módulos de rutas.** Mientras exista, un test que olvide inyectar directorios cae en los datos reales del humano — que es exactamente lo que pasó y originó la F33. La red que puso la F33 lo **caza**, pero no lo **impide**. Pasar esos valores por defecto a inyectarse desde `src/app.ts` haría que un test no pudiera caer en `var/` ni queriendo. Es un cambio de firma en seis módulos~~ | ✅ **cerrado por la F52** (2026-10-02): ya no existe ningún valor por defecto que apunte a `var/`; las rutas que lo tenían se retiraron y un guardián de `src/architecture.test.ts` pone la suite roja si el código vuelve a nombrar la carpeta (ADR-032) |
 | ~~18~~ | ~~`./init.sh` no ejecuta `format:check`~~ | ✅ **cerrado el 2026-09-01**, y era peor de lo escrito: **tampoco ejecutaba el linter**. Ahora hay un **paso 5, «Lint y formato»**, que corre `pnpm run lint` y `pnpm run format:check` y **pone la pasada en rojo** — comprobado metiendo un archivo mal formateado a propósito, no deducido. Va después de la salida del modo `--fast` para no cargar el ciclo corto del hook. ⚠️ **Y la última frase de este cabo era falsa**: `scripts/bankinter-pdf-a-xlsx.mjs` **no** incumple el estándar en `HEAD` (`prettier --check` lo da por bueno tal y como está commiteado; le quedan 5 líneas de más de 100 columnas, pero son cadenas y comentarios que el formateador no puede partir, y el formateador es quien hace cumplir la regla). Lo que fallaba era **la copia del árbol de trabajo, con finales de línea CRLF** — exactamente el caso que `.gitattributes` describe en su propio comentario. Se normalizó al vuelo y el commit no cambia ni un byte de ese archivo |
 | ~~17~~ | ~~**Los contadores de `POST /api/import` no distinguen anclaje ni relleno en el total del run.** La F31 añadió `anchored` y `balancesFilled` por archivo, pero `ImportRunResult` no los agrega~~ | ✅ **cerrado por la F45** (2026-09-11), con el cabo 13: `anchoredCount` (archivos con `anchored: true`) y `balanceFilledCount` (suma de `balancesFilled`) en la raíz de las dos vías, y la nota del contrato que decía que no había total se sustituyó por su descripción |
 | ~~5~~ | ~~El histórico del Excel de años~~ | ✅ **descartado (2026-08-22, reafirmado el 2026-08-23)**, ver `../../docs/ideas.md` §6. El vacío se llena con extractos de los bancos de varios años atrás, no con el Excel: una sola fuente, sin solape ni duplicados incasables |
-| 6 | La base de datos no tiene copia de seguridad; el crudo de Drive te salva los movimientos, **no** las categorías, alias ni `initialBalance` | sin dueño |
+| ~~6~~ | ~~La base de datos no tiene copia de seguridad; el crudo de Drive te salva los movimientos, **no** las categorías, alias ni `initialBalance`~~ | ✅ **cerrado por la F55** (2026-10-02): `pnpm run db:backup` sube una copia completa de la base a la carpeta `backup-control-gastos` de Drive y `pnpm run db:restore` la restaura (ADR-034, pasos en [`database-backup.md`](./database-backup.md)). La copia se hace a mano, cuando tú la lanzas; el `.env` no va en ella. Falta tu prueba con el Drive y la base de verdad: §Deberes tuyos pendientes |
 | ~~19~~ | ~~**`src/modules/net-worth/` no está en la lista de árbol esperado de `src/architecture.test.ts`.** Encontrado por el reviewer de la F42 (2026-09-06)~~ | ✅ **cerrado el 2026-09-11** (commit 83dc791, sin feature): los cinco archivos del módulo están en la lista de árbol esperado |
 | 20 | **`GET /api/net-worth` solo sabe decir el patrimonio de hoy.** No acepta fecha (`?asOf=`) ni devuelve una serie histórica, y las `Valuation`/`SavingsSnapshot` que necesitaría ya están en la base de datos. Eso deja fuera dos bloques de la pantalla de Patrimonio del frontend: **la cascada** (de qué se compone el cambio) y **la evolución** (cómo se movió el total mes a mes). Anotado el 2026-09-11 al decidir por dónde arranca el frontend (E8), con la decisión explícita de **no construirlo todavía**: la forma del parámetro y de la respuesta depende de qué necesite exactamente la vista | **sin abrir, hasta que el frontend lo pida** |
 | ~~21~~ | ~~**Dos archivos de producto de la misma pasada pueden pisarse la foto sin que nada avise.** El producto se identifica por `(bank, name)` y la foto por `(productId, date)`, las dos claves salen del **contenido** del archivo, y el importador no comprueba si dos archivos de la misma pasada escriben la misma. Pasó en real el 2026-09-12: dos `.json` de MyInvestor llevaban el mismo `name`, el segundo sobrescribió la valoración del primero y los **dos** salieron `status: "imported"` sumando a `importedProductCount`; el dato del primero se perdió y el informe salió en verde ([prueba real](../progress/explorations/prueba-real-importacion-2026-09-12.md)). El contrato ya rechaza un `name` que existe con **otro** `type`; esto es el hueco de al lado. Hay que decidir si el aviso va en el informe del run o si es un rechazo. Y hay un agujero hermano: **no existe endpoint para borrar un producto ni una valoración**, así que deshacerlo exigió tocar la base de datos a mano~~ | ✅ **cerrado por la F53** (2026-10-02): dentro de una misma llamada a `POST /api/import`, el segundo archivo de producto que declara el mismo banco, `name` y `date` que otro ya guardado se rechaza con `DUPLICATE_PRODUCT_FILE`: no se guarda nada de él, no se mueve a `procesados/` y el informe nombra el otro archivo (ADR-033). Entre importaciones sigue sustituyendo. Borrar un producto o un valor desde la API sigue abierto: es el cabo 24 |
@@ -460,6 +468,11 @@ tiene etapa, es que se va a perder.
 
 ## Deberes tuyos pendientes (no son código)
 
+- **Lo que queda a tu cargo con las copias** (F55): borrar a mano en Drive las
+  copias antiguas que sobren y, en el contenedor, las bases
+  `gastos_before_restore_…` que deje cada restauración sobre `gastos`. El `.env` no
+  va en la copia: si se rompe el disco, las credenciales de Drive hay que volver a
+  sacarlas.
 - **La prueba real de la F53 `product-file-collision`** (2026-10-02). Solo está
   probada con archivos inventados. Sube a Drive dos archivos de producto del
   mismo banco con el mismo `name` y la misma `date` e importa: el primero tiene
