@@ -1149,6 +1149,92 @@ describe('movement routes (read-only) and database indexes', () => {
     expect(two.pagination).toEqual({ page: 2, pageSize: 2, total: 3, totalPages: 2 })
   })
 
+  // `daySequence` is the position inside the day AND the account, so two accounts
+  // can hold the same (bookingDate, daySequence). The listing must still be a
+  // total order, or a page boundary falling on the tie repeats one row and
+  // never shows the other.
+  it('breaks a (bookingDate, daySequence) tie across accounts by id descending', async () => {
+    const firstAccount = await createAccount()
+    const secondAccount = await createAccount()
+    const token = `tie${Date.now()}${Math.floor(Math.random() * 1_000_000)}`
+    const common = { bookingDate: '2026-06-17', daySequence: 1, description: `BIZUM ${token}` }
+
+    const lowerId = await seedMovement({ ...common, accountId: firstAccount.id, amount: '41.83' })
+    const higherId = await seedMovement({ ...common, accountId: secondAccount.id, amount: '27.19' })
+    expect(higherId.id).toBeGreaterThan(lowerId.id)
+
+    const pageOne = await app.inject({
+      method: 'GET',
+      url: listUrl({ q: token, page: 1, pageSize: 1 }),
+    })
+    const pageTwo = await app.inject({
+      method: 'GET',
+      url: listUrl({ q: token, page: 2, pageSize: 1 }),
+    })
+
+    const one = pageOne.json<MovementListResponse>()
+    const two = pageTwo.json<MovementListResponse>()
+    expect(one.pagination).toEqual({ page: 1, pageSize: 1, total: 2, totalPages: 2 })
+    expect(one.movements.map((movement) => movement.id)).toEqual([higherId.id])
+    expect(two.movements.map((movement) => movement.id)).toEqual([lowerId.id])
+  })
+
+  it('returns every movement exactly once when walking all the pages over several ties', async () => {
+    const accounts = [await createAccount(), await createAccount(), await createAccount()]
+    const token = `walk${Date.now()}${Math.floor(Math.random() * 1_000_000)}`
+    const created: { id: number; bookingDate: string; daySequence: number | null }[] = []
+
+    // Every (bookingDate, daySequence) below exists once per account: six ties
+    // of three rows each, the last two with no daySequence at all.
+    for (const bookingDate of ['2026-06-18', '2026-06-19']) {
+      for (const daySequence of [1, 2, null]) {
+        for (const account of accounts) {
+          const movement = await seedMovement({
+            accountId: account.id,
+            bookingDate,
+            daySequence,
+            description: `RECIBO ${token} ${created.length}`,
+            amount: `${12 + created.length}.47`,
+          })
+          created.push({ id: movement.id, bookingDate, daySequence })
+        }
+      }
+    }
+
+    const expectedOrder = [...created]
+      .sort((a, b) => {
+        if (a.bookingDate !== b.bookingDate) return a.bookingDate < b.bookingDate ? 1 : -1
+        if (a.daySequence !== b.daySequence) {
+          if (a.daySequence === null) return 1
+          if (b.daySequence === null) return -1
+          return b.daySequence - a.daySequence
+        }
+        return b.id - a.id
+      })
+      .map((movement) => movement.id)
+
+    for (const pageSize of [1, 4, 7]) {
+      const received: number[] = []
+      const totalPages = Math.ceil(created.length / pageSize)
+      for (let page = 1; page <= totalPages; page += 1) {
+        const response = await app.inject({
+          method: 'GET',
+          url: listUrl({ q: token, page, pageSize }),
+        })
+        expect(response.statusCode).toBe(200)
+        const body = response.json<MovementListResponse>()
+        expect(body.pagination).toEqual({ page, pageSize, total: created.length, totalPages })
+        received.push(...body.movements.map((movement) => movement.id))
+      }
+
+      expect(new Set(received).size).toBe(received.length)
+      expect([...received].sort((a, b) => a - b)).toEqual(
+        created.map((movement) => movement.id).sort((a, b) => a - b),
+      )
+      expect(received).toEqual(expectedOrder)
+    }
+  })
+
   it('answers without any filter, paginated with the defaults (page 1, 50 per page)', async () => {
     const account = await createAccount()
     await seedMovement({ accountId: account.id })

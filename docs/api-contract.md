@@ -673,7 +673,17 @@ Es el mismo objeto que viaja en el campo `categorization` del informe de
 ### `GET /api/movements`
 
 Lista los movimientos **del más reciente al más antiguo** (`bookingDate DESC,
-daySequence DESC`), cada uno con su `account` y su `category` embebidos.
+daySequence DESC, id DESC`; un `daySequence` nulo va detrás de los que lo
+tienen, dentro de su fecha), cada uno con su `account` y su `category` embebidos.
+
+El `id` es el **último criterio** y hace que el orden no tenga empates:
+`daySequence` es la posición dentro del día **y de la cuenta**, así que dos
+movimientos de cuentas distintas pueden compartir fecha y `daySequence`; entre
+ellos sale primero el de `id` mayor. **Garantía:** mientras no cambien los datos,
+recorrer todas las páginas de un mismo filtro, con cualquier `pageSize`, devuelve
+cada movimiento **exactamente una vez** (ninguno repetido, ninguno sin salir).
+Desde el 2026-10-04; hasta entonces el orden acababa en `daySequence` y un empate
+en la frontera entre dos páginas podía repetir un movimiento y dejar otro fuera.
 
 Desde la feature "movements-filters-and-totals" (2026-09-02) la respuesta viene
 **siempre paginada** y admite **filtros combinables** por querystring; además de

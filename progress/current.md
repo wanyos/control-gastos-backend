@@ -35,6 +35,14 @@ aceptado por el humano, sin código.
 `exceljs` falle, los dos por decisión del humano; el 20 espera a que decida qué
 quiere ver. El 24 (borrar un producto o un valor desde la API) queda aparcado por el humano hasta que sea un problema. No queda ningún cabo en el que trabajar ahora.
 
+**Arreglo sin feature, 2026-10-04:** el orden de `GET /api/movements` acaba en `id DESC`
+y recorrer las páginas devuelve cada movimiento una sola vez (encargo
+`../docs/handoff-paginacion-estable.md`, corrige la F36). El humano hizo la prueba
+con sus datos reales ese día y salió bien. Detalle:
+[implementación](implementations/movements-stable-order.md) y
+[revisión](reviews/movements-stable-order.md). Dejó abierto el cabo 25 de
+`docs/roadmap.md`.
+
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
 

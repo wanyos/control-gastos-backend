@@ -210,6 +210,19 @@ function searchTerm(q: string | undefined): string | undefined {
 }
 
 /**
+ * THE order of every list of movements this module returns: most recent first,
+ * ending in `id` so it is a total order. `daySequence` is the position inside
+ * the day AND the account, so two accounts can share `(bookingDate, daySequence)`;
+ * without the last key a page boundary falling on such a tie repeats one row and
+ * never returns the other.
+ */
+const movementListOrder: Prisma.MovementOrderByWithRelationInput[] = [
+  { bookingDate: 'desc' },
+  { daySequence: { sort: 'desc', nulls: 'last' } },
+  { id: 'desc' },
+]
+
+/**
  * Read-only listing: movements only enter through the importer, so this module
  * has no create/delete. Most recent first, with the account and the category
  * embedded (R13). Since feature 36 the listing is filtered, paginated and
@@ -269,7 +282,7 @@ export async function listMovements(
   const [pageRows, totalsRows] = await Promise.all([
     prisma.movement.findMany({
       where,
-      orderBy: [{ bookingDate: 'desc' }, { daySequence: { sort: 'desc', nulls: 'last' } }],
+      orderBy: movementListOrder,
       include: { account: true, category: true },
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
@@ -404,7 +417,7 @@ export async function bulkUpdateMovements(
 
     const movements = await tx.movement.findMany({
       where: { id: { in: ids } },
-      orderBy: [{ bookingDate: 'desc' }, { daySequence: { sort: 'desc', nulls: 'last' } }],
+      orderBy: movementListOrder,
       include: { account: true, category: true },
     })
 
