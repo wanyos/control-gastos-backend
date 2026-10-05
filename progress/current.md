@@ -33,11 +33,12 @@ aceptado por el humano, sin código.
 **Cabos sueltos tras el 2026-10-02:** cerrados el 6, 14, 16, 21 y 23 (F51 a F55,
 última en `8e78654`); el 10 es riesgo aceptado y el 22 queda aparcado hasta que
 `exceljs` falle, los dos por decisión del humano; el 20 espera a que decida qué
-quiere ver. El 24 (borrar un producto o un valor desde la API) queda aparcado por el humano hasta que sea un problema. No queda ningún cabo en el que trabajar ahora.
+quiere ver. El 24 (borrar un producto o un valor desde la API) queda aparcado por el humano hasta que sea un problema. El 25 se abrió el 2026-10-04 y espera decisión del humano.
 
 **Arreglo sin feature, 2026-10-04:** el orden de `GET /api/movements` acaba en `id DESC`
-y recorrer las páginas devuelve cada movimiento una sola vez (encargo
-`../docs/handoff-paginacion-estable.md`, corrige la F36). El humano hizo la prueba
+y recorrer las páginas devuelve cada movimiento una sola vez (commit `f10fe8c`,
+corrige la F36; el documento del encargo, `handoff-paginacion-estable.md` del
+workspace, ya está borrado). El humano hizo la prueba
 con sus datos reales ese día y salió bien. Detalle:
 [implementación](implementations/movements-stable-order.md) y
 [revisión](reviews/movements-stable-order.md). Dejó abierto el cabo 25 de
