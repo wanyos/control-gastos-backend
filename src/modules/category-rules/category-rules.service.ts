@@ -164,10 +164,15 @@ export function serializeCategoryRule(rule: CategoryRuleWithCategory): Serialize
  * never be overwritten (same insurance as the `transferId: null` of F40), and
  * `data` carries ONLY `categoryId` (R14). Idempotency is free (R11): an
  * assigned movement stops being eligible in the next read.
+ *
+ * `categorizedMovements` (feature 56) lists exactly the movements whose write
+ * happened, in the ascending id order of the read; on a failure half way it
+ * keeps what was written before, like `categorized`.
  */
 export async function applyCategoryRules(prisma: AppPrismaClient): Promise<CategorizationResult> {
   const result: CategorizationResult = {
     categorized: 0,
+    categorizedMovements: [],
     conflictCount: 0,
     conflicts: [],
     unmatched: 0,
@@ -185,7 +190,7 @@ export async function applyCategoryRules(prisma: AppPrismaClient): Promise<Categ
         status: 'pending_review',
         type: { in: ['expense', 'income'] },
       },
-      select: { id: true, type: true, description: true, bookingDate: true },
+      select: { id: true, type: true, description: true, bookingDate: true, amount: true },
       orderBy: { id: 'asc' },
     })
 
@@ -218,13 +223,27 @@ export async function applyCategoryRules(prisma: AppPrismaClient): Promise<Categ
         continue
       }
 
-      const categoryId = matches[0]?.categoryId
-      if (categoryId === undefined) continue
+      const winner = matches[0]
+      if (winner === undefined) continue
       const { count } = await prisma.movement.updateMany({
         where: { id: movement.id, categoryId: null, status: 'pending_review' },
-        data: { categoryId },
+        data: { categoryId: winner.categoryId },
       })
       result.categorized += count
+      // Listed only when the write happened: a movement another request changed
+      // between the read and the write is neither counted nor listed.
+      if (count === 1) {
+        result.categorizedMovements.push({
+          movementId: movement.id,
+          description: movement.description,
+          bookingDate: movement.bookingDate.toISOString().slice(0, 10),
+          amount: movement.amount.toFixed(2),
+          type: movement.type,
+          categoryId: winner.categoryId,
+          categoryName: winner.category.name,
+          rules: matches.map((rule) => ({ ruleId: rule.id, matchText: rule.matchText })),
+        })
+      }
     }
 
     result.conflictCount = result.conflicts.length

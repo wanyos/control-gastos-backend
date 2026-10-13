@@ -2419,6 +2419,79 @@
       ],
       "sdd": true,
       "status": "done"
+    },
+    {
+      "id": 56,
+      "name": "categorized-movements-list",
+      "title": "Que aplicar las reglas diga qué movimientos categorizó, no solo cuántos",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-12), transcrito de ../docs/handoff-reglas-aplicadas.md (commit 42b769a del workspace), el encargo que el humano acordó ese día en una sesión del frontend al preparar su feature 30. Las frases entre «» son suyas, citadas de ese documento. El nombre de la feature es propuesta del leader. No arranca sin el visto bueno del humano.",
+        "que_quiero": "«Que después de aplicar las reglas pueda ver qué movimientos se han categorizado, no solo cuántos». Que la respuesta de POST /api/category-rules/apply traiga, además de lo que ya trae, la lista de los movimientos a los que esa pasada les escribió categoría, cada uno con su identificador, su concepto, su fecha, su importe, su tipo (ingreso o gasto) y la categoría que se le puso (identificador y nombre).",
+        "por_que": "Aplicar las reglas cambia cientos de movimientos de golpe y no se deshace desde la aplicación; si no veo cuáles tocó, no puedo comprobar que mis reglas hacen lo que creía. Pulsé Apply rules, fui a Review y «no veo que haya cambiado nada», aunque los pendientes sin categoría habían pasado de 1.373 a 1.011. El frontend podría averiguarlo comparando antes y después, pero serían 15 o 16 peticiones en vez de una y dejaría un caso sin detectar; el backend es quien escribe cada categoría y ya sabe cuáles son.",
+        "como_se_que_esta_bien": [
+          "Una pasada que categoriza N movimientos devuelve una lista de N, tantos como diga categorized.",
+          "Cada movimiento de la lista trae su identificador, su concepto, su fecha, su importe, su tipo y la categoría que se le puso, con identificador y nombre.",
+          "Cada movimiento de la lista tiene, al leerlo después con GET /api/movements, la categoría que dice la lista.",
+          "Una segunda pasada seguida devuelve categorized: 0 y la lista vacía.",
+          "docs/api-contract.md describe el campo nuevo en POST /api/category-rules/apply, con su ejemplo, y dice si aparece también en el informe de POST /api/import."
+        ],
+        "que_no_quiero": [
+          "Nada más cambia: lo que la pasada escribe, a quién toca (pendientes, sin categoría, de tipo ingreso o gasto) y que sea idempotente quedan como están.",
+          "No quiero una lista cortada en silencio: si se acota, que la respuesta lo diga y dé la manera de pedir el resto.",
+          "Ver qué categorizan las reglas al importar queda fuera, para más adelante."
+        ],
+        "delego_en_agente": [
+          "El nombre y la forma exacta del campo; el frontend se adapta al contrato.",
+          "Si el campo nuevo aparece también en el campo categorization del informe de POST /api/import o solo en apply; lo que se decida, escrito en docs/api-contract.md.",
+          "Si cada movimiento trae además la regla que casó (identificador y texto): sería útil, pero no imprescindible.",
+          "Si la lista va completa o acotada."
+        ]
+      },
+      "acceptance": [
+        "[de «qué quiero» / decisión del leader: el nombre] La respuesta 200 de POST /api/category-rules/apply incluye el campo categorizedMovements: un array con un elemento por cada movimiento al que esa pasada le escribió categoryId. Los campos que ya había (categorized, conflictCount, conflicts, unmatched, error) no cambian.",
+        "[de «cómo sé» 1] categorizedMovements tiene exactamente tantos elementos como diga categorized. Un movimiento cuya escritura no llegó a hacerse (otra petición lo cambió entre la lectura y la escritura) no suma a categorized ni sale en la lista.",
+        "[de «cómo sé» 2 / decisión del leader: los nombres de los campos] Cada elemento trae movementId, description, bookingDate (YYYY-MM-DD), amount (string decimal positivo, como en GET /api/movements), type (income o expense), categoryId y categoryName. movementId, description y bookingDate se llaman igual que en cada elemento de conflicts.",
+        "[decisión del leader, del «sería útil» del encargo] Cada elemento trae además rules: un array con las reglas que casaron, cada una con ruleId y matchText. Puede haber más de una, porque dos reglas de la misma categoría no chocan.",
+        "[de «cómo sé» 3] El categoryId de cada elemento es el que devuelve después GET /api/movements para ese movimiento.",
+        "[de «cómo sé» 4] Una segunda pasada seguida responde categorized: 0 y categorizedMovements: [].",
+        "[decisión del leader] La lista va completa, sin acotar ni paginar, ordenada por id de movimiento ascendente. El mayor caso visto fue de 362 movimientos; cada elemento son unos 200 bytes.",
+        "[decisión del leader] Los movimientos que caen en conflicts o en unmatched no salen en categorizedMovements. El campo está siempre presente, [] si no se escribió ninguno.",
+        "[decisión del leader] Si la pasada falla a mitad (campo error presente), categorizedMovements trae los movimientos que sí se escribieron antes del fallo, y sigue cuadrando con categorized.",
+        "[decisión del leader, delegada en el encargo] El campo aparece también dentro de categorization en el informe de POST /api/import (corregido el 2026-10-13: el leader nombró aquí también POST /api/import/local, que la feature 52 retiró y responde 404): es el mismo objeto y lo produce la misma función, así que el frontend valida una sola forma. No se añade nada más al informe de importación.",
+        "[de «cómo sé» 5] docs/api-contract.md describe categorizedMovements campo a campo en POST /api/category-rules/apply, con el ejemplo actualizado, y en la descripción de categorization de POST /api/import dice de forma explícita que el campo viaja también ahí.",
+        "[de «qué no quiero» 1] Qué movimientos son elegibles, qué se escribe (solo categoryId) y la idempotencia quedan idénticos: los tests que ya existen de la pasada siguen pasando sin cambiar lo que comprueban."
+      ],
+      "checks": [
+        {
+          "descripcion": "Una pasada que categoriza N movimientos devuelve una lista de N, tantos como diga categorized.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.service.test.ts -t \"lists exactly the movements the run categorized, as many as categorized says\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada movimiento de la lista trae su identificador, su concepto, su fecha, su importe, su tipo y la categoría que se le puso, con identificador y nombre.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.routes.test.ts -t \"answers each categorized movement with its id, description, date, amount, type, category and matching rules\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada movimiento de la lista tiene, al leerlo después con GET /api/movements, la categoría que dice la lista.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.routes.test.ts -t \"every listed movement reads back from GET /api/movements with the category the list says\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una segunda pasada seguida devuelve categorized: 0 y la lista vacía.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.routes.test.ts -t \"a second run right after answers categorized 0 and an empty list\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md describe el campo nuevo en POST /api/category-rules/apply, con su ejemplo, y dice si aparece también en el informe de POST /api/import.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.docs.test.ts -t \"api-contract: describes categorizedMovements in apply and in the import report\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) El informe de POST /api/import trae la misma lista dentro de categorization.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"carries the categorized movements list inside categorization\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) De lo que no quiero: nada más cambia. La suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ],
+      "status": "done"
     }
   ]
 }

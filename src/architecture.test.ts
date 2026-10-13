@@ -236,6 +236,9 @@ describe('architecture invariants', () => {
       'modules/backup/backup.confirm.ts',
       'modules/backup/backup.confirm.test.ts',
       'modules/backup/backup.fixture.ts',
+      // Feature 56: the test a `check` of that feature names, which reads
+      // docs/api-contract.md.
+      'modules/category-rules/category-rules.docs.test.ts',
     ]
 
     const missing = expected.filter((file) => !existsSync(join(srcDir, file)))

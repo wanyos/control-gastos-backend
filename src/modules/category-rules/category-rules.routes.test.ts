@@ -1,5 +1,6 @@
 // Feature 43 `auto-categorization`, HTTP layer: the CRUD of the rules
-// (R1, R2, R3, R4, R5) and the on-demand categorization run (R13).
+// (R1, R2, R3, R4, R5) and the on-demand categorization run (R13). Feature 56
+// `categorized-movements-list`: the list of categorized movements in its answer.
 //
 // 🔒 Everything here is synthetic: invented match texts, unique category
 // names and `syntheticIban()` accounts, in the throwaway test database.
@@ -312,5 +313,130 @@ describe('/api/category-rules (F43)', () => {
     expect(body).not.toHaveProperty('error')
     const stored = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
     expect(stored.categoryId).toBe(category.id)
+  })
+
+  // ── Feature 56: the answer says WHICH movements the run categorized ──────
+
+  interface ListedMovement {
+    movementId: number
+    categoryId: number
+  }
+
+  async function createAccount() {
+    const account = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank: 'bankinter', alias: 'Rules route list account' },
+    })
+    createdAccountIds.push(account.id)
+    return account
+  }
+
+  function seedPending(accountId: number, description: string, amount: string, day: string) {
+    const bookingDate = new Date(`${day}T00:00:00.000Z`)
+    return app.prisma.movement.create({
+      data: {
+        accountId,
+        type: 'expense',
+        amount,
+        description,
+        bookingDate,
+        valueDate: bookingDate,
+        daySequence: 1,
+        origin: 'imported',
+      },
+    })
+  }
+
+  it('answers each categorized movement with its id, description, date, amount, type, category and matching rules', async () => {
+    const account = await createAccount()
+    const category = await createCategory('expense')
+    const firstRule = await postRule({ categoryId: category.id, matchText: 'sintetico ferreteria' })
+    const secondRule = await postRule({ categoryId: category.id, matchText: 'ferreteria sur' })
+    const movement = await seedPending(
+      account.id,
+      'COMPRA SINTÉTICO FERRETERÍA SUR 12',
+      '63.8',
+      '2032-05-04',
+    )
+
+    const response = await app.inject({ method: 'POST', url: '/api/category-rules/apply' })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    // The fields the answer already had are all still there.
+    expect(Object.keys(body).sort()).toEqual(
+      ['categorized', 'categorizedMovements', 'conflictCount', 'conflicts', 'unmatched'].sort(),
+    )
+    expect(body.categorized).toBe(1)
+    expect(body.categorizedMovements).toEqual([
+      {
+        movementId: movement.id,
+        description: 'COMPRA SINTÉTICO FERRETERÍA SUR 12',
+        bookingDate: '2032-05-04',
+        amount: '63.80',
+        type: 'expense',
+        categoryId: category.id,
+        categoryName: category.name,
+        rules: [
+          { ruleId: firstRule.json().id, matchText: 'sintetico ferreteria' },
+          { ruleId: secondRule.json().id, matchText: 'ferreteria sur' },
+        ],
+      },
+    ])
+  })
+
+  it('every listed movement reads back from GET /api/movements with the category the list says', async () => {
+    const account = await createAccount()
+    const bakery = await createCategory('expense')
+    const pharmacy = await createCategory('expense')
+    await postRule({ categoryId: bakery.id, matchText: 'sintetico horno' })
+    await postRule({ categoryId: pharmacy.id, matchText: 'sintetico botica' })
+    const seeded = [
+      await seedPending(account.id, 'SINTETICO HORNO DEL BARRIO', '4.35', '2032-05-05'),
+      await seedPending(account.id, 'SINTETICO BOTICA CENTRAL', '18.62', '2032-05-06'),
+      await seedPending(account.id, 'SINTETICO HORNO OTRA VEZ', '6.1', '2032-05-07'),
+    ]
+
+    const applied = await app.inject({ method: 'POST', url: '/api/category-rules/apply' })
+    const listed = applied.json().categorizedMovements as ListedMovement[]
+
+    expect(listed.map((movement) => movement.movementId)).toEqual(seeded.map((row) => row.id))
+    expect(listed).toHaveLength(applied.json().categorized)
+
+    const read = await app.inject({
+      method: 'GET',
+      url: `/api/movements?accountId=${account.id}`,
+    })
+    expect(read.statusCode).toBe(200)
+    const readBack = new Map(
+      (read.json().movements as Array<{ id: number; categoryId: number | null }>).map(
+        (movement) => [movement.id, movement.categoryId],
+      ),
+    )
+    for (const movement of listed) {
+      expect(readBack.get(movement.movementId)).toBe(movement.categoryId)
+    }
+    expect(listed.map((movement) => movement.categoryId)).toEqual([
+      bakery.id,
+      pharmacy.id,
+      bakery.id,
+    ])
+  })
+
+  it('a second run right after answers categorized 0 and an empty list', async () => {
+    const account = await createAccount()
+    const category = await createCategory('expense')
+    await postRule({ categoryId: category.id, matchText: 'sintetico repaso' })
+    await seedPending(account.id, 'SINTETICO REPASO UNO', '12.47', '2032-05-08')
+    await seedPending(account.id, 'SINTETICO REPASO DOS', '7.03', '2032-05-09')
+
+    const first = await app.inject({ method: 'POST', url: '/api/category-rules/apply' })
+    expect(first.json().categorized).toBe(2)
+    expect(first.json().categorizedMovements).toHaveLength(2)
+
+    const second = await app.inject({ method: 'POST', url: '/api/category-rules/apply' })
+
+    expect(second.statusCode).toBe(200)
+    expect(second.json().categorized).toBe(0)
+    expect(second.json().categorizedMovements).toEqual([])
   })
 })

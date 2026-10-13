@@ -1,6 +1,7 @@
 // Feature 43 `auto-categorization`: the matching convention (R6), the
 // categorization run (R7, R8, R9, R10, R11, R14) and the starting-rules
-// seeding (R15, R2).
+// seeding (R15, R2). Feature 56 `categorized-movements-list`: the list of the
+// movements the run categorized.
 //
 // 🔒 Everything here is synthetic: invented descriptions and amounts,
 // `syntheticIban()` accounts and unique category names, in the throwaway
@@ -329,11 +330,174 @@ describe('applyCategoryRules', () => {
 
     expect(result).toEqual({
       categorized: 0,
+      categorizedMovements: [],
       conflictCount: 0,
       conflicts: [],
       unmatched: 0,
       error: { code: 'INTERNAL_SERVER_ERROR', message: 'synthetic categorization failure' },
     })
+  })
+
+  // ── Feature 56: which movements the run categorized, not only how many ──
+
+  /** `app.prisma` with `movement.updateMany` replaced; everything else untouched. */
+  function withUpdateMany(
+    replacement: (
+      args: Parameters<AppPrismaClient['movement']['updateMany']>[0],
+    ) => Promise<{ count: number }>,
+  ): AppPrismaClient {
+    const bound = (holder: object, property: string | symbol): unknown => {
+      const value = Reflect.get(holder, property)
+      return typeof value === 'function' ? value.bind(holder) : value
+    }
+    return new Proxy(app.prisma, {
+      get(target, property) {
+        if (property !== 'movement') return bound(target, property)
+        return new Proxy(target.movement, {
+          get(movementTarget, movementProperty) {
+            return movementProperty === 'updateMany'
+              ? replacement
+              : bound(movementTarget, movementProperty)
+          },
+        })
+      },
+    }) as AppPrismaClient
+  }
+
+  it('lists exactly the movements the run categorized, as many as categorized says', async () => {
+    const account = await createAccount()
+    const groceries = await createCategory('expense')
+    const salary = await createCategory('income')
+    const clashing = await createCategory('expense')
+    const groceriesRule = await createRule(groceries.id, 'sintetico colmado')
+    const secondGroceriesRule = await createRule(groceries.id, 'colmado norte')
+    const salaryRule = await createRule(salary.id, 'sintetico abono')
+    await createRule(groceries.id, 'sintetico pugna')
+    await createRule(clashing.id, 'pugna doble')
+
+    const expense = await seedMovement({
+      accountId: account.id,
+      description: 'COMPRA SINTÉTICO COLMADO NORTE 3',
+      amount: '41.37',
+    })
+    await seedMovement({ accountId: account.id, description: 'PAGO SINTETICO PUGNA DOBLE' })
+    await seedMovement({ accountId: account.id, description: 'CONCEPTO SIN NINGUNA REGLA' })
+    const income = await seedMovement({
+      accountId: account.id,
+      description: 'SINTETICO ABONO MENSUAL',
+      type: 'income',
+      amount: '1503.5',
+    })
+
+    const result = await applyCategoryRules(app.prisma)
+
+    expect(result.categorized).toBe(2)
+    expect(result.categorizedMovements).toHaveLength(result.categorized)
+    // Ascending movement id; the conflict and the unmatched one are not listed.
+    expect(result.categorizedMovements).toEqual([
+      {
+        movementId: expense.id,
+        description: 'COMPRA SINTÉTICO COLMADO NORTE 3',
+        bookingDate: '2032-04-10',
+        amount: '41.37',
+        type: 'expense',
+        categoryId: groceries.id,
+        categoryName: groceries.name,
+        // Two rules of the same category agree: both are listed.
+        rules: [
+          { ruleId: groceriesRule.id, matchText: 'sintetico colmado' },
+          { ruleId: secondGroceriesRule.id, matchText: 'colmado norte' },
+        ],
+      },
+      {
+        movementId: income.id,
+        description: 'SINTETICO ABONO MENSUAL',
+        bookingDate: '2032-04-10',
+        amount: '1503.50',
+        type: 'income',
+        categoryId: salary.id,
+        categoryName: salary.name,
+        rules: [{ ruleId: salaryRule.id, matchText: 'sintetico abono' }],
+      },
+    ])
+    expect(result.conflictCount).toBe(1)
+    expect(result.unmatched).toBe(1)
+  })
+
+  it('answers an empty list when the run writes nothing', async () => {
+    const account = await createAccount()
+    const category = await createCategory('expense')
+    await createRule(category.id, 'sintetico ausente')
+    await seedMovement({ accountId: account.id, description: 'CONCEPTO QUE NO CASA CON NADA' })
+
+    const result = await applyCategoryRules(app.prisma)
+
+    expect(result.categorized).toBe(0)
+    expect(result.categorizedMovements).toEqual([])
+  })
+
+  it('neither counts nor lists a movement another request changed before the write', async () => {
+    const account = await createAccount()
+    const category = await createCategory('expense')
+    await createRule(category.id, 'sintetico carrera')
+    const taken = await seedMovement({
+      accountId: account.id,
+      description: 'SINTETICO CARRERA PERDIDA',
+    })
+    const written = await seedMovement({
+      accountId: account.id,
+      description: 'SINTETICO CARRERA GANADA',
+    })
+    // The human confirms the first movement between the read and its write.
+    const racing = withUpdateMany(async (args) => {
+      if (args.where?.id === taken.id) {
+        await app.prisma.movement.update({ where: { id: taken.id }, data: { status: 'confirmed' } })
+      }
+      return app.prisma.movement.updateMany(args)
+    })
+
+    const result = await applyCategoryRules(racing)
+
+    expect(result.categorized).toBe(1)
+    expect(result.categorizedMovements.map((movement) => movement.movementId)).toEqual([written.id])
+    const stored = await app.prisma.movement.findUniqueOrThrow({ where: { id: taken.id } })
+    expect(stored.categoryId).toBeNull()
+  })
+
+  it('keeps in the list what was written before a failure half way', async () => {
+    const account = await createAccount()
+    const category = await createCategory('expense')
+    await createRule(category.id, 'sintetico tropiezo')
+    const first = await seedMovement({
+      accountId: account.id,
+      description: 'SINTETICO TROPIEZO PRIMERO',
+    })
+    const second = await seedMovement({
+      accountId: account.id,
+      description: 'SINTETICO TROPIEZO SEGUNDO',
+    })
+    const failingSecond = withUpdateMany(async (args) => {
+      if (args.where?.id === second.id) throw new Error('synthetic write failure')
+      return app.prisma.movement.updateMany(args)
+    })
+
+    const result = await applyCategoryRules(failingSecond)
+
+    expect(result.error).toEqual({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'synthetic write failure',
+    })
+    expect(result.categorized).toBe(1)
+    expect(result.categorizedMovements).toHaveLength(1)
+    expect(result.categorizedMovements[0]).toMatchObject({
+      movementId: first.id,
+      categoryId: category.id,
+    })
+    const rows = await app.prisma.movement.findMany({
+      where: { id: { in: [first.id, second.id] } },
+      orderBy: { id: 'asc' },
+    })
+    expect(rows.map((row) => row.categoryId)).toEqual([category.id, null])
   })
 })
 

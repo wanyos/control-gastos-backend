@@ -729,7 +729,13 @@ describe('importPending', () => {
       // looked at" would be indistinguishable from this otherwise. Same for
       // the categorization run (feature 43, R12).
       transfers: { pairsCreated: 0, ambiguousCount: 0, ambiguous: [] },
-      categorization: { categorized: 0, conflictCount: 0, conflicts: [], unmatched: 0 },
+      categorization: {
+        categorized: 0,
+        categorizedMovements: [],
+        conflictCount: 0,
+        conflicts: [],
+        unmatched: 0,
+      },
     })
     expect(get).not.toHaveBeenCalled()
     expect(update).not.toHaveBeenCalled()
@@ -2560,6 +2566,46 @@ describe('importPending: the categorization run of the report (feature 43, R12)'
     expect(stored.transferId).toBeNull()
   })
 
+  it('carries the categorized movements list inside categorization', async () => {
+    // Feature 56: the report carries the very object `applyCategoryRules` returns.
+    const bank = uniqueBank()
+    const { category, rule } = await createRule('sintetico listado importado')
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: syntheticIban(),
+          movements: [
+            movement({ description: 'PAGO SINTETICO LISTADO IMPORTADO 9', amount: -23.46 }),
+            movement({ description: 'OTRO APUNTE SIN REGLA', amount: -5.12, daySequence: 2 }),
+          ],
+        }),
+      ),
+    ]
+
+    const result = await run(parsers, bank)
+
+    expect(result.importedCount).toBe(2)
+    const account = await app.prisma.account.findFirstOrThrow({
+      where: { bank: { equals: bank, mode: 'insensitive' } },
+    })
+    const stored = await app.prisma.movement.findFirstOrThrow({
+      where: { accountId: account.id, categoryId: category.id },
+    })
+    expect(result.categorization.categorized).toBe(1)
+    expect(result.categorization.categorizedMovements).toEqual([
+      {
+        movementId: stored.id,
+        description: 'PAGO SINTETICO LISTADO IMPORTADO 9',
+        bookingDate: '2026-07-24',
+        amount: '23.46',
+        type: 'expense',
+        categoryId: category.id,
+        categoryName: category.name,
+        rules: [{ ruleId: rule.id, matchText: 'sintetico listado importado' }],
+      },
+    ])
+  })
+
   it('reports a categorization failure inside the report, with the import intact (R12)', async () => {
     const bank = uniqueBank()
     const parsers = [fakeAdapter(bank, () => statement(bank, { accountIban: syntheticIban() }))]
@@ -2600,6 +2646,7 @@ describe('importPending: the categorization run of the report (feature 43, R12)'
     expect(result.transfers.error).toBeUndefined()
     expect(result.categorization).toEqual({
       categorized: 0,
+      categorizedMovements: [],
       conflictCount: 0,
       conflicts: [],
       unmatched: 0,

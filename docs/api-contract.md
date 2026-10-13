@@ -636,13 +636,39 @@ sin reimportar nada. Sin body.
 - Si no casa ninguna, el movimiento queda sin categoría, visible, y suma a
   `unmatched`.
 - La pasada es **idempotente**: ejecutarla dos veces seguidas deja la base
-  idéntica y la segunda vez responde `categorized: 0` sobre lo ya asignado.
+  idéntica y la segunda vez responde `categorized: 0` y `categorizedMovements: []`
+  sobre lo ya asignado.
 
 **Respuesta 200**
 
 ```json
 {
-  "categorized": 12,
+  "categorized": 2,
+  "categorizedMovements": [
+    {
+      "movementId": 198,
+      "description": "COMPRA SINTETICO COLMADO NORTE",
+      "bookingDate": "2026-08-11",
+      "amount": "41.37",
+      "type": "expense",
+      "categoryId": 4,
+      "categoryName": "Supermercado",
+      "rules": [
+        { "ruleId": 3, "matchText": "sintetico colmado" },
+        { "ruleId": 12, "matchText": "colmado norte" }
+      ]
+    },
+    {
+      "movementId": 204,
+      "description": "SINTETICO ABONO MENSUAL",
+      "bookingDate": "2026-08-13",
+      "amount": "1503.50",
+      "type": "income",
+      "categoryId": 9,
+      "categoryName": "Nómina",
+      "rules": [{ "ruleId": 5, "matchText": "sintetico abono" }]
+    }
+  ],
   "conflictCount": 1,
   "conflicts": [
     {
@@ -660,8 +686,38 @@ sin reimportar nada. Sin body.
 }
 ```
 
+**`categorizedMovements`** (feature 56) dice **qué** movimientos categorizó la
+pasada, no solo cuántos: un elemento por cada movimiento al que **esta** pasada le
+escribió `categoryId`.
+
+- **Siempre presente**; `[]` si no se escribió ninguno.
+- **Tiene exactamente tantos elementos como diga `categorized`.** La lista va
+  **completa**: no se acota ni se pagina.
+- Ordenada por `movementId` **ascendente**.
+- Los movimientos que salen en `conflicts` o que suman a `unmatched` **no** están
+  en la lista: a esos no se les escribió nada.
+- Un movimiento que otra petición cambió entre la lectura y la escritura de la
+  pasada (por ejemplo, se confirmó a mano) no se escribe: ni suma a `categorized`
+  ni sale en la lista.
+- Si la pasada falla a mitad (`error` presente), la lista trae los movimientos que
+  **sí** se escribieron antes del fallo, y sigue cuadrando con `categorized`.
+
+Cada elemento:
+
+| Campo | Tipo | Qué es |
+| --- | --- | --- |
+| `movementId` | number | Id del movimiento. Se llama igual que en cada elemento de `conflicts`. |
+| `description` | string | Concepto del movimiento, tal como está guardado (sin normalizar). Igual que en `conflicts`. |
+| `bookingDate` | string | Fecha del movimiento, `YYYY-MM-DD`. Igual que en `conflicts`. |
+| `amount` | string | Importe: decimal **positivo** con dos decimales, con el mismo formato que `amount` en [`GET /api/movements`](#get-apimovements). El signo lo lleva `type`. |
+| `type` | string | `"income"` o `"expense"`. Nunca `"neutral"`: un movimiento neutral no es elegible. |
+| `categoryId` | number | Id de la categoría que se le escribió. Es el `categoryId` que devuelve después `GET /api/movements` para ese movimiento. |
+| `categoryName` | string | Nombre de esa categoría. |
+| `rules` | array | Las reglas que casaron, **todas**, cada una con `ruleId` (number) y `matchText` (string, normalizado). Al menos una; puede haber más, porque dos reglas de la misma categoría no chocan. Ordenadas por `ruleId` ascendente. |
+
 Es el mismo objeto que viaja en el campo `categorization` del informe de
-`POST /api/import` (ver allí el detalle campo a campo).
+`POST /api/import` (ver allí el detalle del resto de campos), **incluido
+`categorizedMovements`**: el frontend valida una sola forma para las dos respuestas.
 
 > **Reglas de arranque.** Existe un borrador de reglas iniciales que se siembra
 > con `pnpm run seed:category-rules` (idempotente: la segunda ejecución crea 0;
@@ -1871,7 +1927,19 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
     ]
   },
   "categorization": {
-    "categorized": 12,
+    "categorized": 1,
+    "categorizedMovements": [
+      {
+        "movementId": 198,
+        "description": "COMPRA SINTETICO COLMADO NORTE",
+        "bookingDate": "2026-08-11",
+        "amount": "41.37",
+        "type": "expense",
+        "categoryId": 4,
+        "categoryName": "Supermercado",
+        "rules": [{ "ruleId": 3, "matchText": "sintetico colmado" }]
+      }
+    ],
     "conflictCount": 0,
     "conflicts": [],
     "unmatched": 5
@@ -2010,6 +2078,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   | Campo | Qué es |
   | --- | --- |
   | `categorized` | Movimientos a los que **esta** pasada escribió `categoryId`. Ningún otro campo cambia. |
+  | `categorizedMovements` | (feature 56) **Viaja también aquí**, con la misma forma que en `POST /api/category-rules/apply`: la lista de esos movimientos, uno por elemento, tantos como diga `categorized`, completa y por `movementId` ascendente; `[]` si no se escribió ninguno. Como la pasada recorre **todos** los elegibles, puede traer movimientos que no entraron en esta importación. Cada elemento trae `movementId`, `description`, `bookingDate`, `amount`, `type`, `categoryId`, `categoryName` y `rules` (`ruleId`, `matchText`); el detalle campo a campo está en [`POST /api/category-rules/apply`](#post-apicategory-rulesapply). |
   | `conflictCount` | Movimientos con reglas de **categorías distintas** casando a la vez. |
   | `conflicts` | Cada choque con su movimiento (`movementId`, `description`, `bookingDate`) y las reglas que compitieron (`ruleId`, `matchText`, `categoryId`, `categoryName`). Nadie asigna en el choque: el movimiento queda sin categoría, visible. |
   | `unmatched` | Elegibles que ninguna regla reconoció: quedan con `categoryId` a `null`, pendientes. |
