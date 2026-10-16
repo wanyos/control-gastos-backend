@@ -25,8 +25,8 @@
 
 **Nivel de consumo:** medio _(bajo / medio / alto; en alto, qué fases usan `fable`)_
 
-_Ninguna._ Última cerrada: **F57 `deposit-totals-interest-only`** (2026-10-16, **sin
-commit**; ver su sección más abajo) → [resumen](summaries/deposit-totals-interest-only.md).
+_Ninguna._ Última cerrada: **F57 `deposit-totals-interest-only`** (2026-10-16, commit
+`f8b2aa0`; ver su sección más abajo) → [resumen](summaries/deposit-totals-interest-only.md).
 Antes: **F56 `categorized-movements-list`** (2026-10-13, commit
 `2d2763b`) → [resumen](summaries/categorized-movements-list.md), y **F55 `db-backup`**
 (2026-10-02, commit `91a3cfc`) → [resumen](summaries/db-backup.md), y el mismo día F51
@@ -50,10 +50,10 @@ con sus datos reales ese día y salió bien. Detalle:
 [revisión](reviews/movements-stable-order.md). Dejó abierto el cabo 25 de
 `docs/roadmap.md`.
 
-## F57 `deposit-totals-interest-only` — CERRADA, SIN COMMIT (2026-10-16)
+## F57 `deposit-totals-interest-only` — CERRADA (2026-10-16, commit `f8b2aa0`)
 
 **Qué se hizo:** parte 1 de `../docs/handoff-depositos.md`: en los `totals` de `GET /api/movements` y los `period.totals` de `GET /api/overview` una apertura y una cancelación de depósito suman 0 y un vencimiento suma solo su interés, sin marcar nada. Lotes A y B hechos, reviewer `APPROVED` → [resumen](summaries/deposit-totals-interest-only.md), [implementación](implementations/deposit-totals-interest-only.md), [revisión](reviews/deposit-totals-interest-only.md).
-**Estado:** `done` en `feature_list.json`, línea en `history.md`. **Falta el commit**, que pide el humano; el ✅ de `../docs/handoff-depositos.md` va con él.
+**Estado:** `done` en `feature_list.json`, línea en `history.md`. Commit `f8b2aa0`; la parte 1 de `../docs/handoff-depositos.md` queda marcada ✅.
 **Nota para el spec:** el Lote B se amplió a `README.md:81` y a comentarios de `prisma/schema.prisma` (176-181), y el Lote A a `src/modules/investments/investments.deposits.test.ts` (tipos), que la F57 vuelve falsos y no estaban en ningún `Archivos:`.
 
 <!--
