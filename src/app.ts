@@ -15,7 +15,10 @@ import type {
 } from './modules/investments/investments.types.js'
 import ingestionRoutes from './modules/ingestion/ingestion.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
-import { isMyinvestorDepositMaturity } from './modules/myinvestor/myinvestor.deposit-maturity.js'
+import {
+  classifyMyinvestorDepositMovement,
+  isMyinvestorDepositMaturity,
+} from './modules/myinvestor/myinvestor.deposit-maturity.js'
 import netWorthRoutes from './modules/net-worth/net-worth.routes.js'
 import { parseMyinvestorProductFile } from './modules/myinvestor/myinvestor.service.js'
 import { parseMyinvestorStatement } from './modules/myinvestor/myinvestor.statement.parser.js'
@@ -75,9 +78,18 @@ export const productParsers: ProductParserRegistry = [
  * this composition root, twin of the two above: which statement description is
  * the maturity of a deposit is knowledge of each bank, and the investments
  * module that links it to the deposit's product file may not name a bank.
+ *
+ * Since feature 57 each entry also says which description is the opening, the
+ * cancellation or the maturity of a deposit, and the registry reaches the
+ * movements listing and the overview too: their income/expense totals count a
+ * deposit movement only by its interest.
  */
 export const depositMaturityMatchers: DepositMaturityMatcherRegistry = [
-  { bank: 'myinvestor', isDepositMaturity: isMyinvestorDepositMaturity },
+  {
+    bank: 'myinvestor',
+    isDepositMaturity: isMyinvestorDepositMaturity,
+    classifyDepositMovement: classifyMyinvestorDepositMovement,
+  },
 ]
 
 export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
@@ -99,8 +111,8 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(accountsRoutes, { prefix: '/api/accounts' })
   app.register(categoriesRoutes, { prefix: '/api/categories' })
   app.register(categoryRulesRoutes, { prefix: '/api/category-rules' })
-  app.register(movementsRoutes, { prefix: '/api/movements' })
-  app.register(overviewRoutes, { prefix: '/api/overview' })
+  app.register(movementsRoutes, { prefix: '/api/movements', depositMaturityMatchers })
+  app.register(overviewRoutes, { prefix: '/api/overview', depositMaturityMatchers })
   app.register(netWorthRoutes, { prefix: '/api/net-worth' })
   app.register(investmentsRoutes, { prefix: '/api/investments', depositMaturityMatchers })
   app.register(ingestionRoutes, { prefix: '/api/ingestion' })

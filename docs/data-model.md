@@ -265,7 +265,7 @@ model Movement {
 
   transferId  String?   // enlace lógico entre las dos piernas de un traspaso
   undoneTransferId String? // el transferId que las dos piernas llevaban hasta que el humano deshizo esa pareja (F44)
-  excludedFromTotals Boolean @default(false) // F49: true = fuera de income/expense de los totales; el saldo no la mira
+  excludedFromTotals Boolean @default(false) // F49: true = fuera de income/expense de los totales (F57: salvo en un movimiento de depósito, donde no cuenta); el saldo no la mira
   daySequence Int?      // posición dentro de su bookingDate (1 = el primero del día)
 
   createdAt DateTime @default(now())
@@ -429,6 +429,31 @@ los `period.totals` de `GET /api/overview`):
    o nuevo, nace sin marcar, y el importador no la escribe. Quitar la marca lo
    devuelve a las sumas tal como estaba. Es independiente de `transferId`:
    enlazar, deshacer o detectar traspasos no la toca.
+
+**Movimientos de depósito — desde la F57 `deposit-totals-interest-only`
+(2026-10-16, ADR-035).** Las tres exclusiones de arriba **no se aplican** a un
+movimiento de depósito: una apertura (`expense` cuya descripción empieza por
+`APERTURA DEP` en MyInvestor), una cancelación (`income`, `CANCELACION DEP`) o un
+vencimiento (`income`, `INTERESES DEP`). Para ellos `computeTotals` suma solo lo
+que dice su propia regla, sin mirar `excludedFromTotals`, `transferId` ni
+`productId`:
+
+- apertura y cancelación: `0`;
+- vencimiento con capital cierto: `amount − capital` a `income` (su interés);
+- vencimiento sin capital cierto: `0`, y sale dudoso en `GET /api/movements`.
+
+El capital sale del producto `deposit` del mismo banco con `maturityDate` igual a
+la `bookingDate` del vencimiento, o si no hay, de la apertura anterior de la misma
+cuenta aún no devuelta. Se calcula **en cada lectura** sobre toda la historia de
+las cuentas del banco, no sobre el filtro pedido, y **no se guarda en ninguna
+columna**: no hay columnas nuevas ni ningún escritor nuevo. La regla completa está
+en `docs/api-contract.md` §Movimientos de depósito en las sumas.
+
+Así, en un movimiento de depósito la marca `excludedFromTotals` **se guarda, se
+filtra y se devuelve, pero no cambia lo que suma**. La migración
+`20261016120000_deposit_movements_unmark` puso a `false` la marca de los
+movimientos de depósito de cuentas `myinvestor` que la tenían; las demás marcas,
+filas y columnas no las toca.
 
 **El saldo no mira ninguna de las tres.** `computeAccountBalance` suma y resta
 por `type`, sin consultar `transferId`, `productId` ni `excludedFromTotals`

@@ -5,6 +5,11 @@ import type { MovementType } from '../../generated/prisma/client.js'
 
 import { NotFoundError, ValidationError } from '../../errors/app-error.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
+import { readDepositMovements } from '../investments/investments.service.js'
+import type {
+  DepositMaturityMatcherRegistry,
+  DepositMovementReading,
+} from '../investments/investments.types.js'
 import type {
   AnchorColumns,
   BalanceAnchor,
@@ -12,11 +17,13 @@ import type {
   BulkUpdateMovementsBody,
   BulkUpdateMovementsResult,
   DecimalLike,
+  ListedMovement,
   RecencyPoint,
   MovementListQuery,
   MovementListResponse,
   MovementTotals,
   MovementWithRelations,
+  SerializedDeposit,
   SerializedMovement,
   SerializedMovementTotals,
   TotalsMovement,
@@ -234,10 +241,16 @@ const movementListOrder: Prisma.MovementOrderByWithRelationInput[] = [
  *  - a page past the last one → 400, the caller is reading a page that is not there;
  *  - an existing account with nothing in the range → 200 with an empty page and
  *    zero totals: the filter is fine, there is simply nothing in it.
+ *
+ * Since feature 57 every movement carries `deposit` and the totals count a
+ * deposit movement only by what `readDepositMovements` says it counts. That map
+ * is read over the whole history of the accounts of the registry's banks, not
+ * over the filter (R3, R5).
  */
 export async function listMovements(
   prisma: AppPrismaClient,
   query: MovementListQuery,
+  matchers: DepositMaturityMatcherRegistry,
 ): Promise<MovementListResponse> {
   if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
     throw new ValidationError(`'from' (${query.from}) is after 'to' (${query.to})`)
@@ -279,7 +292,7 @@ export async function listMovements(
     )
   }
 
-  const [pageRows, totalsRows] = await Promise.all([
+  const [pageRows, totalsRows, deposits] = await Promise.all([
     prisma.movement.findMany({
       where,
       orderBy: movementListOrder,
@@ -292,6 +305,7 @@ export async function listMovements(
     prisma.movement.findMany({
       where,
       select: {
+        id: true,
         type: true,
         amount: true,
         transferId: true,
@@ -299,12 +313,29 @@ export async function listMovements(
         excludedFromTotals: true,
       },
     }),
+    readDepositMovements(prisma, matchers),
   ])
 
   return {
-    movements: pageRows.map(serializeMovement),
+    movements: pageRows.map((row): ListedMovement => ({
+      ...serializeMovement(row),
+      deposit: serializeDeposit(deposits.get(row.id)),
+    })),
     pagination: { page: query.page, pageSize: query.pageSize, total, totalPages },
-    totals: serializeTotals(computeTotals(totalsRows)),
+    totals: serializeTotals(computeTotals(totalsRows, deposits)),
+  }
+}
+
+/** `deposit` of a listed movement (feature 57, R10): `null` when it is not one. */
+function serializeDeposit(reading: DepositMovementReading | undefined): SerializedDeposit | null {
+  if (reading === undefined) return null
+  return {
+    kind: reading.kind,
+    principal: reading.principal === null ? null : reading.principal.toFixed(2),
+    countedAmount: reading.counted.toFixed(2),
+    ambiguous: reading.ambiguous,
+    reason: reading.reason,
+    candidateMovementIds: reading.candidateMovementIds,
   }
 }
 
@@ -486,10 +517,23 @@ function toDateOnly(date: Date): string {
  * after every import run; `productId` still has no writer (a later feature).
  * Since feature 49 a movement the human marked `excludedFromTotals` is left out
  * too. None of these exclusions touch the account balance (`netOf`).
+ *
+ * Since feature 57 a DEPOSIT movement (one with an entry in `deposits`) adds
+ * only what its entry says: a maturity its `counted` to `income`, an opening or
+ * a cancellation nothing. For those the mark, `transferId` and `productId` are
+ * not looked at (R9): the rule replaces them.
  */
-export function computeTotals(movements: TotalsMovement[]): MovementTotals {
+export function computeTotals(
+  movements: TotalsMovement[],
+  deposits: Map<number, DepositMovementReading>,
+): MovementTotals {
   return movements.reduce<MovementTotals>(
     (totals, movement) => {
+      const deposit = deposits.get(movement.id)
+      if (deposit !== undefined) {
+        if (deposit.kind !== 'maturity') return totals
+        return { ...totals, income: totals.income.plus(deposit.counted) }
+      }
       if (movement.excludedFromTotals) return totals
       if (movement.transferId !== null) return totals
       if (movement.productId !== null) return totals

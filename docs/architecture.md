@@ -122,6 +122,9 @@ src/
                                  #   health/). La completará la feature de
                                  #   importación con su *.service.ts, y más
                                  #   adelante las rutas de patrimonio.
+      investments.deposit-movements.ts # resolveDepositMovements (F57, ADR-035): función
+                                 #   pura que dice qué suma cada movimiento de depósito;
+                                 #   sin Prisma y sin nombrar ningún banco
     backup/                # la copia de la base de datos a Drive y su restauración
                            #   (ADR-034). SIN rutas y sin que nada de src/ lo importe:
                            #   lo ejecutan scripts/db-backup.ts y scripts/db-restore.ts
@@ -618,6 +621,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-011: Modelo de datos del flujo — `Account`/`Category`/`Movement`, saldo leído del extracto, importe 0 = `neutral`, índices personalizados por SQL crudo, reemplazo del `Expense`
 
+> **Revisado el 2026-10-16 por la feature 57 `deposit-totals-interest-only`:** la
+> regla de agregación de la decisión 2 (los totales excluyen `transferId != null`)
+> ya no se aplica a un movimiento de depósito: lo que suma lo calcula su propia regla,
+> sin mirar `transferId`. Por qué: una apertura, una cancelación y un vencimiento de
+> depósito tienen que sumar 0, 0 y su interés pase lo que pase con sus otras columnas
+> (ADR-035).
+
 - **Fecha:** 2026-08-06
 - **Estado:** aceptada (implementada en la feature #8; el spec pasó por cuatro
   correcciones humanas en la puerta de aprobación)
@@ -732,6 +742,11 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     Prisma/Postgres ya presentes): `docs/stack.md` no cambia.
 
 ### ADR-012: Modelo de datos de inversiones — un `InvestmentProduct` único con la parte del depósito en columnas nullable, `Valuation` como serie, `invested` en la foto, clave natural `(bank, name)`, recarga por UPSERT y cero SQL crudo
+
+> **Revisado el 2026-10-16 por la feature 57 `deposit-totals-interest-only`:** la
+> regla 5 (un movimiento con `productId != null` no cuenta en los totales) ya no se
+> aplica a un movimiento de depósito: lo que suma lo calcula su propia regla, sin
+> mirar `productId`. Por qué: el mismo que en el ADR-011 (ADR-035).
 
 - **Fecha:** 2026-08-11
 - **Estado:** aceptada (implementada en la feature #9; las dos decisiones marcadas
@@ -2971,6 +2986,82 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     entrada del comando sea un terminal.
   - Los pasos para el humano están en [`database-backup.md`](./database-backup.md);
     `src/modules/backup/backup.docs.test.ts` comprueba que el documento los tiene.
+
+### ADR-035: Lo que suma un movimiento de depósito se calcula al leer, por cuenta y en orden, con el capital del archivo de producto o de la apertura aún no devuelta; y en él la marca `excludedFromTotals` no cuenta
+
+- **Fecha:** 2026-10-16
+- **Estado:** aceptada (implementada en la feature #57 `deposit-totals-interest-only`,
+  SDD). Revisa el ADR-011 (decisión 2) y el ADR-012 (regla 5) solo para los
+  movimientos de depósito: ver la línea añadida arriba de cada uno.
+- **Contexto:** hasta la F57 una apertura, una cancelación y un vencimiento de un
+  depósito de MyInvestor contaban enteros en los `totals` de `GET /api/movements` y en
+  los `period.totals` de `GET /api/overview`, como un gasto y un ingreso más. La única
+  forma de sacarlos era marcarlos a mano con `excludedFromTotals` (F49), lo que además
+  dejaba sin contar el interés del vencimiento, y cada importación traía movimientos
+  de depósito nuevos sin marcar. El humano pidió que, sin marcar nada, una apertura y
+  una cancelación sumen 0 y un vencimiento sume solo su interés (`amount − capital`),
+  para lo que ya está en la base y para lo que entre. Los depósitos antiguos no tienen
+  archivo de producto (F50), así que su capital no siempre se puede leer de él.
+- **Decisión:**
+  1. **Qué es un movimiento de depósito lo sabe el código del banco**
+     (`classifyMyinvestorDepositMovement` en
+     `src/modules/myinvestor/myinvestor.deposit-maturity.ts`), y llega al resto por el
+     mismo registro de `src/app.ts` que ya usaba la F50 (ADR-015): ni inversiones ni
+     movimientos nombran un banco. Además se exige el `type`: apertura `expense`,
+     cancelación y vencimiento `income`.
+  2. **Se calcula en cada lectura y no se guarda nada.** Una función pura,
+     `resolveDepositMovements` (`src/modules/investments/investments.deposit-movements.ts`),
+     recibe los movimientos de las cuentas de los bancos del registro y los productos
+     `deposit`, y devuelve, por id de movimiento, su clase, su capital, lo que suma y
+     si es dudoso. La lee `readDepositMovements` (`investments.service.ts`), solo con
+     `find*`.
+  3. **Por cuenta y en orden** (`bookingDate`, `daySequence` nulo como 0, `id`), con
+     una lista de aperturas aún no devueltas. El capital de un vencimiento sale
+     primero del archivo de producto del mismo banco con `maturityDate` igual a su
+     `bookingDate`, y si no hay, de las aperturas anteriores aún no devueltas; en los
+     dos casos el capital `C` tiene que cumplir `C ≤ amount` y `amount − C < C`. Cada
+     apertura se da por devuelta una sola vez (por una cancelación de su mismo importe
+     o por un vencimiento). El número de la descripción no se lee.
+  4. **Sobre toda la historia de la cuenta, no sobre el filtro pedido:** lo que suma
+     un vencimiento no depende de que el filtro deje fuera su apertura.
+  5. **Lo que no se sabe con certeza suma 0 y se dice:** un vencimiento sin capital
+     cierto, o una cancelación sin apertura, sale con `deposit.ambiguous: true` y su
+     motivo en `GET /api/movements`.
+  6. **Una sola suma:** `computeTotals(movements, deposits)` sigue siendo la única
+     función de los `totals` de `GET /api/movements` y de los `period.totals` de
+     `GET /api/overview`. Para un movimiento de depósito suma lo que dice el punto 2
+     **sin mirar `excludedFromTotals`, `transferId` ni `productId`**; para el resto,
+     la regla de antes sin cambios.
+  7. **La marca deja de contar en los movimientos de depósito**, y la migración
+     `20261016120000_deposit_movements_unmark` quita las que ya tenían, con un
+     `UPDATE` que repite los tres prefijos del punto 1 (una migración no puede llamar
+     al código; su comentario remite al archivo del banco). No toca ninguna otra fila
+     ni columna.
+- **Alternativas descartadas:**
+  - **Guardar la clase y el capital al importar**, en columnas nuevas de `Movement`:
+    habría que recalcular al llegar un archivo de producto, al importar un mes
+    anterior (cambia qué aperturas siguen sin devolver) y rellenar lo que ya hay;
+    tres escritores para un dato que se calcula en memoria sobre los movimientos de
+    las cuentas de los bancos del registro (hoy, solo MyInvestor).
+  - **Leer el número de la descripción:** el humano lo descartó en la F50 (se repite
+    entre depósitos), y la condición de importe resuelve el único caso en que haría
+    falta.
+  - **Que un dudoso cuente entero:** vuelve a meter el capital como ingreso.
+  - **Que la marca mande sobre la regla:** un vencimiento marcado seguiría ocultando su
+    interés.
+  - **Calcular solo con los movimientos del filtro:** un mes cuyo vencimiento tiene la
+    apertura en el mes anterior saldría dudoso.
+- **Consecuencias:**
+  - `GET /api/movements` gana el campo `deposit` en cada movimiento; los `PATCH` y
+    `/api/transfers` no cambian de forma.
+  - **No cambia** el `amount` ni el `type` de ningún movimiento, el saldo,
+    `GET /api/net-worth`, `GET /api/investments/deposits` ni la importación.
+  - Un vencimiento cuya apertura es anterior al primer extracto importado queda
+    dudoso y su interés sin contar, mientras no haya archivo de producto que lo
+    resuelva.
+  - Si un día los prefijos de la migración y los del código divergieran, ninguna suma
+    cambiaría (la marca no cuenta en un movimiento de depósito); solo el filtro
+    `excluded=only` del listado.
 
 
 ## Qué NO hacer

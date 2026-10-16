@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { ValidationError } from '../../errors/app-error.js'
 import { assertOnlyAllowedBodyProperties } from '../../lib/strict-body.js'
+import type { DepositMaturityMatcherRegistry } from '../investments/investments.types.js'
 import {
   bulkUpdateMovementsBodyProperties,
   bulkUpdateMovementsSchema,
@@ -22,6 +23,15 @@ import type {
   MovementListQuery,
   UpdateMovementBody,
 } from './movements.types.js'
+
+export interface MovementsRoutesOptions {
+  /**
+   * Bank → deposit matcher registry (feature 57), injected from the
+   * composition root (`src/app.ts`) so this module knows no bank. Empty means
+   * no movement is a deposit one: the totals count every movement as before.
+   */
+  depositMaturityMatchers?: DepositMaturityMatcherRegistry
+}
 
 /**
  * `ids` alone is a request that asks for nothing: `minProperties` cannot say it
@@ -74,15 +84,21 @@ function assertStrictBoolean(body: unknown, property: string): void {
  *
  * Since feature 36 the listing takes combinable filters (account, date range,
  * type, status), is always paginated, and ships the totals of the filter.
+ * Since feature 57 a deposit movement counts in those totals only by its
+ * interest, and each listed movement says how it counts (`deposit`).
  */
-export default async function movementsRoutes(fastify: FastifyInstance) {
+export default async function movementsRoutes(
+  fastify: FastifyInstance,
+  options: MovementsRoutesOptions = {},
+) {
   const db = movementsDb(fastify)
+  const depositMaturityMatchers = options.depositMaturityMatchers ?? []
 
   fastify.get<{ Querystring: MovementListQuery }>(
     '/',
     { schema: listMovementsSchema },
     async (request) => {
-      return listMovements(db, request.query)
+      return listMovements(db, request.query, depositMaturityMatchers)
     },
   )
 

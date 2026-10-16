@@ -8,7 +8,7 @@
  * registry that binds slug to parser is built in `src/app.ts` (ADR-015).
  */
 
-import type { InvestmentProductType } from '../../generated/prisma/client.js'
+import type { InvestmentProductType, MovementType, Prisma } from '../../generated/prisma/client.js'
 
 /**
  * What EVERY product file contributes, whatever its type (feature 29). It is the
@@ -384,9 +384,67 @@ export interface InvestmentsNetWorth {
 export interface DepositMaturityMatcher {
   bank: string
   isDepositMaturity(description: string): boolean
+  /**
+   * Feature 57: which kind of deposit movement a description of this bank is,
+   * or `null` when it is none. The `type` of the movement is NOT checked here:
+   * `resolveDepositMovements` demands it (R1).
+   */
+  classifyDepositMovement(description: string): DepositMovementKind | null
 }
 
 export type DepositMaturityMatcherRegistry = DepositMaturityMatcher[]
+
+// ---------------------------------------------------------------------------
+// Read side (feature 57): how much each deposit movement counts in the
+// income/expense totals. Computed on every read, stored nowhere (R15).
+// ---------------------------------------------------------------------------
+
+/** Opening (`expense`), early cancellation (`income`) or maturity (`income`). */
+export type DepositMovementKind = 'opening' | 'cancellation' | 'maturity'
+
+/**
+ * Why a deposit movement has no certain principal (closed enum, part of the
+ * contract): no candidate, several candidates, or a cancellation with no
+ * opening of its own amount still to be returned.
+ */
+export type DepositAmbiguityReason =
+  'principal_not_found' | 'several_principals' | 'opening_not_found'
+
+/** What `resolveDepositMovements` needs of each movement. */
+export interface DepositMovementInput {
+  id: number
+  accountId: number
+  /** Bank of the ACCOUNT of the movement: picks the matcher of the registry. */
+  bank: string
+  type: MovementType
+  bookingDate: Date
+  daySequence: number | null
+  amount: Prisma.Decimal
+  description: string
+}
+
+/** What `resolveDepositMovements` needs of each `deposit` product file. */
+export interface DepositProductInput {
+  id: number
+  bank: string
+  maturityDate: Date | null
+  principal: Prisma.Decimal | null
+}
+
+/**
+ * How one deposit movement reads: its kind, its principal when certain, and
+ * what it adds to the totals. `counted` goes to `income` on a `maturity` and is
+ * zero on the other two kinds and on any ambiguous one (R2, R3, R7).
+ */
+export interface DepositMovementReading {
+  kind: DepositMovementKind
+  principal: Prisma.Decimal | null
+  counted: Prisma.Decimal
+  ambiguous: boolean
+  reason: DepositAmbiguityReason | null
+  /** Ascending ids of the candidate openings, only on `several_principals`. */
+  candidateMovementIds: number[]
+}
 
 /** Closed enum, part of the contract (decisions.md 🔴 5 of feature 50). */
 export type DepositEarningsStatus =

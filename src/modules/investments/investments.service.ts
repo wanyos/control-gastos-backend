@@ -10,11 +10,13 @@ import type {
 import { NotFoundError, ValidationError } from '../../errors/app-error.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { currentMonth, monthRange } from '../overview/overview.service.js'
+import { resolveDepositMovements } from './investments.deposit-movements.js'
 import type {
   DepositEarningsEntry,
   DepositEarningsResponse,
   DepositInput,
   DepositMaturityMatcherRegistry,
+  DepositMovementReading,
   ExcludedFromPeriodGain,
   InvestmentProductOverview,
   InvestmentsNetWorth,
@@ -789,6 +791,53 @@ function isCancelledBeforeMaturity(product: InvestmentProduct): boolean {
     product.closedAt !== null &&
     product.maturityDate !== null &&
     product.closedAt < product.maturityDate
+  )
+}
+
+/**
+ * How much every deposit movement counts in the income/expense totals (feature
+ * 57), keyed by movement id. It reads the WHOLE history of the accounts of the
+ * banks of the registry, never only the filter being summed: what a maturity of
+ * October counts cannot depend on whether the filter leaves its September
+ * opening out (design §4). The texts are classified in memory by the matchers,
+ * so the query repeats no prefix of any bank.
+ *
+ * It lives here and not in the movements module because this is the only file
+ * allowed to read `InvestmentProduct` (`architecture.test.ts`). The rule itself
+ * is the pure `resolveDepositMovements`. Only `findMany`: nothing is stored, so
+ * a movement imported later counts on the next read (R15).
+ */
+export async function readDepositMovements(
+  prisma: AppPrismaClient,
+  matchers: DepositMaturityMatcherRegistry,
+): Promise<Map<number, DepositMovementReading>> {
+  const banks = [...new Set(matchers.map((matcher) => matcher.bank))]
+  if (banks.length === 0) return new Map()
+
+  const [products, movements] = await Promise.all([
+    prisma.investmentProduct.findMany({
+      where: { type: 'deposit', bank: { in: banks } },
+      select: { id: true, bank: true, maturityDate: true, principal: true },
+    }),
+    prisma.movement.findMany({
+      where: { account: { bank: { in: banks } } },
+      select: {
+        id: true,
+        accountId: true,
+        type: true,
+        bookingDate: true,
+        daySequence: true,
+        amount: true,
+        description: true,
+        account: { select: { bank: true } },
+      },
+    }),
+  ])
+
+  return resolveDepositMovements(
+    movements.map(({ account, ...movement }) => ({ ...movement, bank: account.bank })),
+    products,
+    matchers,
   )
 }
 

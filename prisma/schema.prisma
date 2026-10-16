@@ -170,6 +170,7 @@ model Movement {
   // a contribution is a later feature. It is NOT a source for Valuation.invested.
   // It still leaves the movement out of the income/expense totals, but the
   // general way to do that is `excludedFromTotals` below (feature 49).
+  // Feature 57: not on a deposit movement, whose sum comes from its own rule.
   product   InvestmentProduct? @relation(fields: [productId], references: [id])
   productId Int?
 
@@ -177,6 +178,9 @@ model Movement {
   // income/expense totals (e.g. money moved into a deposit). It changes
   // neither the amount nor the account balance, and no importer, transfer
   // link or transfer detection writes it: only the two PATCH endpoints.
+  // Feature 57: on a deposit movement (opening, cancellation, maturity) the
+  // mark is kept but does not change what it adds to the totals; the
+  // migration 20261016120000_deposit_movements_unmark removed those marks.
   excludedFromTotals Boolean @default(false)
 
   createdAt DateTime @default(now())

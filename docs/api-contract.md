@@ -278,7 +278,7 @@ Un apunte del extracto. **Solo entra por importación** (ver
 | `origin`        | `"imported"` \| `"manual"`                                  | Procedencia. Los movimientos nacen `"imported"`.                 |
 | `status`        | `"confirmed"` \| `"pending_review"`                         | Estado de revisión. Nacen `"pending_review"`; se pasa a `"confirmed"` (y se vuelve atrás) con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37). |
 | `transferId`    | string \| null                                              | Enlace lógico entre las **dos piernas** de un traspaso entre cuentas propias. Lo escriben dos cosas (ver la nota de abajo): la **detección de traspasos** que corre al final de cada importación (feature 40) y, desde la feature 44, el **enlace manual** `POST /api/transfers` (se deshace con `DELETE /api/transfers/:transferId`). Siempre lo fabrica el servidor: compartido por las dos piernas de cada pareja, `null` en todo lo demás. |
-| `excludedFromTotals` | boolean                                                | **Desde la feature 49** (2026-09-27). `true` = el movimiento **no cuenta en las sumas** de `income` y `expense` (los `totals` de [`GET /api/movements`](#get-apimovements) y los `period.totals` de [`GET /api/overview`](#get-apioverview)). **No cambia el importe ni el saldo; solo saca el movimiento de `income` y `expense`**: el `amount`, el `type`, las fechas, la descripción, el `balanceAfter` y el `balance` de su cuenta en `GET /api/accounts` siguen iguales. Todo movimiento nace con `false` (también los que ya existían antes de la feature). Lo escribe **solo el humano**, con [`PATCH /api/movements/:id`](#patch-apimovementsid) o [`PATCH /api/movements`](#patch-apimovements), y se deshace escribiendo `false`. Es independiente de `transferId`: se puede marcar una pierna de un traspaso, y enlazar o deshacer un traspaso no lo cambia. |
+| `excludedFromTotals` | boolean                                                | **Desde la feature 49** (2026-09-27). `true` = el movimiento **no cuenta en las sumas** de `income` y `expense` (los `totals` de [`GET /api/movements`](#get-apimovements) y los `period.totals` de [`GET /api/overview`](#get-apioverview)). **No cambia el importe ni el saldo; solo saca el movimiento de `income` y `expense`**: el `amount`, el `type`, las fechas, la descripción, el `balanceAfter` y el `balance` de su cuenta en `GET /api/accounts` siguen iguales. Todo movimiento nace con `false` (también los que ya existían antes de la feature). Lo escribe **solo el humano**, con [`PATCH /api/movements/:id`](#patch-apimovementsid) o [`PATCH /api/movements`](#patch-apimovements), y se deshace escribiendo `false`. Es independiente de `transferId`: se puede marcar una pierna de un traspaso, y enlazar o deshacer un traspaso no lo cambia. **Desde la feature 57, en un movimiento de depósito la marca no cambia lo que suma**: se guarda, se filtra con `excluded` y se devuelve, pero lo que suma ese movimiento lo dice la regla de [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas). Las marcas que ya tenían los movimientos de depósito las quitó la migración de la feature 57. |
 | `daySequence`   | number \| null                                              | Posición del movimiento **dentro de su `bookingDate`** (`1` = el primero del día). Fija el orden intradía y forma parte de la clave de deduplicación de importados. |
 | `createdAt`     | string (ISO)                                                | Fecha de creación del registro.                                  |
 | `updatedAt`     | string (ISO)                                                | Fecha de última modificación.                                    |
@@ -295,7 +295,9 @@ Un apunte del extracto. **Solo entra por importación** (ver
 > ([`GET /api/transfers/ambiguous`](#get-apitransfersambiguous)).
 > Lo único propio de un traspaso es
 > que ambas piernas comparten un `transferId` y que **no cuentan como gasto ni
-> como ingreso** en los totales globales. El `type` que reportó el banco **no se
+> como ingreso** en los totales globales, salvo, desde la feature 57, una pierna
+> que sea un movimiento de depósito: esa suma lo que diga su `deposit.countedAmount`
+> (ver [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)). El `type` que reportó el banco **no se
 > muta** al identificarlo. Además del enlace manual, `transferId` lo escribe la
 > **detección de traspasos**
 > (feature 40), que corre sola al final de cada pasada de `POST /api/import`:
@@ -756,7 +758,15 @@ las coincidencias del filtro. La respuesta **no cambia de forma**.
 Desde la feature 49 `honest-totals` (2026-09-27) se filtra además **por traspaso
 enlazado** (`transfer`) y **por la marca de «no cuenta en las sumas»**
 (`excluded`), cada movimiento trae el campo nuevo `excludedFromTotals`, y los
-`totals` dejan fuera también los movimientos marcados.
+`totals` dejan fuera también los movimientos marcados (desde la feature 57, salvo
+los movimientos de depósito: ver el párrafo siguiente).
+
+Desde la feature 57 `deposit-totals-interest-only` (2026-10-16) cada movimiento
+trae además el campo `deposit` (ver la tabla de debajo de la respuesta), y en los
+`totals` una apertura y una cancelación de depósito suman `0` y un vencimiento
+suma solo su interés: ver
+[Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas). Los
+parámetros no cambian.
 
 **Parámetros de querystring** (todos opcionales, combinables entre sí):
 
@@ -771,7 +781,7 @@ enlazado** (`transfer`) y **por la marca de «no cuenta en las sumas»**
 | `uncategorized` | boolean (`true` / `false`)           | `uncategorized=true` deja solo los movimientos **sin categoría** (`categoryId: null`). `uncategorized=false` **no filtra nada**, es igual que no mandarlo. Mandar `categoryId` y `uncategorized=true` en la misma petición → **400 `VALIDATION_ERROR`**. |
 | `q`         | string (2–100 caracteres)                | Solo los movimientos cuya `description` **contiene** ese texto, **ignorando mayúsculas y tildes**. Ver la nota de debajo de la tabla. |
 | `transfer`  | `"only"` \| `"none"`                     | **Desde la feature 49.** `transfer=only` deja solo los movimientos **enlazados como pierna de un traspaso** (`transferId` no nulo); `transfer=none`, solo los **no enlazados** (`transferId: null`). Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. |
-| `excluded`  | `"only"` \| `"none"`                     | **Desde la feature 49.** `excluded=only` deja solo los movimientos **marcados como que no cuentan en las sumas** (`excludedFromTotals: true`); `excluded=none`, solo los **no marcados** (`excludedFromTotals: false`). Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. Se combina con `transfer` y con todos los demás. |
+| `excluded`  | `"only"` \| `"none"`                     | **Desde la feature 49.** `excluded=only` deja solo los movimientos **marcados como que no cuentan en las sumas** (`excludedFromTotals: true`); `excluded=none`, solo los **no marcados** (`excludedFromTotals: false`). Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. Se combina con `transfer` y con todos los demás. **Desde la feature 57**, filtra por la marca también en los movimientos de depósito, aunque en ellos la marca no cambie lo que suman. |
 | `page`      | number (entero ≥ 1)                      | Página pedida. Def. `1`.                                         |
 | `pageSize`  | number (entero 1–200)                    | Movimientos por página. Def. `50`, máximo `200`.                 |
 
@@ -827,7 +837,8 @@ enlazado** (`transfer`) y **por la marca de «no cuenta en las sumas»**
       "excludedFromTotals": false,
       "daySequence": 2,
       "createdAt": "2026-08-06T18:30:00.000Z",
-      "updatedAt": "2026-08-06T18:30:00.000Z"
+      "updatedAt": "2026-08-06T18:30:00.000Z",
+      "deposit": null
     }
   ],
   "pagination": { "page": 1, "pageSize": 50, "total": 132, "totalPages": 3 },
@@ -837,7 +848,41 @@ enlazado** (`transfer`) y **por la marca de «no cuenta en las sumas»**
 
 - `movements`: la página pedida. Cada movimiento con la forma de
   [`Movement`](#movement); desde la feature 49 lleva **un campo más**,
-  `excludedFromTotals` (ningún campo anterior cambia ni desaparece).
+  `excludedFromTotals`, y desde la feature 57 **otro más**, `deposit` (ningún
+  campo anterior cambia ni desaparece). `deposit` **solo** viaja en esta
+  respuesta: las de `PATCH /api/movements`, `PATCH /api/movements/:id` y
+  `/api/transfers` no lo llevan.
+- `movements[].deposit` (feature 57): `null` si el movimiento **no es de
+  depósito**; si lo es, un objeto que dice qué clase de movimiento de depósito es
+  y cuánto suma en los `totals` (la regla, en
+  [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
+  No cambia el `amount` ni el `type` del movimiento, que siguen siendo los del
+  banco:
+
+  | Clave | Tipo | Qué es |
+  | --- | --- | --- |
+  | `kind` | `"opening"` \| `"cancellation"` \| `"maturity"` | `opening` = apertura de un depósito (un `expense`); `cancellation` = cancelación antes de vencer (un `income`); `maturity` = vencimiento (un `income`: capital más interés). |
+  | `principal` | string (decimal) \| null | El capital del depósito: en una apertura, su propio `amount`; en una cancelación que encontró su apertura, su propio `amount`; en un vencimiento, el capital que se le encontró. `null` si no se sabe con certeza (un dudoso). |
+  | `countedAmount` | string (decimal) | Lo que este movimiento suma en los `totals`: `"0.00"` en una apertura, en una cancelación y en un vencimiento dudoso; en un vencimiento con capital, `amount − principal` (su interés), que suma en `income`. |
+  | `ambiguous` | boolean | `true` si el movimiento es dudoso: un vencimiento sin capital cierto o una cancelación que no encontró su apertura. |
+  | `reason` | `"principal_not_found"` \| `"several_principals"` \| `"opening_not_found"` \| null | Por qué es dudoso; `null` si no lo es. `principal_not_found`: vencimiento sin ningún capital posible. `several_principals`: vencimiento con más de un capital posible. `opening_not_found`: cancelación sin apertura aún no devuelta de su mismo importe. |
+  | `candidateMovementIds` | number[] | En un `several_principals` que viene de las aperturas, los ids de las aperturas candidatas, **ascendentes**. `[]` en todo lo demás (también si la duda viene de varios archivos de producto). |
+
+  Una apertura, una cancelación, un vencimiento con su capital y un vencimiento
+  dudoso (cifras inventadas):
+
+  ```json
+  [
+    { "kind": "opening", "principal": "6000.00", "countedAmount": "0.00",
+      "ambiguous": false, "reason": null, "candidateMovementIds": [] },
+    { "kind": "cancellation", "principal": "2500.00", "countedAmount": "0.00",
+      "ambiguous": false, "reason": null, "candidateMovementIds": [] },
+    { "kind": "maturity", "principal": "6000.00", "countedAmount": "14.80",
+      "ambiguous": false, "reason": null, "candidateMovementIds": [] },
+    { "kind": "maturity", "principal": null, "countedAmount": "0.00",
+      "ambiguous": true, "reason": "several_principals", "candidateMovementIds": [301, 318] }
+  ]
+  ```
 - `pagination.total`: cuántos movimientos **coinciden con el filtro entero**, no
   cuántos trae la página. `totalPages` = `ceil(total / pageSize)` (`0` si no
   coincide ninguno).
@@ -854,11 +899,97 @@ enlazado** (`transfer`) y **por la marca de «no cuenta en las sumas»**
   así que los traspasos emparejados **ya no inflan** estos totales; `productId`
   sigue sin escritor (feature posterior). Quitar la marca (`excludedFromTotals`
   de vuelta a `false`) devuelve el movimiento a los totales exactamente como
-  estaba antes de marcarlo.
-- Con `transfer=only` o con `excluded=only` los `totals` salen **siempre a
-  `"0.00"`** los tres: todos los movimientos de ese filtro están, por
-  construcción, fuera de las sumas. No es un error; `pagination.total` sí cuenta
-  cuántos hay.
+  estaba antes de marcarlo. **Desde la feature 57, nada de este párrafo vale para
+  un movimiento de depósito** (`deposit` no nulo): suma su `deposit.countedAmount`
+  y nada más, tenga o no `transferId`, `productId` o la marca (ver
+  [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
+- Con `transfer=only` o con `excluded=only` los `totals` salen a `"0.00"` los
+  tres mientras el filtro no deje ningún vencimiento de depósito con capital
+  cierto: el resto de movimientos de ese filtro están, por construcción, fuera de
+  las sumas. **Desde la feature 57**, un vencimiento de depósito marcado (o con
+  `transferId`) sí suma su interés también ahí. No es un error;
+  `pagination.total` sí cuenta cuántos hay.
+
+#### Movimientos de depósito en las sumas
+
+Desde la feature 57 `deposit-totals-interest-only` (2026-10-16). Vale igual para
+los `totals` de [`GET /api/movements`](#get-apimovements) y los `period.totals`
+de [`GET /api/overview`](#get-apioverview): las dos respuestas salen de la misma
+suma.
+
+**Qué es un movimiento de depósito.** Uno que el código del banco de su cuenta
+reconoce por su descripción **y** que tiene el `type` que le toca. Hoy solo lo
+reconoce MyInvestor, por cómo empieza la descripción una vez quitados los
+espacios iniciales:
+
+| Clase (`deposit.kind`) | Descripción empieza por | `type` exigido |
+| --- | --- | --- |
+| `opening` (apertura) | `APERTURA DEP` | `expense` |
+| `cancellation` (cancelación antes de vencer) | `CANCELACION DEP` | `income` |
+| `maturity` (vencimiento: capital más interés) | `INTERESES DEP` | `income` |
+
+Con esa descripción y otro `type`, o en una cuenta de otro banco, el movimiento
+no es de depósito (`deposit: null`) y suma como cualquier otro. El número que
+lleva la descripción **no se lee**.
+
+**Qué suma cada clase:**
+
+- **Apertura**: `0` (ni `income` ni `expense`). Es dinero que pasa de la cuenta
+  al depósito, no un gasto.
+- **Cancelación**: `0`. Es el capital que vuelve, no un ingreso.
+- **Vencimiento con capital cierto**: suma a `income` **solo su interés**,
+  `amount − capital`, el día de su `bookingDate`.
+- **Vencimiento dudoso** (sin capital cierto): `0`. No se adivina: sale con
+  `deposit.ambiguous: true` y su motivo.
+
+El `amount` y el `type` del movimiento **no cambian**, ni en la base ni en la
+respuesta; tampoco el saldo de la cuenta. Lo que cambia es solo cuánto cuenta en
+las sumas, y eso es `deposit.countedAmount`.
+
+**De dónde sale el capital de un vencimiento**, en este orden:
+
+1. **El archivo de producto** (`.json` de depósito) del mismo banco cuyo
+   `maturityDate` es la `bookingDate` del vencimiento y cuyo `principal` cumple la
+   condición de importe (abajo): su `principal`. Si hay más de uno, el
+   vencimiento es dudoso (`several_principals`, `candidateMovementIds: []`).
+2. Si no hay ninguno, **las aperturas de la misma cuenta, anteriores al
+   vencimiento y aún no devueltas**, que cumplan la condición de importe. Si
+   todas tienen el mismo importe, ese es el capital. Si no hay ninguna, el
+   vencimiento es dudoso (`principal_not_found`); si las hay de importes
+   distintos, también (`several_principals`, con los ids de esas aperturas en
+   `candidateMovementIds`, ascendentes).
+
+**Condición de importe:** un capital `C` vale para un vencimiento de importe `M`
+si `C ≤ M` (el interés no es negativo) y `M − C < C` (el interés no llega al
+propio capital).
+
+**Aperturas aún no devueltas.** Los movimientos de depósito de cada cuenta se
+recorren en orden de `bookingDate`, después `daySequence` (nulo cuenta como 0) y
+después `id`. Cada apertura se da por devuelta **una sola vez**: la más antigua
+de importe igual al capital de cada vencimiento con capital cierto (venga del
+archivo de producto o de las aperturas), y la más antigua de importe
+**exactamente** igual al de cada cancelación. Una apertura del mismo día pero
+posterior al vencimiento en ese orden no es candidata. Un vencimiento dudoso no da
+por devuelta ninguna apertura. Una cancelación que no encuentra apertura aún no
+devuelta de su mismo importe sigue sumando `0`, pero sale dudosa
+(`opening_not_found`, `principal: null`).
+
+**Toda la historia, no el filtro.** El capital se busca en todos los movimientos
+de la cuenta, no solo en los que deja el filtro pedido: un vencimiento de octubre
+cuya apertura es de septiembre suma su interés aunque se pida solo octubre.
+
+**Se calcula en cada lectura y no se guarda nada.** Vale para los movimientos que
+ya estaban y para los que entren en cada importación, sin marcar nada: la
+siguiente consulta ya los cuenta así. Si un archivo de producto llega después, la
+siguiente consulta ya lo usa.
+
+**`excludedFromTotals`, `transferId` y `productId` no cambian lo que suma un
+movimiento de depósito.** Lo que suma es solo lo de arriba. La marca se puede
+seguir poniendo y quitando (se guarda, se filtra con `excluded` y se devuelve),
+pero en un movimiento de depósito no cambia ninguna suma. Las marcas que tenían
+los movimientos de depósito antes de la feature las quitó su migración
+(`20261016120000_deposit_movements_unmark`); las demás marcas siguen como
+estaban.
 
 **Errores**
 
@@ -908,7 +1039,10 @@ tipo, fechas, descripción, `balanceAfter`, `note`, `transferId`, `daySequence`,
 `origin`… quedan idénticos —, y los saldos de las cuentas tampoco se mueven.
 Los `totals` de `GET /api/movements` y de `GET /api/overview` **solo** cambian
 cuando se escribe `excludedFromTotals` (marcar saca los movimientos de las sumas;
-desmarcar los devuelve); `categoryId` y `status` no los mueven.
+desmarcar los devuelve); `categoryId` y `status` no los mueven. **Desde la
+feature 57**, en un movimiento de depósito la marca se guarda pero tampoco los
+mueve (ver
+[Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
 
 **Body** (`ids` siempre; además, **al menos una** de `categoryId`, `status` y
 `excludedFromTotals`)
@@ -918,7 +1052,7 @@ desmarcar los devuelve); `categoryId` y `status` no los mueven.
 | `ids`        | array de number (entero ≥ 1)        | Los movimientos a cambiar. **Mínimo 1, máximo 200** y **sin repetidos**. Todos tienen que existir. |
 | `categoryId` | number (entero ≥ 1) \| null         | Id de una categoría existente cuyo `kind` **coincida con el `type`** de **cada uno** de los movimientos (`expense`↔`expense`, `income`↔`income`). `null` **quita** la categoría. Un movimiento `neutral` (importe 0) no se categoriza. |
 | `status`     | `"confirmed"` \| `"pending_review"` | Se aplica a todos. Funciona en los dos sentidos: dar por revisado y volver atrás. |
-| `excludedFromTotals` | boolean (`true` \| `false`, **literales**) | **Desde la feature 49.** Se aplica a todos. `true` los saca de las sumas de `income` y `expense`; `false` los devuelve. Se puede mandar solo (`{ ids, excludedFromTotals }`) o junto a `categoryId` y/o `status`. Se puede marcar cualquier movimiento: también un `neutral` y también una pierna de traspaso. **Solo vale el booleano JSON**: `null`, `"true"`, `"false"`, `0` o `1` → **400 `VALIDATION_ERROR`**, sin escribir nada (no se convierten a booleano). |
+| `excludedFromTotals` | boolean (`true` \| `false`, **literales**) | **Desde la feature 49.** Se aplica a todos. `true` los saca de las sumas de `income` y `expense`; `false` los devuelve. **Desde la feature 57, salvo en un movimiento de depósito, donde la marca se guarda pero no cambia lo que suma** (ver [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)). Se puede mandar solo (`{ ids, excludedFromTotals }`) o junto a `categoryId` y/o `status`. Se puede marcar cualquier movimiento: también un `neutral` y también una pierna de traspaso. **Solo vale el booleano JSON**: `null`, `"true"`, `"false"`, `0` o `1` → **400 `VALIDATION_ERROR`**, sin escribir nada (no se convierten a booleano). |
 
 ```json
 { "ids": [10, 11, 12], "categoryId": 4, "status": "confirmed" }
@@ -950,8 +1084,9 @@ desmarcar los devuelve); `categoryId` y `status` no los mueven.
   siempre `ids.length` (los ids no se repiten y todos existen).
 - `movements`: **los movimientos ya cambiados**, serializados con la misma forma
   que cada elemento de `movements` en `GET /api/movements` (con su `account` y su
-  `category` embebidos). Vienen para que la pantalla no tenga que releer la
-  lista después de cambiarlos.
+  `category` embebidos), **salvo `deposit`**, que solo viaja en
+  `GET /api/movements` (feature 57). Vienen para que la pantalla no tenga que
+  releer la lista después de cambiarlos.
 
 **Es todo o nada.** Las comprobaciones se hacen sobre el conjunto entero **antes**
 de escribir, y la escritura va en una transacción: si un solo movimiento de `ids`
@@ -980,14 +1115,16 @@ tipo, las fechas, la descripción, el `balanceAfter`, el `transferId`… son el
 hecho bancario (o el enlace de un traspaso) y no se tocan; el saldo de la cuenta
 no cambia por nada de lo que viaja aquí. Los `totals` de `GET /api/movements` y
 de `GET /api/overview` no cambian por categorizar ni por confirmar; **solo**
-cambian al escribir `excludedFromTotals`.
+cambian al escribir `excludedFromTotals`, y desde la feature 57 ni eso si el
+movimiento es de depósito (ver
+[Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
 
 **Body** (al menos uno de los tres campos; pueden ir juntos en la misma petición)
 | Campo        | Tipo                                    | Reglas                                                            |
 | ------------ | --------------------------------------- | ----------------------------------------------------------------- |
 | `categoryId` | number (entero ≥ 1) \| null             | Id de una categoría existente cuyo `kind` **coincida con el `type`** del movimiento (`expense`↔`expense`, `income`↔`income`). `null` **quita** la categoría. Un movimiento `neutral` (importe 0) no se categoriza. |
 | `status`     | `"confirmed"` \| `"pending_review"`     | Funciona en los dos sentidos: dar por revisado y volver atrás.    |
-| `excludedFromTotals` | boolean (`true` \| `false`, **literales**) | **Desde la feature 49.** `true` saca el movimiento de las sumas de `income` y `expense`; `false` lo devuelve, exactamente como estaba. Se puede marcar cualquier movimiento, también un `neutral` y también una pierna de traspaso. **Solo vale el booleano JSON**: `null`, `"true"`, `"false"`, `0` o `1` → **400 `VALIDATION_ERROR`**, sin escribir nada (no se convierten a booleano). |
+| `excludedFromTotals` | boolean (`true` \| `false`, **literales**) | **Desde la feature 49.** `true` saca el movimiento de las sumas de `income` y `expense`; `false` lo devuelve, exactamente como estaba. **Desde la feature 57, salvo en un movimiento de depósito, donde la marca se guarda pero no cambia lo que suma** (ver [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)). Se puede marcar cualquier movimiento, también un `neutral` y también una pierna de traspaso. **Solo vale el booleano JSON**: `null`, `"true"`, `"false"`, `0` o `1` → **400 `VALIDATION_ERROR`**, sin escribir nada (no se convierten a booleano). |
 
 ```json
 { "excludedFromTotals": true }
@@ -998,7 +1135,8 @@ cambian al escribir `excludedFromTotals`.
 > descarta en silencio.
 
 **Respuesta 200** — el movimiento serializado completo (la misma forma que cada
-elemento de `movements` en `GET /api/movements`), con su `account` y su
+elemento de `movements` en `GET /api/movements`, **salvo `deposit`**, que solo
+viaja en `GET /api/movements` desde la feature 57), con su `account` y su
 `category` embebidos.
 
 **Errores**
@@ -1041,7 +1179,8 @@ a mano una pareja que tú mismo deshiciste es legítimo.
 ```
 
 `movements` son los dos movimientos serializados completos (la misma forma que
-en `GET /api/movements`), en el orden en que llegaron los ids.
+en `GET /api/movements`, salvo `deposit`, que solo viaja allí desde la feature
+57), en el orden en que llegaron los ids.
 
 **Traspasos y la marca `excludedFromTotals` (feature 49).** Son independientes:
 un movimiento marcado se puede enlazar igual que uno sin marcar, y enlazarlo no
@@ -1073,7 +1212,10 @@ movimientos que la detección enlazó y no eran un traspaso tuyo): en cuanto se
 deshace, sus dos piernas **vuelven a sumar** en los `totals` de
 `GET /api/movements` —la de gasto en `expense`, la de ingreso en `income`—
 siempre que ninguna de las dos esté marcada con `excludedFromTotals: true`, y la
-pareja deja de salir en [`GET /api/transfers`](#get-apitransfers).
+pareja deja de salir en [`GET /api/transfers`](#get-apitransfers). Desde la
+feature 57, una pierna que sea un movimiento de depósito suma lo que diga su
+`deposit.countedAmount`, enlazada o no (ver
+[Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
 
 **Respuesta 204** — sin cuerpo.
 
@@ -1122,7 +1264,8 @@ respuesta sigue trayendo todas las parejas.
 - `pairs[].movements`: las **dos piernas**, serializadas completas con la misma
   forma que cada elemento de `movements` en
   [`GET /api/movements`](#get-apimovements) (con `account` y `category`
-  embebidos). **Primero el `expense`, después el `income`.**
+  embebidos), salvo `deposit`, que solo viaja allí desde la feature 57.
+  **Primero el `expense`, después el `income`.**
 - **Orden de las parejas:** de la más reciente a la más antigua, según la
   `bookingDate` **más reciente de sus dos piernas**. Si dos parejas empatan en
   esa fecha, por `transferId` ascendente, para que el orden sea siempre el mismo.
@@ -1208,6 +1351,13 @@ No calcula nada propio — ese es el punto del endpoint:
   `excludedFromTotals: true`. Quitar la marca devuelve el movimiento a los
   totales de su mes exactamente como estaba. La marca **no** mueve los saldos
   (`totalBalance`, `balance`).
+- **Desde la feature 57**, `period.totals` sigue la misma regla de depósitos que
+  los `totals` de `GET /api/movements`: una apertura y una cancelación de
+  depósito suman `0`, un vencimiento suma solo su interés y uno dudoso suma `0`,
+  sin mirar su marca, su `transferId` ni su `productId` (ver
+  [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
+  El capital se busca en toda la historia de la cuenta, no solo en el mes
+  pedido. Los saldos no cambian.
 
 Las **inversiones no aparecen aquí**: tendrán su propia consulta (feature 39).
 
@@ -1447,7 +1597,7 @@ movimiento que cumple las cuatro condiciones a la vez:
 
 El número que lleva la descripción **no se lee** (se repite entre depósitos), y
 tampoco importan `excludedFromTotals`, `transferId` ni `productId`: un
-vencimiento marcado para no sumar se encuentra igual. Un banco sin ese
+vencimiento marcado se encuentra igual. Un banco sin ese
 reconocimiento no tiene candidatos.
 
 **Estado de cada depósito** (`status`), decidido en este orden:
@@ -1512,9 +1662,16 @@ vencimiento) y `candidateMovementIds`.
 **Errores:** ninguno propio. Sin depósitos, `200` con `deposits: []` y
 `total: "0.00"`.
 
-> Solo existe el `GET`: este endpoint **no escribe nada**. Lo que generan los
-> depósitos **no entra** en las sumas de ingresos ni en la ganancia del mes de
-> `GET /api/investments/overview`: solo se ve aquí.
+> Solo existe el `GET`: este endpoint **no escribe nada**, y la feature 57 no lo
+> cambia. Lo que generan los depósitos **no entra** en la ganancia del mes de
+> `GET /api/investments/overview`. **Desde la feature 57 sí entra en las sumas de
+> ingresos**: cada vencimiento suma su interés en los `totals` de
+> `GET /api/movements` y en los `period.totals` de `GET /api/overview`, con su
+> propia regla (ver
+> [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)),
+> que además saca el capital de las aperturas cuando no hay archivo de producto.
+> Por eso un vencimiento antiguo sin archivo de producto no aparece aquí pero sí
+> suma su interés allí.
 
 ### `GET /api/net-worth`
 
@@ -2066,7 +2223,10 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   Correr la detección dos veces deja exactamente las mismas parejas: una pierna ya
   emparejada (`transferId != null`) no se reevalúa, no se reempareja y no se
   desempareja. Desde que las dos piernas comparten `transferId`, los `totals` de
-  `GET /api/movements` las dejan fuera de `income` y `expense` (feature 36).
+  `GET /api/movements` las dejan fuera de `income` y `expense` (feature 36), salvo,
+  desde la feature 57, una pierna que sea un movimiento de depósito, que suma lo
+  que diga su `deposit.countedAmount` (ver
+  [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
 - `categorization` (feature 43): qué hizo la **pasada de categorización por reglas**,
   que corre **después de la detección de traspasos** (orden fijo para que el informe
   sea estable) sobre **todos** los movimientos elegibles —sin categoría, sin

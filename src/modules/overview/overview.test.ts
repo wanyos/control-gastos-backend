@@ -332,6 +332,42 @@ describe('GET /api/overview', () => {
     expect((await getOverview('?month=2026-06')).period.totals).toEqual(before)
   })
 
+  // Feature 57 (R13): the same rule as GET /api/movements, by the same sum. The
+  // opening is in the month before, so the principal comes from outside the
+  // month asked for. Figures invented.
+  it('period totals of GET /api/overview apply the deposit rule', async () => {
+    const account = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank: 'myinvestor', alias: 'Overview deposit account' },
+    })
+    createdAccountIds.push(account.id)
+    const seed = (type: 'expense' | 'income', amount: string, date: string, description: string) =>
+      app.prisma.movement.create({
+        data: {
+          accountId: account.id,
+          type,
+          amount,
+          description,
+          bookingDate: new Date(`${date}T00:00:00.000Z`),
+          valueDate: new Date(`${date}T00:00:00.000Z`),
+          daySequence: 1,
+        },
+      })
+    await seed('expense', '2731.46', '2026-05-19', 'APERTURA DEP.: 880452')
+    await seed('income', '2747.29', '2026-06-19', 'INTERESES DEP.: 880452')
+    await seed('expense', '1694.08', '2026-06-22', 'APERTURA DEP.: 880453')
+    await seed('income', '1694.08', '2026-06-25', 'CANCELACION DEP:880453')
+    await seed('expense', '41.73', '2026-06-26', 'SYNTHETIC CARD PAYMENT')
+
+    const overview = await getOverview('?month=2026-06')
+    const movements = await app.inject({
+      method: 'GET',
+      url: `/api/movements?accountId=${account.id}&from=2026-06-01&to=2026-06-30`,
+    })
+
+    expect(overview.period.totals).toEqual({ income: '15.83', expense: '41.73', net: '-25.90' })
+    expect(movements.json<{ totals: unknown }>().totals).toEqual(overview.period.totals)
+  })
+
   it('rejects a malformed month with 400 VALIDATION_ERROR instead of guessing one', async () => {
     for (const month of ['2026-13', 'june', '2026-06-01']) {
       const response = await app.inject({ method: 'GET', url: `/api/overview?month=${month}` })

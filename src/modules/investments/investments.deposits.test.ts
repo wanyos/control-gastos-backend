@@ -6,7 +6,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { buildApp } from '../../app.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
-import { isMyinvestorDepositMaturity } from '../myinvestor/myinvestor.deposit-maturity.js'
+import {
+  classifyMyinvestorDepositMovement,
+  isMyinvestorDepositMaturity,
+} from '../myinvestor/myinvestor.deposit-maturity.js'
 import type { SerializedAccount } from '../accounts/accounts.types.js'
 import { getDepositEarnings } from './investments.service.js'
 import type {
@@ -19,8 +22,17 @@ const TODAY = '2026-06-15'
 
 // A fake bank with a fake matcher, and MyInvestor with the real one.
 const matchers: DepositMaturityMatcherRegistry = [
-  { bank: 'synthbank', isDepositMaturity: (text) => text.startsWith('SYNTH MATURITY') },
-  { bank: 'myinvestor', isDepositMaturity: isMyinvestorDepositMaturity },
+  // `classifyDepositMovement` (feature 57) plays no part in what this file checks.
+  {
+    bank: 'synthbank',
+    isDepositMaturity: (text) => text.startsWith('SYNTH MATURITY'),
+    classifyDepositMovement: () => null,
+  },
+  {
+    bank: 'myinvestor',
+    isDepositMaturity: isMyinvestorDepositMaturity,
+    classifyDepositMovement: classifyMyinvestorDepositMovement,
+  },
 ]
 
 describe('deposit earnings (feature 50)', () => {

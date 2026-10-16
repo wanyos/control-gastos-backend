@@ -11,6 +11,11 @@ import type {
   PaymentMethod,
 } from '../../generated/prisma/client.js'
 
+import type {
+  DepositAmbiguityReason,
+  DepositMovementKind,
+} from '../investments/investments.types.js'
+
 /** Anything the domain helpers accept as a decimal amount. */
 export type DecimalLike = Prisma.Decimal | number | string
 
@@ -46,11 +51,17 @@ export interface AnchorColumns {
 
 /** Minimum shape needed to aggregate totals (R20 and feature 36). */
 export interface TotalsMovement {
+  /** Feature 57: looks the movement up in the map of deposit movements. */
+  id: number
   type: MovementType
   amount: DecimalLike
   transferId: string | null
   productId: number | null
-  /** Feature 49: marked by the human as not counting in the totals (R5, R6). */
+  /**
+   * Feature 49: marked by the human as not counting in the totals (R5, R6).
+   * Since feature 57 it is not looked at on a deposit movement: the deposit
+   * rule decides what that one counts.
+   */
   excludedFromTotals: boolean
 }
 
@@ -141,9 +152,28 @@ export interface SerializedMovementTotals {
   net: string
 }
 
+/**
+ * How a deposit movement counts in the totals (feature 57, R10), as the
+ * contract ships it: decimals as strings. `null` on any other movement.
+ */
+export interface SerializedDeposit {
+  kind: DepositMovementKind
+  /** The principal, or `null` when it is not certain. */
+  principal: string | null
+  /** What it adds to `income` (a maturity) or `0.00`. */
+  countedAmount: string
+  ambiguous: boolean
+  reason: DepositAmbiguityReason | null
+  /** Ascending ids of the candidate openings; `[]` unless `several_principals` by openings. */
+  candidateMovementIds: number[]
+}
+
+/** A movement of `GET /api/movements`: the shared shape plus `deposit` (feature 57). */
+export type ListedMovement = SerializedMovement & { deposit: SerializedDeposit | null }
+
 /** Shape of the `GET /api/movements` response since feature 36. */
 export interface MovementListResponse {
-  movements: SerializedMovement[]
+  movements: ListedMovement[]
   pagination: MovementListPagination
   totals: SerializedMovementTotals
 }

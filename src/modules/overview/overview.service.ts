@@ -4,6 +4,8 @@ import { Prisma } from '../../generated/prisma/client.js'
 
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { listAccounts } from '../accounts/accounts.service.js'
+import { readDepositMovements } from '../investments/investments.service.js'
+import type { DepositMaturityMatcherRegistry } from '../investments/investments.types.js'
 import { computeTotals, serializeTotals } from '../movements/movements.service.js'
 import type { OverviewQuery, OverviewResponse } from './overview.types.js'
 
@@ -39,7 +41,8 @@ export function monthRange(month: string): { from: string; to: string } {
  *    that already leaves out both legs of a transfer (`transferId != null`),
  *    the contributions to an investment product (`productId != null`), the
  *    movements the human marked `excludedFromTotals` (feature 49) and the
- *    `neutral` movements. Two different sums of the same money diverge.
+ *    `neutral` movements, and since feature 57 counts a deposit movement only
+ *    by its interest. Two different sums of the same money diverge.
  *
  * A month with no movements is not an error: the totals are simply zero.
  * Read-only: this view writes nothing (its queries are `findMany` only).
@@ -47,11 +50,12 @@ export function monthRange(month: string): { from: string; to: string } {
 export async function getOverview(
   prisma: AppPrismaClient,
   query: OverviewQuery,
+  matchers: DepositMaturityMatcherRegistry,
 ): Promise<OverviewResponse> {
   const month = query.month ?? currentMonth()
   const { from, to } = monthRange(month)
 
-  const [accounts, periodMovements] = await Promise.all([
+  const [accounts, periodMovements, deposits] = await Promise.all([
     listAccounts(prisma),
     prisma.movement.findMany({
       // Both ends inclusive: `bookingDate` is date-only stored at midnight UTC,
@@ -63,6 +67,7 @@ export async function getOverview(
         },
       },
       select: {
+        id: true,
         type: true,
         amount: true,
         transferId: true,
@@ -70,6 +75,9 @@ export async function getOverview(
         excludedFromTotals: true,
       },
     }),
+    // Over the whole history, not the month: a maturity's principal may come
+    // from an opening of an earlier month (feature 57).
+    readDepositMovements(prisma, matchers),
   ])
 
   const totalBalance = accounts.reduce(
@@ -87,6 +95,6 @@ export async function getOverview(
       type: account.type,
       balance: account.balance.toFixed(2),
     })),
-    period: { month, from, to, totals: serializeTotals(computeTotals(periodMovements)) },
+    period: { month, from, to, totals: serializeTotals(computeTotals(periodMovements, deposits)) },
   }
 }

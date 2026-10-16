@@ -451,6 +451,7 @@ describe('netOf (exported for the reconciliation checks, feature 32)', () => {
 describe('computeTotals', () => {
   const dataset: TotalsMovement[] = [
     {
+      id: 1,
       type: 'expense',
       amount: '45.90',
       transferId: null,
@@ -458,6 +459,7 @@ describe('computeTotals', () => {
       excludedFromTotals: false,
     },
     {
+      id: 2,
       type: 'income',
       amount: '1200.00',
       transferId: null,
@@ -465,6 +467,7 @@ describe('computeTotals', () => {
       excludedFromTotals: false,
     },
     {
+      id: 3,
       type: 'expense',
       amount: '500.00',
       transferId: 'transfer-1',
@@ -472,6 +475,7 @@ describe('computeTotals', () => {
       excludedFromTotals: false,
     },
     {
+      id: 4,
       type: 'income',
       amount: '500.00',
       transferId: 'transfer-1',
@@ -479,6 +483,7 @@ describe('computeTotals', () => {
       excludedFromTotals: false,
     },
     {
+      id: 5,
       type: 'neutral',
       amount: '0.00',
       transferId: null,
@@ -488,7 +493,7 @@ describe('computeTotals', () => {
   ]
 
   it('excludes transfer legs and neutral movements from the totals', () => {
-    const totals = computeTotals(dataset)
+    const totals = computeTotals(dataset, new Map())
 
     expect(totals.expense.toFixed(2)).toBe('45.90')
     expect(totals.income.toFixed(2)).toBe('1200.00')
@@ -497,76 +502,150 @@ describe('computeTotals', () => {
   // Feature 36 (roadmap loose end 8): a contribution to an investment product
   // is not an expense — the money is still yours (docs/data-model.md §Totales).
   it('excludes movements with a productId from the totals', () => {
-    const totals = computeTotals([
-      ...dataset,
-      {
-        type: 'expense',
-        amount: '3000.00',
-        transferId: null,
-        productId: 7,
-        excludedFromTotals: false,
-      },
-      {
-        type: 'income',
-        amount: '150.00',
-        transferId: null,
-        productId: 7,
-        excludedFromTotals: false,
-      },
-    ])
+    const totals = computeTotals(
+      [
+        ...dataset,
+        {
+          id: 6,
+          type: 'expense',
+          amount: '3000.00',
+          transferId: null,
+          productId: 7,
+          excludedFromTotals: false,
+        },
+        {
+          id: 7,
+          type: 'income',
+          amount: '150.00',
+          transferId: null,
+          productId: 7,
+          excludedFromTotals: false,
+        },
+      ],
+      new Map(),
+    )
 
     expect(totals.expense.toFixed(2)).toBe('45.90')
     expect(totals.income.toFixed(2)).toBe('1200.00')
   })
 
   it('excludes a movement carrying BOTH transferId and productId exactly once', () => {
-    const totals = computeTotals([
-      {
-        type: 'expense',
-        amount: '10.00',
-        transferId: null,
-        productId: null,
-        excludedFromTotals: false,
-      },
-      {
-        type: 'expense',
-        amount: '99.00',
-        transferId: 'transfer-2',
-        productId: 3,
-        excludedFromTotals: false,
-      },
-    ])
+    const totals = computeTotals(
+      [
+        {
+          id: 8,
+          type: 'expense',
+          amount: '10.00',
+          transferId: null,
+          productId: null,
+          excludedFromTotals: false,
+        },
+        {
+          id: 9,
+          type: 'expense',
+          amount: '99.00',
+          transferId: 'transfer-2',
+          productId: 3,
+          excludedFromTotals: false,
+        },
+      ],
+      new Map(),
+    )
 
     expect(totals.expense.toFixed(2)).toBe('10.00')
     expect(totals.income.toFixed(2)).toBe('0.00')
   })
 
   it('returns zero totals for an empty dataset', () => {
-    const totals = computeTotals([])
+    const totals = computeTotals([], new Map())
 
     expect(totals.expense.toFixed(2)).toBe('0.00')
     expect(totals.income.toFixed(2)).toBe('0.00')
+  })
+
+  // Feature 57 (R2, R3, R9): a movement of the deposit map adds only what its
+  // reading says, whatever its mark, transferId or productId.
+  it('counts a deposit movement only by its reading, ignoring the mark, transferId and productId', () => {
+    const reading = (kind: 'opening' | 'cancellation' | 'maturity', counted: string) => ({
+      kind,
+      principal: new Prisma.Decimal('2216.47'),
+      counted: new Prisma.Decimal(counted),
+      ambiguous: false,
+      reason: null,
+      candidateMovementIds: [],
+    })
+    const deposits = new Map([
+      [21, reading('opening', '0')],
+      [22, reading('cancellation', '0')],
+      [23, reading('maturity', '13.86')],
+    ])
+
+    const totals = computeTotals(
+      [
+        {
+          id: 21,
+          type: 'expense',
+          amount: '2216.47',
+          transferId: 't-9',
+          productId: null,
+          excludedFromTotals: false,
+        },
+        {
+          id: 22,
+          type: 'income',
+          amount: '2216.47',
+          transferId: null,
+          productId: 4,
+          excludedFromTotals: false,
+        },
+        {
+          id: 23,
+          type: 'income',
+          amount: '2230.33',
+          transferId: null,
+          productId: null,
+          excludedFromTotals: true,
+        },
+        {
+          id: 24,
+          type: 'expense',
+          amount: '45.90',
+          transferId: null,
+          productId: null,
+          excludedFromTotals: false,
+        },
+      ],
+      deposits,
+    )
+
+    expect(totals.income.toFixed(2)).toBe('13.86')
+    expect(totals.expense.toFixed(2)).toBe('45.90')
   })
 })
 
 describe('serializeTotals', () => {
   it('ships decimal strings with net = income minus expense', () => {
-    const totals = computeTotals([
-      {
-        type: 'income',
-        amount: '1200.00',
-        transferId: null,
-        productId: null,
-        excludedFromTotals: false,
-      },
-      {
-        type: 'expense',
-        amount: '45.90',
-        transferId: null,
-        productId: null,
-        excludedFromTotals: false,
-      },
-    ])
+    const totals = computeTotals(
+      [
+        {
+          id: 10,
+          type: 'income',
+          amount: '1200.00',
+          transferId: null,
+          productId: null,
+          excludedFromTotals: false,
+        },
+        {
+          id: 11,
+          type: 'expense',
+          amount: '45.90',
+          transferId: null,
+          productId: null,
+          excludedFromTotals: false,
+        },
+      ],
+      new Map(),
+    )
 
     expect(serializeTotals(totals)).toEqual({
       income: '1200.00',
@@ -576,22 +655,27 @@ describe('serializeTotals', () => {
   })
 
   it('ships a negative net when more went out than came in', () => {
-    const totals = computeTotals([
-      {
-        type: 'income',
-        amount: '100.00',
-        transferId: null,
-        productId: null,
-        excludedFromTotals: false,
-      },
-      {
-        type: 'expense',
-        amount: '250.50',
-        transferId: null,
-        productId: null,
-        excludedFromTotals: false,
-      },
-    ])
+    const totals = computeTotals(
+      [
+        {
+          id: 12,
+          type: 'income',
+          amount: '100.00',
+          transferId: null,
+          productId: null,
+          excludedFromTotals: false,
+        },
+        {
+          id: 13,
+          type: 'expense',
+          amount: '250.50',
+          transferId: null,
+          productId: null,
+          excludedFromTotals: false,
+        },
+      ],
+      new Map(),
+    )
 
     expect(serializeTotals(totals).net).toBe('-150.50')
   })
@@ -1322,12 +1406,14 @@ describe('movement routes (read-only) and database indexes', () => {
         'status',
         'transferId',
         'daySequence',
-        // Feature 49 (R4): the only key added since feature 36.
+        // Feature 49 (R4): added since feature 36.
         'excludedFromTotals',
         'createdAt',
         'updatedAt',
         'account',
         'category',
+        // Feature 57 (R10): only on GET /api/movements, `null` on this one.
+        'deposit',
       ].sort(),
     )
   })

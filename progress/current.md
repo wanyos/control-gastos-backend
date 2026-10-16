@@ -25,8 +25,10 @@
 
 **Nivel de consumo:** medio _(bajo / medio / alto; en alto, qué fases usan `fable`)_
 
-_Ninguna._ Última cerrada: **F56 `categorized-movements-list`** (2026-10-13, commit
-`2d2763b`) → [resumen](summaries/categorized-movements-list.md). Antes: **F55 `db-backup`**
+_Ninguna._ Última cerrada: **F57 `deposit-totals-interest-only`** (2026-10-16, **sin
+commit**; ver su sección más abajo) → [resumen](summaries/deposit-totals-interest-only.md).
+Antes: **F56 `categorized-movements-list`** (2026-10-13, commit
+`2d2763b`) → [resumen](summaries/categorized-movements-list.md), y **F55 `db-backup`**
 (2026-10-02, commit `91a3cfc`) → [resumen](summaries/db-backup.md), y el mismo día F51
 (`d8c0a6d`), F52 (`55d574d`), F53 (`24784b7`) y F54 (`44797d6`); el cabo 10 quedó como
 riesgo aceptado por el humano, sin código.
@@ -48,6 +50,12 @@ con sus datos reales ese día y salió bien. Detalle:
 [revisión](reviews/movements-stable-order.md). Dejó abierto el cabo 25 de
 `docs/roadmap.md`.
 
+## F57 `deposit-totals-interest-only` — CERRADA, SIN COMMIT (2026-10-16)
+
+**Qué se hizo:** parte 1 de `../docs/handoff-depositos.md`: en los `totals` de `GET /api/movements` y los `period.totals` de `GET /api/overview` una apertura y una cancelación de depósito suman 0 y un vencimiento suma solo su interés, sin marcar nada. Lotes A y B hechos, reviewer `APPROVED` → [resumen](summaries/deposit-totals-interest-only.md), [implementación](implementations/deposit-totals-interest-only.md), [revisión](reviews/deposit-totals-interest-only.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`. **Falta el commit**, que pide el humano; el ✅ de `../docs/handoff-depositos.md` va con él.
+**Nota para el spec:** el Lote B se amplió a `README.md:81` y a comentarios de `prisma/schema.prisma` (176-181), y el Lote A a `src/modules/investments/investments.deposits.test.ts` (tipos), que la F57 vuelve falsos y no estaban en ningún `Archivos:`.
+
 <!--
 Plantilla mientras trabajas — borra este comentario y rellena:
 
@@ -61,7 +69,12 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 
 ## Lo que le toca al humano
 
-_Nada de la sesión en curso._ Sus deberes pendientes viven en
+De la F57 (2026-10-16):
+
+- **Aplicar la migración a tu base:** `prisma migrate deploy`. ⚠️ Escribe en tu base: quita la marca `excludedFromTotals` de los movimientos de depósito de MyInvestor (migración `20261016120000_deposit_movements_unmark`); las demás marcas se quedan. Haz antes una copia con `pnpm run db:backup` si quieres poder volver atrás.
+- **La prueba real**, después de la migración y con `pnpm run dev`: `GET /api/movements?from=2026-10-01&to=2026-10-31` y comparar `totals` con las cifras de `../docs/handoff-depositos.md`; y lo mismo mes a mes de agosto de 2025 a septiembre de 2026, donde cada vencimiento tiene que sumar su interés (salvo el de agosto de 2025, que sale dudoso, `decisions.md` 🔴 1).
+
+El resto de tus deberes pendientes viven en
 [`docs/roadmap.md`](../docs/roadmap.md) §Deberes tuyos pendientes, y los cabos
 sueltos en la tabla §Cabos sueltos con dueño del mismo archivo. Aquí solo se
 escribe lo que sale de la sesión **en curso**.

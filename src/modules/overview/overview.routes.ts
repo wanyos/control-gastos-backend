@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
+import type { DepositMaturityMatcherRegistry } from '../investments/investments.types.js'
 import { getOverviewSchema } from './overview.schema.js'
 import { getOverview, overviewDb } from './overview.service.js'
 import type { OverviewQuery } from './overview.types.js'
@@ -15,14 +16,26 @@ import type { OverviewQuery } from './overview.types.js'
  * it owns no calculation. Investments stay out on purpose: they get their own
  * view (feature 39).
  */
-export default async function overviewRoutes(fastify: FastifyInstance) {
+export interface OverviewRoutesOptions {
+  /**
+   * Bank → deposit matcher registry (feature 57), the same one
+   * `GET /api/movements` gets from `src/app.ts`: both totals follow one rule.
+   */
+  depositMaturityMatchers?: DepositMaturityMatcherRegistry
+}
+
+export default async function overviewRoutes(
+  fastify: FastifyInstance,
+  options: OverviewRoutesOptions = {},
+) {
   const db = overviewDb(fastify)
+  const depositMaturityMatchers = options.depositMaturityMatchers ?? []
 
   fastify.get<{ Querystring: OverviewQuery }>(
     '/',
     { schema: getOverviewSchema },
     async (request) => {
-      return getOverview(db, request.query)
+      return getOverview(db, request.query, depositMaturityMatchers)
     },
   )
 }

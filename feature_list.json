@@ -2492,6 +2492,83 @@
         }
       ],
       "status": "done"
+    },
+    {
+      "id": 57,
+      "name": "deposit-totals-interest-only",
+      "title": "Que en las sumas de entrada y salida un depósito solo cuente por sus intereses, sin marcar nada a mano",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-16), transcrito de ../docs/handoff-depositos.md, el encargo que el humano acordó ese día en una sesión del frontend tras importar los extractos de octubre. Las frases entre «» son suyas, citadas de ese documento; las cifras de «cómo sé» las midió esa sesión por la API y el spec-author las vuelve a comprobar. El nombre de la feature es propuesta del leader. El humano lo revisa en la puerta del spec. 2026-10-16, spec-author: de la primera frase de «cómo sé» se quitaron las dos cifras con céntimos, porque src/no-real-data.test.ts la marcaba como dato real (están en la base); siguen en el handoff.",
+        "que_quiero": "Que los totals de GET /api/movements (y todo lo que se calcule de la misma forma, como los period.totals de GET /api/overview) cumplan esta regla sin que nadie marque nada: abrir un depósito no suma ni a income ni a expense; cancelarlo (te devuelven el capital) no suma; que venza suma a income solo su interés (el importe del movimiento menos el capital del depósito), el día del vencimiento. Vale para los movimientos que ya están en la base y para los que entren en cada importación.",
+        "por_que": "«Si un depósito se cancela no tiene repercusión en el aumento del saldo o patrimonio, tampoco debería tenerlo solo por ser un depósito. Lo que se gana son los intereses cuando vence su plazo.» Hoy los movimientos de depósito sin marcar cuentan enteros (octubre de 2026 sale con más de 75.000 € de entrada y de salida, y la comparación con un mes normal no sirve), los 29 marcados con excludedFromTotals no cuentan nada, tampoco su interés, y marcar a mano no escala: cada importación trae movimientos de depósito nuevos sin marcar.",
+        "como_se_que_esta_bien": [
+          "Con mis datos reales, octubre de 2026 sale en GET /api/movements con los 75.000 € de aperturas y los 50.000 € de cancelaciones fuera de las sumas, y del INTERESES DEP. de octubre solo su interés dentro (las cifras exactas están en ../docs/handoff-depositos.md, fuera del repositorio).",
+          "Los meses de agosto de 2025 a septiembre de 2026 recuperan como ingreso los intereses de sus vencimientos, que hoy no cuentan.",
+          "Cada movimiento de depósito sigue enseñando el importe que dio el banco: no se parte en dos ni cambia su amount.",
+          "Un movimiento de depósito cuyo capital no se puede saber con certeza no se adivina: queda a la vista como dudoso y la respuesta dice cuál es y por qué.",
+          "docs/api-contract.md dice cómo cuenta en los totals cada clase de movimiento de depósito, qué campo (si alguno) lo hace visible en cada movimiento, cómo se señala uno dudoso y qué pasa con excludedFromTotals en un movimiento de depósito."
+        ],
+        "que_no_quiero": [
+          "«El humano no quiere que un vencimiento marcado siga ocultando su interés.»",
+          "No quiero tener que repasar ni marcar los depósitos a mano en cada importación.",
+          "No quiero que se toque GET /api/net-worth: ya cumple la regla.",
+          "Quedan fuera los traspasos a cuentas propias sin pareja (Trade Republic, Criptan, ING…) y las compras y aportaciones dentro de MyInvestor (Aportacion automatica cartera, ETF y fondos): son otros casos que se verán aparte."
+        ],
+        "delego_en_agente": [
+          "Qué pasa con excludedFromTotals en un movimiento de depósito: si la regla nueva la sustituye, si conviven (y qué manda) y si hay que limpiar las 29 marcas actuales. Lo que se decida, escrito en docs/api-contract.md.",
+          "Cómo se empareja cada apertura, cancelación y vencimiento con su capital, sabiendo que el número de la descripción se repite entre depósitos distintos y no basta. Puede apoyarse en los productos deposit y en GET /api/investments/deposits, y, para los depósitos sin producto, en que cada vencimiento llega con una apertura del mismo banco por el mismo capital antes, y las cancelaciones devuelven exactamente el capital de la apertura; lo que no cuadre, dudoso.",
+          "Qué campo, si alguno, enseña en cada movimiento cuánto cuenta en las sumas, y cómo se señala un movimiento dudoso."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "checks": [
+        {
+          "descripcion": "(añadido) La regla de la frase de octubre, con datos inventados: una apertura y una cancelación de depósito suman 0 en los totals.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.deposits.test.ts -t \"counts a deposit opening and cancellation as zero in the totals\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) La regla de la frase de octubre, con datos inventados: un vencimiento suma solo su importe menos el principal de su .json.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.deposits.test.ts -t \"counts a deposit maturity only by its interest over the principal of its product file\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los meses de agosto de 2025 a septiembre de 2026 recuperan como ingreso los intereses de sus vencimientos, que hoy no cuentan.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.deposits.test.ts -t \"counts a deposit maturity marked excludedFromTotals by its interest\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los meses de agosto de 2025 a septiembre de 2026 recuperan como ingreso los intereses de sus vencimientos, que hoy no cuentan.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.deposits.test.ts -t \"takes the principal of a maturity without product file from the earlier opening not yet returned\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los meses de agosto de 2025 a septiembre de 2026 recuperan como ingreso los intereses de sus vencimientos, que hoy no cuentan.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.deposit-unmark-migration.test.ts -t \"the deposit unmark migration unmarks the deposit movements and leaves any other mark\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada movimiento de depósito sigue enseñando el importe que dio el banco: no se parte en dos ni cambia su amount.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.deposits.test.ts -t \"keeps the bank amount and type of every deposit movement in the listing\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un movimiento de depósito cuyo capital no se puede saber con certeza no se adivina: queda a la vista como dudoso y la respuesta dice cuál es y por qué.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.deposits.test.ts -t \"marks a maturity whose principal is not certain as ambiguous counting zero with reason and candidates\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md dice cómo cuenta en los totals cada clase de movimiento de depósito, qué campo (si alguno) lo hace visible en cada movimiento, cómo se señala uno dudoso y qué pasa con excludedFromTotals en un movimiento de depósito.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.deposits.docs.test.ts -t \"api-contract: describes how each kind of deposit movement counts, the deposit field, the ambiguous ones and excludedFromTotals\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Los period.totals de GET /api/overview siguen la misma regla.",
+          "comando": "pnpm exec vitest run src/modules/overview/overview.test.ts -t \"period totals of GET /api/overview apply the deposit rule\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Vale también para lo que entra en cada importación: un vencimiento añadido después cuenta en la siguiente lectura sin hacer nada más.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.deposits.test.ts -t \"counts a deposit maturity added after the first read without any other action\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) De lo que no quiero: nada más cambia, tampoco GET /api/net-worth. La suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ],
+      "status": "done"
     }
   ]
 }
