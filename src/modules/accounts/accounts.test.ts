@@ -182,6 +182,49 @@ describe('account routes and service', () => {
     expect(account?.initialBalance).toBe('100.00')
   })
 
+  it('GET /api/accounts breaks a same-day, same-daySequence tie with the highest id and puts a null daySequence last (roadmap item 25)', async () => {
+    const created = await createAccount({ iban: uniqueIban(), bank: 'bankinter' })
+    const sameDay = (overrides: Partial<SeedMovement>): SeedMovement => ({
+      type: 'expense',
+      amount: '10.00',
+      description: 'SYNTHETIC TIE LINE',
+      bookingDate: '2026-07-31',
+      daySequence: 1,
+      ...overrides,
+    })
+
+    // Three different descriptions: the dedup index of imported movements
+    // would otherwise reject the second row of the same day and sequence.
+    const lowerId = await seedMovement(
+      created.id,
+      sameDay({ description: 'SYNTHETIC TIE LINE A', balanceAfter: '100.00' }),
+    )
+    const higherId = await seedMovement(
+      created.id,
+      sameDay({ description: 'SYNTHETIC TIE LINE B', balanceAfter: '300.00' }),
+    )
+    // Same day, no daySequence and the highest id of all: it must NOT win.
+    const noSequence = await seedMovement(
+      created.id,
+      sameDay({ description: 'SYNTHETIC TIE LINE C', daySequence: null, balanceAfter: '900.00' }),
+    )
+    expect(lowerId.id).toBeLessThan(higherId.id)
+    expect(higherId.id).toBeLessThan(noSequence.id)
+
+    const listed = await app.inject({ method: 'GET', url: '/api/accounts' })
+    const single = await app.inject({ method: 'GET', url: `/api/accounts/${created.id}` })
+
+    expect(listed.statusCode).toBe(200)
+    expect(single.statusCode).toBe(200)
+    const account = listed
+      .json<SerializedAccount[]>()
+      .find((candidate) => candidate.id === created.id)
+    // The line with the highest id among the tied ones gives the balance, and
+    // the two other lines of that day are not summed on top of it.
+    expect(account?.balance).toBe('300.00')
+    expect(single.json<SerializedAccount>().balance).toBe('300.00')
+  })
+
   it('GET /api/accounts falls back to initialBalance +income -expense without statements (R9)', async () => {
     const created = await createAccount({
       iban: uniqueIban(),

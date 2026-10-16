@@ -5,7 +5,10 @@ import { Prisma } from '../../generated/prisma/client.js'
 import { todayInMadrid } from '../../lib/local-date.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { listAccounts } from '../accounts/accounts.service.js'
-import { getInvestmentsNetWorth } from '../investments/investments.service.js'
+import {
+  getInvestmentsNetWorth,
+  readLatestInvestmentDate,
+} from '../investments/investments.service.js'
 import type { NetWorthResponse } from './net-worth.types.js'
 
 /**
@@ -36,9 +39,10 @@ export async function getNetWorth(prisma: AppPrismaClient): Promise<NetWorthResp
   const asOf = todayInMadrid()
   const today = new Date(`${asOf}T00:00:00.000Z`)
 
-  const [accounts, investments] = await Promise.all([
+  const [accounts, investments, lastDataDate] = await Promise.all([
     listAccounts(prisma),
     getInvestmentsNetWorth(prisma, today),
+    readLastDataDate(prisma),
   ])
 
   const accountsTotal = accounts.reduce(
@@ -48,6 +52,7 @@ export async function getNetWorth(prisma: AppPrismaClient): Promise<NetWorthResp
 
   return {
     asOf,
+    lastDataDate,
     total: accountsTotal.plus(investments.total).toFixed(2),
     accounts: {
       total: accountsTotal.toFixed(2),
@@ -62,4 +67,22 @@ export async function getNetWorth(prisma: AppPrismaClient): Promise<NetWorthResp
     },
     investments,
   }
+}
+
+/**
+ * The most recent date written in the whole database, as `YYYY-MM-DD`: the
+ * latest between `Movement.bookingDate` (read here) and the two photo tables
+ * (read by the investments module, the only reader of those tables). `null`
+ * when there is not a single row in any of the three.
+ */
+async function readLastDataDate(prisma: AppPrismaClient): Promise<string | null> {
+  const [movement, investment] = await Promise.all([
+    prisma.movement.aggregate({ _max: { bookingDate: true } }),
+    readLatestInvestmentDate(prisma),
+  ])
+  const dates = [movement._max.bookingDate, investment].filter(
+    (date): date is Date => date !== null,
+  )
+  if (dates.length === 0) return null
+  return new Date(Math.max(...dates.map((date) => date.getTime()))).toISOString().slice(0, 10)
 }

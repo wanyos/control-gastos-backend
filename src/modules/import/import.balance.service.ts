@@ -22,6 +22,12 @@ import type { BalanceAnchor, BalanceMovement, RecencyPoint } from '../movements/
 export interface BalanceMismatch {
   accountId: number
   accountAlias: string
+  /**
+   * `Account.bank` and `Account.iban` (2026-10-16, frontend roadmap item 33):
+   * the frontend names an account as bank plus last digits. `accountAlias` stays.
+   */
+  accountBank: string
+  accountIban: string
   /** `YYYY-MM-DD` of the compared point. */
   date: string
   /** The number the calculation produces, as a decimal string. */
@@ -38,6 +44,8 @@ export interface BalanceMismatch {
 interface MismatchAccount {
   id: number
   alias: string
+  bank: string
+  iban: string
 }
 
 /**
@@ -101,6 +109,8 @@ function mismatch(
   return {
     accountId: account.id,
     accountAlias: account.alias,
+    accountBank: account.bank,
+    accountIban: account.iban,
     date,
     computed: computed.toFixed(2),
     fromFile: fromFile.toFixed(2),

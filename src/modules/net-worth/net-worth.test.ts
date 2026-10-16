@@ -93,6 +93,57 @@ describe('GET /api/net-worth', () => {
     expect(Array.isArray(body.investments.issues)).toBe(true)
   })
 
+  it('says in lastDataDate the most recent date of movements, valuations and savings photos, or null', async () => {
+    // Nothing of this test created yet: every file of the suite cleans up its
+    // rows, so the three tables are empty and there is no date to report.
+    expect((await getNetWorth()).lastDataDate).toBeNull()
+
+    const account = await createAccount('0.00')
+    await app.prisma.movement.create({
+      data: {
+        accountId: account.id,
+        type: 'income',
+        amount: '50.00',
+        description: 'NET WORTH LAST DATA MOVEMENT',
+        bookingDate: new Date('2026-08-10T00:00:00.000Z'),
+        valueDate: new Date('2026-08-10T00:00:00.000Z'),
+        daySequence: 1,
+      },
+    })
+    expect((await getNetWorth()).lastDataDate).toBe('2026-08-10')
+
+    const savings = await app.prisma.investmentProduct.create({
+      data: { bank: 'zz-net-worth-endpoint-bank', name: uniqueName(), type: 'savings_account' },
+    })
+    createdProductIds.push(savings.id)
+    await app.prisma.savingsSnapshot.create({
+      data: {
+        productId: savings.id,
+        date: new Date('2026-08-31T00:00:00.000Z'),
+        openingBalance: '4000.00',
+        moneyIn: '0.00',
+        moneyOut: '0.00',
+        interest: '6.40',
+        balance: '4006.40',
+      },
+    })
+    expect((await getNetWorth()).lastDataDate).toBe('2026-08-31')
+
+    const fund = await app.prisma.investmentProduct.create({
+      data: { bank: 'zz-net-worth-endpoint-bank', name: uniqueName(), type: 'fund' },
+    })
+    createdProductIds.push(fund.id)
+    await app.prisma.valuation.create({
+      data: {
+        productId: fund.id,
+        date: new Date('2026-09-30T00:00:00.000Z'),
+        invested: '1000.00',
+        marketValue: '1200.00',
+      },
+    })
+    expect((await getNetWorth()).lastDataDate).toBe('2026-09-30')
+  })
+
   it('shows each account with the SAME balance as GET /api/accounts, and their sum (R2)', async () => {
     const first = await createAccount('100.10')
     const second = await createAccount('200.20')

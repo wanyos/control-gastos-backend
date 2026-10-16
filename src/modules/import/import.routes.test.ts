@@ -125,6 +125,11 @@ afterEach(async () => {
   await app.prisma.importUnparsedRow.deleteMany({ where: { bank } })
   await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
   await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
+  // The closing step looks these two up by their exact seed names: a test that
+  // created them must not leave them for the next one.
+  await app.prisma.category.deleteMany({
+    where: { name: { in: ['Otros gastos', 'Otros ingresos'] }, parentId: null },
+  })
   await app.close()
 })
 
@@ -374,6 +379,57 @@ describe('POST /api/import', () => {
 
     const third = await app.inject({ method: 'POST', url: '/api/import' })
     expect(third.statusCode).toBe(200)
+  })
+
+  it('closes the imported movements when the two seed categories exist (2026-10-16)', async () => {
+    const { client } = driveDouble()
+    app = await buildTestApp(client)
+    const expense = await app.prisma.category.create({
+      data: { name: 'Otros gastos', kind: 'expense' },
+    })
+    const income = await app.prisma.category.create({
+      data: { name: 'Otros ingresos', kind: 'income' },
+    })
+
+    const response = await app.inject({ method: 'POST', url: '/api/import' })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<ImportRunResult>()
+    expect(body.closingError).toBeUndefined()
+    expect(body.closing).toEqual({ categorized: { expense: 1, income: 1 }, confirmed: 2 })
+    const listed = await app.inject({ method: 'GET', url: '/api/movements' })
+    const own = listed
+      .json<{
+        movements: Array<{
+          description: string
+          status: string
+          category: { id: number } | null
+          account: { iban: string }
+        }>
+      }>()
+      .movements.filter((movement) => movement.account.iban === iban)
+    expect(own.map((movement) => [movement.status, movement.category?.id])).toEqual([
+      ['confirmed', income.id],
+      ['confirmed', expense.id],
+    ])
+  })
+
+  it('leaves the imported movements pending, with closing: null, when a seed category is missing', async () => {
+    const { client } = driveDouble()
+    app = await buildTestApp(client)
+
+    const response = await app.inject({ method: 'POST', url: '/api/import' })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<ImportRunResult>()
+    expect(body.closing).toBeNull()
+    expect(body.closingError).toBeUndefined()
+    const stored = await app.prisma.movement.findMany({ where: { account: { iban } } })
+    expect(stored).toHaveLength(2)
+    for (const row of stored) {
+      expect(row.status).toBe('pending_review')
+      expect(row.categoryId).toBeNull()
+    }
   })
 
   it('exposes no way to create or delete a movement by API (R16)', async () => {

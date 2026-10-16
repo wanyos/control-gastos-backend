@@ -56,18 +56,25 @@ export function deriveMovementTypeFromAmount(amount: number): MovementType {
 }
 
 /**
- * Is `a` strictly more recent than `b`? `(bookingDate, daySequence)`, with a
+ * Is `a` strictly more recent than `b`? `(bookingDate, daySequence, id)`, with a
  * missing `daySequence` read as `0`. THE only recency comparison of the module:
  * the anchor point and the filter of what comes after it must not be able to
  * diverge (feature 31, R7).
+ *
+ * The id breaks the tie only when BOTH points carry one (roadmap item 25): the
+ * anchor stored on an account has no row id, and against it a movement of the
+ * same date and `daySequence` is not "after", exactly as before.
  */
 export function isAfter(a: RecencyPoint, b: RecencyPoint): boolean {
   const dateDiff = a.bookingDate.getTime() - b.bookingDate.getTime()
   if (dateDiff !== 0) return dateDiff > 0
-  return (a.daySequence ?? 0) > (b.daySequence ?? 0)
+  const sequenceDiff = (a.daySequence ?? 0) - (b.daySequence ?? 0)
+  if (sequenceDiff !== 0) return sequenceDiff > 0
+  if (a.id === undefined || b.id === undefined) return false
+  return a.id > b.id
 }
 
-/** Most recent first: `bookingDate DESC, daySequence DESC` (R3b). */
+/** Most recent first: `bookingDate DESC, daySequence DESC, id DESC` (R3b). */
 function byMostRecent(a: BalanceMovement, b: BalanceMovement): number {
   if (isAfter(a, b)) return -1
   if (isAfter(b, a)) return 1
@@ -104,6 +111,9 @@ export function resolveAnchorPoint(
     amount: mostRecentWithBalance.balanceAfter,
     bookingDate: mostRecentWithBalance.bookingDate,
     daySequence: mostRecentWithBalance.daySequence,
+    // Carried so a same-day, same-sequence movement with a LOWER id is not
+    // summed again on top of the balance this line already contains.
+    id: mostRecentWithBalance.id,
   }
 
   if (anchor === null) return fromStatement

@@ -57,6 +57,12 @@ export interface SerializedBalanceMismatch {
   file: WarningFileRef
   accountId: number
   accountAlias: string
+  /**
+   * `Account.bank` and `Account.iban`, read from the account when listing like
+   * the alias (2026-10-16, frontend roadmap item 33). `accountAlias` stays.
+   */
+  accountBank: string
+  accountIban: string
   /** `YYYY-MM-DD` of the compared point. */
   date: string
   computed: string

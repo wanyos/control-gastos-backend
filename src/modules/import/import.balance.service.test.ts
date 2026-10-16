@@ -9,7 +9,7 @@ import { findPerLineMismatches, findStatementBalanceMismatch } from './import.ba
 
 // Every amount, date, IBAN and description below is INVENTED (ADR-017): a
 // fixture only has to be well formed, never true.
-const account = { id: 7, alias: 'Synthetic checking' }
+const account = { id: 7, alias: 'Synthetic checking', bank: 'bankinter', iban: syntheticIban() }
 
 function parsedMovement(overrides: Partial<ParsedMovement> = {}): ParsedMovement {
   return {
@@ -88,6 +88,8 @@ describe('findPerLineMismatches', () => {
       {
         accountId: 7,
         accountAlias: 'Synthetic checking',
+        accountBank: 'bankinter',
+        accountIban: account.iban,
         date: '2026-07-11',
         computed: '75.00',
         fromFile: '74.00',
@@ -271,7 +273,7 @@ describe('findStatementBalanceMismatch', () => {
     const result = await findStatementBalanceMismatch({
       prisma: app.prisma,
       statement: statementWithPreamble(1150),
-      account: { id: created.id, alias: created.alias },
+      account: { id: created.id, alias: created.alias, bank: created.bank, iban: created.iban },
       anchor: storedAnchor,
     })
 
@@ -292,13 +294,15 @@ describe('findStatementBalanceMismatch', () => {
     const result = await findStatementBalanceMismatch({
       prisma: app.prisma,
       statement: statementWithPreamble(1150),
-      account: { id: created.id, alias: created.alias },
+      account: { id: created.id, alias: created.alias, bank: created.bank, iban: created.iban },
       anchor: storedAnchor,
     })
 
     expect(result).toEqual({
       accountId: created.id,
       accountAlias: 'Synthetic checking',
+      accountBank: created.bank,
+      accountIban: created.iban,
       date: '2026-07-12',
       computed: '1180.00',
       fromFile: '1150.00',
@@ -314,7 +318,7 @@ describe('findStatementBalanceMismatch', () => {
     const result = await findStatementBalanceMismatch({
       prisma: app.prisma,
       statement: statementWithPreamble(1149.99),
-      account: { id: created.id, alias: created.alias },
+      account: { id: created.id, alias: created.alias, bank: created.bank, iban: created.iban },
       anchor: storedAnchor,
     })
 
@@ -328,7 +332,7 @@ describe('findStatementBalanceMismatch', () => {
     const result = await findStatementBalanceMismatch({
       prisma: app.prisma,
       statement: statementWithPreamble(1150),
-      account: { id: created.id, alias: created.alias },
+      account: { id: created.id, alias: created.alias, bank: created.bank, iban: created.iban },
       anchor: null,
     })
 
@@ -342,7 +346,7 @@ describe('findStatementBalanceMismatch', () => {
     const result = await findStatementBalanceMismatch({
       prisma: app.prisma,
       statement: statementWithPreamble(1150),
-      account: { id: created.id, alias: created.alias },
+      account: { id: created.id, alias: created.alias, bank: created.bank, iban: created.iban },
       // Anchored later than the whole file: summing forward does not apply.
       anchor: {
         amount: '1000.00',
@@ -361,7 +365,7 @@ describe('findStatementBalanceMismatch', () => {
     const result = await findStatementBalanceMismatch({
       prisma: app.prisma,
       statement: statementOf(statementWithPreamble(1150).movements, null),
-      account: { id: created.id, alias: created.alias },
+      account: { id: created.id, alias: created.alias, bank: created.bank, iban: created.iban },
       anchor: storedAnchor,
     })
 
@@ -383,7 +387,7 @@ describe('findStatementBalanceMismatch', () => {
     const result = await findStatementBalanceMismatch({
       prisma: app.prisma,
       statement: statementWithPreamble(1150),
-      account: { id: created.id, alias: created.alias },
+      account: { id: created.id, alias: created.alias, bank: created.bank, iban: created.iban },
       anchor: storedAnchor,
     })
 

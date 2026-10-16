@@ -532,10 +532,17 @@ describe('POST /api/transfers and DELETE /api/transfers/:transferId (F44)', () =
 
     it('returns an uneven group with the same shape as the import report (R14)', async () => {
       const { source, target, firstOut, secondOut, lonelyIn } = await seedUnevenGroup()
-      const leg = (id: number, accountId: number, type: string, bookingDate: string) => ({
+      const leg = (
+        id: number,
+        account: { id: number; iban: string },
+        type: string,
+        bookingDate: string,
+      ) => ({
         id,
-        accountId,
+        accountId: account.id,
         accountAlias: 'Transfer route test account',
+        accountBank: 'bankinter',
+        accountIban: account.iban,
         type,
         bookingDate,
         description: 'SYNTHETIC ROUTE TRANSFER LEG',
@@ -551,9 +558,9 @@ describe('POST /api/transfers and DELETE /api/transfers/:transferId (F44)', () =
           {
             amount: '58.17',
             movements: [
-              leg(firstOut.id, source.id, 'expense', '2031-06-01'),
-              leg(secondOut.id, source.id, 'expense', '2031-06-02'),
-              leg(lonelyIn.id, target.id, 'income', '2031-06-02'),
+              leg(firstOut.id, source, 'expense', '2031-06-01'),
+              leg(secondOut.id, source, 'expense', '2031-06-02'),
+              leg(lonelyIn.id, target, 'income', '2031-06-02'),
             ],
           },
         ],

@@ -33,12 +33,25 @@ export function accountsDb(app: FastifyInstance): AppPrismaClient {
 }
 
 const balanceMovementSelect = {
+  id: true,
   type: true,
   amount: true,
   balanceAfter: true,
   bookingDate: true,
   daySequence: true,
 } as const
+
+/**
+ * The line the balance of an account is read from: the most recent one. Same
+ * order `isAfter` applies in memory (roadmap item 25, 2026-10-16): a missing
+ * `daySequence` goes last (in memory it reads as 0) and the id is the last
+ * tie-breaker, so two rows sharing date and sequence always pick the same one.
+ */
+const balanceMovementOrder = [
+  { bookingDate: 'desc' },
+  { daySequence: { sort: 'desc', nulls: 'last' } },
+  { id: 'desc' },
+] as const satisfies Prisma.MovementOrderByWithRelationInput[]
 
 function deriveAlias(bank: string, iban: string): string {
   return `${bank} ···${iban.slice(-4)}`
@@ -118,7 +131,7 @@ export async function listAccounts(prisma: AppPrismaClient): Promise<AccountWith
     include: {
       movements: {
         where: { balanceAfter: { not: null } },
-        orderBy: [{ bookingDate: 'desc' }, { daySequence: 'desc' }],
+        orderBy: balanceMovementOrder,
         take: 1,
         select: balanceMovementSelect,
       },
@@ -137,7 +150,7 @@ export async function getAccountById(
     include: {
       movements: {
         where: { balanceAfter: { not: null } },
-        orderBy: [{ bookingDate: 'desc' }, { daySequence: 'desc' }],
+        orderBy: balanceMovementOrder,
         take: 1,
         select: balanceMovementSelect,
       },

@@ -111,6 +111,19 @@ describe('computeAccountBalance', () => {
     expect(computeAccountBalance('0', movements).toFixed(2)).toBe('100.00')
   })
 
+  it('breaks a same-day, same-daySequence tie with the highest id (roadmap item 25)', () => {
+    const day = new Date('2026-07-24T00:00:00.000Z')
+    const movements = [
+      balanceMovement({ id: 12, balanceAfter: '100.00', bookingDate: day, daySequence: 1 }),
+      balanceMovement({ id: 14, balanceAfter: '300.00', bookingDate: day, daySequence: 1 }),
+      balanceMovement({ id: 13, balanceAfter: '200.00', bookingDate: day, daySequence: 1 }),
+    ]
+
+    // The row with the highest id is the balance; the two with a lower id are
+    // not "after" it, so nothing is summed on top of 300.00.
+    expect(computeAccountBalance('0', movements).toFixed(2)).toBe('300.00')
+  })
+
   // Feature 31 split this case in two. Until then it claimed that a movement
   // without a per-line balance NEVER moved the result; that is only true of a
   // movement OLDER than the anchor point. A newer one does move it: the
@@ -247,6 +260,18 @@ describe('isAfter', () => {
   it('reads a missing daySequence as zero', () => {
     expect(isAfter({ ...point, daySequence: null }, { ...point, daySequence: 1 })).toBe(false)
     expect(isAfter({ ...point, daySequence: 1 }, { ...point, daySequence: null })).toBe(true)
+  })
+
+  it('breaks a full tie with the id, and only when both points carry one (roadmap item 25)', () => {
+    expect(isAfter({ ...point, id: 9 }, { ...point, id: 8 })).toBe(true)
+    expect(isAfter({ ...point, id: 8 }, { ...point, id: 9 })).toBe(false)
+    expect(isAfter({ ...point, id: 9 }, { ...point, id: 9 })).toBe(false)
+    // The stored anchor has no row id: a same-date, same-sequence movement
+    // still ties with it, whichever its id.
+    expect(isAfter({ ...point, id: 9 }, point)).toBe(false)
+    expect(isAfter(point, { ...point, id: 9 })).toBe(false)
+    // The id never outranks the daySequence.
+    expect(isAfter({ ...point, daySequence: 1, id: 99 }, { ...point, id: 1 })).toBe(false)
   })
 })
 

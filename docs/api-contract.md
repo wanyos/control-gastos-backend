@@ -1153,6 +1153,13 @@ falta.
 - `confirmed`: cuántos pasaron de `pending_review` a `confirmed` en esta llamada.
 - Una segunda llamada seguida responde con ceros: es idempotente.
 
+> **Corre también al final de cada importación** (desde el 2026-10-16): el último
+> paso de [`POST /api/import`](#post-apiimport), después de las reglas, hace esta
+> misma operación con `Otros gastos` y `Otros ingresos` buscadas por nombre, y lo
+> cuenta en el campo `closing` del informe (`null` si falta alguna de las dos).
+> Por eso, tras una importación con las dos categorías de arranque, una llamada a
+> esta ruta normalmente responde con ceros.
+
 **Errores**
 
 | Código HTTP | `code`             | Cuándo                                                                                                                           |
@@ -1360,10 +1367,13 @@ No tiene parámetros. Un parámetro de query desconocido **se ignora** (responde
       "amount": "500.00",
       "movements": [
         { "id": 12, "accountId": 1, "accountAlias": "bankinter ···0236",
+          "accountBank": "bankinter", "accountIban": "ES0000000000000000000236",
           "type": "expense", "bookingDate": "2026-08-01", "description": "TRANSFERENCIA" },
         { "id": 40, "accountId": 2, "accountAlias": "openbank ···1111",
+          "accountBank": "openbank", "accountIban": "ES0000000000000000001111",
           "type": "income", "bookingDate": "2026-08-01", "description": "TRANSFERENCIA RECIBIDA" },
         { "id": 41, "accountId": 3, "accountAlias": "n26 ···2222",
+          "accountBank": "n26", "accountIban": "ES0000000000000000002222",
           "type": "income", "bookingDate": "2026-08-02", "description": "ABONO" }
       ]
     }
@@ -1374,8 +1384,10 @@ No tiene parámetros. Un parámetro de query desconocido **se ignora** (responde
 - `ambiguousCount`: cuántos **grupos** dudosos hay (grupos, no movimientos).
   Siempre igual a `ambiguous.length`.
 - `ambiguous`: cada grupo, **entero**, con su `amount` y los datos de cada
-  movimiento para localizarlo (`id`, `accountId`, `accountAlias`, `type`,
-  `bookingDate`, `description`). Qué hace dudoso a un grupo está explicado en el
+  movimiento para localizarlo (`id`, `accountId`, `accountAlias`, `accountBank`,
+  `accountIban`, `type`, `bookingDate`, `description`; los dos de en medio desde el
+  2026-10-16, ver el campo `ambiguous` de `POST /api/import`). Qué hace dudoso a
+  un grupo está explicado en el
   campo `ambiguous` del informe de `POST /api/import`; desde el 2026-10-16 entra
   también aquí una pareja única por importe y fechas cuyos conceptos no dicen que
   sea un traspaso (ADR-036). `ambiguousCount: 0` y `ambiguous: []` si no hay
@@ -1746,6 +1758,14 @@ del mes) siguen exactamente igual.
 **No tiene parámetros**: responde siempre a fecha de hoy (UTC). Un parámetro de
 querystring desconocido **se descarta antes del handler** — nunca es un 400.
 
+| Campo | Tipo | Qué es |
+| --- | --- | --- |
+| `asOf` | string `YYYY-MM-DD` | El día para el que se calcula todo: hoy. |
+| `lastDataDate` | string `YYYY-MM-DD` o `null` | (2026-10-16) Hasta qué día llegan los datos: la fecha **más reciente** entre `Movement.bookingDate`, `Valuation.date` y `SavingsSnapshot.date` de **toda** la base, sin filtrar por cuenta, producto ni por `asOf`. `null` si ninguna de las tres tablas tiene filas. `asOf` no cambia por esto: sigue siendo hoy. |
+| `total` | string decimal | `accounts.total + investments.total`. |
+| `accounts` | objeto | `total` y la lista `accounts`, con el mismo `balance` que `GET /api/accounts`. |
+| `investments` | objeto | `total`, `products` e `issues`, descritos abajo. |
+
 Reglas que gobiernan toda la respuesta:
 
 - **El lado de las cuentas es la misma fórmula de saldo de la feature 31** que
@@ -1775,7 +1795,8 @@ Reglas que gobiernan toda la respuesta:
 ```json
 {
   "asOf": "2026-09-06",
-  "total": "23708.90",
+  "lastDataDate": "2026-08-29",
+  "total": "33519.15",
   "accounts": {
     "total": "5500.00",
     "accounts": [
@@ -1786,7 +1807,7 @@ Reglas que gobiernan toda la respuesta:
     ]
   },
   "investments": {
-    "total": "18208.90",
+    "total": "28019.15",
     "products": [
       {
         "id": 1, "bank": "myinvestor", "name": "Fondo Global", "type": "fund",
@@ -1818,8 +1839,11 @@ Reglas que gobiernan toda la respuesta:
 }
 ```
 
-En el ejemplo, `investments.total` = 12810.75 + 10000.00 + 5208.40 (el `value`
-a `null` del ETF no suma), y `total` = 5500.00 + 18208.90.
+En el ejemplo, `investments.total` = 12810.75 + 10000.00 + 5208.40 = 28019.15 (el
+`value` a `null` del ETF no suma), y `total` = 5500.00 + 28019.15 = 33519.15.
+`lastDataDate` es el 2026-08-29 porque es la fecha más reciente escrita en la
+base: la `Valuation` del fondo; el movimiento más reciente y la foto de la cuenta
+remunerada (2026-06-30) son anteriores.
 
 **La forma de cada producto depende de su `type`** — así un `null` nunca es
 ambiguo:
@@ -2079,6 +2103,8 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
         {
           "accountId": 3,
           "accountAlias": "bankinter ···0236",
+          "accountBank": "bankinter",
+          "accountIban": "ES0000000000000000000236",
           "date": "2026-07-21",
           "computed": "-40.00",
           "fromFile": "-20.00",
@@ -2139,10 +2165,13 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
         "amount": "500.00",
         "movements": [
           { "id": 12, "accountId": 1, "accountAlias": "bankinter ···0236",
+            "accountBank": "bankinter", "accountIban": "ES0000000000000000000236",
             "type": "expense", "bookingDate": "2026-08-01", "description": "TRANSFERENCIA" },
           { "id": 40, "accountId": 2, "accountAlias": "openbank ···1111",
+            "accountBank": "openbank", "accountIban": "ES0000000000000000001111",
             "type": "income", "bookingDate": "2026-08-01", "description": "TRANSFERENCIA RECIBIDA" },
           { "id": 41, "accountId": 3, "accountAlias": "n26 ···2222",
+            "accountBank": "n26", "accountIban": "ES0000000000000000002222",
             "type": "income", "bookingDate": "2026-08-02", "description": "ABONO" }
         ]
       }
@@ -2165,7 +2194,8 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
     "conflictCount": 0,
     "conflicts": [],
     "unmatched": 5
-  }
+  },
+  "closing": { "categorized": { "expense": 5, "income": 0 }, "confirmed": 41 }
 }
 ```
 
@@ -2252,6 +2282,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   | Campo | Qué es |
   | --- | --- |
   | `accountId` / `accountAlias` | La cuenta del descuadre. |
+  | `accountBank` / `accountIban` | El slug del banco (`Account.bank`) y el IBAN (`Account.iban`) de esa cuenta, desde el **2026-10-16**, para que el frontend la nombre como «Banco ···dígitos»; `accountAlias` sigue viajando. |
   | `date` | `YYYY-MM-DD` del punto comparado. |
   | `computed` | El número que sale del cálculo de la app, string decimal. |
   | `fromFile` | El número que trae el archivo, string decimal. |
@@ -2282,7 +2313,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   | --- | --- |
   | `pairsCreated` | Parejas escritas en **esta** pasada. Cada pareja recibe un `transferId` nuevo, compartido solo por sus dos piernas, escritas juntas o ninguna. |
   | `ambiguousCount` | Grupos dudosos (grupos, no movimientos). |
-  | `ambiguous` | Los grupos que tienen candidatos válidos pero no se resuelven: ni forman pareja inequívoca ni (desde la feature 41) son un grupo con el mismo número de salidas que de entradas donde cada salida podría casar con cada entrada. Un grupo con distinto número de salidas que de entradas, o con alguna combinación salida–entrada que comparte cuenta o se sale de los 3 días, sale aquí **entero** —nadie de él se empareja, ni parcialmente— con `amount` y los datos de cada movimiento (`id`, `accountId`, `accountAlias`, `type`, `bookingDate`, `description`) para localizarlos. Un movimiento **sin ningún candidato** (un Bizum, una transferencia a un tercero) ni se marca ni se lista. **Desde el 2026-10-16 (ADR-036), coincidir en importe, cuentas y fechas no basta para emparejar**: la detección exige además que lo que escribió el banco lo diga —una palabra de transferencia (`TRANS`, `TRANSF`, `TRANSFERENCIA`, `Transfer`, `TRASPASO`) en el concepto de cualquiera de las dos piernas, o que el concepto de una nombre al banco de la cuenta de la otra (una salida de Bankinter que dice `TRANS` y después el nombre del banco que recibe)—. Una pareja que sería única por importe y fechas pero no trae esa señal (una multa pagada desde una cuenta y un Bizum recibido en otra por el mismo importe) **no se enlaza: sale aquí como grupo dudoso de dos**, para que el humano la enlace a mano con `POST /api/transfers` si lo es. En un grupo resoluble por posiciones, basta una pareja sin señal para que el grupo entero quede dudoso. |
+  | `ambiguous` | Los grupos que tienen candidatos válidos pero no se resuelven: ni forman pareja inequívoca ni (desde la feature 41) son un grupo con el mismo número de salidas que de entradas donde cada salida podría casar con cada entrada. Un grupo con distinto número de salidas que de entradas, o con alguna combinación salida–entrada que comparte cuenta o se sale de los 3 días, sale aquí **entero** —nadie de él se empareja, ni parcialmente— con `amount` y los datos de cada movimiento (`id`, `accountId`, `accountAlias`, `accountBank`, `accountIban`, `type`, `bookingDate`, `description`) para localizarlos. `accountBank` (el slug del banco, `Account.bank`) y `accountIban` (`Account.iban`) van desde el **2026-10-16** para que el frontend nombre la cuenta como «Banco ···dígitos» igual que en el resto de pantallas; `accountAlias` **no se quita**. Un movimiento **sin ningún candidato** (un Bizum, una transferencia a un tercero) ni se marca ni se lista. **Desde el 2026-10-16 (ADR-036), coincidir en importe, cuentas y fechas no basta para emparejar**: la detección exige además que lo que escribió el banco lo diga —una palabra de transferencia (`TRANS`, `TRANSF`, `TRANSFERENCIA`, `Transfer`, `TRASPASO`) en el concepto de cualquiera de las dos piernas, o que el concepto de una nombre al banco de la cuenta de la otra (una salida de Bankinter que dice `TRANS` y después el nombre del banco que recibe)—. Una pareja que sería única por importe y fechas pero no trae esa señal (una multa pagada desde una cuenta y un Bizum recibido en otra por el mismo importe) **no se enlaza: sale aquí como grupo dudoso de dos**, para que el humano la enlace a mano con `POST /api/transfers` si lo es. En un grupo resoluble por posiciones, basta una pareja sin señal para que el grupo entero quede dudoso. |
   | `error` | Solo presente si la detección falló: `{ code, message }` saneado. Los movimientos importados **no se pierden** —los informes por archivo y el código HTTP no cambian— y `pairsCreated` cuenta las parejas que sí llegaron a escribirse antes del fallo. |
 
   Correr la detección dos veces deja exactamente las mismas parejas: una pierna ya
@@ -2308,6 +2339,27 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   | `conflicts` | Cada choque con su movimiento (`movementId`, `description`, `bookingDate`) y las reglas que compitieron (`ruleId`, `matchText`, `categoryId`, `categoryName`). Nadie asigna en el choque: el movimiento queda sin categoría, visible. |
   | `unmatched` | Elegibles que ninguna regla reconoció: quedan con `categoryId` a `null`, pendientes. |
   | `error` | Solo presente si la pasada falló: `{ code, message }` saneado. La importación **no se pierde**: los informes por archivo, el campo `transfers` y el código HTTP no cambian. |
+- `closing` (2026-10-16): qué hizo el **cierre automático** que corre **después de la
+  pasada de categorización**, al final de cada importación. Es la misma operación
+  que [`POST /api/movements/confirm-all`](#post-apimovementsconfirm-all), con las dos
+  categorías de arranque buscadas por su nombre entre las raíz (`parentId` a
+  `null`): `Otros gastos` (`kind: "expense"`) y `Otros ingresos` (`kind: "income"`).
+  Existe porque el humano decidió el 2026-10-16 que categorizar a mano no le
+  compensa y que lo que quiere es que **ninguna cifra quede incompleta**: las reglas
+  van antes, así que tienen prioridad, y lo que ninguna regla reconoce recibe la
+  categoría genérica; después todo lo `pending_review` pasa a `confirmed`. Como la
+  operación recorre **toda** la tabla, cierra también lo que estaba pendiente de
+  importaciones anteriores. **Siempre presente**:
+
+  | Valor | Cuándo |
+  | --- | --- |
+  | `{ "categorized": { "expense": n, "income": n }, "confirmed": n }` | El cierre se ejecutó: los mismos tres contadores que responde `POST /api/movements/confirm-all`, contando solo lo que escribió **esta** pasada. |
+  | `null` | Faltaba alguna de las dos categorías (no se escribe **nada**: ni categoría ni confirmación, y los movimientos siguen `pending_review`), o el cierre falló (entonces viaja además `closingError`). |
+
+- `closingError`: **solo presente** si el cierre falló: `{ code, message }` saneado,
+  con el mismo patrón que `transfers.error` y `categorization.error`. La importación
+  **no se pierde**: los informes por archivo, `transfers`, `categorization` y el
+  código HTTP no cambian, y `closing` viaja a `null`.
 
 > 🔴 **`GET /api/accounts` NO cambia.** El descuadre se ve **solo aquí**, en el informe
 > de la importación. Ni `GET /api/accounts` ni `GET /api/accounts/:id` ganan campo
@@ -2421,6 +2473,8 @@ antiguo (`detectedAt` descendente; a igualdad, id descendente).
       "file": { "bank": "bankinter", "year": "2026", "name": "movs.xlsx" },
       "accountId": 3,
       "accountAlias": "bankinter ···0236",
+      "accountBank": "bankinter",
+      "accountIban": "ES0000000000000000000236",
       "date": "2026-07-21",
       "computed": "-40.00",
       "fromFile": "-20.00",
@@ -2460,6 +2514,7 @@ antiguo (`detectedAt` descendente; a igualdad, id descendente).
 | `id` | Identificador del descuadre guardado; es el `:id` del `PATCH` de abajo. |
 | `file` | El archivo del que salió: `bank`, `year`, `name`. |
 | `accountId` / `accountAlias` | La cuenta del descuadre. El alias se lee de la cuenta **al consultar**, así que si la renombras, aquí sale el nombre nuevo. |
+| `accountBank` / `accountIban` | El slug del banco (`Account.bank`) y el IBAN (`Account.iban`) de esa cuenta, leídos también **al consultar** (desde el **2026-10-16**), para que el frontend la nombre como «Banco ···dígitos». |
 | `date` | `YYYY-MM-DD` del punto comparado. |
 | `computed` | El número que salió del cálculo de la app, string decimal, **congelado**. |
 | `fromFile` | El número que traía el archivo, string decimal, **congelado**. |

@@ -736,6 +736,9 @@ describe('importPending', () => {
         conflicts: [],
         unmatched: 0,
       },
+      // The closing step runs too, and the test database has no seed
+      // categories: `null`, never an absent field (2026-10-16).
+      closing: null,
     })
     expect(get).not.toHaveBeenCalled()
     expect(update).not.toHaveBeenCalled()
@@ -2277,6 +2280,8 @@ describe('the importer reports the descuadres of a file and lets nothing else ch
       {
         accountId: account.id,
         accountAlias: account.alias,
+        accountBank: account.bank,
+        accountIban: account.iban,
         date: '2026-07-21',
         computed: '-40.00',
         fromFile: '-20.00',
@@ -2358,6 +2363,8 @@ describe('the importer reports the descuadres of a file and lets nothing else ch
       {
         accountId: account.id,
         accountAlias: account.alias,
+        accountBank: account.bank,
+        accountIban: account.iban,
         date: '2026-07-05',
         computed: '470.00',
         fromFile: '450.00',
@@ -2652,6 +2659,206 @@ describe('importPending: the categorization run of the report (feature 43, R12)'
       unmatched: 0,
       error: { code: 'INTERNAL_SERVER_ERROR', message: 'synthetic categorization failure' },
     })
+  })
+})
+
+// ── 2026-10-16: the closing step at the end of every import run ──────────────
+
+describe('importPending: the closing step of the report (2026-10-16)', () => {
+  let app: FastifyInstance
+  const usedBanks: string[] = []
+  const createdCategoryIds: number[] = []
+  let counter = 0
+
+  function uniqueBank(): string {
+    counter += 1
+    const slug = `zz-import-closing-${Date.now()}-${counter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function run(
+    parsers: BankParserAdapter[],
+    bank: string,
+    prisma: AppPrismaClient = app.prisma,
+  ): ReturnType<typeof importPending> {
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'movs.csv' }]))
+    return importPending({ client, prisma, rootFolderId: 'root', parsers })
+  }
+
+  /** The two root categories the closing step looks up by their exact seed names. */
+  async function createClosingCategories() {
+    const expense = await app.prisma.category.create({
+      data: { name: 'Otros gastos', kind: 'expense' },
+    })
+    const income = await app.prisma.category.create({
+      data: { name: 'Otros ingresos', kind: 'income' },
+    })
+    createdCategoryIds.push(expense.id, income.id)
+    return { expense, income }
+  }
+
+  function twoMovementsParser(bank: string): BankParserAdapter {
+    return fakeAdapter(bank, () =>
+      statement(bank, {
+        accountIban: syntheticIban(),
+        movements: [
+          movement({ description: 'PAGO SINTETICO SIN REGLA', amount: -31.19 }),
+          movement({ description: 'ABONO SINTETICO SIN REGLA', amount: 12.77, daySequence: 2 }),
+        ],
+      }),
+    )
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    if (usedBanks.length > 0) {
+      const accounts = await app.prisma.account.findMany({
+        where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
+      })
+      const ids = accounts.map((account) => account.id)
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+    await app.prisma.category.deleteMany({ where: { id: { in: createdCategoryIds } } })
+    createdCategoryIds.length = 0
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('gives the generic category to what no rule recognized and confirms everything, when both categories exist', async () => {
+    const bank = uniqueBank()
+    const { expense, income } = await createClosingCategories()
+
+    const result = await run([twoMovementsParser(bank)], bank)
+
+    expect(result.importedCount).toBe(2)
+    expect(result.closingError).toBeUndefined()
+    expect(result.closing).toEqual({ categorized: { expense: 1, income: 1 }, confirmed: 2 })
+    const account = await app.prisma.account.findFirstOrThrow({
+      where: { bank: { equals: bank, mode: 'insensitive' } },
+    })
+    const stored = await app.prisma.movement.findMany({
+      where: { accountId: account.id },
+      orderBy: { daySequence: 'asc' },
+    })
+    expect(stored.map((row) => [row.status, row.categoryId])).toEqual([
+      ['confirmed', expense.id],
+      ['confirmed', income.id],
+    ])
+  })
+
+  it('lets a rule keep priority: the closing step only fills what the rules left empty', async () => {
+    const bank = uniqueBank()
+    const { expense } = await createClosingCategories()
+    const ruled = await app.prisma.category.create({
+      data: { name: `Closing rule ${Date.now()}`, kind: 'expense' },
+    })
+    createdCategoryIds.push(ruled.id)
+    const rule = await app.prisma.categoryRule.create({
+      data: { categoryId: ruled.id, matchText: 'pago sintetico sin regla' },
+    })
+
+    try {
+      const result = await run([twoMovementsParser(bank)], bank)
+
+      expect(result.categorization.categorized).toBe(1)
+      expect(result.closing).toEqual({ categorized: { expense: 0, income: 1 }, confirmed: 2 })
+      const account = await app.prisma.account.findFirstOrThrow({
+        where: { bank: { equals: bank, mode: 'insensitive' } },
+      })
+      const byRule = await app.prisma.movement.findFirstOrThrow({
+        where: { accountId: account.id, type: 'expense' },
+      })
+      expect(byRule.categoryId).toBe(ruled.id)
+      expect(byRule.categoryId).not.toBe(expense.id)
+      expect(byRule.status).toBe('confirmed')
+    } finally {
+      await app.prisma.categoryRule.delete({ where: { id: rule.id } })
+    }
+  })
+
+  it('writes nothing and reports closing: null when one of the two categories is missing', async () => {
+    const bank = uniqueBank()
+    // Only the expense one exists: the step needs both or does nothing.
+    const expense = await app.prisma.category.create({
+      data: { name: 'Otros gastos', kind: 'expense' },
+    })
+    createdCategoryIds.push(expense.id)
+
+    const result = await run([twoMovementsParser(bank)], bank)
+
+    expect(result.importedCount).toBe(2)
+    expect(result.closing).toBeNull()
+    expect(result.closingError).toBeUndefined()
+    const account = await app.prisma.account.findFirstOrThrow({
+      where: { bank: { equals: bank, mode: 'insensitive' } },
+    })
+    const stored = await app.prisma.movement.findMany({ where: { accountId: account.id } })
+    expect(stored).toHaveLength(2)
+    for (const row of stored) {
+      expect(row.status).toBe('pending_review')
+      expect(row.categoryId).toBeNull()
+    }
+  })
+
+  it('reports a closing failure inside the report, with the import and the rules intact', async () => {
+    const bank = uniqueBank()
+    await createClosingCategories()
+    // Fails ONLY the category lookup of the closing step (the one that filters
+    // by name); every other query passes through untouched.
+    const real = app.prisma
+    const bound = (holder: object, property: string | symbol): unknown => {
+      const value = Reflect.get(holder, property)
+      return typeof value === 'function' ? value.bind(holder) : value
+    }
+    const wrapped = new Proxy(real, {
+      get(target, property) {
+        if (property === 'category') {
+          const categoryDelegate = target.category
+          return new Proxy(categoryDelegate, {
+            get(categoryTarget, categoryProperty) {
+              if (categoryProperty === 'findFirst') {
+                return (args: { where?: Record<string, unknown> }) => {
+                  if (args?.where !== undefined && 'name' in args.where) {
+                    throw new Error('synthetic closing failure')
+                  }
+                  return categoryTarget.findFirst(args)
+                }
+              }
+              return bound(categoryTarget, categoryProperty)
+            },
+          })
+        }
+        return bound(target, property)
+      },
+    }) as typeof real
+
+    const result = await run([twoMovementsParser(bank)], bank, wrapped)
+
+    expect(result.importedCount).toBe(2)
+    expect(result.failedCount).toBe(0)
+    expect(result.transfers.error).toBeUndefined()
+    expect(result.categorization.error).toBeUndefined()
+    expect(result.closing).toBeNull()
+    expect(result.closingError).toEqual({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'synthetic closing failure',
+    })
+    const account = await app.prisma.account.findFirstOrThrow({
+      where: { bank: { equals: bank, mode: 'insensitive' } },
+    })
+    const stored = await app.prisma.movement.findMany({ where: { accountId: account.id } })
+    expect(stored.map((row) => row.status)).toEqual(['pending_review', 'pending_review'])
   })
 })
 

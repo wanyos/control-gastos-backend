@@ -33,6 +33,7 @@ import type {
   ProductParserRegistry,
 } from '../investments/investments.types.js'
 import {
+  confirmAllMovements,
   deriveMovementTypeFromAmount,
   isAfter,
   readAnchor,
@@ -444,8 +445,69 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
   // The categorization run goes AFTER the detection (feature 43, R12): the
   // order matters little -- it never reads `transferId` -- but it is fixed so
   // the report is stable, and its failure travels in `categorization.error`.
+  // The closing step goes AFTER the categorization run (2026-10-16), so the
+  // rules keep priority and only what no rule recognized gets the generic
+  // category; its failure travels in `closingError`, the import stands.
   const transfers = await detectTransfers(prisma)
-  return { ...totals(files), files, transfers, categorization: await applyCategoryRules(prisma) }
+  const categorization = await applyCategoryRules(prisma)
+  const closing = await closeImportedMovements(prisma)
+  return { ...totals(files), files, transfers, categorization, ...closing }
+}
+
+/** The two fields the closing step adds to the import report. */
+type ClosingReport = Pick<ImportRunResult, 'closing' | 'closingError'>
+
+/** The two root categories the closing step writes, by their seed names. */
+const closingCategoryNames = { expense: 'Otros gastos', income: 'Otros ingresos' } as const
+
+/**
+ * The closing step of an import run (2026-10-16): the human decided that
+ * categorizing by hand does not pay off and that no figure must stay
+ * incomplete, so after the rules every movement still without category gets
+ * `Otros gastos` / `Otros ingresos` and everything pending is confirmed, with
+ * the same `confirmAllMovements` of `POST /api/movements/confirm-all`.
+ *
+ * Both categories are looked up by name among the root ones (`parentId` null)
+ * with their kind; if either is missing nothing is written and `closing` is
+ * `null`. A failure never breaks the import: it travels as `closingError`,
+ * sanitized like `transfers.error`.
+ */
+async function closeImportedMovements(prisma: AppPrismaClient): Promise<ClosingReport> {
+  try {
+    const [expense, income] = await Promise.all([
+      prisma.category.findFirst({
+        where: { name: closingCategoryNames.expense, kind: 'expense', parentId: null },
+      }),
+      prisma.category.findFirst({
+        where: { name: closingCategoryNames.income, kind: 'income', parentId: null },
+      }),
+    ])
+    if (expense === null || income === null) return { closing: null }
+
+    const closing = await confirmAllMovements(prisma, {
+      expenseCategoryId: expense.id,
+      incomeCategoryId: income.id,
+    })
+    return { closing }
+  } catch (error) {
+    return { closing: null, closingError: describeClosingError(error) }
+  }
+}
+
+/**
+ * Same sanitizing pattern as `describeDetectionError` in the transfers module
+ * (copied, not shared: it sanitizes the same, different module): an `AppError`
+ * travels with its own stable code, anything else is reported generically so
+ * no internal detail can leak into the report.
+ */
+function describeClosingError(error: unknown): { code: string; message: string } {
+  if (error instanceof AppError) {
+    return { code: error.code, message: error.message }
+  }
+  if (error instanceof Error) {
+    return { code: 'INTERNAL_SERVER_ERROR', message: error.message }
+  }
+  return { code: 'INTERNAL_SERVER_ERROR', message: 'Unknown error' }
 }
 
 interface FileLocation {

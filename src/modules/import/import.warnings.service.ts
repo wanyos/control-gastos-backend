@@ -26,12 +26,12 @@ import type {
 
 /** A stored row with the only thing its serialization needs from the account. */
 type MismatchRow = Prisma.ImportBalanceMismatchGetPayload<{
-  include: { account: { select: { alias: true } } }
+  include: { account: { select: { alias: true; bank: true; iban: true } } }
 }>
 
 type UnparsedRowRow = Prisma.ImportUnparsedRowGetPayload<object>
 
-const withAccountAlias = { account: { select: { alias: true } } } as const
+const withAccountAlias = { account: { select: { alias: true, bank: true, iban: true } } } as const
 
 /** A `@db.Date` column is a date-only value: no time, no timezone. */
 function toDateOnlyString(date: Date): string {
@@ -61,6 +61,8 @@ function serializeBalanceMismatch(row: MismatchRow): SerializedBalanceMismatch {
     file: { bank: row.bank, year: row.year, name: row.fileName },
     accountId: row.accountId,
     accountAlias: row.account.alias,
+    accountBank: row.account.bank,
+    accountIban: row.account.iban,
     date: toDateOnlyString(row.bookingDate),
     computed: row.computed.toFixed(2),
     fromFile: row.fromFile.toFixed(2),

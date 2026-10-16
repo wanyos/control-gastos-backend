@@ -3,6 +3,7 @@ import type { AccountType } from '../../generated/prisma/client.js'
 import type { ParsedStatement, UnparsedRow } from '../../lib/parsed-statement.js'
 import type { CategorizationResult } from '../category-rules/category-rules.types.js'
 import type { ProductImportResult } from '../investments/investments.types.js'
+import type { ConfirmAllMovementsResult } from '../movements/movements.types.js'
 import type { TransferDetectionResult } from '../transfers/transfers.types.js'
 import type { BalanceMismatch } from './import.balance.service.js'
 
@@ -142,6 +143,18 @@ export interface ImportRunResult {
    * nothing was eligible or nothing matched.
    */
   categorization: CategorizationResult
+  /**
+   * What the closing step did after the categorization run (2026-10-16): it
+   * calls `confirmAllMovements` with the two seed categories `Otros gastos`
+   * (expense) and `Otros ingresos` (income), looked up by name among the root
+   * categories. The rules run first so they keep priority; whatever no rule
+   * recognized gets the generic category, and everything pending is confirmed.
+   * Always present: `null` when one of the two categories is missing (nothing
+   * is written then) or when the step failed (see `closingError`).
+   */
+  closing: ConfirmAllMovementsResult | null
+  /** Present only when the closing step failed; the import itself stands. */
+  closingError?: { code: string; message: string }
 }
 
 /**

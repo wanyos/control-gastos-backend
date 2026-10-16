@@ -247,6 +247,8 @@ function toAmbiguousGroup(amount: string, movements: TransferCandidate[]): Ambig
         id: movement.id,
         accountId: movement.accountId,
         accountAlias: movement.accountAlias,
+        accountBank: movement.accountBank,
+        accountIban: movement.accountIban,
         type: movement.type,
         bookingDate: movement.bookingDate.toISOString().slice(0, 10),
         description: movement.description,
@@ -272,7 +274,7 @@ async function readTransferCandidates(prisma: AppPrismaClient): Promise<Transfer
       daySequence: true,
       description: true,
       undoneTransferId: true,
-      account: { select: { alias: true, bank: true } },
+      account: { select: { alias: true, bank: true, iban: true } },
     },
   })
   return rows.map((row) => ({
@@ -280,6 +282,7 @@ async function readTransferCandidates(prisma: AppPrismaClient): Promise<Transfer
     accountId: row.accountId,
     accountAlias: row.account.alias,
     accountBank: row.account.bank,
+    accountIban: row.account.iban,
     // The WHERE already left `neutral` out; this cast states it to the compiler.
     type: row.type as 'expense' | 'income',
     amount: row.amount.toFixed(2),

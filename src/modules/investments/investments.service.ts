@@ -881,3 +881,22 @@ function depositConditions(product: InvestmentProduct) {
     maturityDate: product.maturityDate === null ? null : serializeDateOnly(product.maturityDate),
   }
 }
+
+/**
+ * The most recent `date` written in the two photo tables (`Valuation` and
+ * `SavingsSnapshot`), or `null` when both are empty. Read here and not in
+ * `net-worth` because this module is the only reader of the investment tables
+ * (ADR-026); `GET /api/net-worth` combines it with the most recent
+ * `Movement.bookingDate` to say up to which day the data reaches.
+ */
+export async function readLatestInvestmentDate(prisma: AppPrismaClient): Promise<Date | null> {
+  const [valuation, snapshot] = await Promise.all([
+    prisma.valuation.aggregate({ _max: { date: true } }),
+    prisma.savingsSnapshot.aggregate({ _max: { date: true } }),
+  ])
+  const dates = [valuation._max.date, snapshot._max.date].filter(
+    (date): date is Date => date !== null,
+  )
+  if (dates.length === 0) return null
+  return new Date(Math.max(...dates.map((date) => date.getTime())))
+}

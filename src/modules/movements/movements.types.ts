@@ -20,21 +20,26 @@ import type {
 export type DecimalLike = Prisma.Decimal | number | string
 
 /** Minimum shape needed to resolve the balance of an account (R9). */
-export interface BalanceMovement {
+export interface BalanceMovement extends RecencyPoint {
   type: MovementType
   amount: DecimalLike
   balanceAfter: DecimalLike | null
-  bookingDate: Date
-  daySequence: number | null
 }
 
 /**
  * A point in the history of an account: `bookingDate` plus the position within
  * that day. Everything that asks "which one is more recent" takes this shape.
+ *
+ * `id` is the last tie-breaker (roadmap item 25, 2026-10-16): two movements of
+ * one account may share `bookingDate` and `daySequence`, and the row with the
+ * higher id is read as the more recent one, the same order the SQL of
+ * `listAccounts` applies. It is optional because the anchor stored on an
+ * account has no row id: a point without it ties with any id.
  */
 export interface RecencyPoint {
   bookingDate: Date
   daySequence: number | null
+  id?: number
 }
 
 /** An amount together with the point in history it belongs to (feature 31, R6). */

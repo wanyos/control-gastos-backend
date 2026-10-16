@@ -23,6 +23,14 @@ export interface NetWorthAccounts {
 export interface NetWorthResponse {
   /** `YYYY-MM-DD` of today (UTC): the endpoint answers only for today (R11). */
   asOf: string
+  /**
+   * `YYYY-MM-DD` of the most recent date written anywhere in the database
+   * (2026-10-16): the latest between `Movement.bookingDate`, `Valuation.date`
+   * and `SavingsSnapshot.date`, over every account and product. `null` when
+   * none of the three tables has a row. Says up to which day the figures
+   * reach; `asOf` keeps saying which day they are computed for.
+   */
+  lastDataDate: string | null
   /** `accounts.total + investments.total`, as a decimal string. */
   total: string
   accounts: NetWorthAccounts

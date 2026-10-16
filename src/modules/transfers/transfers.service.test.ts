@@ -20,6 +20,8 @@ import {
 import type { TransferCandidate } from './transfers.types.js'
 
 let nextId = 1
+// Clearly made up: check digits 00 are not a valid IBAN checksum.
+const candidateIban = 'ES0000000000000000000001'
 
 function candidate(overrides: Partial<TransferCandidate> = {}): TransferCandidate {
   return {
@@ -27,6 +29,7 @@ function candidate(overrides: Partial<TransferCandidate> = {}): TransferCandidat
     accountId: 1,
     accountAlias: 'synthetic ···0001',
     accountBank: 'bankinter',
+    accountIban: candidateIban,
     type: 'expense',
     amount: '431.27',
     bookingDate: new Date('2031-03-10T00:00:00.000Z'),
@@ -1307,6 +1310,8 @@ describe('the transfer signal in what the bank wrote (ADR-036)', () => {
             id: expense.id,
             accountId: 1,
             accountAlias: 'synthetic ···0001',
+            accountBank: 'bankinter',
+            accountIban: candidateIban,
             type: 'expense',
             bookingDate: '2031-03-10',
             description: 'SYNTHETIC FINE PAYMENT',
@@ -1315,6 +1320,8 @@ describe('the transfer signal in what the bank wrote (ADR-036)', () => {
             id: income.id,
             accountId: 2,
             accountAlias: 'synthetic ···0002',
+            accountBank: 'openbank',
+            accountIban: candidateIban,
             type: 'income',
             bookingDate: '2031-03-12',
             description: 'BIZUM SYNTHETIC IN',

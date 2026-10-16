@@ -50,6 +50,8 @@ const balanceMismatchFields = [
   'file',
   'accountId',
   'accountAlias',
+  'accountBank',
+  'accountIban',
   'date',
   'computed',
   'fromFile',

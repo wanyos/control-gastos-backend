@@ -29,11 +29,15 @@ describe('import warnings routes (feature 48)', () => {
   let app: FastifyInstance
   let accountId: number
   let accountAlias: string
+  let accountBank: string
+  let accountIban: string
 
   function mismatch(overrides: Partial<BalanceMismatch> = {}): BalanceMismatch {
     return {
       accountId,
       accountAlias,
+      accountBank,
+      accountIban,
       date: '2026-09-14',
       computed: '100.00',
       fromFile: '90.00',
@@ -67,6 +71,8 @@ describe('import warnings routes (feature 48)', () => {
     })
     accountId = account.id
     accountAlias = account.alias
+    accountBank = account.bank
+    accountIban = account.iban
   })
 
   beforeEach(emptyWarningTables)
@@ -105,6 +111,8 @@ describe('import warnings routes (feature 48)', () => {
       file: { bank: file.bank, year: file.year, name: file.name },
       accountId,
       accountAlias,
+      accountBank,
+      accountIban,
       date: '2026-09-14',
       computed: '100.00',
       fromFile: '90.00',
@@ -168,6 +176,8 @@ describe('import warnings routes (feature 48)', () => {
       difference: '10.00',
       accountId,
       accountAlias,
+      accountBank,
+      accountIban,
       check: 'per-line',
     })
     const after = await app.prisma.importBalanceMismatch.findUniqueOrThrow({

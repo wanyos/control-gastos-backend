@@ -24,6 +24,8 @@ export interface TransferCandidate {
    * the two signals that let a pair link on its own.
    */
   accountBank: string
+  /** `Account.iban`, carried so a doubtful group can name the account by bank and digits. */
+  accountIban: string
   type: 'expense' | 'income'
   /** Decimal string (`toFixed(2)`), as amounts travel in the whole project. */
   amount: string
@@ -66,6 +68,13 @@ export interface AmbiguousTransferGroup {
     id: number
     accountId: number
     accountAlias: string
+    /**
+     * `Account.bank` and `Account.iban` (2026-10-16, frontend roadmap item 33):
+     * the frontend names an account as bank plus last digits, and until now
+     * this object only carried the alias. `accountAlias` stays.
+     */
+    accountBank: string
+    accountIban: string
     type: 'expense' | 'income'
     /** `YYYY-MM-DD`: the column is date-only and the report keeps it that way. */
     bookingDate: string
