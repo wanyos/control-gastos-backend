@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
+import { ConflictError } from '../../errors/app-error.js'
 import type { ProductParserRegistry } from '../investments/investments.types.js'
 import { importDb, importPending } from './import.service.js'
 import type { BankParserRegistry } from './import.types.js'
@@ -45,8 +46,29 @@ export default async function importRoutes(
   const parsers = options.parsers ?? []
   const productParsers = options.productParsers ?? []
 
+  // One import at a time (2026-10-16). Two runs at once are not protected
+  // below this line: both could try to create the same account (unique IBAN)
+  // and both would move the same file to `procesados/`. The second call gets a
+  // 409 and nothing of its own starts; the flag lives in this closure, so it
+  // belongs to this server process and resets with it.
+  let importInProgress = false
+
   fastify.post('/', async () => {
-    return importPending({ client: fastify.drive, prisma, rootFolderId, parsers, productParsers })
+    if (importInProgress) {
+      throw new ConflictError('An import is already running; wait for it to finish')
+    }
+    importInProgress = true
+    try {
+      return await importPending({
+        client: fastify.drive,
+        prisma,
+        rootFolderId,
+        parsers,
+        productParsers,
+      })
+    } finally {
+      importInProgress = false
+    }
   })
 
   // Reading and closing the warnings of past imports: no Drive, no parser and no

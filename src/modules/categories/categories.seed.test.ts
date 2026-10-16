@@ -22,9 +22,9 @@ describe('seeding of the starting categories (feature 37)', () => {
     await app.close()
   })
 
-  it('declares exactly the 16 of the intent: 13 expense and 3 income, verbatim', () => {
-    expect(defaultCategories).toHaveLength(16)
-    expect(defaultCategories.filter((category) => category.kind === 'expense')).toHaveLength(13)
+  it('declares the 16 of the intent plus Otros gastos (2026-10-16): 14 expense and 3 income, verbatim', () => {
+    expect(defaultCategories).toHaveLength(17)
+    expect(defaultCategories.filter((category) => category.kind === 'expense')).toHaveLength(14)
     expect(defaultCategories.filter((category) => category.kind === 'income')).toHaveLength(3)
     expect(defaultCategories.map((category) => category.name)).toEqual([
       'Vivienda',
@@ -40,20 +40,21 @@ describe('seeding of the starting categories (feature 37)', () => {
       'Ocio',
       'Pago de tarjeta',
       'Transferencias a personas',
+      'Otros gastos',
       'Nómina',
       'Intereses',
       'Otros ingresos',
     ])
   })
 
-  it('creates the 16 as roots with their kind on a base without them (R13)', async () => {
+  it('creates the 17 as roots with their kind on a base without them (R13)', async () => {
     const result = await seedDefaultCategories(app.prisma)
 
-    expect(result).toEqual({ created: 16, skipped: 0 })
+    expect(result).toEqual({ created: 17, skipped: 0 })
     const stored = await app.prisma.category.findMany({
       where: { OR: defaultCategories.map((category) => ({ ...category })) },
     })
-    expect(stored).toHaveLength(16)
+    expect(stored).toHaveLength(17)
     expect(stored.every((category) => category.parentId === null)).toBe(true)
     for (const expected of defaultCategories) {
       expect(
@@ -73,7 +74,7 @@ describe('seeding of the starting categories (feature 37)', () => {
 
     const result = await seedDefaultCategories(app.prisma)
 
-    expect(result).toEqual({ created: 0, skipped: 16 })
+    expect(result).toEqual({ created: 0, skipped: 17 })
     const secondRun = await app.prisma.category.findMany({
       where: { OR: defaultCategories.map((category) => ({ ...category })) },
       orderBy: { id: 'asc' },
@@ -83,7 +84,7 @@ describe('seeding of the starting categories (feature 37)', () => {
     )
   })
 
-  it('creates only what is missing when some of the 16 already exist (R14)', async () => {
+  it('creates only what is missing when some of the 17 already exist (R14)', async () => {
     await app.prisma.category.create({ data: { name: 'Ocio', kind: 'expense' } })
     const existing = await app.prisma.category.findFirstOrThrow({
       where: { name: 'Ocio', kind: 'expense', parentId: null },
@@ -91,7 +92,7 @@ describe('seeding of the starting categories (feature 37)', () => {
 
     const result = await seedDefaultCategories(app.prisma)
 
-    expect(result).toEqual({ created: 15, skipped: 1 })
+    expect(result).toEqual({ created: 16, skipped: 1 })
     const stored = await app.prisma.category.findMany({
       where: { name: 'Ocio', kind: 'expense', parentId: null },
     })

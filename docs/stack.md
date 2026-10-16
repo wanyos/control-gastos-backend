@@ -150,7 +150,7 @@
 | ---------------------------- | ---------------------------------------- | ------------------- | ------------------------------------------------------------------- |
 | `DATABASE_URL`               | Cadena de conexión a PostgreSQL. La suite **no** la usa tal cual: deriva de ella sus bases desechables `gastos_test_<n>` (ADR-027). | **sí**              | `postgresql://postgres:postgres@localhost:5434/gastos?schema=public` |
 | `PORT`                       | Puerto HTTP del servidor.                | no (def. `3000`)    | `3000`                                                              |
-| `HOST`                       | Interfaz de escucha.                     | no (def. `0.0.0.0`) | `0.0.0.0`                                                          |
+| `HOST`                       | Interfaz de escucha. Por defecto solo este ordenador: la API no tiene autenticación, así que abrirla a la red (`0.0.0.0`) exige escribirlo a propósito (cambiado el 2026-10-16). | no (def. `127.0.0.1`) | `127.0.0.1`                                                          |
 | `LOG_LEVEL`                  | Nivel de log de Fastify.                 | no (def. `info`)    | `info`                                                              |
 | `GOOGLE_DRIVE_CLIENT_ID`     | Client id OAuth de Google Cloud (Drive). | **sí**              | `xxxx.apps.googleusercontent.com`                                  |
 | `GOOGLE_DRIVE_CLIENT_SECRET` | Client secret OAuth de Google Cloud.     | **sí**              | `GOCSPX-…`                                                          |

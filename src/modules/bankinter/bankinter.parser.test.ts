@@ -286,6 +286,12 @@ describe('parseSpanishAmount', () => {
     expect(parseSpanishAmount('0,00')).toBe(0)
   })
 
+  it('reads dots grouping three digits as thousands when there is no comma', () => {
+    expect(parseSpanishAmount('-2.000')).toBe(-2000)
+    expect(parseSpanishAmount('1.500')).toBe(1500)
+    expect(parseSpanishAmount('12.50')).toBe(12.5)
+  })
+
   it('returns null for non-numeric text', () => {
     expect(parseSpanishAmount('abc')).toBeNull()
     expect(parseSpanishAmount('')).toBeNull()

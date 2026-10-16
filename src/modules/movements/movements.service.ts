@@ -16,6 +16,8 @@ import type {
   BalanceMovement,
   BulkUpdateMovementsBody,
   BulkUpdateMovementsResult,
+  ConfirmAllMovementsBody,
+  ConfirmAllMovementsResult,
   DecimalLike,
   ListedMovement,
   RecencyPoint,
@@ -453,6 +455,77 @@ export async function bulkUpdateMovements(
     })
 
     return { updated: count, movements: movements.map(serializeMovement) }
+  })
+}
+
+/**
+ * Closes everything that is still open, in ONE transaction (2026-10-16):
+ *
+ *  1. every `expense` movement without a category receives `expenseCategoryId`,
+ *     and every `income` one `incomeCategoryId` — except the legs of a linked
+ *     transfer and the movements of an investment product, which are not
+ *     spending nor earnings and stay without one;
+ *  2. every `pending_review` movement, whatever its category, becomes
+ *     `confirmed`.
+ *
+ * Why it exists: the human decided that telling a supermarket from a gym is
+ * not worth doing by hand for 1,600 movements; what he wants is every figure to
+ * be complete and honest. With this, "N uncategorized" drops to zero in one
+ * request and the review queue empties. Nothing of the bank fact changes, and
+ * the totals do not move either (`categoryId` and `status` never enter a sum).
+ *
+ * Both categories are validated first: they must exist and their `kind` must
+ * be the one they are used for, otherwise nothing is written.
+ */
+export async function confirmAllMovements(
+  prisma: AppPrismaClient,
+  input: ConfirmAllMovementsBody,
+): Promise<ConfirmAllMovementsResult> {
+  return prisma.$transaction(async (tx) => {
+    const [expenseCategory, incomeCategory] = await Promise.all([
+      tx.category.findUnique({ where: { id: input.expenseCategoryId } }),
+      tx.category.findUnique({ where: { id: input.incomeCategoryId } }),
+    ])
+    if (expenseCategory === null) {
+      throw new NotFoundError(`Category not found: expenseCategoryId ${input.expenseCategoryId}`)
+    }
+    if (incomeCategory === null) {
+      throw new NotFoundError(`Category not found: incomeCategoryId ${input.incomeCategoryId}`)
+    }
+    if (expenseCategory.kind !== 'expense') {
+      throw new ValidationError(
+        `expenseCategoryId ${input.expenseCategoryId} is an '${expenseCategory.kind}' category, not an 'expense' one`,
+      )
+    }
+    if (incomeCategory.kind !== 'income') {
+      throw new ValidationError(
+        `incomeCategoryId ${input.incomeCategoryId} is an '${incomeCategory.kind}' category, not an 'income' one`,
+      )
+    }
+
+    const uncategorized = (type: 'expense' | 'income'): Prisma.MovementWhereInput => ({
+      type,
+      categoryId: null,
+      transferId: null,
+      productId: null,
+    })
+    const expense = await tx.movement.updateMany({
+      where: uncategorized('expense'),
+      data: { categoryId: expenseCategory.id },
+    })
+    const income = await tx.movement.updateMany({
+      where: uncategorized('income'),
+      data: { categoryId: incomeCategory.id },
+    })
+    const confirmed = await tx.movement.updateMany({
+      where: { status: 'pending_review' },
+      data: { status: 'confirmed' },
+    })
+
+    return {
+      categorized: { expense: expense.count, income: income.count },
+      confirmed: confirmed.count,
+    }
   })
 }
 

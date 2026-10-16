@@ -17,6 +17,13 @@ export interface TransferCandidate {
   id: number
   accountId: number
   accountAlias: string
+  /**
+   * Bank slug of the account (`Account.bank`). The pairing reads it to tell
+   * whether the OTHER leg names this bank in its description (a Bankinter
+   * leg that says `TRANS` and then the name of the receiving bank): one of
+   * the two signals that let a pair link on its own.
+   */
+  accountBank: string
   type: 'expense' | 'income'
   /** Decimal string (`toFixed(2)`), as amounts travel in the whole project. */
   amount: string

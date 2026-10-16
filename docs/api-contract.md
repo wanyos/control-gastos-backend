@@ -1104,6 +1104,64 @@ para humanos: **no programar lógica contra él**, ver [Errores](#errores)).
 
 ---
 
+### `POST /api/movements/confirm-all`
+
+Cierra de una vez **todo lo que sigue abierto** (2026-10-16): da una categoría a
+cada movimiento que no la tiene, según su tipo, y da por revisado cada movimiento
+`pending_review`. Es la respuesta a una decisión del humano: distinguir el
+supermercado del gimnasio a mano, movimiento a movimiento, no le compensa; lo que
+quiere es que **ninguna cifra quede incompleta** («38 sin categorizar — 22 % del
+gasto») y que la cola de pendientes no sea un trabajo mensual.
+
+**Body** (los dos obligatorios)
+
+| Campo               | Tipo                 | Reglas                                                                                     |
+| ------------------- | -------------------- | ------------------------------------------------------------------------------------------ |
+| `expenseCategoryId` | number (entero ≥ 1)  | Categoría existente de `kind: "expense"`. La recibe **cada movimiento `expense` sin categoría**. |
+| `incomeCategoryId`  | number (entero ≥ 1)  | Categoría existente de `kind: "income"`. La recibe **cada movimiento `income` sin categoría**.   |
+
+```json
+{ "expenseCategoryId": 17, "incomeCategoryId": 16 }
+```
+
+**Qué hace, en una sola transacción y en este orden**
+
+1. Escribe `expenseCategoryId` en cada `expense` con `categoryId` a `null`, e
+   `incomeCategoryId` en cada `income` con `categoryId` a `null`, **salvo** las
+   piernas de un traspaso enlazado (`transferId != null`) y los movimientos de un
+   producto de inversión (`productId != null`), que no son gasto ni ingreso y se
+   quedan sin categoría. Un `neutral` tampoco la recibe. Un movimiento que ya
+   tenía categoría **no la cambia**.
+2. Pasa a `confirmed` **todo** movimiento `pending_review`, tenga la categoría que
+   tenga (también las piernas de traspaso y los de producto).
+
+No toca **ningún otro campo**: ni el hecho bancario, ni `excludedFromTotals`, ni
+`transferId`. Los `totals` de `GET /api/movements` y de `GET /api/overview` no se
+mueven (`categoryId` y `status` nunca entran en una suma). Las categorías de
+arranque incluyen desde esta fecha `Otros gastos` (`expense`), pensada como pareja
+de `Otros ingresos` para este endpoint; `pnpm run seed:categories` la crea si
+falta.
+
+**Respuesta 200**
+
+```json
+{ "categorized": { "expense": 980, "income": 71 }, "confirmed": 1667 }
+```
+
+- `categorized.expense` / `categorized.income`: cuántos movimientos recibieron
+  cada categoría en **esta** llamada.
+- `confirmed`: cuántos pasaron de `pending_review` a `confirmed` en esta llamada.
+- Una segunda llamada seguida responde con ceros: es idempotente.
+
+**Errores**
+
+| Código HTTP | `code`             | Cuándo                                                                                                                           |
+| ----------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| 400         | `VALIDATION_ERROR` | Falta uno de los dos campos, hay una propiedad desconocida (no admite `ids` ni filtros), o el `kind` de una categoría no es el que toca. **No se escribe nada.** |
+| 404         | `NOT_FOUND`        | Alguna de las dos categorías no existe. **No se escribe nada.**                                                                   |
+
+---
+
 ### `PATCH /api/movements/:id`
 
 Actualiza **exclusivamente** la categoría, el estado de revisión y/o (desde la
@@ -1318,8 +1376,10 @@ No tiene parámetros. Un parámetro de query desconocido **se ignora** (responde
 - `ambiguous`: cada grupo, **entero**, con su `amount` y los datos de cada
   movimiento para localizarlo (`id`, `accountId`, `accountAlias`, `type`,
   `bookingDate`, `description`). Qué hace dudoso a un grupo está explicado en el
-  campo `ambiguous` del informe de `POST /api/import`. `ambiguousCount: 0` y
-  `ambiguous: []` si no hay ninguno (no es un error).
+  campo `ambiguous` del informe de `POST /api/import`; desde el 2026-10-16 entra
+  también aquí una pareja única por importe y fechas cuyos conceptos no dicen que
+  sea un traspaso (ADR-036). `ambiguousCount: 0` y `ambiguous: []` si no hay
+  ninguno (no es un error).
 
 Para resolver un grupo dudoso a mano se enlazan sus dos piernas con
 [`POST /api/transfers`](#post-apitransfers); en la siguiente petición a este
@@ -1868,6 +1928,11 @@ listan los bancos/años que tienen algún pendiente.
 
 ### `POST /api/import`
 
+**Una importación a la vez (2026-10-16).** Si llega una segunda llamada mientras
+otra sigue en marcha en este mismo proceso del servidor, responde **409
+`CONFLICT`** (`An import is already running; wait for it to finish`) sin empezar
+nada; cuando la primera termina, la siguiente vuelve a aceptarse.
+
 Sin cuerpo de petición y sin autenticación nueva. Por cada archivo pendiente de
 cada `<banco>/<año>/`, en el orden en que Drive los lista (por nombre):
 
@@ -2217,7 +2282,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   | --- | --- |
   | `pairsCreated` | Parejas escritas en **esta** pasada. Cada pareja recibe un `transferId` nuevo, compartido solo por sus dos piernas, escritas juntas o ninguna. |
   | `ambiguousCount` | Grupos dudosos (grupos, no movimientos). |
-  | `ambiguous` | Los grupos que tienen candidatos válidos pero no se resuelven: ni forman pareja inequívoca ni (desde la feature 41) son un grupo con el mismo número de salidas que de entradas donde cada salida podría casar con cada entrada. Un grupo con distinto número de salidas que de entradas, o con alguna combinación salida–entrada que comparte cuenta o se sale de los 3 días, sale aquí **entero** —nadie de él se empareja, ni parcialmente— con `amount` y los datos de cada movimiento (`id`, `accountId`, `accountAlias`, `type`, `bookingDate`, `description`) para localizarlos. Un movimiento **sin ningún candidato** (un Bizum, una transferencia a un tercero) ni se marca ni se lista. |
+  | `ambiguous` | Los grupos que tienen candidatos válidos pero no se resuelven: ni forman pareja inequívoca ni (desde la feature 41) son un grupo con el mismo número de salidas que de entradas donde cada salida podría casar con cada entrada. Un grupo con distinto número de salidas que de entradas, o con alguna combinación salida–entrada que comparte cuenta o se sale de los 3 días, sale aquí **entero** —nadie de él se empareja, ni parcialmente— con `amount` y los datos de cada movimiento (`id`, `accountId`, `accountAlias`, `type`, `bookingDate`, `description`) para localizarlos. Un movimiento **sin ningún candidato** (un Bizum, una transferencia a un tercero) ni se marca ni se lista. **Desde el 2026-10-16 (ADR-036), coincidir en importe, cuentas y fechas no basta para emparejar**: la detección exige además que lo que escribió el banco lo diga —una palabra de transferencia (`TRANS`, `TRANSF`, `TRANSFERENCIA`, `Transfer`, `TRASPASO`) en el concepto de cualquiera de las dos piernas, o que el concepto de una nombre al banco de la cuenta de la otra (una salida de Bankinter que dice `TRANS` y después el nombre del banco que recibe)—. Una pareja que sería única por importe y fechas pero no trae esa señal (una multa pagada desde una cuenta y un Bizum recibido en otra por el mismo importe) **no se enlaza: sale aquí como grupo dudoso de dos**, para que el humano la enlace a mano con `POST /api/transfers` si lo es. En un grupo resoluble por posiciones, basta una pareja sin señal para que el grupo entero quede dudoso. |
   | `error` | Solo presente si la detección falló: `{ code, message }` saneado. Los movimientos importados **no se pierden** —los informes por archivo y el código HTTP no cambian— y `pairsCreated` cuenta las parejas que sí llegaron a escribirse antes del fallo. |
 
   Correr la detección dos veces deja exactamente las mismas parejas: una pierna ya

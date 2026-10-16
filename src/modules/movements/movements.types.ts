@@ -138,6 +138,22 @@ export interface BulkUpdateMovementsResult {
   movements: SerializedMovement[]
 }
 
+/**
+ * Body of `POST /api/movements/confirm-all` (2026-10-16): the two categories
+ * that every movement still without one receives, by its type. Both are
+ * required so that no movement is left out by accident.
+ */
+export interface ConfirmAllMovementsBody {
+  expenseCategoryId: number
+  incomeCategoryId: number
+}
+
+/** What `POST /api/movements/confirm-all` answers: how many rows each step changed. */
+export interface ConfirmAllMovementsResult {
+  categorized: { expense: number; income: number }
+  confirmed: number
+}
+
 export interface MovementListPagination {
   page: number
   pageSize: number

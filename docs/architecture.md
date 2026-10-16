@@ -3064,6 +3064,46 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     `excluded=only` del listado.
 
 
+### ADR-036: Coincidir en importe, cuentas y fechas no basta para enlazar un traspaso — lo que escribió el banco tiene que decirlo, y si no lo dice la pareja queda dudosa
+
+- **Fecha:** 2026-10-16
+- **Estado:** aceptada (implementada en `src/modules/transfers/transfers.service.ts`,
+  `looksLikeTransfer`). Completa la decisión 4 de
+  `specs/40-transfer-detection/decisions.md`.
+- **Contexto:** la detección (F40, F41) emparejaba por tres hechos: mismo importe,
+  cuentas distintas y fechas a 3 días o menos. Nunca leía el concepto. Comprobado
+  ejecutando el código el 2026-10-16: una multa de 50 € pagada desde N26 y un Bizum
+  de 50 € recibido en Openbank tres días después salían enlazados sin dudoso, y los
+  dos dejaban de contar en gasto e ingreso sin que nada avisara. El humano ya había
+  tenido que deshacer a mano dos parejas exactamente así. Y como la detección
+  recorre toda la base en cada importación, cualquier movimiento viejo puede
+  casar con uno nuevo por casualidad.
+- **Decisión:** para ENLAZAR hace falta, además, una señal en el texto: una palabra
+  de transferencia (`TRANS`, `TRANSF`, `TRANSFERENCIA`, `Transfer…`, `TRASPASO…`,
+  anclada al principio de palabra para que `TRANSPORTES` no cuente) en el concepto
+  de cualquiera de las dos piernas, o que el concepto de una nombre al banco de la
+  cuenta de la otra (`Account.bank`: una salida de Bankinter que dice `TRANS` y después
+  el nombre del banco que recibe). La pareja que no la
+  trae **no se tira ni se enlaza: se devuelve como grupo dudoso de dos**, en el
+  informe de la importación y en `GET /api/transfers/ambiguous`, para que el humano
+  la enlace a mano (`POST /api/transfers`, que no exige la señal). En un grupo
+  resoluble por posiciones (F41), basta una pareja sin señal para que el grupo
+  entero quede dudoso: nunca se enlaza a medias.
+- **Qué lo sostiene:** medido contra la base del humano el mismo día: las 39 parejas
+  que la detección ya había enlazado traen la señal (39 de 39), y las dos que él
+  deshizo no la traen. Con los datos de ese día la regla nueva no deja ningún grupo
+  dudoso (0): no añade trabajo, solo quita el fallo silencioso.
+- **Lo que NO cubre:** el nombre del titular como señal (lo traen N26 y Openbank en
+  la pierna de entrada). Sería más robusto, pero obligaría a guardar su nombre en
+  la configuración; hoy no hace falta porque la pierna de salida siempre trae
+  `TRANS`. Si un banco nuevo no lo trajera, se añade aquí la palabra que use.
+- **Consecuencias:**
+  - `TransferCandidate` gana `accountBank`, leído de `Account.bank` en la misma
+    consulta de candidatos.
+  - Un traspaso real sin ninguna de las dos señales (ni palabra ni banco) deja de
+    enlazarse solo: aparece como dudoso y se enlaza a mano. Es el coste elegido:
+    mejor una pareja de más que revisar que una suma falsa que nadie ve.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

@@ -19,9 +19,14 @@ export interface AppConfig {
   driveBackupFolderId?: string
 }
 
+/**
+ * `host` defaults to the loopback interface: the API has no authentication, so
+ * listening on every interface (`0.0.0.0`) exposed every movement to whoever
+ * shares the network. Opening it on purpose takes an explicit `HOST`.
+ */
 const defaults = {
   port: 3000,
-  host: '0.0.0.0',
+  host: '127.0.0.1',
   logLevel: 'info',
 } as const
 

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
+import { todayInMadridAsDate } from '../../lib/local-date.js'
 import { getDepositEarningsSchema, getInvestmentsOverviewSchema } from './investments.schema.js'
 import { getDepositEarnings, getInvestmentsOverview, investmentsDb } from './investments.service.js'
 import type {
@@ -41,8 +42,9 @@ export default async function investmentsRoutes(
   )
 
   fastify.get('/deposits', { schema: getDepositEarningsSchema }, async () => {
-    // Date-only midnight UTC -- the same clock as `bookingDate` and net worth.
-    const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`)
+    // Today in the Madrid calendar, as date-only midnight UTC -- the same clock
+    // as `bookingDate` and net worth (see `src/lib/local-date.ts`).
+    const today = todayInMadridAsDate()
     return getDepositEarnings(db, depositMaturityMatchers, today)
   })
 }

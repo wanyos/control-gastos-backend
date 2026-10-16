@@ -61,6 +61,33 @@ class PairRacedError extends Error {
 }
 
 /**
+ * Words a bank writes when a movement is a transfer, as the six supported
+ * banks abbreviate them: `TRANS`, `TRANSF`, `TRANSFERENCIA`, `Transfer`, `TRASPASO`. Anchored at a word start and closed right
+ * after `TRANS`/`TRANSF` so that `TRANSPORTES` never counts.
+ */
+const transferWords = /\b(?:trans\b|transf\b|transf\.|transfer\w*|traspaso\w*)/iu
+
+/**
+ * Whether the two legs carry, in what the bank wrote, a reason to believe they
+ * are one transfer and not a coincidence of amount and dates. Either leg's
+ * description has a transfer word, or either description names the bank of the
+ * OTHER leg's account (a Bankinter leg saying `TRANS` and then `N26`, paid into N26).
+ *
+ * Measured on 2026-10-16 against every pair the detection had already linked
+ * (39): all 39 carry the signal. The two pairs the human had undone by hand (a
+ * fine paid from one account and a Bizum received in another for the same
+ * amount two days later) carry none, which is exactly what this is for.
+ */
+export function looksLikeTransfer(a: TransferCandidate, b: TransferCandidate): boolean {
+  if (transferWords.test(a.description) || transferWords.test(b.description)) return true
+  const aText = a.description.toLowerCase()
+  const bText = b.description.toLowerCase()
+  const aBank = a.accountBank.trim().toLowerCase()
+  const bBank = b.accountBank.trim().toLowerCase()
+  return (bBank !== '' && aText.includes(bBank)) || (aBank !== '' && bText.includes(aBank))
+}
+
+/**
  * Order in which the two sides of a resolvable group are matched position by
  * position (F41 R2): booking date, then position inside the day as the
  * statement brought it (a missing `daySequence` sorts as 0), then id.
@@ -88,6 +115,14 @@ function byPairingOrder(a: TransferCandidate, b: TransferCandidate): number {
  * otherwise the whole component is an ambiguous group, never partially paired
  * (F41 R3, R4). The input is sorted by id first, so the outcome never depends
  * on the order of arrival.
+ *
+ * Since 2026-10-16 (ADR-036) amount, accounts and dates are not enough to LINK:
+ * every pair the graph resolves must also carry a transfer signal in what the
+ * bank wrote (`looksLikeTransfer`). A pair without it is not dropped — it is
+ * reported as an ambiguous group, so the human links it by hand if it is one.
+ * Two unrelated payments of the same amount in different accounts three days
+ * apart used to be linked silently and vanish from the totals; now they are
+ * shown as doubtful.
  */
 export function pairTransferCandidates(candidates: TransferCandidate[]): {
   pairs: Array<[TransferCandidate, TransferCandidate]>
@@ -129,6 +164,14 @@ export function pairTransferCandidates(candidates: TransferCandidate[]): {
     const resolved = new Set<number>()
     for (const [expense, income] of edges) {
       if (neighbours.get(expense.id)?.length === 1 && neighbours.get(income.id)?.length === 1) {
+        if (!looksLikeTransfer(expense, income)) {
+          // Unique by amount and dates, but nothing the bank wrote says it is a
+          // transfer: shown to the human as a doubtful group of two, not linked.
+          ambiguous.push(toAmbiguousGroup(amount, [expense, income]))
+          resolved.add(expense.id)
+          resolved.add(income.id)
+          continue
+        }
         pairs.push([expense, income])
         resolved.add(expense.id)
         resolved.add(income.id)
@@ -174,30 +217,41 @@ export function pairTransferCandidates(candidates: TransferCandidate[]): {
       if (isResolvable) {
         componentExpenses.sort(byPairingOrder)
         componentIncomes.sort(byPairingOrder)
+        const matched: Array<[TransferCandidate, TransferCandidate]> = []
         for (const [position, expense] of componentExpenses.entries()) {
           const income = componentIncomes[position]
-          if (income !== undefined) pairs.push([expense, income])
+          if (income !== undefined) matched.push([expense, income])
         }
-        continue
+        // The same signal the lone pairs need, on every matched couple: one
+        // couple without it leaves the whole group doubtful (never half linked).
+        if (matched.every(([expense, income]) => looksLikeTransfer(expense, income))) {
+          pairs.push(...matched)
+          continue
+        }
       }
 
-      ambiguous.push({
-        amount,
-        movements: component
-          .sort((a, b) => a.id - b.id)
-          .map((movement) => ({
-            id: movement.id,
-            accountId: movement.accountId,
-            accountAlias: movement.accountAlias,
-            type: movement.type,
-            bookingDate: movement.bookingDate.toISOString().slice(0, 10),
-            description: movement.description,
-          })),
-      })
+      ambiguous.push(toAmbiguousGroup(amount, component))
     }
   }
 
   return { pairs, ambiguous }
+}
+
+/** The report shape of a doubtful group: its movements by id, dates as `YYYY-MM-DD`. */
+function toAmbiguousGroup(amount: string, movements: TransferCandidate[]): AmbiguousTransferGroup {
+  return {
+    amount,
+    movements: [...movements]
+      .sort((a, b) => a.id - b.id)
+      .map((movement) => ({
+        id: movement.id,
+        accountId: movement.accountId,
+        accountAlias: movement.accountAlias,
+        type: movement.type,
+        bookingDate: movement.bookingDate.toISOString().slice(0, 10),
+        description: movement.description,
+      })),
+  }
 }
 
 /**
@@ -218,13 +272,14 @@ async function readTransferCandidates(prisma: AppPrismaClient): Promise<Transfer
       daySequence: true,
       description: true,
       undoneTransferId: true,
-      account: { select: { alias: true } },
+      account: { select: { alias: true, bank: true } },
     },
   })
   return rows.map((row) => ({
     id: row.id,
     accountId: row.accountId,
     accountAlias: row.account.alias,
+    accountBank: row.account.bank,
     // The WHERE already left `neutral` out; this cast states it to the compiler.
     type: row.type as 'expense' | 'income',
     amount: row.amount.toFixed(2),

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { Prisma } from '../../generated/prisma/client.js'
 
+import { todayInMadrid } from '../../lib/local-date.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { listAccounts } from '../accounts/accounts.service.js'
 import { getInvestmentsNetWorth } from '../investments/investments.service.js'
@@ -30,8 +31,9 @@ export function netWorthDb(app: FastifyInstance): AppPrismaClient {
  * amount is recomputed or rounded (R10). Read-only end to end (R12).
  */
 export async function getNetWorth(prisma: AppPrismaClient): Promise<NetWorthResponse> {
-  // Date-only midnight UTC — the same clock as `bookingDate` and the photos.
-  const asOf = new Date().toISOString().slice(0, 10)
+  // Today in the Madrid calendar, as date-only midnight UTC — the same clock as
+  // `bookingDate` and the photos (see `src/lib/local-date.ts`).
+  const asOf = todayInMadrid()
   const today = new Date(`${asOf}T00:00:00.000Z`)
 
   const [accounts, investments] = await Promise.all([

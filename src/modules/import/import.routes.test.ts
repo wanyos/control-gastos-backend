@@ -83,7 +83,11 @@ function statement(): ParsedStatement {
   }
 }
 
-async function buildTestApp(drive: AppDriveClient, prismaOverride?: AppPrismaClient) {
+async function buildTestApp(
+  drive: AppDriveClient,
+  prismaOverride?: AppPrismaClient,
+  parse: () => Promise<ParsedStatement> | ParsedStatement = () => statement(),
+) {
   // buildApp() decorates `drive` with the real client and a decoration cannot be
   // overridden, so the importer is exercised on a bare app with a double, over
   // the same real database.
@@ -103,7 +107,7 @@ async function buildTestApp(drive: AppDriveClient, prismaOverride?: AppPrismaCli
   app.register(movementsRoutes, { prefix: '/api/movements' })
   app.register(importRoutes, {
     prefix: '/api/import',
-    parsers: [{ bank, extensions: ['.csv'], parse: () => statement() }],
+    parsers: [{ bank, extensions: ['.csv'], parse }],
   })
   await app.ready()
   return app
@@ -343,6 +347,33 @@ describe('POST /api/import', () => {
       ambiguous: [],
       error: { code: 'INTERNAL_SERVER_ERROR', message: 'synthetic detection failure' },
     })
+  })
+
+  it('answers 409 to a second import while the first one is still running, then accepts again', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    app = await buildTestApp(driveDouble().client, undefined, async () => {
+      await gate
+      return statement()
+    })
+
+    const first = app.inject({ method: 'POST', url: '/api/import' })
+    // Let the first request reach the parser (and hold there) before the second arrives.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const second = await app.inject({ method: 'POST', url: '/api/import' })
+
+    expect(second.statusCode).toBe(409)
+    expect(second.json()).toMatchObject({ code: 'CONFLICT' })
+
+    release()
+    const firstResponse = await first
+    expect(firstResponse.statusCode).toBe(200)
+    expect(firstResponse.json<ImportRunResult>().importedCount).toBe(2)
+
+    const third = await app.inject({ method: 'POST', url: '/api/import' })
+    expect(third.statusCode).toBe(200)
   })
 
   it('exposes no way to create or delete a movement by API (R16)', async () => {

@@ -22,6 +22,9 @@ export const defaultCategories: ReadonlyArray<{ name: string; kind: CategoryKind
   { name: 'Ocio', kind: 'expense' },
   { name: 'Pago de tarjeta', kind: 'expense' },
   { name: 'Transferencias a personas', kind: 'expense' },
+  // Added 2026-10-16 as the counterpart of 'Otros ingresos': the category every
+  // expense without one receives in `POST /api/movements/confirm-all`.
+  { name: 'Otros gastos', kind: 'expense' },
   { name: 'Nómina', kind: 'income' },
   { name: 'Intereses', kind: 'income' },
   { name: 'Otros ingresos', kind: 'income' },

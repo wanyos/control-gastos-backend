@@ -118,6 +118,27 @@ export const bulkUpdateMovementsBodyProperties: ReadonlySet<string> = new Set(
 )
 
 /**
+ * Body of `POST /api/movements/confirm-all` (2026-10-16): one category per
+ * kind, both mandatory. There is no filter and no list of ids on purpose: the
+ * endpoint exists to close EVERYTHING that is still open, in one request.
+ */
+export const confirmAllMovementsSchema = {
+  body: {
+    type: 'object',
+    required: ['expenseCategoryId', 'incomeCategoryId'],
+    additionalProperties: false,
+    properties: {
+      expenseCategoryId: { type: 'integer', minimum: 1 },
+      incomeCategoryId: { type: 'integer', minimum: 1 },
+    },
+  },
+} as const
+
+export const confirmAllMovementsBodyProperties: ReadonlySet<string> = new Set(
+  Object.keys(confirmAllMovementsSchema.body.properties),
+)
+
+/**
  * The fields a bulk update may write: at least one must travel (feature 47,
  * R12). Feature 49 adds the mark, so `{ ids, excludedFromTotals }` is valid.
  */

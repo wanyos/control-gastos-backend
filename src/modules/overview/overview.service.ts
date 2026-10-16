@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { Prisma } from '../../generated/prisma/client.js'
 
+import { currentMonthInMadrid } from '../../lib/local-date.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { listAccounts } from '../accounts/accounts.service.js'
 import { readDepositMovements } from '../investments/investments.service.js'
@@ -17,9 +18,9 @@ export function overviewDb(app: FastifyInstance): AppPrismaClient {
   return app.prisma
 }
 
-/** `YYYY-MM` of today, in UTC — the same clock `bookingDate` lives in. */
+/** `YYYY-MM` of today in Madrid, the calendar `bookingDate` is written in (`src/lib/local-date.ts`). */
 export function currentMonth(): string {
-  return new Date().toISOString().slice(0, 7)
+  return currentMonthInMadrid()
 }
 
 /** First and last day of a `YYYY-MM` month, both inclusive. */

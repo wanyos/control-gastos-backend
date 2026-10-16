@@ -242,7 +242,10 @@ export function parseSpanishDate(value: unknown): string | null {
  * Parses a Spanish amount into a signed number. A native number is returned
  * as-is (the real Bankinter export stores the amount as a number). A string in
  * Spanish format (`.` thousands, `,` decimal, e.g. `1.234,56` → `1234.56`,
- * `-2.000,00` → `-2000`) is normalized. Returns `null` when not a number.
+ * `-2.000,00` → `-2000`) is normalized. Without a comma, dots that group
+ * exactly three digits are thousands too (`"-2.000"` → `-2000`), the same rule
+ * `parseAmountText` applies for MyInvestor: reading it as `-2` would silently
+ * drop three zeros. Returns `null` when not a number.
  */
 export function parseSpanishAmount(value: unknown): number | null {
   if (typeof value === 'number') {
@@ -258,6 +261,8 @@ export function parseSpanishAmount(value: unknown): number | null {
   if (text.includes(',')) {
     // Spanish: '.' groups thousands, ',' is the decimal separator.
     text = text.replace(/\./g, '').replace(',', '.')
+  } else if (/^[+-]?\d{1,3}(\.\d{3})+$/.test(text)) {
+    text = text.replace(/\./g, '')
   }
   if (!/^[+-]?\d+(\.\d+)?$/.test(text)) {
     return null

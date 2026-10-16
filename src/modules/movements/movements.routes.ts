@@ -7,18 +7,22 @@ import {
   bulkUpdateMovementsBodyProperties,
   bulkUpdateMovementsSchema,
   bulkUpdateMovementsWritableProperties,
+  confirmAllMovementsBodyProperties,
+  confirmAllMovementsSchema,
   listMovementsSchema,
   updateMovementBodyProperties,
   updateMovementSchema,
 } from './movements.schema.js'
 import {
   bulkUpdateMovements,
+  confirmAllMovements,
   listMovements,
   movementsDb,
   updateMovement,
 } from './movements.service.js'
 import type {
   BulkUpdateMovementsBody,
+  ConfirmAllMovementsBody,
   MovementIdParams,
   MovementListQuery,
   UpdateMovementBody,
@@ -69,6 +73,7 @@ function assertStrictBoolean(body: unknown, property: string): void {
  * (see `src/app.ts`), so the routes resolve to:
  *   GET   /api/movements
  *   PATCH /api/movements
+ *   POST  /api/movements/confirm-all
  *   PATCH /api/movements/:id
  *
  * The bank fact is read-only: a movement that does not come from the bank must
@@ -117,6 +122,21 @@ export default async function movementsRoutes(
     },
     async (request) => {
       return bulkUpdateMovements(db, request.body)
+    },
+  )
+
+  // 2026-10-16: close everything still open in one request — a category for
+  // every movement without one, by its type, and `confirmed` for every pending.
+  fastify.post<{ Body: ConfirmAllMovementsBody }>(
+    '/confirm-all',
+    {
+      schema: confirmAllMovementsSchema,
+      preValidation: async (request) => {
+        assertOnlyAllowedBodyProperties(request.body, confirmAllMovementsBodyProperties)
+      },
+    },
+    async (request) => {
+      return confirmAllMovements(db, request.body)
     },
   )
 

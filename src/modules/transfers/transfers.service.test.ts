@@ -13,6 +13,7 @@ import type { AppPrismaClient } from '../../lib/prisma.js'
 import {
   detectTransfers,
   linkTransfer,
+  looksLikeTransfer,
   pairTransferCandidates,
   unlinkTransfer,
 } from './transfers.service.js'
@@ -25,6 +26,7 @@ function candidate(overrides: Partial<TransferCandidate> = {}): TransferCandidat
     id: nextId++,
     accountId: 1,
     accountAlias: 'synthetic ···0001',
+    accountBank: 'bankinter',
     type: 'expense',
     amount: '431.27',
     bookingDate: new Date('2031-03-10T00:00:00.000Z'),
@@ -979,7 +981,7 @@ describe('linkTransfer / unlinkTransfer (F44, database)', () => {
         accountId: movement.accountId,
         type: movement.type ?? 'expense',
         amount: movement.amount ?? '512.44',
-        description: movement.description ?? 'SYNTHETIC MANUAL LINK LEG',
+        description: movement.description ?? 'SYNTHETIC MANUAL TRANSFER LEG',
         bookingDate,
         valueDate: bookingDate,
         daySequence: 1,
@@ -1248,5 +1250,109 @@ describe('linkTransfer / unlinkTransfer (F44, database)', () => {
     expect(byId.get(legOut.id)?.transferId).toBeTruthy()
     expect(byId.get(legOut.id)?.transferId).toBe(byId.get(thirdLeg.id)?.transferId)
     expect(byId.get(legIn.id)?.transferId).toBeNull()
+  })
+})
+
+describe('the transfer signal in what the bank wrote (ADR-036)', () => {
+  function couple(expenseText: string, incomeText: string, incomeBank = 'openbank') {
+    const expense = candidate({ accountId: 1, type: 'expense', description: expenseText })
+    const income = candidate({
+      accountId: 2,
+      accountAlias: 'synthetic ···0002',
+      accountBank: incomeBank,
+      type: 'income',
+      description: incomeText,
+      bookingDate: new Date('2031-03-12T00:00:00.000Z'),
+    })
+    return { expense, income }
+  }
+
+  it('accepts the transfer words the banks write, on either leg', () => {
+    for (const text of [
+      'TRANS SYNTHETIC OUT',
+      'TRANSF SYNTHETIC OUT',
+      'TRANSFERENCIA SYNTHETIC IN',
+      'Transfer to synthetic pocket',
+      'TRASPASO SYNTHETIC',
+    ]) {
+      const { expense, income } = couple(text, 'ABONO')
+      expect(looksLikeTransfer(expense, income), text).toBe(true)
+      expect(looksLikeTransfer(income, expense), text).toBe(true)
+    }
+  })
+
+  it('does not take TRANSPORTES for a transfer word', () => {
+    const { expense, income } = couple('TRANSPORTES SYNTHETIC SL', 'ABONO')
+    expect(looksLikeTransfer(expense, income)).toBe(false)
+  })
+
+  it('accepts a description that names the bank of the other leg', () => {
+    const { expense, income } = couple('PAGO A Openbank', 'ABONO', 'openbank')
+    expect(looksLikeTransfer(expense, income)).toBe(true)
+    const other = couple('PAGO', 'INGRESO DESDE BANKINTER', 'openbank')
+    expect(looksLikeTransfer(other.expense, other.income)).toBe(true)
+  })
+
+  it('reports as doubtful, instead of linking, a unique couple with no signal', () => {
+    const { expense, income } = couple('SYNTHETIC FINE PAYMENT', 'BIZUM SYNTHETIC IN')
+
+    const { pairs, ambiguous } = pairTransferCandidates([expense, income])
+
+    expect(pairs).toEqual([])
+    expect(ambiguous).toEqual([
+      {
+        amount: '431.27',
+        movements: [
+          {
+            id: expense.id,
+            accountId: 1,
+            accountAlias: 'synthetic ···0001',
+            type: 'expense',
+            bookingDate: '2031-03-10',
+            description: 'SYNTHETIC FINE PAYMENT',
+          },
+          {
+            id: income.id,
+            accountId: 2,
+            accountAlias: 'synthetic ···0002',
+            type: 'income',
+            bookingDate: '2031-03-12',
+            description: 'BIZUM SYNTHETIC IN',
+          },
+        ],
+      },
+    ])
+  })
+
+  it('leaves a whole resolvable group doubtful when one of its couples has no signal', () => {
+    const firstOut = candidate({
+      accountId: 1,
+      type: 'expense',
+      description: 'TRANS SYNTHETIC/ N26',
+    })
+    const secondOut = candidate({ accountId: 1, type: 'expense', description: 'CARGO SYNTHETIC' })
+    const firstIn = candidate({
+      accountId: 2,
+      accountBank: 'n26',
+      type: 'income',
+      description: 'SYNTHETIC IN',
+    })
+    const secondIn = candidate({
+      accountId: 2,
+      accountBank: 'n26',
+      type: 'income',
+      description: 'ABONO SYNTHETIC',
+    })
+
+    const { pairs, ambiguous } = pairTransferCandidates([firstOut, secondOut, firstIn, secondIn])
+
+    expect(pairs).toEqual([])
+    expect(ambiguous).toHaveLength(1)
+    expect(ambiguous[0]?.movements.map((movement) => movement.id)).toEqual([
+      firstOut.id,
+      secondOut.id,
+      firstIn.id,
+      secondIn.id,
+    ])
   })
 })
