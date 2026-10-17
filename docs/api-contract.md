@@ -1497,6 +1497,282 @@ descarta antes del handler), igual que en `GET /api/movements`.
 
 ---
 
+### `GET /api/recurring-expenses`
+
+Una sola consulta de **solo lectura** (feature 58 `recurring-expenses`,
+2026-10-17) que responde cuánto cuesta un mes: los **recibos** uno por uno, las
+**transferencias a personas** en un grupo, y el **gasto variable** por
+categoría, cada uno sumado por mes, con lo que cuesta al mes cada entrada y el
+total de todas. Se calcula en cada petición y **no guarda nada**: no escribe en
+ninguna tabla, ni crea categorías ni reglas.
+
+**Parámetros:** ninguno. Un parámetro de querystring desconocido se ignora, como
+en `GET /api/transfers/ambiguous`.
+
+**Qué movimientos entran.** Exactamente los que la suma de
+[`GET /api/movements`](#get-apimovements) cuenta como gasto (en el código, la
+misma función, `isCountedExpense`): `type: "expense"`, sin `transferId` (fuera
+las dos piernas de un traspaso), sin `productId` (fuera las aportaciones a un
+producto de inversión), sin `excludedFromTotals: true` y que no sea un
+movimiento de depósito (ver
+[Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
+Los ingresos y los `neutral` no entran nunca. Para sacar de aquí un gasto que no
+quieres ver, se marca con `excludedFromTotals` (`PATCH /api/movements/:id`): sale
+de esta respuesta y de las sumas a la vez.
+
+**Cómo se reconoce cada grupo.** Cada gasto que entra va al **primer** grupo
+cuya regla cumple, en este orden:
+
+1. **Recibo** (`bills`): su concepto, en minúsculas, sin tildes y sin espacios
+   al principio, **empieza** por `recibo`, `recib` o `tributo`, y la palabra no
+   sigue con otra letra (`RECIB. AGUAS…` sí; `RECIBIDO…` no). Es lo que escribe
+   el banco al cobrar una domiciliación o un impuesto. Una suscripción cobrada
+   con tarjeta **no** es un recibo: sale en su categoría.
+2. **Transferencia a una persona** (`transfersToPeople`): su concepto tiene una
+   palabra de transferencia (las mismas que usa la detección de traspasos:
+   `TRANS`, `TRANSF`, `TRANSF.`, `TRANSFER…`, `TRASPASO…`, al principio de
+   palabra, así que `TRANSPORTES` no cuenta) o la palabra `bizum` entera, sin
+   mirar mayúsculas. Se cuelan las transferencias a empresas que el banco
+   escribe igual; salen de aquí marcándolas con `excludedFromTotals`.
+3. **Gasto variable** (`variable`): todo lo demás, agrupado por su `categoryId`.
+   Los gastos sin categoría van juntos en una entrada con `category: null`.
+
+**Un recibo cuyo concepto cambia sigue siendo uno.** Los cargos de un mismo
+recibo se juntan por su `key`: el concepto en minúsculas y sin tildes, cambiando
+por espacio todo lo que no sea letra, cifra o espacio; quitando las palabras
+`recibo`, `recib` y `tributo` y **toda palabra que lleve una cifra** (un número
+de referencia que cambia cada año); y quedándose con las **dos primeras
+palabras** que quedan. Si no queda ninguna, `key` es la primera de esas tres
+palabras que lleve el concepto. Así `RECIBO /AGUAS MUNICIPALES S.A.`,
+`RECIB. AGUAS MUNICIPALES 2025-0417` y `RECIBO RECIBO AGUAS MUNICIPALES, SA`
+dan la misma `key`, `"aguas municipales"`. ⚠️ Dos recibos distintos cuyo
+concepto empiece por las mismas dos palabras salen como uno.
+
+**El periodo.** Los **12 meses completos anteriores al mes en curso** (en hora
+de Madrid): pedido el 2026-10-17, de `2025-10-01` a `2026-09-30`. El mes en
+curso no entra.
+
+**Lo que cuesta al mes** (`monthlyCost`): lo que esa entrada gastó dentro del
+periodo, **entre 12**, redondeado a céntimos (la mitad, hacia arriba). Un recibo
+anual cuenta 1/12 de su importe; uno que dejó de cobrarse hace seis meses, la
+mitad de lo que costaba; uno sin cargos en el periodo, `"0.00"`.
+`monthlyTotal` es la suma de los `monthlyCost` **ya redondeados** de todos los
+recibos, del grupo de transferencias a personas y de todas las entradas del
+gasto variable, para que la suma de lo que se enseña cuadre.
+
+**Respuesta 200**
+```json
+{
+  "period": {
+    "from": "2025-10-01",
+    "to": "2026-09-30",
+    "months": [
+      "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03",
+      "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"
+    ]
+  },
+  "monthlyTotal": "43.09",
+  "bills": [
+    {
+      "key": "seguro hogar",
+      "name": "RECIBO /SEGURO HOGAR FICTICIO",
+      "periodicity": "annual",
+      "usualAmount": "187.37",
+      "count": 2,
+      "lastDate": "2025-11-03",
+      "lastMonth": "2025-11",
+      "lastMonthAmount": "197.29",
+      "previousMonth": "2024-11",
+      "previousMonthAmount": "187.37",
+      "change": "9.92",
+      "hasIncreased": true,
+      "monthlyCost": "16.44",
+      "movements": [
+        { "id": 812, "accountId": 1, "bookingDate": "2025-11-03", "amount": "197.29", "description": "RECIBO /SEGURO HOGAR FICTICIO" },
+        { "id": 344, "accountId": 1, "bookingDate": "2024-11-04", "amount": "187.37", "description": "RECIBO /SEGURO HOGAR FICTICIO" }
+      ]
+    },
+    {
+      "key": "impuesto vehiculos",
+      "name": "TRIBUTO IMPUESTO VEHICULOS INVENTADO",
+      "periodicity": "once",
+      "usualAmount": "63.18",
+      "count": 1,
+      "lastDate": "2026-04-21",
+      "lastMonth": "2026-04",
+      "lastMonthAmount": "63.18",
+      "previousMonth": null,
+      "previousMonthAmount": null,
+      "change": null,
+      "hasIncreased": false,
+      "monthlyCost": "5.27",
+      "movements": [
+        { "id": 1307, "accountId": 1, "bookingDate": "2026-04-21", "amount": "63.18", "description": "TRIBUTO IMPUESTO VEHICULOS INVENTADO" }
+      ]
+    },
+    {
+      "key": "academia idiomas",
+      "name": "RECIBO /ACADEMIA IDIOMAS INVENTADA",
+      "periodicity": "once",
+      "usualAmount": "41.93",
+      "count": 1,
+      "lastDate": "2024-06-12",
+      "lastMonth": "2024-06",
+      "lastMonthAmount": "41.93",
+      "previousMonth": null,
+      "previousMonthAmount": null,
+      "change": null,
+      "hasIncreased": false,
+      "monthlyCost": "0.00",
+      "movements": [
+        { "id": 129, "accountId": 1, "bookingDate": "2024-06-12", "amount": "41.93", "description": "RECIBO /ACADEMIA IDIOMAS INVENTADA" }
+      ]
+    }
+  ],
+  "transfersToPeople": {
+    "months": [
+      { "month": "2025-10", "amount": "0.00" },
+      { "month": "2025-11", "amount": "0.00" },
+      { "month": "2025-12", "amount": "0.00" },
+      { "month": "2026-01", "amount": "0.00" },
+      { "month": "2026-02", "amount": "0.00" },
+      { "month": "2026-03", "amount": "118.75" },
+      { "month": "2026-04", "amount": "0.00" },
+      { "month": "2026-05", "amount": "0.00" },
+      { "month": "2026-06", "amount": "0.00" },
+      { "month": "2026-07", "amount": "0.00" },
+      { "month": "2026-08", "amount": "23.40" },
+      { "month": "2026-09", "amount": "0.00" }
+    ],
+    "monthlyCost": "11.85",
+    "movements": [
+      { "id": 1652, "accountId": 2, "bookingDate": "2026-08-14", "amount": "23.40", "description": "BIZUM PERSONA INVENTADA" },
+      { "id": 1188, "accountId": 1, "bookingDate": "2026-03-02", "amount": "118.75", "description": "TRANSFERENCIA PERSONA FICTICIA" }
+    ]
+  },
+  "variable": [
+    {
+      "category": { "id": 21, "name": "Combustible", "parentId": 4 },
+      "months": [
+        { "month": "2025-10", "amount": "0.00" },
+        { "month": "2025-11", "amount": "0.00" },
+        { "month": "2025-12", "amount": "0.00" },
+        { "month": "2026-01", "amount": "0.00" },
+        { "month": "2026-02", "amount": "0.00" },
+        { "month": "2026-03", "amount": "0.00" },
+        { "month": "2026-04", "amount": "0.00" },
+        { "month": "2026-05", "amount": "0.00" },
+        { "month": "2026-06", "amount": "0.00" },
+        { "month": "2026-07", "amount": "52.16" },
+        { "month": "2026-08", "amount": "0.00" },
+        { "month": "2026-09", "amount": "47.83" }
+      ],
+      "monthlyCost": "8.33",
+      "movements": [
+        { "id": 1771, "accountId": 2, "bookingDate": "2026-09-12", "amount": "47.83", "description": "ESTACION SERVICIO INVENTADA" },
+        { "id": 1590, "accountId": 2, "bookingDate": "2026-07-05", "amount": "52.16", "description": "ESTACION SERVICIO INVENTADA" }
+      ]
+    },
+    {
+      "category": null,
+      "months": [
+        { "month": "2025-10", "amount": "0.00" },
+        { "month": "2025-11", "amount": "0.00" },
+        { "month": "2025-12", "amount": "0.00" },
+        { "month": "2026-01", "amount": "14.37" },
+        { "month": "2026-02", "amount": "0.00" },
+        { "month": "2026-03", "amount": "0.00" },
+        { "month": "2026-04", "amount": "0.00" },
+        { "month": "2026-05", "amount": "0.00" },
+        { "month": "2026-06", "amount": "0.00" },
+        { "month": "2026-07", "amount": "0.00" },
+        { "month": "2026-08", "amount": "0.00" },
+        { "month": "2026-09", "amount": "0.00" }
+      ],
+      "monthlyCost": "1.20",
+      "movements": [
+        { "id": 1019, "accountId": 1, "bookingDate": "2026-01-19", "amount": "14.37", "description": "COMPRA SIN CATEGORIA INVENTADA" }
+      ]
+    }
+  ]
+}
+```
+
+Todos los importes son strings decimales con dos decimales, como en el resto del
+contrato; las fechas, `YYYY-MM-DD`; los meses, `YYYY-MM`.
+
+- `period`: `from` y `to` son el primer día del primer mes y el último del
+  último, **ambos incluidos**; `months`, los 12 meses del periodo, del más
+  antiguo al más reciente.
+- `monthlyTotal`: la suma de todos los `monthlyCost` de la respuesta.
+- `bills`: un elemento por recibo distinto de **toda la historia**, también los
+  que ya no se cobran (con `monthlyCost: "0.00"`) y los que se han cobrado una
+  sola vez. Orden: `monthlyCost` de mayor a menor; a igualdad, `lastDate` más
+  reciente primero; después, `key`.
+
+  | Campo | Qué es |
+  | --- | --- |
+  | `key` | Lo que junta los cargos de un mismo recibo (ver arriba). |
+  | `name` | El concepto de su cargo más reciente, tal cual lo escribió el banco. |
+  | `periodicity` | Cada cuánto se cobra, leído de toda su historia (tabla de abajo). |
+  | `usualAmount` | Lo que suele costar: la mediana de lo cobrado por mes en sus últimos 12 meses con cargo (o en todos, si tiene menos); con un número par, el menor de los dos centrales. |
+  | `count` | Cuántos cargos tiene en toda su historia. |
+  | `lastDate` | La `bookingDate` de su cargo más reciente. |
+  | `lastMonth` / `lastMonthAmount` | Su último mes con cargo y lo cobrado en ese mes (todos sus cargos del mes sumados). |
+  | `previousMonth` / `previousMonthAmount` | Su mes con cargo anterior a `lastMonth` y lo cobrado en él; `null` si solo tiene un mes con cargo. |
+  | `change` | `lastMonthAmount − previousMonthAmount`, negativo si bajó; `null` si no hay mes anterior. Se compara el total del mes y no cargo a cargo: dos cuotas distintas cobradas el mismo día en orden cambiante no son una subida ni una bajada. |
+  | `hasIncreased` | `true` si `change` es mayor que `0`. **Sin umbral**: un céntimo más ya es subida. `false` si bajó, si no cambió o si no hay mes anterior. |
+  | `monthlyCost` | Lo que cuesta al mes (ver arriba): lo cobrado dentro del periodo, entre 12. |
+  | `movements` | **Todos** sus cargos de toda la historia, del más reciente al más antiguo. |
+
+  Los siete valores de `periodicity`. Se miran sus meses con cargo y los huecos,
+  en meses, entre cada dos seguidos; manda la mediana de esos huecos (con un
+  número par, el menor de los dos centrales):
+
+  | Valor | Cuándo |
+  | --- | --- |
+  | `"once"` | Un solo mes con cargo. |
+  | `"twice_monthly"` | Hueco `1`, y lo más frecuente es que un mes con cargo tenga **dos o más** cargos (a igualdad, cuenta el número menor). |
+  | `"monthly"` | Hueco `1`, y lo más frecuente es un cargo por mes. Una factura doble suelta no lo cambia. |
+  | `"every_two_months"` | Hueco `2`. |
+  | `"every_three_months"` | Hueco `3`. |
+  | `"every_six_months"` | Hueco de `4` a `8`. |
+  | `"annual"` | Hueco de `9` o más. |
+
+  `monthlyCost` **no depende** de `periodicity`: sale siempre de lo cobrado en el
+  periodo.
+- `transfersToPeople`: **un** objeto con todas las transferencias a personas.
+  `months` trae los 12 meses del periodo con lo de cada uno (`"0.00"` si no hubo
+  ninguna); `monthlyCost`, lo que cuestan al mes; `movements`, las del periodo,
+  de la más reciente a la más antigua.
+- `variable`: un elemento por categoría con gasto variable en el periodo, con la
+  misma forma que `transfersToPeople` más `category` (`id`, `name` y `parentId`
+  de la categoría del movimiento, o `null` para los gastos sin categoría). Una
+  subcategoría es su propia entrada, no se suma a la de su padre. Orden:
+  `monthlyCost` de mayor a menor; a igualdad, por nombre de categoría, y la
+  entrada `null` al final. Solo salen las categorías que tienen algún gasto en el
+  periodo.
+
+**Los movimientos de cada entrada vienen en esta misma respuesta**, en su
+`movements`: no hay otra consulta para pedirlos. Los de un recibo son los de
+**toda su historia**; los de las transferencias a personas y los de cada entrada
+del gasto variable, solo los del **periodo**. Cada uno trae `id`, `accountId`,
+`bookingDate`, `amount` y `description`; el resto de sus campos se pide a
+`GET /api/movements`.
+
+**Respuesta vacía.** Sin ningún gasto que entre, responde 200 con
+`monthlyTotal: "0.00"`, `bills: []`, `variable: []` y `transfersToPeople` con
+los 12 meses a `"0.00"`, `monthlyCost: "0.00"` y `movements: []`. No es un
+error.
+
+**Errores:** ninguno propio. Un fallo de la base es el `500` genérico (ver
+[Errores](#errores)).
+
+> Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
+> `PATCH`, ni `DELETE` bajo `/api/recurring-expenses`).
+
+---
+
 ### `GET /api/investments/overview`
 
 La vista de **solo lectura** de las inversiones (feature "investments-overview",

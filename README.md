@@ -84,6 +84,7 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `GET`    | `/api/transfers`               | Todas las parejas de traspaso enlazadas, con sus dos piernas. Sin paginar. Solo lectura. |
 | `GET`    | `/api/transfers/ambiguous`     | Los grupos de movimientos que parecen traspasos pero la detección no puede emparejar sin ambigüedad, calculados en el momento. Solo lectura. |
 | `GET`    | `/api/overview`                | Cuánto dinero hay en total, cómo se reparte entre las cuentas, y qué entró, salió y quedó en un mes. |
+| `GET`    | `/api/recurring-expenses`      | Cuánto cuesta un mes: los recibos uno por uno, las transferencias a personas y el gasto variable por categoría, cada uno sumado por mes, con sus movimientos y el total. Calculado en el momento; solo lectura. |
 | `GET`    | `/api/net-worth`               | El patrimonio neto **de hoy**: saldo de las cuentas más el valor de las inversiones, con su desglose y los avisos del dato incompleto. |
 | `GET`    | `/api/investments/overview`    | Las inversiones del mes: la foto de cada producto, cuánto cambió desde la anterior y la ganancia del periodo. |
 | `GET`    | `/api/investments/deposits`    | Cada depósito con su archivo de producto y, si ya venció, lo que generó (importe del vencimiento menos el principal), con el total. Solo lectura. |
@@ -150,6 +151,7 @@ gastos-backend/
 │   │   ├── movements/       #   Movimientos: SOLO LECTURA + categoría y estado de revisión
 │   │   ├── transfers/       #   Enlace y desenlace manual de las piernas de un traspaso
 │   │   ├── overview/        #   Vista del mes: dinero por cuenta y entradas/salidas
+│   │   ├── recurring-expenses/ # Lo que cuesta un mes: recibos, transferencias a personas y gasto variable (solo lectura)
 │   │   ├── net-worth/       #   Patrimonio neto de hoy: cuentas + inversiones
 │   │   ├── ingestion/       #   Lectura de archivos de banco desde Drive (no mueve)
 │   │   ├── import/          #   Importador: Drive -> parser -> base de datos

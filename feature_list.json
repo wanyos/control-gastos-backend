@@ -2569,6 +2569,106 @@
         }
       ],
       "status": "done"
+    },
+    {
+      "id": 58,
+      "name": "recurring-expenses",
+      "title": "Una consulta de solo lectura que diga cuánto me cuesta existir al mes: mis recibos, mi gasto variable por categoría y lo que me ha subido",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-17), transcrito de ../docs/handoff-recurrentes.md, el encargo acordado con el humano el 2026-10-02 en una sesión del frontend y completado con sus cuatro decisiones del 2026-10-17. Las frases entre «» son suyas, citadas de ese documento. El nombre de la feature es propuesta del leader. El humano lo revisa en la puerta del spec.",
+        "que_quiero": "«Cuánto me cuesta existir, y qué me ha subido.» Una consulta de solo lectura que devuelva mis gastos recurrentes en tres grupos: los recibos, «todos por separado», cada uno por su concepto y aunque haya aparecido una sola vez (comunidad, luz, telefonía, gimnasio, IBI, seguros, Hacienda, el recibo de la tarjeta); el gasto variable agrupado por categoría y sumado al mes («cada gasto que sea en gasolinera se suma al total de la gasolina del mes», todo el supermercado como comida); y las transferencias a personas, en su propio grupo. De cada recibo: cómo llamarlo, su periodicidad, su importe habitual, cuándo fue el último, cuántas veces se ha visto y si su importe ha cambiado respecto a antes. Un total de cuánto suma todo al mes, y la forma de ver los movimientos de cada uno.",
+        "por_que": "Es la 4.ª vista de la idea 4 de docs/ideas.md del workspace. Decidir qué es recurrente es lógica de negocio: «en toda la E7 las cifras han sido del backend» y el frontend solo las pinta; repartida entre la pantalla y el servidor daría dos respuestas distintas a la misma pregunta.",
+        "como_se_que_esta_bien": [
+          "Un recibo sale por separado por su concepto, aunque haya aparecido una sola vez.",
+          "Un recibo anual (IBI, seguros, Hacienda) sale como anual, no como mensual al que le faltan once meses; uno que se paga dos veces al mes (el gimnasio) sale como tal.",
+          "El gasto variable sale agrupado por su categoría y sumado al mes; la consulta no inventa categorías.",
+          "Si un importe ha subido un euro, ha subido: se enseña la diferencia, por pequeña que sea, sin umbral.",
+          "Las transferencias a personas salen en su propio grupo y suman en el total.",
+          "Hay un total de cuánto suma todo al mes.",
+          "Los traspasos emparejados y lo marcado con excludedFromTotals no aparecen.",
+          "La consulta no escribe ni guarda nada: se calcula en el momento.",
+          "docs/api-contract.md describe la consulta, su respuesta y cómo se piden los movimientos de cada recurrente."
+        ],
+        "que_no_quiero": [
+          "Presupuestos, avisos o alertas: esto es solo mirar.",
+          "Marcar a mano algo como recurrente o no recurrente; si la detección falla mucho, se verá al usarla y se pedirá después.",
+          "Que el backend esconda por su cuenta algo como la aportación automática a la cartera: si no la marco con excludedFromTotals, sale.",
+          "Que el backend cree categorías o reglas: las creo yo desde la aplicación.",
+          "Construir ahora el interruptor para sacar del total las transferencias a personas."
+        ],
+        "delego_en_agente": [
+          "Cómo se reconoce un recibo frente al gasto variable y frente a una transferencia a una persona.",
+          "Cómo se agrupa un mismo recibo cuando su concepto cambia (dígitos, dos grafías del mismo proveedor); puede servir la normalización que ya usan las reglas de categorización.",
+          "Qué es «reciente» y qué es «antes» para decir si un importe ha subido.",
+          "Cómo se calcula el total al mes cuando hay recibos anuales y gasto variable.",
+          "Si los movimientos de cada recurrente vienen en la respuesta o se piden aparte."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "done",
+      "checks": [
+        {
+          "descripcion": "Un recibo sale por separado por su concepto, aunque haya aparecido una sola vez.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"lists a bill on its own by its concept even when it was charged once\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un recibo sale por separado por su concepto, aunque haya aparecido una sola vez.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"groups the charges of one bill whose concept changes only in digits or after its second word\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un recibo anual (IBI, seguros, Hacienda) sale como anual, no como mensual al que le faltan once meses; uno que se paga dos veces al mes (el gimnasio) sale como tal.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"classifies a bill charged once a year as annual\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un recibo anual (IBI, seguros, Hacienda) sale como anual, no como mensual al que le faltan once meses; uno que se paga dos veces al mes (el gimnasio) sale como tal.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"classifies a bill charged twice a month as twice monthly\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Un recibo que llega cada dos meses sale como tal, no como mensual al que le falta uno.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"classifies a bill charged every two months as every two months\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "El gasto variable sale agrupado por su categoría y sumado al mes; la consulta no inventa categorías.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"groups the variable expense by its category summed per month\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "El gasto variable sale agrupado por su categoría y sumado al mes; la consulta no inventa categorías.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"writes nothing in the database while answering\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Si un importe ha subido un euro, ha subido: se enseña la diferencia, por pequeña que sea, sin umbral.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"marks a bill as increased when its last month is one cent above the previous one\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Las transferencias a personas salen en su propio grupo y suman en el total.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"puts transfers and bizum to people in their own group and in the monthly total\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Hay un total de cuánto suma todo al mes.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"counts an annual bill as one twelfth of its amount in the monthly total\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los traspasos emparejados y lo marcado con excludedFromTotals no aparecen.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"leaves out paired transfers, movements excluded from totals and deposit movements\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "La consulta no escribe ni guarda nada: se calcula en el momento.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"writes nothing in the database while answering\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md describe la consulta, su respuesta y cómo se piden los movimientos de cada recurrente.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.docs.test.ts -t \"api-contract: describes GET /api/recurring-expenses, its groups, its monthly total and the movements of each one\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Con la base sin gastos, la consulta responde vacía y con total 0, no con un error.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"answers an empty database with empty groups and a zero total\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Nada más cambia: las sumas de GET /api/movements y GET /api/overview siguen igual. La suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ]
     }
   ]
 }

@@ -591,6 +591,27 @@ function toDateOnly(date: Date): string {
 }
 
 /**
+ * Whether a movement adds its `amount` to `expense` in `computeTotals`: an
+ * `expense` that is not a deposit movement (feature 57), not marked
+ * `excludedFromTotals`, not a leg of a linked transfer and not a contribution
+ * to an investment product. The single answer to "is this an expense" in the
+ * backend: the totals and `GET /api/recurring-expenses` (feature 58) both ask
+ * here, so the two can never disagree.
+ */
+export function isCountedExpense(
+  movement: TotalsMovement,
+  deposits: Map<number, DepositMovementReading>,
+): boolean {
+  return (
+    deposits.get(movement.id) === undefined &&
+    !movement.excludedFromTotals &&
+    movement.transferId === null &&
+    movement.productId === null &&
+    movement.type === 'expense'
+  )
+}
+
+/**
  * Expense/income totals. Moving money between your own accounts is neither:
  * both legs of a transfer (linked by `transferId`) are excluded, and so are
  * `neutral` movements (R20). A contribution to an investment product
@@ -617,14 +638,14 @@ export function computeTotals(
         if (deposit.kind !== 'maturity') return totals
         return { ...totals, income: totals.income.plus(deposit.counted) }
       }
+      if (isCountedExpense(movement, deposits)) {
+        return { ...totals, expense: totals.expense.plus(toDecimal(movement.amount)) }
+      }
       if (movement.excludedFromTotals) return totals
       if (movement.transferId !== null) return totals
       if (movement.productId !== null) return totals
       if (movement.type === 'income') {
         return { ...totals, income: totals.income.plus(toDecimal(movement.amount)) }
-      }
-      if (movement.type === 'expense') {
-        return { ...totals, expense: totals.expense.plus(toDecimal(movement.amount)) }
       }
       return totals
     },

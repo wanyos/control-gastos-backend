@@ -25,7 +25,14 @@
 
 **Nivel de consumo:** medio _(bajo / medio / alto; en alto, qué fases usan `fable`)_
 
-_Ninguna._ Última cerrada: **F57 `deposit-totals-interest-only`** (2026-10-16, commit
+**Ninguna feature en curso.**
+
+## F58 `recurring-expenses` — CERRADA sin commit (2026-10-17)
+
+**Qué se hizo:** parte 1 de `../docs/handoff-recurrentes.md`: `GET /api/recurring-expenses`, de solo lectura, con los recibos uno por uno, las transferencias a personas y el gasto variable por categoría, sumados por mes, y el total. Lotes A y B hechos, reviewer `APPROVED` → [resumen](summaries/recurring-expenses.md), [implementación](implementations/recurring-expenses.md), [revisión](reviews/recurring-expenses.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`. **Sin commit.**
+
+Última cerrada: **F57 `deposit-totals-interest-only`** (2026-10-16, commit
 `f8b2aa0`; ver su sección más abajo) → [resumen](summaries/deposit-totals-interest-only.md).
 Antes: **F56 `categorized-movements-list`** (2026-10-13, commit
 `2d2763b`) → [resumen](summaries/categorized-movements-list.md), y **F55 `db-backup`**
@@ -68,6 +75,10 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 -->
 
 ## Lo que le toca al humano
+
+De la F58 (2026-10-17):
+
+- **La prueba con tus datos reales**, con `pnpm run dev`: `GET /api/recurring-expenses`. Los tests solo usan datos inventados; mira que tus recibos salen uno por uno con su periodicidad, que las transferencias a personas y el gasto variable por categoría cuadran, y que `monthlyTotal` es razonable.
 
 De la F57 (2026-10-16):
 

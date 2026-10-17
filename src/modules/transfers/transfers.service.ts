@@ -65,7 +65,7 @@ class PairRacedError extends Error {
  * banks abbreviate them: `TRANS`, `TRANSF`, `TRANSFERENCIA`, `Transfer`, `TRASPASO`. Anchored at a word start and closed right
  * after `TRANS`/`TRANSF` so that `TRANSPORTES` never counts.
  */
-const transferWords = /\b(?:trans\b|transf\b|transf\.|transfer\w*|traspaso\w*)/iu
+export const transferWords = /\b(?:trans\b|transf\b|transf\.|transfer\w*|traspaso\w*)/iu
 
 /**
  * Whether the two legs carry, in what the bank wrote, a reason to believe they

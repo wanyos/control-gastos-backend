@@ -3104,6 +3104,70 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     enlazarse solo: aparece como dudoso y se enlaza a mano. Es el coste elegido:
     mejor una pareja de más que revisar que una suma falsa que nadie ve.
 
+### ADR-037: Qué gasto es un recibo, cuál es una transferencia a una persona y cuánto cuesta un mes se decide al leer, en `recurring-expenses`, sin guardar nada
+
+- **Fecha:** 2026-10-17
+- **Estado:** aceptada (implementada en la feature #58 `recurring-expenses`, SDD;
+  hoja aprobada por el humano el 2026-10-17). No revisa ningún ADR anterior.
+- **Contexto:** el humano quiere ver cuánto le cuesta un mes: sus recibos uno por
+  uno (también los anuales y los que salen una sola vez), lo que transfiere a
+  personas, y el resto de su gasto por categoría, cada uno sumado por mes, con un
+  total. Ningún importador escribe cómo se cobró un gasto (`paymentMethod` es
+  siempre `null`), así que un recibo solo se puede reconocer por lo que escribió el
+  banco en el concepto.
+- **Decisión:**
+  1. **Un solo `GET /api/recurring-expenses`**, en el módulo
+     `src/modules/recurring-expenses/`, que lo calcula en cada petición con solo
+     `findMany` y no guarda nada: ni tablas nuevas, ni categorías, ni reglas.
+  2. **Los gastos que entran son exactamente los que la suma general cuenta como
+     gasto.** La regla sale de `computeTotals` a una función exportada,
+     `isCountedExpense(movement, deposits)` (`movements.service.ts`), y la usan las
+     dos: fuera los movimientos de depósito (ADR-035), lo marcado con
+     `excludedFromTotals`, las piernas de un traspaso, las aportaciones a un
+     producto y todo lo que no sea `expense`. `computeTotals` no cambia de
+     comportamiento.
+  3. **Cada gasto va al primer grupo cuya regla cumple:** **recibo** si su concepto
+     normalizado (`normalizeForMatch`) empieza por `recibo`, `recib` o `tributo` sin
+     otra letra detrás; **transferencia a una persona** si tiene una de las palabras
+     de transferencia de la detección de traspasos (`transferWords`, que pasa a
+     exportarse desde `transfers.service.ts`; ADR-036) o la palabra `bizum`;
+     **gasto variable** el resto, por su categoría (o sin categoría).
+  4. **Los cargos de un recibo se juntan por las dos primeras palabras de su
+     concepto** que quedan al quitar las palabras de recibo y toda palabra con una
+     cifra (`billKey`): el banco corta el concepto a 30 caracteres y las grafías de
+     un mismo proveedor difieren después de la segunda palabra.
+  5. **La periodicidad de un recibo** (siete valores, de `once` a `annual`) sale de
+     la mediana de los huecos entre sus meses con cargo, sobre toda su historia
+     (`billPeriodicity`); es solo una etiqueta y no entra en ninguna suma.
+  6. **Lo que cuesta un mes** es lo gastado en los **12 meses completos anteriores
+     al mes en curso** (en hora de Madrid), entre 12, redondeado a céntimos; el
+     total es la suma de esas partes ya redondeadas.
+  7. **Los movimientos de cada entrada van en la misma respuesta**: los de un recibo
+     de toda su historia; los de las transferencias a personas y del gasto variable,
+     del periodo.
+- **Alternativas descartadas:**
+  - **Reconocer un recibo por su regularidad** (el mismo concepto en muchos meses):
+    no cumple «aunque haya aparecido una sola vez» y mete como recibo un gasto con
+    tarjeta muy frecuente.
+  - **Usar `paymentMethod = direct_debit`:** ningún importador lo escribe.
+  - **Reconocer las transferencias a personas por una categoría con ese nombre:**
+    depende de un nombre que el humano puede cambiar, y hoy la mayoría no la tienen.
+  - **Una consulta aparte para los movimientos de cada entrada:** una ruta más y una
+    clave que mantener estable; embebidos cuesta menos.
+  - **Guardar el resultado en una tabla:** habría que recalcularlo en cada
+    importación y en cada cambio de categoría o de `excludedFromTotals`.
+- **Consecuencias:**
+  - Una sola respuesta a «qué es un gasto» en todo el backend: si cambia la regla de
+    las sumas, esta consulta cambia con ella.
+  - Dos recibos distintos cuyo concepto empiece por las mismas dos palabras salen
+    como uno. Un banco que escriba sus recibos con otra palabra (p. ej. `adeudo`)
+    no tendrá recibos hasta que se añada aquí; hoy no hay ninguno.
+  - Las transferencias a empresas que el banco escribe con palabra de
+    transferencia salen como transferencias a personas hasta que el humano las
+    marque con `excludedFromTotals`, que las saca también de las sumas.
+  - Contrato en `docs/api-contract.md` §`GET /api/recurring-expenses`; lo comprueba
+    `src/modules/recurring-expenses/recurring-expenses.docs.test.ts`.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en
