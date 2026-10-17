@@ -30,7 +30,7 @@
 ## F58 `recurring-expenses` — CERRADA (2026-10-17, commit `72a5357`; parte 1 de `../docs/handoff-recurrentes.md` marcada ✅)
 
 **Qué se hizo:** parte 1 de `../docs/handoff-recurrentes.md`: `GET /api/recurring-expenses`, de solo lectura, con los recibos uno por uno, las transferencias a personas y el gasto variable por categoría, sumados por mes, y el total. Lotes A y B hechos, reviewer `APPROVED` → [resumen](summaries/recurring-expenses.md), [implementación](implementations/recurring-expenses.md), [revisión](reviews/recurring-expenses.md).
-**Estado:** `done` en `feature_list.json`, línea en `history.md`. **Sin commit.**
+**Estado:** `done` en `feature_list.json`, línea en `history.md`. Commit `72a5357`.
 
 Última cerrada: **F57 `deposit-totals-interest-only`** (2026-10-16, commit
 `f8b2aa0`; ver su sección más abajo) → [resumen](summaries/deposit-totals-interest-only.md).
