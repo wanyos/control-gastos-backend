@@ -62,6 +62,7 @@ describe('POST /api/movements/confirm-all', () => {
     overrides: {
       type?: 'expense' | 'income' | 'neutral'
       categoryId?: number
+      categorySource?: 'manual' | 'rule' | 'closing'
       status?: 'confirmed' | 'pending_review'
       transferId?: string
       daySequence?: number
@@ -77,6 +78,7 @@ describe('POST /api/movements/confirm-all', () => {
         valueDate: bookingDate,
         daySequence: overrides.daySequence ?? 1,
         categoryId: overrides.categoryId ?? null,
+        categorySource: overrides.categorySource ?? null,
         status: overrides.status ?? 'pending_review',
         transferId: overrides.transferId ?? null,
       },
@@ -154,6 +156,47 @@ describe('POST /api/movements/confirm-all', () => {
     // The bank fact never moves.
     expect(byId.get(expense.id)?.amount.toFixed(2)).toBe('34.15')
     expect(byId.get(legOut.id)?.transferId).toBe('synthetic-pair')
+  })
+
+  it('marks the category it fills as written by the closing step', async () => {
+    const account = await createAccount()
+    const expenseCategory = await createCategory('expense')
+    const incomeCategory = await createCategory('income')
+    const chosen = await createCategory('expense')
+
+    const expense = await seedMovement(account.id, { daySequence: 1 })
+    const income = await seedMovement(account.id, { type: 'income', daySequence: 2 })
+    // Feature 60 (R5): what already had a category keeps its source, whichever.
+    const byHand = await seedMovement(account.id, {
+      categoryId: chosen.id,
+      categorySource: 'manual',
+      daySequence: 3,
+    })
+    const byRule = await seedMovement(account.id, {
+      categoryId: chosen.id,
+      categorySource: 'rule',
+      daySequence: 4,
+    })
+    const leg = await seedMovement(account.id, { transferId: 'synthetic-pair-60', daySequence: 5 })
+
+    const response = await confirmAll({
+      expenseCategoryId: expenseCategory.id,
+      incomeCategoryId: incomeCategory.id,
+    })
+
+    expect(response.statusCode).toBe(200)
+    const rows = await app.prisma.movement.findMany({
+      where: { id: { in: [expense.id, income.id, byHand.id, byRule.id, leg.id] } },
+      orderBy: { id: 'asc' },
+    })
+    expect(rows.map((row) => [row.categoryId, row.categorySource])).toEqual([
+      [expenseCategory.id, 'closing'],
+      [incomeCategory.id, 'closing'],
+      [chosen.id, 'manual'],
+      [chosen.id, 'rule'],
+      // A transfer leg stays without a category, so without a source.
+      [null, null],
+    ])
   })
 
   it('writes nothing when a category is of the wrong kind (400) or missing (404)', async () => {

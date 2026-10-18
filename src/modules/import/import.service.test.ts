@@ -2787,6 +2787,71 @@ describe('importPending: the closing step of the report (2026-10-16)', () => {
     }
   })
 
+  it('an import still applies the rules to its new movements and closes the rest, marked as closing', async () => {
+    // Feature 60: the import keeps the scope of feature 43 (R12). A movement an
+    // EARLIER closing step left in the generic category matches the rule too,
+    // and the import must not move it: that is only for creating or changing a
+    // rule. Each category written here says who wrote it (R5, R6).
+    const bank = uniqueBank()
+    const { expense, income } = await createClosingCategories()
+    const ruled = await app.prisma.category.create({
+      data: { name: `Closing source rule ${Date.now()}`, kind: 'expense' },
+    })
+    createdCategoryIds.push(ruled.id)
+    const rule = await app.prisma.categoryRule.create({
+      data: { categoryId: ruled.id, matchText: 'pago sintetico sin regla' },
+    })
+    // Same bank slug, so the afterEach of this describe removes it too.
+    const earlierAccount = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank, alias: 'Import closing earlier account' },
+    })
+    const earlierDate = new Date('2026-05-19T00:00:00.000Z')
+    const earlier = await app.prisma.movement.create({
+      data: {
+        accountId: earlierAccount.id,
+        type: 'expense',
+        amount: '58.31',
+        description: 'PAGO SINTETICO SIN REGLA DE MAYO',
+        bookingDate: earlierDate,
+        valueDate: earlierDate,
+        daySequence: 1,
+        origin: 'imported',
+        status: 'confirmed',
+        categoryId: expense.id,
+        categorySource: 'closing',
+      },
+    })
+    const earlierBefore = await app.prisma.movement.findUniqueOrThrow({ where: { id: earlier.id } })
+
+    try {
+      const result = await run([twoMovementsParser(bank)], bank)
+
+      expect(result.importedCount).toBe(2)
+      expect(result.categorization.categorizedMovements.map((row) => row.description)).toEqual([
+        'PAGO SINTETICO SIN REGLA',
+      ])
+      expect(result.closing).toEqual({ categorized: { expense: 0, income: 1 }, confirmed: 2 })
+      const imported = await app.prisma.movement.findMany({
+        where: {
+          accountId: { not: earlierAccount.id },
+          account: { bank: { equals: bank, mode: 'insensitive' } },
+        },
+        orderBy: { daySequence: 'asc' },
+      })
+      expect(imported.map((row) => [row.status, row.categoryId, row.categorySource])).toEqual([
+        ['confirmed', ruled.id, 'rule'],
+        ['confirmed', income.id, 'closing'],
+      ])
+      // Identical INCLUDING updatedAt: neither the rules nor the closing step wrote on it.
+      const earlierAfter = await app.prisma.movement.findUniqueOrThrow({
+        where: { id: earlier.id },
+      })
+      expect(earlierAfter).toEqual(earlierBefore)
+    } finally {
+      await app.prisma.categoryRule.delete({ where: { id: rule.id } })
+    }
+  })
+
   it('writes nothing and reports closing: null when one of the two categories is missing', async () => {
     const bank = uniqueBank()
     // Only the expense one exists: the step needs both or does nothing.

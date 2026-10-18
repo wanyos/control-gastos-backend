@@ -6,6 +6,7 @@ import { buildApp } from '../../app.js'
 import * as prismaEnums from '../../generated/prisma/enums.js'
 import {
   CategoryKind,
+  CategorySource,
   MovementOrigin,
   MovementStatus,
   MovementType,
@@ -1426,6 +1427,8 @@ describe('movement routes (read-only) and database indexes', () => {
         'note',
         'accountId',
         'categoryId',
+        // Feature 60 (R1): who wrote `categoryId`.
+        'categorySource',
         'paymentMethod',
         'origin',
         'status',
@@ -1812,7 +1815,12 @@ describe('PATCH /api/movements/:id — category and status of a movement (featur
 
   async function seedMovement(
     accountId: number,
-    overrides: { type?: 'expense' | 'income' | 'neutral'; amount?: string } = {},
+    overrides: {
+      type?: 'expense' | 'income' | 'neutral'
+      amount?: string
+      categoryId?: number
+      categorySource?: 'manual' | 'rule' | 'closing'
+    } = {},
   ) {
     const bookingDate = new Date('2026-07-24T00:00:00.000Z')
     return app.prisma.movement.create({
@@ -1824,6 +1832,8 @@ describe('PATCH /api/movements/:id — category and status of a movement (featur
         bookingDate,
         valueDate: bookingDate,
         daySequence: 1,
+        categoryId: overrides.categoryId ?? null,
+        categorySource: overrides.categorySource ?? null,
       },
     })
   }
@@ -1863,6 +1873,70 @@ describe('PATCH /api/movements/:id — category and status of a movement (featur
     const body = response.json<SerializedMovement>()
     expect(body.categoryId).toBeNull()
     expect(body.category).toBeNull()
+  })
+
+  it('marks the category as set by hand when PATCH /api/movements/:id writes it', async () => {
+    const account = await createAccount()
+    const category = await createCategory('Sport')
+    const fresh = await seedMovement(account.id)
+    // Feature 60 (R2): the SAME category it already had, written by the closing
+    // step, becomes the human's once it is sent by hand.
+    const closing = await seedMovement(account.id, {
+      amount: '27.68',
+      categoryId: category.id,
+      categorySource: 'closing',
+    })
+
+    const first = await patchMovement(fresh.id, { categoryId: category.id })
+    const same = await patchMovement(closing.id, { categoryId: category.id })
+
+    expect(first.statusCode).toBe(200)
+    expect(first.json<SerializedMovement>().categorySource).toBe('manual')
+    expect(same.statusCode).toBe(200)
+    expect(same.json<SerializedMovement>().categoryId).toBe(category.id)
+    expect(same.json<SerializedMovement>().categorySource).toBe('manual')
+    const stored = await app.prisma.movement.findMany({
+      where: { id: { in: [fresh.id, closing.id] } },
+      select: { categorySource: true },
+    })
+    expect(stored.map((row) => row.categorySource)).toEqual(['manual', 'manual'])
+  })
+
+  it('clears the category source when PATCH /api/movements/:id removes the category', async () => {
+    const account = await createAccount()
+    const category = await createCategory('Sport')
+    const movement = await seedMovement(account.id, {
+      categoryId: category.id,
+      categorySource: 'rule',
+    })
+
+    const response = await patchMovement(movement.id, { categoryId: null })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json<SerializedMovement>().categoryId).toBeNull()
+    expect(response.json<SerializedMovement>().categorySource).toBeNull()
+    const stored = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+    expect(stored.categorySource).toBeNull()
+  })
+
+  it('keeps the category source when PATCH /api/movements/:id changes only the status', async () => {
+    const account = await createAccount()
+    const category = await createCategory('Sport')
+    const movement = await seedMovement(account.id, {
+      categoryId: category.id,
+      categorySource: 'closing',
+    })
+
+    const confirmed = await patchMovement(movement.id, { status: 'confirmed' })
+    const marked = await patchMovement(movement.id, { excludedFromTotals: true })
+
+    expect(confirmed.statusCode).toBe(200)
+    expect(confirmed.json<SerializedMovement>().categorySource).toBe('closing')
+    expect(marked.statusCode).toBe(200)
+    expect(marked.json<SerializedMovement>().categorySource).toBe('closing')
+    const stored = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+    expect(stored.categoryId).toBe(category.id)
+    expect(stored.categorySource).toBe('closing')
   })
 
   it('answers 404 for a categoryId that does not exist, without modifying (R11)', async () => {
@@ -1999,14 +2073,23 @@ describe('PATCH /api/movements/:id — category and status of a movement (featur
 
     expect(after.balance).toBe(before.balance)
     expect(after.totals).toEqual(before.totals)
-    // Every field except the two written ones (and updatedAt) is untouched.
+    // Every field except the two written ones, the source of the category
+    // (feature 60) and updatedAt is untouched.
     const untouched = (full: SerializedMovement | undefined) => {
       if (!full) throw new Error('movement missing from the listing')
-      const { categoryId: _c, category: _e, status: _s, updatedAt: _u, ...rest } = full
+      const {
+        categoryId: _c,
+        categorySource: _cs,
+        category: _e,
+        status: _s,
+        updatedAt: _u,
+        ...rest
+      } = full
       return rest
     }
     expect(untouched(after.movement)).toEqual(untouched(before.movement))
     expect(after.movement?.categoryId).toBe(category.id)
+    expect(after.movement?.categorySource).toBe('manual')
     expect(after.movement?.status).toBe('confirmed')
   })
 })
@@ -2028,5 +2111,9 @@ describe('flow enums generated from the schema (R4)', () => {
     expect(Object.keys(PaymentMethod)).toEqual(['card', 'cash', 'bank_transfer', 'direct_debit'])
     expect(Object.keys(MovementOrigin)).toEqual(['imported', 'manual'])
     expect(Object.keys(MovementStatus)).toEqual(['confirmed', 'pending_review'])
+  })
+
+  it('CategorySource holds manual | rule | closing (feature 60, R1)', () => {
+    expect(Object.keys(CategorySource)).toEqual(['manual', 'rule', 'closing'])
   })
 })

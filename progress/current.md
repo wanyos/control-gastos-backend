@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## F60 `category-origin-and-rule-reapply` — CERRADA (2026-10-18, sin commit)
+
+**Qué se hizo:** mejora A de la categorización (`../docs/ideas.md` del workspace, idea 4). Cada movimiento guarda en `categorySource` quién le puso la categoría (`manual`, `rule`, `closing`; término aprobado en `docs/vocabulary.md`); `POST` y `PATCH /api/category-rules` aplican todas las reglas a lo pendiente sin categoría y a lo `closing`, nunca a lo `manual` ni a lo `rule`, y devuelven lo que movieron en `categorization`. Importar y `POST /api/category-rules/apply` siguen igual. ADR-038. Lotes A y B hechos, reviewer `APPROVED` → [resumen](summaries/category-origin-and-rule-reapply.md), [implementación](implementations/category-origin-and-rule-reapply.md), [revisión](reviews/category-origin-and-rule-reapply.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E6 de `docs/roadmap.md`. **Sin commit.** Después, F61 `rule-suggestions` (mejoras B y C).
+
 ## F59 `recurring-people-by-category` — CERRADA (2026-10-17, commit `eebba15`)
 
 **Qué se hizo:** cabo 28 de `docs/roadmap.md`. En `GET /api/recurring-expenses`, una transferencia o un bizum se queda en «a personas» solo sin categoría o con `Otros gastos` o `Transferencias a personas`; con otra categoría va al gasto variable de esa categoría y sigue en el total (como mucho un céntimo de diferencia por redondeo, aceptado por el humano). Flujo simple, reviewer `APPROVED` en la segunda revisión → [resumen](summaries/recurring-people-by-category.md), [implementación](implementations/recurring-people-by-category.md), [revisión](reviews/recurring-people-by-category.md).
@@ -81,6 +86,11 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 -->
 
 ## Lo que le toca al humano
+
+De la F60 (2026-10-18):
+
+- **Aplicar la migración a tu base, en este orden:** `pnpm run db:backup` (copia antes de nada); luego `pnpm exec prisma migrate deploy`; y **reinicia el servidor de desarrollo**. ⚠️ Escribe en tu base: añade la columna `categorySource` y le da `closing` a lo que está en las raíz `Otros gastos` / `Otros ingresos` y `manual` al resto con categoría. Con el servidor ya arrancado y la base sin migrar, `GET /api/movements` responde 500 (comprobado por el leader; `GET /api/categories` sí responde 200).
+- **La prueba con tus datos**, después de migrar y con `pnpm run dev`: crea una regla para algo que tengas en `Otros gastos` y mira la lista que devuelve en `categorization`.
 
 De la F59 (2026-10-17):
 

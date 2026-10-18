@@ -4,6 +4,7 @@ import type {
   AccountType,
   Category,
   CategoryKind,
+  CategorySource,
   Movement,
   MovementOrigin,
   MovementStatus,
@@ -112,6 +113,18 @@ export interface UpdateMovementBody {
   categoryId?: number | null
   status?: MovementStatus
   /** Feature 49: in or out of the income/expense totals; never the amount (R1). */
+  excludedFromTotals?: boolean
+}
+
+/**
+ * What the two PATCH endpoints write on a movement (feature 60): the body's
+ * fields plus `categorySource`, which the server sets alongside `categoryId`
+ * and the client never sends. No column of the bank fact fits here either.
+ */
+export interface MovementWritableFields {
+  categoryId?: number | null
+  categorySource?: CategorySource | null
+  status?: MovementStatus
   excludedFromTotals?: boolean
 }
 
@@ -233,6 +246,8 @@ export interface SerializedMovement {
   note: string | null
   accountId: number
   categoryId: number | null
+  /** Feature 60: who wrote `categoryId`; `null` exactly when it is `null` (R1). */
+  categorySource: CategorySource | null
   paymentMethod: PaymentMethod | null
   origin: MovementOrigin
   status: MovementStatus

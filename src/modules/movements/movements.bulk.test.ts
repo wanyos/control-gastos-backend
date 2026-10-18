@@ -60,6 +60,8 @@ describe('PATCH /api/movements — category and status of several movements (fea
       amount?: string
       daySequence?: number
       description?: string
+      categoryId?: number
+      categorySource?: 'manual' | 'rule' | 'closing'
     } = {},
   ) {
     return app.prisma.movement.create({
@@ -71,6 +73,8 @@ describe('PATCH /api/movements — category and status of several movements (fea
         bookingDate,
         valueDate: bookingDate,
         daySequence: overrides.daySequence ?? 1,
+        categoryId: overrides.categoryId ?? null,
+        categorySource: overrides.categorySource ?? null,
       },
     })
   }
@@ -156,6 +160,82 @@ describe('PATCH /api/movements — category and status of several movements (fea
     expect(response.statusCode).toBe(200)
     const stored = await storedRows([first.id, second.id])
     expect(stored.map((movement) => movement.categoryId)).toEqual([null, null])
+  })
+
+  it('marks the category of every listed movement as set by hand', async () => {
+    const account = await createAccount()
+    const generic = await createCategory('Generic')
+    const sport = await createCategory('Sport')
+    // Feature 60 (R3): whatever wrote the category before (nobody, the closing
+    // step or a rule), every listed movement ends up `manual`.
+    const uncategorized = await seedMovement(account.id, { daySequence: 1 })
+    const closing = await seedMovement(account.id, {
+      daySequence: 2,
+      categoryId: generic.id,
+      categorySource: 'closing',
+    })
+    const byRule = await seedMovement(account.id, {
+      daySequence: 3,
+      categoryId: sport.id,
+      categorySource: 'rule',
+    })
+    const notListed = await seedMovement(account.id, {
+      daySequence: 4,
+      categoryId: generic.id,
+      categorySource: 'closing',
+    })
+    const ids = [uncategorized.id, closing.id, byRule.id]
+
+    // A rejected batch (one id missing) writes no source either: same operation.
+    const rejected = await bulkPatch({ ids: [...ids, 99999999], categoryId: sport.id })
+    expect(rejected.statusCode).toBe(404)
+    expect((await storedRows(ids)).map((movement) => movement.categorySource)).toEqual([
+      null,
+      'closing',
+      'rule',
+    ])
+
+    const response = await bulkPatch({ ids, categoryId: sport.id })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<BulkUpdateMovementsResult>()
+    expect(body.movements.map((movement) => movement.categorySource)).toEqual([
+      'manual',
+      'manual',
+      'manual',
+    ])
+    const stored = await storedRows([...ids, notListed.id])
+    expect(stored.map((movement) => [movement.categoryId, movement.categorySource])).toEqual([
+      [sport.id, 'manual'],
+      [sport.id, 'manual'],
+      [sport.id, 'manual'],
+      [generic.id, 'closing'],
+    ])
+  })
+
+  it('clears the category source of every listed movement when the category is removed', async () => {
+    const account = await createAccount()
+    const sport = await createCategory('Sport')
+    const byHand = await seedMovement(account.id, {
+      daySequence: 1,
+      categoryId: sport.id,
+      categorySource: 'manual',
+    })
+    const closing = await seedMovement(account.id, {
+      daySequence: 2,
+      categoryId: sport.id,
+      categorySource: 'closing',
+    })
+
+    const response = await bulkPatch({ ids: [byHand.id, closing.id], categoryId: null })
+
+    expect(response.statusCode).toBe(200)
+    // Feature 60 (R4): no category, no source.
+    const stored = await storedRows([byHand.id, closing.id])
+    expect(stored.map((movement) => [movement.categoryId, movement.categorySource])).toEqual([
+      [null, null],
+      [null, null],
+    ])
   })
 
   it('answers 404 when one id does not exist, and changes NOT ONE of the others (R9)', async () => {

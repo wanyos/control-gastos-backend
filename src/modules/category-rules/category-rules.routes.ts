@@ -20,21 +20,29 @@ import {
 import type {
   CategoryRuleIdParams,
   CreateCategoryRuleBody,
+  SerializedCategoryRuleWithCategorization,
   UpdateCategoryRuleBody,
 } from './category-rules.types.js'
 
 /**
  * HTTP layer of the auto-categorization rules (feature 43). Registered under
  * the `/api/category-rules` prefix (see `src/app.ts`), so the routes resolve to:
- *   POST   /api/category-rules          (create one rule)
+ *   POST   /api/category-rules          (create one rule, then run the rules)
  *   GET    /api/category-rules          (list them, category embedded)
- *   PATCH  /api/category-rules/:id      (change matchText and/or categoryId)
+ *   PATCH  /api/category-rules/:id      (change matchText and/or categoryId, then run)
  *   DELETE /api/category-rules/:id      (delete the rule; movements untouched)
  *   POST   /api/category-rules/apply    (run the categorization on demand, R13)
  *
  * `apply` under the module's own prefix follows the action-route precedent of
  * `/api/import/*`: it is what lets the human re-run the rules over what is
  * still pending after correcting one, without reimporting anything.
+ *
+ * Feature 60: creating or changing a rule runs ALL the rules right after the
+ * write, over the pending movements and the ones `confirmAllMovements` filled
+ * (`pendingAndClosing`), and answers what that run did in `categorization`.
+ * The rule is saved first and apart: the run never throws, so a failure of it
+ * travels in `categorization.error` with the rule kept; a 400/404/409 of the
+ * rule is thrown before the run, which then moves nothing.
  */
 export default async function categoryRulesRoutes(fastify: FastifyInstance) {
   const db = categoryRulesDb(fastify)
@@ -51,7 +59,12 @@ export default async function categoryRulesRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const rule = await createCategoryRule(db, request.body)
-      return reply.status(201).send(serializeCategoryRule(rule))
+      const categorization = await applyCategoryRules(db, 'pendingAndClosing')
+      const body: SerializedCategoryRuleWithCategorization = {
+        ...serializeCategoryRule(rule),
+        categorization,
+      }
+      return reply.status(201).send(body)
     },
   )
 
@@ -68,9 +81,10 @@ export default async function categoryRulesRoutes(fastify: FastifyInstance) {
         assertOnlyAllowedBodyProperties(request.body, updateCategoryRuleBodyProperties)
       },
     },
-    async (request) => {
+    async (request): Promise<SerializedCategoryRuleWithCategorization> => {
       const rule = await updateCategoryRule(db, request.params.id, request.body)
-      return serializeCategoryRule(rule)
+      const categorization = await applyCategoryRules(db, 'pendingAndClosing')
+      return { ...serializeCategoryRule(rule), categorization }
     },
   )
 

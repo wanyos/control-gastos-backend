@@ -130,6 +130,7 @@ erDiagram
         string currency
         int accountId FK
         int categoryId FK
+        CategorySource categorySource
         PaymentMethod paymentMethod
         MovementOrigin origin
         MovementStatus status
@@ -188,6 +189,14 @@ enum MovementOrigin {
 enum MovementStatus {
   confirmed
   pending_review // importado, pendiente de revisar antes de confirmar
+}
+
+// F60: quién escribió el `categoryId` que el movimiento tiene AHORA.
+// NULL exactamente cuando `categoryId` es NULL. Una regla solo reescribe uno `closing` (ADR-038).
+enum CategorySource {
+  manual         // PATCH /api/movements/:id o PATCH /api/movements (el humano)
+  rule           // la pasada de categorización por reglas (F43)
+  closing        // confirmAllMovements: lo que corre al final de cada importación, o POST /api/movements/confirm-all
 }
 
 // ── Modelos ──────────────────────────────────────────────
@@ -258,6 +267,7 @@ model Movement {
   accountId     Int
   category      Category?      @relation(fields: [categoryId], references: [id])
   categoryId    Int?
+  categorySource CategorySource?  // F60: quién escribió `categoryId`; se escribe en el MISMO `data` que él, nunca suelto
   paymentMethod PaymentMethod?
 
   origin MovementOrigin @default(imported)        // todo viene del banco
@@ -282,7 +292,7 @@ model Movement {
 | Columna | Quién la rellenará |
 | --- | --- |
 | ~~`transferId`~~ | 🔄 **ya lo escribe la detección de traspasos** (F40): corre al final de cada pasada de importación, empareja las parejas inequívocas —y desde la F41 también los grupos dudosos con el mismo número de salidas que de entradas en los que cada salida podría casar con cada entrada— y escribe el mismo `transferId` en las dos piernas, en una transacción por pareja. **Cero migración**: la columna y su índice existen desde la F8. Desde la **F44** tiene además **escritor manual**: `POST /api/transfers` enlaza dos movimientos por id y `DELETE /api/transfers/:transferId` deshace la pareja (manual o de la detección) apuntando la memoria del deshecho en `undoneTransferId` (esa sí trajo migración: una columna nullable, la primera desde la F9) |
-| ~~`categoryId`~~ | 🔄 **ya tiene los dos escritores**: el **manual** desde la F37 (`PATCH /api/movements/:id` la escribe, y la pone a `NULL` para quitar la categoría) y el **automático** desde la F43 —la **pasada de categorización por reglas** sobre el `description` (tabla `CategoryRule`), que corre al final de cada importación y con `POST /api/category-rules/apply`, y solo toca movimientos sin categoría, sin confirmar y no neutrales. Esa sí trajo migración: la tabla `CategoryRule` |
+| ~~`categoryId`~~ | 🔄 **ya tiene los dos escritores**: el **manual** desde la F37 (`PATCH /api/movements/:id` la escribe, y la pone a `NULL` para quitar la categoría) y el **automático** desde la F43 —la **pasada de categorización por reglas** sobre el `description` (tabla `CategoryRule`), que corre al final de cada importación y con `POST /api/category-rules/apply`, y solo toca movimientos sin categoría, sin confirmar y no neutrales. Esa sí trajo migración: la tabla `CategoryRule`. 🔄 **Desde la F60 cada escritor deja dicho quién fue en `categorySource`**, en la misma escritura: `manual` los dos `PATCH` de movimientos (y `NULL` al quitar la categoría), `rule` la pasada de categorización, `closing` la función `confirmAllMovements`, que pone `Otros gastos` / `Otros ingresos` a lo que queda sin categoría al final de cada importación y en `POST /api/movements/confirm-all`. Una regla solo puede reescribir un movimiento sin categoría y pendiente, o uno `closing`; nunca uno `manual` ni `rule`. Trajo migración: el enum `CategorySource`, la columna, y una migración de solo datos que dio `closing` a lo que estaba en las raíces `Otros gastos` / `Otros ingresos` y `manual` al resto de movimientos con categoría, sin tocar `updatedAt` |
 | `paymentMethod` | la misma feature de reglas (`RECIBO` → `direct_debit`, `PAGO TARJETA` → `card`…) |
 | `note` | anotación manual sobre un movimiento, cuando exista pantalla |
 | ~~`status`~~ | 🔄 **ya tiene quien lo revise** (F37): nace `pending_review` al importar (F12) y `PATCH /api/movements/:id` lo pasa a `confirmed` — y de vuelta — a mano |
@@ -362,9 +372,11 @@ model Movement {
   (`PATCH /api/movements/:id`, F37): el `kind` de la categoría debe coincidir
   con el `type` del movimiento y un `neutral` no se categoriza; una categoría
   **en uso no se puede borrar** (409), así que borrar una categoría jamás borra
-  ni des-categoriza un movimiento. La asignación automática por reglas será una
-  feature posterior. Categorizar o confirmar no toca ningún otro campo, ni el
-  saldo, ni los totales.
+  ni des-categoriza un movimiento. La asignación automática por reglas llegó con
+  la F43 (`CategoryRule`). Desde la F60 cada movimiento guarda en
+  `categorySource` quién le puso la categoría (`manual`, `rule` o `closing`;
+  `NULL` sin categoría), y una regla nunca reescribe una `manual` ni una `rule`.
+  Categorizar o confirmar no toca ningún otro campo, ni el saldo, ni los totales.
 - **Origen / estado:** lo importado entra como `imported` / `pending_review` y
   alimenta la pantalla de revisión (idea #1).
 
@@ -569,6 +581,9 @@ CREATE UNIQUE INDEX "Movement_imported_dedup_key"
   descartando dos en silencio (−2.000 €).
 - Los movimientos `manual` quedan **fuera** del predicado: no se les impone
   unicidad.
+- `categorySource` (F60) **no entra** en la clave, igual que `categoryId`: es quién
+  escribió la categoría, no un dato del banco. La F60 no cambia ninguna clave
+  natural ni ningún índice.
 
 **2. Unicidad de categoría raíz** — cierra el punto abierto nº 2 del borrador
 anterior. En Postgres los `NULL` son distintos entre sí, así que el

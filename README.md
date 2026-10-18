@@ -71,9 +71,9 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `GET`    | `/api/categories`              | Las categorías raíz con sus `children`. |
 | `PATCH`  | `/api/categories/:id`          | Renombra una categoría: **solo el `name`**; `kind` y `parentId` son inmutables. |
 | `DELETE` | `/api/categories/:id`          | Borra una categoría **solo si está libre**: sin movimientos, sin subcategorías y sin reglas que la usen. |
-| `POST`   | `/api/category-rules`          | Crea una regla de categorización: «si el concepto del movimiento contiene este texto, ponle esta categoría». |
+| `POST`   | `/api/category-rules`          | Crea una regla de categorización: «si el concepto del movimiento contiene este texto, ponle esta categoría». Al crearla aplica todas las reglas a lo pendiente sin categoría y a lo que dejó el cierre automático en `Otros gastos` / `Otros ingresos` (`categorySource: "closing"`), nunca a lo puesto a mano, y devuelve lo que movió en `categorization`. |
 | `GET`    | `/api/category-rules`          | Todas las reglas, cada una con su categoría embebida. |
-| `PATCH`  | `/api/category-rules/:id`      | Cambia `matchText` y/o `categoryId` de una regla. **No des-categoriza** lo que ya asignó. |
+| `PATCH`  | `/api/category-rules/:id`      | Cambia `matchText` y/o `categoryId` de una regla. **No des-categoriza** lo que ya asignó. Al cambiarla aplica las reglas igual que el `POST` y devuelve lo que movió en `categorization`. |
 | `DELETE` | `/api/category-rules/:id`      | Borra la regla sin modificar ningún movimiento. |
 | `POST`   | `/api/category-rules/apply`    | Ejecuta **bajo demanda** la pasada de categorización sobre los movimientos elegibles (sin categoría y sin confirmar). |
 | `GET`    | `/api/movements`               | Lista los movimientos, del más reciente al más antiguo. Filtra por cuenta, fechas, tipo, estado, **categoría**, **«sin categoría»**, **texto de la descripción** (sin mayúsculas ni tildes), **si es pierna de un traspaso** (`transfer`) y **si está marcado como que no cuenta en las sumas** (`excluded`). |

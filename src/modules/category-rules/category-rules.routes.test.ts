@@ -1,6 +1,8 @@
 // Feature 43 `auto-categorization`, HTTP layer: the CRUD of the rules
 // (R1, R2, R3, R4, R5) and the on-demand categorization run (R13). Feature 56
 // `categorized-movements-list`: the list of categorized movements in its answer.
+// Feature 60 `category-origin-and-rule-reapply`: creating or changing a rule
+// runs the rules over the pending movements and the closing ones (R7–R11).
 //
 // 🔒 Everything here is synthetic: invented match texts, unique category
 // names and `syntheticIban()` accounts, in the throwaway test database.
@@ -438,5 +440,358 @@ describe('/api/category-rules (F43)', () => {
     expect(second.statusCode).toBe(200)
     expect(second.json().categorized).toBe(0)
     expect(second.json().categorizedMovements).toEqual([])
+  })
+
+  // ── Feature 60: creating or changing a rule moves what the closing step left ──
+
+  interface SeedCategorized {
+    accountId: number
+    description: string
+    amount: string
+    categoryId: number
+    categorySource: 'manual' | 'rule' | 'closing'
+    type?: 'expense' | 'income'
+  }
+
+  /** A movement already confirmed with a category, as an import leaves it. */
+  function seedCategorized(movement: SeedCategorized) {
+    const bookingDate = new Date('2032-06-11T00:00:00.000Z')
+    return app.prisma.movement.create({
+      data: {
+        accountId: movement.accountId,
+        type: movement.type ?? 'expense',
+        amount: movement.amount,
+        description: movement.description,
+        bookingDate,
+        valueDate: bookingDate,
+        daySequence: 1,
+        origin: 'imported',
+        status: 'confirmed',
+        categoryId: movement.categoryId,
+        categorySource: movement.categorySource,
+      },
+    })
+  }
+
+  async function storedSources(ids: number[]) {
+    const rows = await app.prisma.movement.findMany({
+      where: { id: { in: ids } },
+      orderBy: { id: 'asc' },
+    })
+    return rows.map((row) => [row.categoryId, row.categorySource])
+  }
+
+  it('moves the movements the closing step left in the generic category when a rule is created', async () => {
+    const account = await createAccount()
+    const generic = await createCategory('expense')
+    const genericIncome = await createCategory('income')
+    const gym = await createCategory('expense')
+    const moved = [
+      await seedCategorized({
+        accountId: account.id,
+        description: 'RECIBO SINTETICO GIMNASIO ENERO',
+        amount: '34.95',
+        categoryId: generic.id,
+        categorySource: 'closing',
+      }),
+      await seedCategorized({
+        accountId: account.id,
+        description: 'Recibo Sintético Gimnasio febrero',
+        amount: '34.95',
+        categoryId: generic.id,
+        categorySource: 'closing',
+      }),
+    ]
+    const untouched = [
+      await seedCategorized({
+        accountId: account.id,
+        description: 'RECIBO SINTETICO PISCINA',
+        amount: '18.42',
+        categoryId: generic.id,
+        categorySource: 'closing',
+      }),
+      // Same text, but an income: the rule's category is an expense one.
+      await seedCategorized({
+        accountId: account.id,
+        description: 'DEVOLUCION SINTETICO GIMNASIO',
+        amount: '9.13',
+        type: 'income',
+        categoryId: genericIncome.id,
+        categorySource: 'closing',
+      }),
+    ]
+
+    const response = await postRule({ categoryId: gym.id, matchText: 'sintetico gimnasio' })
+
+    expect(response.statusCode).toBe(201)
+    const body = response.json()
+    // The rule's own fields stay at the root, as before feature 60.
+    expect(body).toMatchObject({ matchText: 'sintetico gimnasio', categoryId: gym.id })
+    expect(body.categorization).toMatchObject({ categorized: 2, conflictCount: 0, conflicts: [] })
+    expect(body.categorization).not.toHaveProperty('error')
+    expect(body.categorization.categorizedMovements).toEqual(
+      moved.map((row) => ({
+        movementId: row.id,
+        description: row.description,
+        bookingDate: '2032-06-11',
+        amount: '34.95',
+        type: 'expense',
+        categoryId: gym.id,
+        categoryName: gym.name,
+        rules: [{ ruleId: body.id, matchText: 'sintetico gimnasio' }],
+      })),
+    )
+    expect(await storedSources(moved.map((row) => row.id))).toEqual([
+      [gym.id, 'rule'],
+      [gym.id, 'rule'],
+    ])
+    expect(await storedSources(untouched.map((row) => row.id))).toEqual([
+      [generic.id, 'closing'],
+      [genericIncome.id, 'closing'],
+    ])
+  })
+
+  it('moves the movements the closing step left in the generic category when a rule is changed', async () => {
+    const account = await createAccount()
+    const generic = await createCategory('expense')
+    const pharmacy = await createCategory('expense')
+    const optician = await createCategory('expense')
+    const created = await postRule({ categoryId: pharmacy.id, matchText: 'sintetico optica' })
+    expect(created.json().categorization.categorized).toBe(0)
+    const movement = await seedCategorized({
+      accountId: account.id,
+      description: 'COMPRA SINTETICO OPTICA CENTRO',
+      amount: '72.38',
+      categoryId: generic.id,
+      categorySource: 'closing',
+    })
+
+    // Changing the category of the rule…
+    const categoryPatch = await app.inject({
+      method: 'PATCH',
+      url: `/api/category-rules/${created.json().id}`,
+      payload: { categoryId: optician.id },
+    })
+
+    expect(categoryPatch.statusCode).toBe(200)
+    expect(categoryPatch.json()).toMatchObject({ categoryId: optician.id })
+    expect(categoryPatch.json().categorization.categorizedMovements).toEqual([
+      expect.objectContaining({ movementId: movement.id, categoryId: optician.id }),
+    ])
+    expect(await storedSources([movement.id])).toEqual([[optician.id, 'rule']])
+
+    // …and its text: a new closing movement the new text matches moves too.
+    const other = await seedCategorized({
+      accountId: account.id,
+      description: 'COMPRA SINTETICO LENTES NORTE',
+      amount: '45.61',
+      categoryId: generic.id,
+      categorySource: 'closing',
+    })
+    const textPatch = await app.inject({
+      method: 'PATCH',
+      url: `/api/category-rules/${created.json().id}`,
+      payload: { matchText: 'sintetico lentes' },
+    })
+
+    expect(textPatch.statusCode).toBe(200)
+    expect(textPatch.json().categorization.categorized).toBe(1)
+    expect(textPatch.json().categorization.categorizedMovements[0]).toMatchObject({
+      movementId: other.id,
+      categoryId: optician.id,
+      rules: [{ ruleId: created.json().id, matchText: 'sintetico lentes' }],
+    })
+    expect(await storedSources([movement.id, other.id])).toEqual([
+      [optician.id, 'rule'],
+      [optician.id, 'rule'],
+    ])
+  })
+
+  it('never changes a movement whose category was set by hand, on creating or changing a rule', async () => {
+    const account = await createAccount()
+    const generic = await createCategory('expense')
+    const chosen = await createCategory('expense')
+    const ruled = await createCategory('expense')
+    const otherRuled = await createCategory('expense')
+    const byHand = [
+      // Set by hand on the generic category itself: still never moved.
+      await seedCategorized({
+        accountId: account.id,
+        description: 'PAGO SINTETICO LIBRERIA PLAZA',
+        amount: '16.27',
+        categoryId: generic.id,
+        categorySource: 'manual',
+      }),
+      await seedCategorized({
+        accountId: account.id,
+        description: 'PAGO SINTETICO LIBRERIA ESTACION',
+        amount: '22.74',
+        categoryId: chosen.id,
+        categorySource: 'manual',
+      }),
+    ]
+    const before = await app.prisma.movement.findMany({
+      where: { id: { in: byHand.map((row) => row.id) } },
+      orderBy: { id: 'asc' },
+    })
+
+    const created = await postRule({ categoryId: ruled.id, matchText: 'sintetico libreria' })
+    const changed = await app.inject({
+      method: 'PATCH',
+      url: `/api/category-rules/${created.json().id}`,
+      payload: { categoryId: otherRuled.id, matchText: 'libreria' },
+    })
+
+    expect(created.statusCode).toBe(201)
+    expect(created.json().categorization.categorized).toBe(0)
+    expect(changed.statusCode).toBe(200)
+    expect(changed.json().categorization.categorized).toBe(0)
+    // Identical INCLUDING updatedAt: no run wrote on them at all.
+    const after = await app.prisma.movement.findMany({
+      where: { id: { in: byHand.map((row) => row.id) } },
+      orderBy: { id: 'asc' },
+    })
+    expect(after).toEqual(before)
+    expect(after.map((row) => row.categorySource)).toEqual(['manual', 'manual'])
+  })
+
+  it('never changes a movement a rule already categorized, on creating or changing a rule', async () => {
+    const account = await createAccount()
+    const first = await createCategory('expense')
+    const second = await createCategory('expense')
+    const movement = await seedCategorized({
+      accountId: account.id,
+      description: 'CUOTA SINTETICO CLUB REMO',
+      amount: '27.86',
+      categoryId: first.id,
+      categorySource: 'rule',
+    })
+    const before = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+
+    const created = await postRule({ categoryId: second.id, matchText: 'sintetico club remo' })
+    const changed = await app.inject({
+      method: 'PATCH',
+      url: `/api/category-rules/${created.json().id}`,
+      payload: { matchText: 'club remo' },
+    })
+
+    expect(created.json().categorization.categorized).toBe(0)
+    expect(changed.json().categorization.categorized).toBe(0)
+    const after = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+    expect(after).toEqual(before)
+  })
+
+  it('leaves a generic movement that rules of two categories match where it was and lists the conflict', async () => {
+    const account = await createAccount()
+    const generic = await createCategory('expense')
+    const fuel = await createCategory('expense')
+    const shop = await createCategory('expense')
+    const fuelRule = await postRule({ categoryId: fuel.id, matchText: 'sintetico gasolinera' })
+    const movement = await seedCategorized({
+      accountId: account.id,
+      description: 'SINTETICO GASOLINERA TIENDA 24H',
+      amount: '13.58',
+      categoryId: generic.id,
+      categorySource: 'closing',
+    })
+    const before = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+
+    const shopRule = await postRule({ categoryId: shop.id, matchText: 'gasolinera tienda' })
+
+    expect(shopRule.statusCode).toBe(201)
+    const categorization = shopRule.json().categorization
+    expect(categorization.categorized).toBe(0)
+    expect(categorization.conflictCount).toBe(1)
+    expect(categorization.conflicts).toHaveLength(1)
+    expect(categorization.conflicts[0].movementId).toBe(movement.id)
+    expect(
+      categorization.conflicts[0].matches.map((match: { ruleId: number }) => match.ruleId).sort(),
+    ).toEqual([fuelRule.json().id, shopRule.json().id].sort())
+    const after = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+    expect(after).toEqual(before)
+  })
+
+  it('deleting a rule changes neither the category nor its source on any movement', async () => {
+    const account = await createAccount()
+    const generic = await createCategory('expense')
+    const category = await createCategory('expense')
+    const created = await postRule({ categoryId: category.id, matchText: 'sintetico panaderia' })
+    const seeded = [
+      await seedCategorized({
+        accountId: account.id,
+        description: 'SINTETICO PANADERIA CATEGORIZADA',
+        amount: '3.85',
+        categoryId: category.id,
+        categorySource: 'rule',
+      }),
+      await seedCategorized({
+        accountId: account.id,
+        description: 'SINTETICO PANADERIA A MANO',
+        amount: '5.17',
+        categoryId: category.id,
+        categorySource: 'manual',
+      }),
+      await seedCategorized({
+        accountId: account.id,
+        description: 'OTRO SINTETICO EN EL CIERRE',
+        amount: '8.29',
+        categoryId: generic.id,
+        categorySource: 'closing',
+      }),
+    ]
+    const before = await app.prisma.movement.findMany({
+      where: { id: { in: seeded.map((row) => row.id) } },
+      orderBy: { id: 'asc' },
+    })
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/category-rules/${created.json().id}`,
+    })
+
+    expect(response.statusCode).toBe(204)
+    const after = await app.prisma.movement.findMany({
+      where: { id: { in: seeded.map((row) => row.id) } },
+      orderBy: { id: 'asc' },
+    })
+    expect(after).toEqual(before)
+  })
+
+  it('does not recategorize anything when the rule is rejected', async () => {
+    const account = await createAccount()
+    const generic = await createCategory('expense')
+    const category = await createCategory('expense')
+    const existing = await postRule({ categoryId: category.id, matchText: 'sintetico lavanderia' })
+    // Seeded AFTER the first rule ran, so only a rejected request could touch it.
+    const movement = await seedCategorized({
+      accountId: account.id,
+      description: 'SINTETICO LAVANDERIA AUTOSERVICIO',
+      amount: '6.42',
+      categoryId: generic.id,
+      categorySource: 'closing',
+    })
+    const before = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+
+    const duplicated = await postRule({
+      categoryId: category.id,
+      matchText: 'SINTETICO LAVANDERIA',
+    })
+    const missingCategory = await app.inject({
+      method: 'PATCH',
+      url: `/api/category-rules/${existing.json().id}`,
+      payload: { categoryId: 999_999_431 },
+    })
+    const tooShort = await app.inject({
+      method: 'PATCH',
+      url: `/api/category-rules/${existing.json().id}`,
+      payload: { matchText: ' la ' },
+    })
+
+    expect(duplicated.statusCode).toBe(409)
+    expect(duplicated.json()).not.toHaveProperty('categorization')
+    expect(missingCategory.statusCode).toBe(404)
+    expect(tooShort.statusCode).toBe(400)
+    const after = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
+    expect(after).toEqual(before)
   })
 })

@@ -272,7 +272,8 @@ Un apunte del extracto. **Solo entra por importación** (ver
 | `note`          | string \| null                                              | Anotación manual. Hoy siempre `null`.                            |
 | `accountId`     | number                                                      | Id de la cuenta.                                                 |
 | `account`       | objeto                                                      | Cuenta embebida: `{ id, iban, bank, alias, type }` (sin `balance`). |
-| `categoryId`    | number \| null                                              | Id de la categoría, o `null` (no tener categoría no es una categoría). Se escribe a mano con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37) y, desde la feature 43, también lo escribe la **categorización por reglas** ([`/api/category-rules`](#post-apicategory-rules)), que corre al final de cada importación y bajo demanda, y solo toca movimientos sin categoría, sin confirmar y no neutrales. |
+| `categoryId`    | number \| null                                              | Id de la categoría, o `null` (no tener categoría no es una categoría). Se escribe a mano con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37) y [`PATCH /api/movements`](#patch-apimovements) (feature 47); desde la feature 43 también lo escribe la **categorización por reglas** ([`/api/category-rules`](#post-apicategory-rules)), y desde el 2026-10-16 el **cierre automático** ([`POST /api/movements/confirm-all`](#post-apimovementsconfirm-all), que corre también al final de cada importación). Quién la escribió lo dice `categorySource`, justo debajo. |
+| `categorySource` | `"manual"` \| `"rule"` \| `"closing"` \| null            | **Desde la feature 60.** De dónde salió la categoría que el movimiento tiene **ahora**. `null` exactamente cuando `categoryId` es `null`. `"manual"` = la puso el humano con `PATCH /api/movements/:id` o `PATCH /api/movements` (también si eligió la misma que ya tenía, o `Otros gastos`); `"rule"` = la puso la categorización por reglas; `"closing"` = la puso el cierre automático (`Otros gastos` / `Otros ingresos`, o las categorías que traiga `POST /api/movements/confirm-all`) porque ninguna regla la reconoció. **Una regla solo reescribe un `"closing"`**, al crearse o cambiarse (ver [`POST /api/category-rules`](#post-apicategory-rules)); un `"manual"` o un `"rule"` no lo toca ninguna regla. Quitar la categoría (`categoryId: null`) deja `categorySource` a `null`. No tiene que ver con `origin` (si el movimiento vino de un extracto). Los movimientos que ya existían antes de la feature: los de las raíz `Otros gastos` / `Otros ingresos`, `"closing"`; el resto con categoría, `"manual"`. |
 | `category`      | objeto \| null                                              | Categoría embebida: `{ id, name, kind, parentId }`, o `null` si el movimiento no tiene categoría. |
 | `paymentMethod` | `"card"` \| `"cash"` \| `"bank_transfer"` \| `"direct_debit"` \| null | Forma de pago. Hoy siempre `null` (la derivará la feature de reglas). |
 | `origin`        | `"imported"` \| `"manual"`                                  | Procedencia. Los movimientos nacen `"imported"`.                 |
@@ -555,9 +556,31 @@ movimiento se normaliza igual al compararla. Además, el `kind` de la categoría
 de la regla debe coincidir con el `type` del movimiento: una regla de una
 categoría `income` jamás toca un gasto.
 
-Las reglas no categorizan nada por sí solas al crearse: lo hace la pasada de
-categorización, que corre al final de cada importación y con
-[`POST /api/category-rules/apply`](#post-apicategory-rulesapply).
+**Al crearse, la regla se aplica en la misma petición** (desde la feature 60):
+después de guardarla, el servidor ejecuta la pasada de categorización con
+**todas** las reglas (no solo la nueva) sobre un alcance más ancho que el de
+siempre:
+
+- los movimientos pendientes sin categoría de siempre (sin categoría,
+  `pending_review`, `expense` o `income`), **y**
+- los movimientos `expense` o `income` cuya categoría puso el cierre automático
+  (`categorySource: "closing"`, normalmente en `Otros gastos` u `Otros ingresos`),
+  estén confirmados o no.
+
+Lo que **no** toca nunca: un movimiento con `categorySource: "manual"` (la categoría
+la puso el humano, aunque sea `Otros gastos`) ni uno con `"rule"` (ya lo
+categorizó una regla). Lo que cambia, lo dice el campo `categorization` de la
+respuesta. Cada movimiento que la pasada recoloca recibe `categoryId` de la regla y
+`categorySource: "rule"` y **nada más**: importes, saldos, `status`, fechas y los
+`totals` de `GET /api/movements` quedan idénticos. Un movimiento `"closing"` que
+casa con reglas de **dos categorías distintas** no se mueve: se queda donde está y
+sale en `categorization.conflicts`. Una regla que apunta a la propia `Otros gastos`
+y casa con un `"closing"` lo deja en la misma categoría, pero pasa a `"rule"` y sale
+en la lista.
+
+Importar y [`POST /api/category-rules/apply`](#post-apicategory-rulesapply) siguen
+mirando **solo** lo pendiente sin categoría: los `"closing"` solo se recolocan al
+crear o cambiar una regla.
 
 **Body**
 | Campo        | Tipo   | Reglas                                                              |
@@ -565,18 +588,53 @@ categorización, que corre al final de cada importación y con
 | `categoryId` | number | Id de una categoría existente.                                       |
 | `matchText`  | string | Al menos **3 caracteres tras normalizar**; único (normalizado) entre todas las reglas. Cualquier otra propiedad en el body es un 400, nunca se descarta en silencio. |
 
-**Respuesta 201** — la regla con su categoría embebida:
+**Respuesta 201** — la regla con su categoría embebida y, desde la feature 60, el
+campo `categorization` con lo que hizo la pasada que se ejecutó al guardarla:
 
 ```json
 {
   "id": 7,
-  "matchText": "mercadona",
+  "matchText": "sintetico gimnasio",
   "categoryId": 4,
-  "category": { "id": 4, "name": "Supermercado", "kind": "expense", "parentId": null },
+  "category": { "id": 4, "name": "Deporte", "kind": "expense", "parentId": null },
   "createdAt": "2026-09-06T10:00:00.000Z",
-  "updatedAt": "2026-09-06T10:00:00.000Z"
+  "updatedAt": "2026-09-06T10:00:00.000Z",
+  "categorization": {
+    "categorized": 1,
+    "categorizedMovements": [
+      {
+        "movementId": 315,
+        "description": "RECIBO SINTETICO GIMNASIO ENERO",
+        "bookingDate": "2026-08-03",
+        "amount": "34.95",
+        "type": "expense",
+        "categoryId": 4,
+        "categoryName": "Deporte",
+        "rules": [{ "ruleId": 7, "matchText": "sintetico gimnasio" }]
+      }
+    ],
+    "conflictCount": 0,
+    "conflicts": [],
+    "unmatched": 212
+  }
 }
 ```
+
+- Los campos de la regla siguen en la raíz, como antes de la feature 60;
+  `categorization` es un campo **nuevo** y **siempre presente**.
+- `categorization` tiene **la misma forma** que la respuesta de
+  [`POST /api/category-rules/apply`](#post-apicategory-rulesapply) (allí, el
+  detalle campo a campo). Cada elemento de `categorizedMovements` es un movimiento
+  que **esta** pasada movió: los `"closing"` que pasan a la categoría de la regla y
+  los pendientes sin categoría que haya reconocido.
+- `unmatched` cuenta los movimientos **de este alcance** que ninguna regla
+  reconoció: incluye los `"closing"` que se quedan donde estaban, así que es un
+  número distinto del de `POST /api/category-rules/apply`.
+- Si la pasada falla a mitad, **la regla queda creada** igualmente: la respuesta
+  sigue siendo 201 y el fallo viaja en `categorization.error`, con lo que se
+  escribió antes del fallo en `categorized` y `categorizedMovements`.
+- Si la regla se rechaza (400, 404, 409), **no se ejecuta la pasada**: no se mueve
+  ningún movimiento.
 
 **Errores**
 | Código HTTP | `code`             | Cuándo                                                            |
@@ -590,7 +648,8 @@ categorización, que corre al final de cada importación y con
 ### `GET /api/category-rules`
 
 **Respuesta 200** — todas las reglas, cada una con su categoría embebida (la
-misma forma que la respuesta del `POST`), ordenadas por `id`.
+misma forma que la respuesta del `POST`, **sin** `categorization`), ordenadas por
+`id`.
 
 ---
 
@@ -598,10 +657,18 @@ misma forma que la respuesta del `POST`), ordenadas por `id`.
 
 Cambia `matchText` y/o `categoryId` de una regla, **y nada más** (cualquier
 otra propiedad, o un body vacío, es un 400). Las validaciones son las del alta.
-Cambiar una regla **no des-categoriza nada**: lo que ya asignó se queda; se
-corrige movimiento a movimiento con `PATCH /api/movements/:id` si hace falta.
+Cambiar una regla **no des-categoriza nada**: lo que ya asignó se queda
+(`categorySource: "rule"`); se corrige movimiento a movimiento con
+`PATCH /api/movements/:id` si hace falta.
 
-**Respuesta 200** — la regla actualizada con su categoría embebida.
+**Desde la feature 60, al cambiarla se ejecuta la misma pasada que al crearla**
+(ver [`POST /api/category-rules`](#post-apicategory-rules)): todas las reglas, ya
+con el cambio, sobre los pendientes sin categoría y los `"closing"`. Nunca toca un
+`"manual"` ni un `"rule"`.
+
+**Respuesta 200** — la regla actualizada con su categoría embebida y el campo
+`categorization`, con la misma forma y las mismas reglas que en la respuesta 201
+del `POST`.
 
 **Errores** — los mismos del `POST`, más `404 NOT_FOUND` si la regla no existe.
 
@@ -610,7 +677,8 @@ corrige movimiento a movimiento con `PATCH /api/movements/:id` si hace falta.
 ### `DELETE /api/category-rules/:id`
 
 Borra la regla **sin modificar ningún movimiento**: lo que esa regla
-categorizó se queda como está.
+categorizó se queda como está, con la misma categoría y el mismo
+`categorySource` (`"rule"`). No ejecuta ninguna pasada de categorización.
 
 **Respuesta 204** — sin cuerpo.
 
@@ -630,9 +698,15 @@ nunca se categoriza)— y a cada uno le aplica las reglas cuyo `kind` casa con s
 `type`. Es el gesto para repasar lo pendiente después de corregir una regla,
 sin reimportar nada. Sin body.
 
+Desde la feature 60 su alcance **no cambia**: un movimiento que ya tiene
+categoría —también uno en `Otros gastos` con `categorySource: "closing"`— no es
+elegible aquí. Los `"closing"` solo los recoloca crear o cambiar una regla (ver
+[`POST /api/category-rules`](#post-apicategory-rules)).
+
 - Si las reglas que casan apuntan todas a **una sola categoría**, se escribe
-  `categoryId` y **nada más**: importes, saldos, `status`, `transferId`, fechas
-  y los totales de `GET /api/movements` quedan idénticos.
+  `categoryId`, `categorySource: "rule"` (desde la feature 60) y **nada más**:
+  importes, saldos, `status`, `transferId`, fechas y los totales de
+  `GET /api/movements` quedan idénticos.
 - Si casan reglas de **dos o más categorías distintas**, no se asigna nada y el
   choque sale en `conflicts` (antes sin categoría que mal categorizado).
 - Si no casa ninguna, el movimiento queda sin categoría, visible, y suma a
@@ -829,6 +903,7 @@ parámetros no cambian.
         "type": "checking"
       },
       "categoryId": null,
+      "categorySource": null,
       "category": null,
       "paymentMethod": null,
       "origin": "imported",
@@ -848,8 +923,10 @@ parámetros no cambian.
 
 - `movements`: la página pedida. Cada movimiento con la forma de
   [`Movement`](#movement); desde la feature 49 lleva **un campo más**,
-  `excludedFromTotals`, y desde la feature 57 **otro más**, `deposit` (ningún
-  campo anterior cambia ni desaparece). `deposit` **solo** viaja en esta
+  `excludedFromTotals`, desde la feature 57 **otro más**, `deposit`, y desde la
+  feature 60 **otro más**, `categorySource` (ningún campo anterior cambia ni
+  desaparece). `categorySource` viaja en todas las respuestas que devuelven
+  movimientos serializados; `deposit` **solo** viaja en esta
   respuesta: las de `PATCH /api/movements`, `PATCH /api/movements/:id` y
   `/api/transfers` no lo llevan.
 - `movements[].deposit` (feature 57): `null` si el movimiento **no es de
@@ -1044,6 +1121,12 @@ feature 57**, en un movimiento de depósito la marca se guarda pero tampoco los
 mueve (ver
 [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
 
+**Desde la feature 60**, mandar un `categoryId` numérico deja además
+`categorySource: "manual"` en **todos** los movimientos de `ids`, en la misma
+transacción (también si la categoría es la que ya tenían): desde ese momento
+ninguna regla los cambia. Mandar `categoryId: null` deja `categorySource: null`.
+Sin `categoryId` en el body, `categorySource` no cambia.
+
 **Body** (`ids` siempre; además, **al menos una** de `categoryId`, `status` y
 `excludedFromTotals`)
 
@@ -1135,6 +1218,11 @@ gasto») y que la cola de pendientes no sea un trabajo mensual.
 2. Pasa a `confirmed` **todo** movimiento `pending_review`, tenga la categoría que
    tenga (también las piernas de traspaso y los de producto).
 
+Cada categoría que escribe el paso 1 lleva además `categorySource: "closing"`
+(desde la feature 60): por eso una regla creada o cambiada después puede moverla a
+su propia categoría (ver [`POST /api/category-rules`](#post-apicategory-rules)).
+Un movimiento que ya tenía categoría conserva también su `categorySource`.
+
 No toca **ningún otro campo**: ni el hecho bancario, ni `excludedFromTotals`, ni
 `transferId`. Los `totals` de `GET /api/movements` y de `GET /api/overview` no se
 mueven (`categoryId` y `status` nunca entran en una suma). Las categorías de
@@ -1183,6 +1271,12 @@ de `GET /api/overview` no cambian por categorizar ni por confirmar; **solo**
 cambian al escribir `excludedFromTotals`, y desde la feature 57 ni eso si el
 movimiento es de depósito (ver
 [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
+
+**Desde la feature 60**, mandar un `categoryId` numérico deja además
+`categorySource: "manual"` (también si es la categoría que ya tenía): desde ese
+momento ninguna regla lo cambia. Mandar `categoryId: null` deja
+`categorySource: null`. Si el body no lleva `categoryId`, `categorySource` no
+cambia.
 
 **Body** (al menos uno de los tres campos; pueden ir juntos en la misma petición)
 | Campo        | Tipo                                    | Reglas                                                            |
@@ -2629,7 +2723,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 
   | Campo | Qué es |
   | --- | --- |
-  | `categorized` | Movimientos a los que **esta** pasada escribió `categoryId`. Ningún otro campo cambia. |
+  | `categorized` | Movimientos a los que **esta** pasada escribió `categoryId` (y, desde la feature 60, `categorySource: "rule"`). Ningún otro campo cambia. |
   | `categorizedMovements` | (feature 56) **Viaja también aquí**, con la misma forma que en `POST /api/category-rules/apply`: la lista de esos movimientos, uno por elemento, tantos como diga `categorized`, completa y por `movementId` ascendente; `[]` si no se escribió ninguno. Como la pasada recorre **todos** los elegibles, puede traer movimientos que no entraron en esta importación. Cada elemento trae `movementId`, `description`, `bookingDate`, `amount`, `type`, `categoryId`, `categoryName` y `rules` (`ruleId`, `matchText`); el detalle campo a campo está en [`POST /api/category-rules/apply`](#post-apicategory-rulesapply). |
   | `conflictCount` | Movimientos con reglas de **categorías distintas** casando a la vez. |
   | `conflicts` | Cada choque con su movimiento (`movementId`, `description`, `bookingDate`) y las reglas que compitieron (`ruleId`, `matchText`, `categoryId`, `categoryName`). Nadie asigna en el choque: el movimiento queda sin categoría, visible. |
@@ -2645,7 +2739,10 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
   van antes, así que tienen prioridad, y lo que ninguna regla reconoce recibe la
   categoría genérica; después todo lo `pending_review` pasa a `confirmed`. Como la
   operación recorre **toda** la tabla, cierra también lo que estaba pendiente de
-  importaciones anteriores. **Siempre presente**:
+  importaciones anteriores. Lo que recibe la categoría genérica queda con
+  `categorySource: "closing"` (feature 60). La importación **no** recoloca los
+  `"closing"` de importaciones anteriores aunque una regla los reconozca: eso solo
+  ocurre al crear o cambiar una regla. **Siempre presente**:
 
   | Valor | Cuándo |
   | --- | --- |

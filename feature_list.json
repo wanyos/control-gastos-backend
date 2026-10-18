@@ -2728,6 +2728,113 @@
         }
       ],
       "status": "done"
+    },
+    {
+      "id": 60,
+      "name": "category-origin-and-rule-reapply",
+      "title": "Que una regla nueva o cambiada recoloque también lo que ya está en la categoría genérica, sin pisar nunca lo que puse yo a mano",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-18), de la conversación de ese día con el humano, tras medir (solo lectura) que 840 de 1.483 gastos están en Otros gastos. El humano eligió las mejoras A, B y C que le propuso el leader («si me parece bien, con eso reducimos bastante el problema de la categorización, hagamos las features»). Las frases entre «» son suyas. El nombre de la feature es propuesta del leader. El humano lo revisa en la puerta del spec. Es la mejora A.",
+        "que_quiero": "Hoy una regla de categorización solo actúa sobre movimientos sin categoría y pendientes; como el cierre de cada importación deja todo lo no reconocido en Otros gastos (u Otros ingresos) y confirmado, una regla que escribo hoy solo sirve para lo que importe a partir de ahora. Quiero que, al crear o cambiar una regla, se aplique también a los movimientos que ya están en esa categoría genérica. Para eso la aplicación tiene que saber de dónde salió la categoría de cada movimiento: si la puse yo a mano, si la puso una regla o si la puso el cierre.",
+        "por_que": "«Lo mismo que quiero que no se escape ningún dato para tener una aplicación rigurosa y robusta, me parece crítico también tener bien categorizados los movimientos.» «Hacerlo yo a mano no es buena idea, sería mucho trabajo manual; vale que algún movimiento deba ponerlo a mano, pero deberían ser los mínimos.» Es lo que va antes de rehacer la sección de Recurrentes por categoría (docs/ideas.md del workspace, idea 4, refinamiento del 2026-10-18).",
+        "como_se_que_esta_bien": [
+          "Si creo una regla, los movimientos que ya estaban en Otros gastos (u Otros ingresos) y la cumplen pasan a la categoría de la regla.",
+          "Un movimiento al que le puse yo la categoría a mano no cambia nunca por una regla, ni nueva ni cambiada.",
+          "Cada movimiento dice de dónde salió su categoría: a mano, por una regla o por el cierre.",
+          "Lo que ya funciona sigue igual: la importación aplica las reglas y cierra lo que queda; las sumas no cambian por recolocar categorías.",
+          "docs/api-contract.md dice qué recoloca una regla y qué no, y cómo se ve de dónde salió la categoría."
+        ],
+        "que_no_quiero": [
+          "Que una regla pise una categoría que puse yo a mano.",
+          "Tener que repasar a mano los movimientos que ya están en Otros gastos.",
+          "Que cambie ninguna suma ni ningún importe: solo cambia la categoría."
+        ],
+        "delego_en_agente": [
+          "Qué origen se les da a los movimientos que ya tienen categoría hoy, cuando no se sabe quién se la puso.",
+          "Si cambiar o borrar una regla debe recolocar también lo que esa misma regla categorizó antes.",
+          "Qué pasa cuando un movimiento de la categoría genérica cumple reglas de dos categorías distintas.",
+          "Si recolocar se hace sola al crear o cambiar una regla, o al pedirlo, y cómo se informa de qué movimientos cambió."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "done",
+      "checks": [
+        {
+          "descripcion": "Si creo una regla, los movimientos que ya estaban en Otros gastos (u Otros ingresos) y la cumplen pasan a la categoría de la regla.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.routes.test.ts -t \"moves the movements the closing step left in the generic category when a rule is created\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Si creo una regla, los movimientos que ya estaban en Otros gastos (u Otros ingresos) y la cumplen pasan a la categoría de la regla.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.routes.test.ts -t \"moves the movements the closing step left in the generic category when a rule is changed\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un movimiento al que le puse yo la categoría a mano no cambia nunca por una regla, ni nueva ni cambiada.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.routes.test.ts -t \"never changes a movement whose category was set by hand, on creating or changing a rule\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada movimiento dice de dónde salió su categoría: a mano, por una regla o por el cierre.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.test.ts -t \"marks the category as set by hand when PATCH /api/movements/:id writes it\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada movimiento dice de dónde salió su categoría: a mano, por una regla o por el cierre.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.service.test.ts -t \"marks the category it writes as set by a rule\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada movimiento dice de dónde salió su categoría: a mano, por una regla o por el cierre.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.confirm-all.test.ts -t \"marks the category it fills as written by the closing step\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada movimiento dice de dónde salió su categoría: a mano, por una regla o por el cierre.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.category-source-migration.test.ts -t \"gives closing to the generic categories and manual to every other categorized movement\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lo que ya funciona sigue igual: la importación aplica las reglas y cierra lo que queda; las sumas no cambian por recolocar categorías.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"an import still applies the rules to its new movements and closes the rest, marked as closing\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lo que ya funciona sigue igual: la importación aplica las reglas y cierra lo que queda; las sumas no cambian por recolocar categorías.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.service.test.ts -t \"recategorizing a closing movement changes only its category and its source, and no total\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lo que ya funciona sigue igual: la importación aplica las reglas y cierra lo que queda; las sumas no cambian por recolocar categorías.",
+          "comando": "pnpm test"
+        },
+        {
+          "descripcion": "docs/api-contract.md dice qué recoloca una regla y qué no, y cómo se ve de dónde salió la categoría.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.docs.test.ts -t \"api-contract: says what a rule recategorizes and what not, and describes categorySource\" | grep -E \"Tests +1 passed\""
+        }
+      ]
+    },
+    {
+      "id": 61,
+      "name": "rule-suggestions",
+      "title": "Que la aplicación me proponga reglas a partir de los conceptos que más se repiten en la categoría genérica, y me diga cuántos movimientos recogería una regla antes de crearla",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-18), de la conversación de ese día con el humano, tras medir (solo lectura) que 840 de 1.483 gastos están en Otros gastos. El humano eligió las mejoras A, B y C que le propuso el leader («si me parece bien, con eso reducimos bastante el problema de la categorización, hagamos las features»). Las frases entre «» son suyas. El nombre de la feature es propuesta del leader. El humano lo revisa en la puerta del spec. Es la mejora B y la parte de backend de la C. Depende de la feature 60.",
+        "que_quiero": "Una consulta de solo lectura que me enseñe los conceptos que más se repiten entre los movimientos de Otros gastos (u Otros ingresos), ordenados por cuántos movimientos resolvería una regla para cada uno, con el texto de regla que se propone, para que yo solo elija la categoría y se cree la regla. Y una forma de saber, antes de crear una regla con un texto cualquiera, cuántos movimientos y cuáles recogería: es lo que necesita el frontend para preguntarme, cuando cambio a mano la categoría de un movimiento, «¿aplicar a todos los que contienen…?».",
+        "por_que": "«Lo mismo que quiero que no se escape ningún dato para tener una aplicación rigurosa y robusta, me parece crítico también tener bien categorizados los movimientos.» «Hacerlo yo a mano no es buena idea, sería mucho trabajo manual; vale que algún movimiento deba ponerlo a mano, pero deberían ser los mínimos.» Es lo que va antes de rehacer la sección de Recurrentes por categoría (docs/ideas.md del workspace, idea 4, refinamiento del 2026-10-18). Medido el 2026-10-18: unos 56 conceptos que se repiten tres veces o más suman tres de cada cuatro movimientos de Otros gastos.",
+        "como_se_que_esta_bien": [
+          "La consulta devuelve los conceptos de la categoría genérica ordenados por cuántos movimientos recogería su regla, cada uno con el texto de regla propuesto.",
+          "Un concepto que ya recoge una regla existente no se propone.",
+          "Antes de crear una regla puedo saber cuántos movimientos y cuáles recogería, sin que se escriba nada.",
+          "Ninguna de las dos consultas escribe nada.",
+          "docs/api-contract.md describe las dos consultas."
+        ],
+        "que_no_quiero": [
+          "Que la aplicación cree reglas o cambie categorías sola: propone y yo decido.",
+          "Que el número que me enseña no coincida con lo que de verdad recoge la regla al crearla.",
+          "Que se propongan reglas que recogerían movimientos que puse yo a mano."
+        ],
+        "delego_en_agente": [
+          "Cómo se saca el texto de regla propuesto de un concepto (números, referencias, las palabras con que el banco empieza un recibo o una transferencia).",
+          "Cuántas veces tiene que repetirse un concepto para proponerlo, y si se limita la lista.",
+          "Si las dos consultas son una o dos, y su forma."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "pending"
     }
   ]
 }

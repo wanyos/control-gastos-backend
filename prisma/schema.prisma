@@ -51,6 +51,14 @@ enum MovementStatus {
   pending_review
 }
 
+/// Feature 60: who wrote the current `Movement.categoryId`. NULL exactly when
+/// `categoryId` is NULL. A rule only ever rewrites a `closing` one (ADR-038).
+enum CategorySource {
+  manual // PATCH /api/movements/:id or PATCH /api/movements (the human)
+  rule // the categorization run of feature 43
+  closing // confirmAllMovements: the closing step of an import, or POST /api/movements/confirm-all
+}
+
 // `fund`, `etf` and `managed_portfolio` carry exactly the same fields: a
 // managed portfolio is one product with its total value, never broken down
 // into what it holds. `deposit` is the only one with a specific part
@@ -143,11 +151,14 @@ model Movement {
   currency          String       @default("EUR")
   note              String?
 
-  account       Account        @relation(fields: [accountId], references: [id])
-  accountId     Int
-  category      Category?      @relation(fields: [categoryId], references: [id])
-  categoryId    Int?
-  paymentMethod PaymentMethod?
+  account        Account         @relation(fields: [accountId], references: [id])
+  accountId      Int
+  category       Category?       @relation(fields: [categoryId], references: [id])
+  categoryId     Int?
+  /// Feature 60: see enum CategorySource. Written in the SAME `data` as
+  /// `categoryId` by its four writers; never on its own.
+  categorySource CategorySource?
+  paymentMethod  PaymentMethod?
 
   origin MovementOrigin @default(imported)
   status MovementStatus @default(pending_review)

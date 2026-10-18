@@ -1,7 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 
 import { Prisma } from '../../generated/prisma/client.js'
-import type { Category, CategoryRule } from '../../generated/prisma/client.js'
+import type {
+  Category,
+  CategoryKind,
+  CategoryRule,
+  MovementType,
+} from '../../generated/prisma/client.js'
 
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../../errors/app-error.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
@@ -147,29 +152,64 @@ export function serializeCategoryRule(rule: CategoryRuleWithCategory): Serialize
   }
 }
 
+/** Which movements a categorization run may write on (feature 60). */
+export type CategorizationScope = 'pending' | 'pendingAndClosing'
+
+/**
+ * The single definition of "a rule may write here". `pending` is the scope of
+ * feature 43 (the import run and POST /apply); `pendingAndClosing` adds what
+ * `confirmAllMovements` filled (`categorySource` 'closing'), and is what rule
+ * create/update runs. `manual` and `rule` are in neither (ADR-038). Exported so
+ * feature 61 counts exactly what a rule would take.
+ */
+export function categorizationEligibleWhere(scope: CategorizationScope): Prisma.MovementWhereInput {
+  const pending: Prisma.MovementWhereInput = { categoryId: null, status: 'pending_review' }
+  if (scope === 'pending') return { type: { in: ['expense', 'income'] }, ...pending }
+  return {
+    type: { in: ['expense', 'income'] },
+    OR: [pending, { categorySource: 'closing' }],
+  }
+}
+
+/**
+ * Pure: the rules whose category kind equals `type` and whose `matchText` the
+ * normalized description CONTAINS (R6 of feature 43). Feature 61 reuses it.
+ */
+export function matchingRules<
+  R extends { matchText: string; categoryId: number; category: { kind: CategoryKind } },
+>(description: string, type: MovementType, rules: R[]): R[] {
+  const normalized = normalizeForMatch(description)
+  return rules.filter((rule) => rule.category.kind === type && normalized.includes(rule.matchText))
+}
+
 /**
  * The categorization run (R6–R11, R14). It NEVER throws (same contract as
  * `detectTransfers`): a failure comes back inside `result.error`, with what
  * was already written still counted, so the import report that carries this
  * result is never lost to a categorization problem (R12).
  *
- * Eligibility lives in the WHERE (R8): only movements with `categoryId` NULL,
- * `status` 'pending_review' and a non-neutral type enter memory at all. A rule
- * matches when the normalized description CONTAINS its `matchText` AND its
- * category's kind equals the movement's type (R6). Rules of one single
- * category → write; zero rules or rules of two or more distinct categories →
- * nothing is written and the case is counted (R7, R9).
+ * Eligibility lives in the WHERE (`categorizationEligibleWhere`): the default
+ * `pending` scope reads only movements with `categoryId` NULL, `status`
+ * 'pending_review' and a non-neutral type (R8); `pendingAndClosing` (feature
+ * 60, rule create/update) adds the ones `confirmAllMovements` filled. A rule
+ * matches as `matchingRules` says. Rules of one single category → write; zero
+ * rules or rules of two or more distinct categories → nothing is written and
+ * the case is counted (R7, R9).
  *
- * Each write re-checks eligibility in its own WHERE so a concurrent write can
- * never be overwritten (same insurance as the `transferId: null` of F40), and
- * `data` carries ONLY `categoryId` (R14). Idempotency is free (R11): an
- * assigned movement stops being eligible in the next read.
+ * Each write repeats the scope's WHERE plus the id, so a concurrent write (a
+ * category set by hand meanwhile is `manual`) can never be overwritten, and
+ * `data` carries ONLY `categoryId` and `categorySource` 'rule' (R14, feature
+ * 60). Idempotency is free (R11): a written movement is `rule` and stops being
+ * eligible in the next read.
  *
  * `categorizedMovements` (feature 56) lists exactly the movements whose write
  * happened, in the ascending id order of the read; on a failure half way it
  * keeps what was written before, like `categorized`.
  */
-export async function applyCategoryRules(prisma: AppPrismaClient): Promise<CategorizationResult> {
+export async function applyCategoryRules(
+  prisma: AppPrismaClient,
+  scope: CategorizationScope = 'pending',
+): Promise<CategorizationResult> {
   const result: CategorizationResult = {
     categorized: 0,
     categorizedMovements: [],
@@ -184,21 +224,15 @@ export async function applyCategoryRules(prisma: AppPrismaClient): Promise<Categ
       orderBy: { id: 'asc' },
     })
 
+    const eligible = categorizationEligibleWhere(scope)
     const movements = await prisma.movement.findMany({
-      where: {
-        categoryId: null,
-        status: 'pending_review',
-        type: { in: ['expense', 'income'] },
-      },
+      where: eligible,
       select: { id: true, type: true, description: true, bookingDate: true, amount: true },
       orderBy: { id: 'asc' },
     })
 
     for (const movement of movements) {
-      const description = normalizeForMatch(movement.description)
-      const matches = rules.filter(
-        (rule) => rule.category.kind === movement.type && description.includes(rule.matchText),
-      )
+      const matches = matchingRules(movement.description, movement.type, rules)
 
       if (matches.length === 0) {
         result.unmatched += 1
@@ -226,8 +260,8 @@ export async function applyCategoryRules(prisma: AppPrismaClient): Promise<Categ
       const winner = matches[0]
       if (winner === undefined) continue
       const { count } = await prisma.movement.updateMany({
-        where: { id: movement.id, categoryId: null, status: 'pending_review' },
-        data: { categoryId: winner.categoryId },
+        where: { ...eligible, id: movement.id },
+        data: { categoryId: winner.categoryId, categorySource: 'rule' },
       })
       result.categorized += count
       // Listed only when the write happened: a movement another request changed

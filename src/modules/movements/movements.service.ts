@@ -22,6 +22,7 @@ import type {
   ListedMovement,
   RecencyPoint,
   MovementListQuery,
+  MovementWritableFields,
   MovementListResponse,
   MovementTotals,
   MovementWithRelations,
@@ -383,8 +384,13 @@ export async function updateMovement(
     }
   }
 
-  const data: UpdateMovementBody = {}
-  if (input.categoryId !== undefined) data.categoryId = input.categoryId
+  const data: MovementWritableFields = {}
+  if (input.categoryId !== undefined) {
+    data.categoryId = input.categoryId
+    // Feature 60: a category written here is the human's, even the one the
+    // movement already had (R2); removing it leaves no source (R4).
+    data.categorySource = input.categoryId === null ? null : 'manual'
+  }
   if (input.status !== undefined) data.status = input.status
   // Feature 49: no domain rule — any movement can be marked, a transfer leg or
   // a neutral one included (R9). Only the mark travels; the amount never does.
@@ -410,7 +416,8 @@ export async function updateMovement(
  *
  * Everything runs inside `prisma.$transaction`, so even a failure between the
  * checks and the write leaves the table untouched. `updateMany` carries only
- * `categoryId`/`status`: no other column of the bank fact can travel (R13).
+ * `categoryId` (with its `categorySource`, feature 60), `status` and
+ * `excludedFromTotals`: no other column of the bank fact can travel (R13).
  */
 export async function bulkUpdateMovements(
   prisma: AppPrismaClient,
@@ -449,8 +456,13 @@ export async function bulkUpdateMovements(
       }
     }
 
-    const data: Omit<BulkUpdateMovementsBody, 'ids'> = {}
-    if (input.categoryId !== undefined) data.categoryId = input.categoryId
+    const data: MovementWritableFields = {}
+    if (input.categoryId !== undefined) {
+      data.categoryId = input.categoryId
+      // Feature 60: same `updateMany`, same transaction: every listed movement
+      // ends up `manual`, or without a source if the category is removed (R3, R4).
+      data.categorySource = input.categoryId === null ? null : 'manual'
+    }
     if (input.status !== undefined) data.status = input.status
     // Feature 49: the mark goes in the same `updateMany`, inside the same
     // transaction — all or nothing like the other two fields (R2).
@@ -519,13 +531,15 @@ export async function confirmAllMovements(
       transferId: null,
       productId: null,
     })
+    // Feature 60: what this step fills is marked `closing`, so a rule created
+    // or changed later may still move it to its own category (R5).
     const expense = await tx.movement.updateMany({
       where: uncategorized('expense'),
-      data: { categoryId: expenseCategory.id },
+      data: { categoryId: expenseCategory.id, categorySource: 'closing' },
     })
     const income = await tx.movement.updateMany({
       where: uncategorized('income'),
-      data: { categoryId: incomeCategory.id },
+      data: { categoryId: incomeCategory.id, categorySource: 'closing' },
     })
     const confirmed = await tx.movement.updateMany({
       where: { status: 'pending_review' },
@@ -558,6 +572,7 @@ export function serializeMovement(movement: MovementWithRelations): SerializedMo
     note: movement.note,
     accountId: movement.accountId,
     categoryId: movement.categoryId,
+    categorySource: movement.categorySource,
     paymentMethod: movement.paymentMethod,
     origin: movement.origin,
     status: movement.status,

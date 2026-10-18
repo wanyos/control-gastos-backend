@@ -141,3 +141,68 @@ describe('docs/api-contract.md — the list of categorized movements (feature 56
     }
   })
 })
+
+// Feature 60 `category-origin-and-rule-reapply`: where a movement's category came
+// from, and what creating, changing or deleting a rule recategorizes (R15).
+describe('docs/api-contract.md — categorySource and what a rule recategorizes (feature 60)', () => {
+  it('api-contract: says what a rule recategorizes and what not, and describes categorySource', () => {
+    // ── ### Movement: one row for the new field, with its three values ──
+    const movement = routeSection('### `Movement`')
+    expect(movement, 'the contract has no section for the Movement model').not.toBe('')
+    const row = movement.split('\n').find((line) => line.startsWith('| `categorySource`'))
+    expect(row, 'the Movement table has no row for `categorySource`').toBeDefined()
+    for (const value of ['"manual"', '"rule"', '"closing"']) {
+      expect(row, `the categorySource row does not name ${value}`).toContain(value)
+    }
+    expect(row).toContain('PATCH /api/movements/:id')
+    expect(row).toContain('POST /api/movements/confirm-all')
+
+    // ── ### POST /api/category-rules: what it recategorizes, and its example ──
+    const create = routeSection('### `POST /api/category-rules`')
+    expect(create, 'the contract has no section for creating a rule').not.toBe('')
+    const flatCreate = create.replace(/\s+/g, ' ')
+    for (const word of [
+      '`categorization`',
+      '`categorySource: "closing"`',
+      '`categorySource: "manual"`',
+    ]) {
+      expect(flatCreate, `creating a rule does not name ${word}`).toContain(word)
+    }
+    expect(flatCreate).toContain('**todas** las reglas')
+    expect(flatCreate).toContain('no se ejecuta la pasada')
+
+    const [createExample] = jsonBlocks(create)
+    expect(createExample, 'creating a rule publishes no json example').toBeDefined()
+    const answer = JSON.parse(createExample ?? '') as {
+      matchText: string
+      categoryId: number
+      categorization: ExampleResult & { conflicts: unknown[]; unmatched: number }
+    }
+    // The rule's own fields stay at the root; `categorization` is the run's result.
+    expect(typeof answer.matchText).toBe('string')
+    expect(Object.keys(answer.categorization)).toEqual(
+      resultFields.filter((field) => field !== 'error'),
+    )
+    expect(answer.categorization.categorizedMovements).toHaveLength(
+      answer.categorization.categorized,
+    )
+    for (const moved of answer.categorization.categorizedMovements) {
+      expect(Object.keys(moved)).toEqual(categorizedMovementFields)
+      expect(moved.categoryId).toBe(answer.categoryId)
+    }
+
+    // ── ### PATCH /api/category-rules/:id runs the same pass ──
+    const change = routeSection('### `PATCH /api/category-rules/:id`').replace(/\s+/g, ' ')
+    expect(change).toContain('`categorization`')
+    expect(change).toContain('`"closing"`')
+
+    // ── ### DELETE /api/category-rules/:id: neither the category nor its source ──
+    const remove = routeSection('### `DELETE /api/category-rules/:id`').replace(/\s+/g, ' ')
+    expect(remove).toContain('**sin modificar ningún movimiento**')
+    expect(remove).toContain('el mismo `categorySource`')
+
+    // ── ### POST /api/category-rules/apply keeps its scope ──
+    const apply = routeSection('### `POST /api/category-rules/apply`').replace(/\s+/g, ' ')
+    expect(apply).toContain('su alcance **no cambia**')
+  })
+})

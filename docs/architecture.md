@@ -3181,6 +3181,77 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - Contrato en `docs/api-contract.md` §`GET /api/recurring-expenses`; lo comprueba
     `src/modules/recurring-expenses/recurring-expenses.docs.test.ts`.
 
+### ADR-038: De dónde salió la categoría de un movimiento se guarda en una columna (`categorySource`), y una regla solo reescribe la que puso `confirmAllMovements`
+
+- **Fecha:** 2026-10-18
+- **Estado:** aceptada (implementada en la feature #60
+  `category-origin-and-rule-reapply`, SDD; hoja aprobada por el humano el
+  2026-10-18). No revisa ningún ADR anterior.
+- **Contexto:** desde el 2026-10-16, `confirmAllMovements` (al final de cada
+  importación y en `POST /api/movements/confirm-all`) pone `Otros gastos` /
+  `Otros ingresos` a todo lo que ninguna regla reconoció, y la categorización por
+  reglas de la feature 43 solo miraba movimientos pendientes sin categoría. Una
+  regla creada después ya no alcanzaba nada de lo que estaba en esas dos
+  categorías, y el humano no quiere repasarlo a mano. A la vez, una regla no puede
+  pisar nunca una categoría que el humano puso a mano, y en la base no queda rastro
+  de quién puso cada categoría.
+- **Decisión:**
+  1. **Una columna nueva, `Movement.categorySource`** (enum `CategorySource`:
+     `manual`, `rule`, `closing`), `null` exactamente cuando `categoryId` es `null`.
+     La escriben, en el mismo `data` que `categoryId`, sus cuatro escritores:
+     `updateMovement` y `bulkUpdateMovements` (`manual` con un `categoryId`
+     numérico, `null` al quitarla), `confirmAllMovements` (`closing`) y
+     `applyCategoryRules` (`rule`). Sin `CHECK` en la base: la coherencia la
+     vigilan los cuatro escritores y sus tests.
+  2. **Migración de datos aparte de la de esquema:** las raíz `Otros gastos`
+     (`expense`) y `Otros ingresos` (`income`) → `closing`; todo lo demás con
+     categoría → `manual` (lo que menos riesgo tiene de que una regla pise algo
+     puesto a mano). No escribe `updatedAt`.
+  3. **La pasada de categorización tiene dos alcances**
+     (`categorizationEligibleWhere` en `category-rules.service.ts`): `pending`, el
+     de siempre, que usan la importación y `POST /api/category-rules/apply` sin
+     cambiar una línea (es el valor por defecto de `applyCategoryRules`); y
+     `pendingAndClosing`, que añade los movimientos `expense` / `income` con
+     `categorySource` `closing`. Ningún alcance incluye `manual` ni `rule`. La
+     escritura de cada movimiento repite el `where` del alcance más el `id`, así que
+     un movimiento al que el humano le puso la categoría entre la lectura y la
+     escritura (ya `manual`) no se escribe.
+  4. **`POST` y `PATCH /api/category-rules` ejecutan la pasada `pendingAndClosing`
+     con todas las reglas** justo después de guardar la regla, y la devuelven en el
+     campo nuevo `categorization`. La regla se guarda antes y aparte: la pasada no
+     lanza nunca, así que un fallo suyo viaja en `categorization.error` con la
+     regla creada; un 400/404/409 de la regla sale antes y no se recoloca nada.
+     `DELETE` no ejecuta nada.
+  5. **La comparación de una descripción con las reglas** sale a una función pura
+     exportada, `matchingRules`, sin cambiar lo que hace. Con ella y con
+     `categorizationEligibleWhere`, la feature 61 podrá contar lo que una regla
+     recogería con el mismo código que luego lo mueve.
+- **Alternativas descartadas:**
+  - **Deducir el origen al leer** (la categoría es una de las dos genéricas →
+    `closing`): no distingue la genérica que el humano eligió a mano, que es
+    justo lo que no se puede pisar.
+  - **Guardar el id de la regla que categorizó** (`categoryRuleId`): permitiría que
+    cambiar o borrar una regla deshaga lo suyo, pero el humano no lo pidió y añade
+    una relación con su política de borrado (`decisions.md` 🔴 4).
+  - **Recolocar solo con `POST /api/category-rules/apply`:** el frontend tendría
+    que encadenar dos peticiones y la de crear la regla no diría qué movió.
+  - **Ejecutar solo la regla nueva:** un movimiento que casa con ella y con otra
+    regla de otra categoría se escribiría sin detectar el choque, al revés que en
+    la importación.
+- **Consecuencias:**
+  - Lo que categorizó una regla (`rule`) se queda donde está aunque la regla
+    cambie o se borre.
+  - Un movimiento `closing` que casa con reglas de dos categorías no se mueve y
+    sale en `categorization.conflicts`.
+  - Si el humano metió a mano algo en `Otros gastos` antes de esta feature, la
+    migración lo deja `closing` y una regla podrá moverlo: no hay forma de
+    distinguirlo (`decisions.md` 🔴 2).
+  - `unmatched` de la respuesta de `POST` / `PATCH /api/category-rules` cuenta
+    también los `closing` que no casan: es un número distinto del de
+    `POST /api/category-rules/apply`.
+  - Contrato en `docs/api-contract.md` (§`Movement` y §`POST /api/category-rules`);
+    lo comprueba `src/modules/category-rules/category-rules.docs.test.ts`.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

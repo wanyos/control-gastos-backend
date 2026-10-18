@@ -41,6 +41,14 @@ export interface SerializedCategoryRule {
   updatedAt: string
 }
 
+/**
+ * What POST and PATCH answer since feature 60: the rule plus the categorization
+ * run its write triggered (scope `pendingAndClosing`).
+ */
+export interface SerializedCategoryRuleWithCategorization extends SerializedCategoryRule {
+  categorization: CategorizationResult
+}
+
 /** One movement two or more rules of DIFFERENT categories fought over (R9, R10). */
 export interface CategorizationConflict {
   movementId: number
