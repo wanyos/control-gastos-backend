@@ -28,10 +28,10 @@
 
 **Ninguna feature en curso.**
 
-## F61 `rule-suggestions` — CERRADA (2026-10-18, **sin commit**)
+## F61 `rule-suggestions` — CERRADA (2026-10-18, commit `0ddadd2`)
 
 **Qué se hizo:** mejoras B y C de la categorización. `GET /api/category-rules/suggestions` propone reglas con los conceptos que más se repiten en `Otros gastos` / `Otros ingresos` (texto propuesto, movimientos que recogería, `manualMatches`), y `GET /api/category-rules/preview` responde lo que respondería `POST /api/category-rules` en `categorization` sin crear la regla. Las dos de solo lectura, con la misma función (`planCategorization`) que decide qué escribe la categorización por reglas. ADR-039. Lotes A y B hechos; reviewer `CHANGES_REQUESTED` en la primera revisión (se proponía un texto que ya era el `matchText` de una regla del otro tipo) y `APPROVED` en la segunda → [resumen](summaries/rule-suggestions.md), [implementación](implementations/rule-suggestions.md), [revisión](reviews/rule-suggestions.md).
-**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E6 de `docs/roadmap.md`. **Falta el commit.**
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E6 de `docs/roadmap.md`. Commit `0ddadd2`.
 
 ## F60 `category-origin-and-rule-reapply` — CERRADA (2026-10-18, commit `d97c0d8`)
 
