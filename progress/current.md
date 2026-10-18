@@ -28,10 +28,10 @@
 
 **Ninguna feature en curso.**
 
-## F59 `recurring-people-by-category` — CERRADA (2026-10-17, sin commit)
+## F59 `recurring-people-by-category` — CERRADA (2026-10-17, commit `eebba15`)
 
 **Qué se hizo:** cabo 28 de `docs/roadmap.md`. En `GET /api/recurring-expenses`, una transferencia o un bizum se queda en «a personas» solo sin categoría o con `Otros gastos` o `Transferencias a personas`; con otra categoría va al gasto variable de esa categoría y sigue en el total (como mucho un céntimo de diferencia por redondeo, aceptado por el humano). Flujo simple, reviewer `APPROVED` en la segunda revisión → [resumen](summaries/recurring-people-by-category.md), [implementación](implementations/recurring-people-by-category.md), [revisión](reviews/recurring-people-by-category.md).
-**Estado:** `done` en `feature_list.json`, línea en `history.md`, cabo 28 cerrado. **Sin commit.**
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, cabo 28 cerrado. Commit `eebba15`.
 
 ## F58 `recurring-expenses` — CERRADA (2026-10-17, commit `72a5357`; parte 1 de `../docs/handoff-recurrentes.md` marcada ✅)
 
