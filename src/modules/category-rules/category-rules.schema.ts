@@ -51,3 +51,26 @@ export const updateCategoryRuleBodyProperties: ReadonlySet<string> = new Set(
 export const deleteCategoryRuleSchema = {
   params: categoryRuleIdParams,
 } as const
+
+/**
+ * Feature 61: `GET /api/category-rules/preview` takes the body the POST would
+ * get, in the querystring. The real checks (3 characters after normalizing,
+ * the category exists, the text has no rule yet) live in the service, with
+ * the POST's messages.
+ */
+export const previewCategoryRuleSchema = {
+  querystring: {
+    type: 'object',
+    required: ['matchText', 'categoryId'],
+    additionalProperties: false,
+    properties: {
+      matchText: { type: 'string', minLength: 1 },
+      categoryId: { type: 'integer', minimum: 1 },
+    },
+  },
+} as const
+
+/** Derived from the schema so the allow-list and the schema cannot diverge. */
+export const previewCategoryRuleQueryProperties: ReadonlySet<string> = new Set(
+  Object.keys(previewCategoryRuleSchema.querystring.properties),
+)

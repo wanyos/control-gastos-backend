@@ -5,6 +5,8 @@ import {
   createCategoryRuleBodyProperties,
   createCategoryRuleSchema,
   deleteCategoryRuleSchema,
+  previewCategoryRuleQueryProperties,
+  previewCategoryRuleSchema,
   updateCategoryRuleBodyProperties,
   updateCategoryRuleSchema,
 } from './category-rules.schema.js'
@@ -14,13 +16,18 @@ import {
   createCategoryRule,
   deleteCategoryRule,
   listCategoryRules,
+  previewCategoryRule,
   serializeCategoryRule,
   updateCategoryRule,
 } from './category-rules.service.js'
+import { listRuleSuggestions } from './category-rules.suggestions.js'
 import type {
   CategoryRuleIdParams,
+  CategoryRulePreview,
+  CategoryRulePreviewQuery,
   CreateCategoryRuleBody,
   SerializedCategoryRuleWithCategorization,
+  RuleSuggestion,
   UpdateCategoryRuleBody,
 } from './category-rules.types.js'
 
@@ -32,6 +39,8 @@ import type {
  *   PATCH  /api/category-rules/:id      (change matchText and/or categoryId, then run)
  *   DELETE /api/category-rules/:id      (delete the rule; movements untouched)
  *   POST   /api/category-rules/apply    (run the categorization on demand, R13)
+ *   GET    /api/category-rules/suggestions  (proposed rules, feature 61)
+ *   GET    /api/category-rules/preview      (what creating a rule would move, feature 61)
  *
  * `apply` under the module's own prefix follows the action-route precedent of
  * `/api/import/*`: it is what lets the human re-run the rules over what is
@@ -43,6 +52,10 @@ import type {
  * The rule is saved first and apart: the run never throws, so a failure of it
  * travels in `categorization.error` with the rule kept; a 400/404/409 of the
  * rule is thrown before the run, which then moves nothing.
+ *
+ * Feature 61: the two GETs write nothing. The preview answers what the POST
+ * with the same body would answer in `categorization` (rule id `null`), with
+ * the POST's 400/404/409; the suggestions list takes no parameter.
  */
 export default async function categoryRulesRoutes(fastify: FastifyInstance) {
   const db = categoryRulesDb(fastify)
@@ -100,4 +113,23 @@ export default async function categoryRulesRoutes(fastify: FastifyInstance) {
   fastify.post('/apply', async () => {
     return applyCategoryRules(db)
   })
+
+  fastify.get('/suggestions', async (): Promise<RuleSuggestion[]> => {
+    return listRuleSuggestions(db)
+  })
+
+  fastify.get<{ Querystring: CategoryRulePreviewQuery }>(
+    '/preview',
+    {
+      schema: previewCategoryRuleSchema,
+      // AJV strips an unknown querystring parameter too (src/lib/strict-body.ts):
+      // a preview of something other than what was asked must be a 400.
+      preValidation: async (request) => {
+        assertOnlyAllowedBodyProperties(request.query, previewCategoryRuleQueryProperties)
+      },
+    },
+    async (request): Promise<CategoryRulePreview> => {
+      return previewCategoryRule(db, request.query)
+    },
+  )
 }

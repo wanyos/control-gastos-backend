@@ -582,6 +582,10 @@ Importar y [`POST /api/category-rules/apply`](#post-apicategory-rulesapply) sigu
 mirando **solo** lo pendiente sin categoría: los `"closing"` solo se recolocan al
 crear o cambiar una regla.
 
+Para saber **antes de crearla** qué movería esta petición, sin escribir nada:
+[`GET /api/category-rules/preview`](#get-apicategory-rulespreview) con el mismo
+`matchText` y `categoryId` responde el mismo `categorization` (desde la feature 61).
+
 **Body**
 | Campo        | Tipo   | Reglas                                                              |
 | ------------ | ------ | ------------------------------------------------------------------- |
@@ -799,6 +803,234 @@ Es el mismo objeto que viaja en el campo `categorization` del informe de
 > con `pnpm run seed:category-rules` (idempotente: la segunda ejecución crea 0;
 > una regla cuya categoría ya no exista —renombrada— se lista en vez de
 > sembrarse). Nada siembra reglas por su cuenta: ni la migración ni el arranque.
+
+---
+
+### `GET /api/category-rules/suggestions`
+
+**Desde la feature 61.** La lista de reglas propuestas: los conceptos que más se
+repiten entre los movimientos que una regla todavía puede recolocar, cada uno con
+el texto de regla que se propone y los movimientos que recogería. Es **de solo
+lectura**: **no escribe nada** en la base (ni movimientos, tampoco su `updatedAt`,
+ni reglas) y no guarda las propuestas; se calculan cada vez que se piden. **No crea
+reglas ni cambia categorías**: para aplicar una propuesta, el cliente elige una
+categoría y hace el [`POST /api/category-rules`](#post-apicategory-rules) de
+siempre con su `matchText`.
+
+Sin parámetros ni body.
+
+**De qué movimientos sale.** Del mismo alcance que mira crear una regla: los
+`expense` / `income` pendientes sin categoría y los de `categorySource: "closing"`
+(normalmente en `Otros gastos` / `Otros ingresos`). Nunca de un `"manual"` ni de un
+`"rule"`. De ellos, el texto propuesto solo se saca de los que **no casa ninguna
+regla existente** de su mismo tipo: un concepto que ya recoge una regla no se
+propone.
+
+**Cómo se saca el texto propuesto** de la descripción de un movimiento, en este
+orden:
+
+1. Se normaliza igual que `matchText` al guardar una regla: minúsculas, sin tildes,
+   sin espacios en los extremos.
+2. Si contiene la palabra `concepto` precedida de un espacio o una coma, y no al
+   principio, se corta desde ahí (lo que sigue es el texto libre que escribe quien
+   hace una transferencia o un bizum).
+3. Si empieza por entre 1 y 24 caracteres formados solo por letras, puntos y
+   espacios seguidos de `/` (la palabra del banco: `RECIBO /`, `TRANSF /`,
+   `ANUL. /`…), se quita esa parte, la barra y los espacios que la siguen.
+4. Se toma el primer tramo de palabras seguidas que no llevan ningún dígito, tal
+   como está escrito (se corta en el primer número: tienda, referencia, fecha).
+5. Se quitan del principio y del final los caracteres que no son letra ni dígito.
+
+El resultado es siempre un trozo seguido de la descripción normalizada, así que una
+regla con ese texto recoge el movimiento del que salió. Ejemplos inventados:
+
+| Descripción | Texto propuesto |
+| --- | --- |
+| `RECIBO /Academia Ficticia Norte` | `academia ficticia norte` |
+| `SUPERMERCADO INVENTADO 4521` | `supermercado inventado` |
+| `TRANSF ENVIO, CONCEPTO alquiler ficticio` | `transf envio` |
+| `8812 KIOSCO DE PRUEBA` | `kiosco de prueba` |
+| `ABC 1234` | ninguno (menos de 5 caracteres) |
+
+**Qué propuestas salen:**
+
+- Un texto propuesto con **menos de 5 caracteres** no se propone (un texto tan
+  corto casa dentro de otras palabras y se lleva conceptos que no tienen que ver).
+- Una propuesta que recoge **menos de 3 movimientos** no sale.
+- **No se propone un texto que ya es el `matchText` de una regla**, de cualquier
+  tipo (también de una regla de ingresos para una propuesta de gastos): `matchText`
+  es único entre todas las reglas, así que crearla daría 409.
+- `movements` son los movimientos a los que crear la regla con ese texto, y una
+  categoría de ese `kind`, les **escribiría la categoría por esa regla**. Se calcula
+  con la misma función que decide qué escribe `POST /api/category-rules`. Un
+  movimiento que contiene el texto pero que ya casa con una regla existente **no
+  cuenta**: al crear la regla chocaría o iría a la categoría de la otra.
+- Si todos los movimientos de una propuesta los recoge también otra del mismo
+  `kind` con más movimientos (o con los mismos y un texto más corto; a igualdad de
+  longitud, la primera en orden alfabético), solo sale la otra.
+- La lista **no se corta**: salen todas las que cumplen lo anterior. Sin ninguna,
+  `[]`.
+
+**Respuesta 200** — un array ordenado por `movementCount` **descendente** y, a
+igualdad, por `matchText` ascendente:
+
+```json
+[
+  {
+    "matchText": "supermercado inventado",
+    "kind": "expense",
+    "movementCount": 4,
+    "movements": [
+      { "movementId": 412, "description": "SUPERMERCADO INVENTADO 4521", "bookingDate": "2026-07-03", "amount": "23.87" },
+      { "movementId": 418, "description": "SUPERMERCADO INVENTADO 0087", "bookingDate": "2026-07-11", "amount": "41.06" },
+      { "movementId": 433, "description": "SUPERMERCADO INVENTADO 4521", "bookingDate": "2026-08-02", "amount": "17.39" },
+      { "movementId": 451, "description": "SUPERMERCADO INVENTADO 4521", "bookingDate": "2026-08-19", "amount": "36.72" }
+    ],
+    "manualMatches": 1
+  },
+  {
+    "matchText": "academia ficticia norte",
+    "kind": "expense",
+    "movementCount": 3,
+    "movements": [
+      { "movementId": 405, "description": "RECIBO /Academia Ficticia Norte", "bookingDate": "2026-07-01", "amount": "48.50" },
+      { "movementId": 437, "description": "RECIBO /Academia Ficticia Norte", "bookingDate": "2026-08-01", "amount": "48.50" },
+      { "movementId": 466, "description": "RECIBO /Academia Ficticia Norte", "bookingDate": "2026-09-01", "amount": "48.50" }
+    ],
+    "manualMatches": 0
+  },
+  {
+    "matchText": "cooperativa sintetica",
+    "kind": "income",
+    "movementCount": 3,
+    "movements": [
+      { "movementId": 409, "description": "ABONO /Cooperativa Sintetica 07", "bookingDate": "2026-07-02", "amount": "126.35" },
+      { "movementId": 440, "description": "ABONO /Cooperativa Sintetica 08", "bookingDate": "2026-08-04", "amount": "118.90" },
+      { "movementId": 468, "description": "ABONO /Cooperativa Sintetica 09", "bookingDate": "2026-09-03", "amount": "131.12" }
+    ],
+    "manualMatches": 0
+  }
+]
+```
+
+| Campo | Tipo | Qué es |
+| --- | --- | --- |
+| `matchText` | string | El texto propuesto, ya normalizado: es el `matchText` que guardaría `POST /api/category-rules` con él. |
+| `kind` | string | `"expense"` o `"income"`: de qué tipo son sus movimientos, y de qué `kind` tiene que ser la categoría de la regla. Gastos e ingresos se proponen por separado. |
+| `movementCount` | number | Cuántos movimientos recogería. Siempre igual a la longitud de `movements`; al menos 3. |
+| `movements` | array | Esos movimientos, por `movementId` ascendente, completos (sin acotar ni paginar). Cada uno con `movementId` (number), `description` (string, tal como está guardada), `bookingDate` (`YYYY-MM-DD`) y `amount` (decimal **positivo** con dos decimales, como en [`GET /api/movements`](#get-apimovements)). |
+| `manualMatches` | number | Cuántos movimientos con `categorySource: "manual"` del mismo tipo contienen el texto. **No cuentan** en `movementCount` ni salen en `movements`: ninguna regla toca lo puesto a mano. Sirve para saber que el texto también aparece en movimientos que el humano categorizó él mismo. |
+
+**El número es el que mueve la regla.** Creando justo después la regla con ese
+`matchText` y una categoría de ese `kind`, los movimientos que la respuesta del
+`POST` trae en `categorization.categorizedMovements` **con el id de la regla nueva
+en `rules`** son exactamente los de `movements`. Solo puede diferir si entre las dos
+peticiones cambian los movimientos o las reglas. Para ver la respuesta exacta del
+`POST` antes de hacerlo, con la categoría elegida, está
+[`GET /api/category-rules/preview`](#get-apicategory-rulespreview).
+
+**Errores** — ninguno propio: sin parámetros, solo puede fallar con un 500.
+
+---
+
+### `GET /api/category-rules/preview`
+
+**Desde la feature 61.** Dice qué haría crear una regla **sin crearla**: responde
+en `categorization` lo mismo que respondería en ese momento
+[`POST /api/category-rules`](#post-apicategory-rules) con ese `matchText` y ese
+`categoryId`. Es **de solo lectura**: **no escribe nada** en la base (ni
+movimientos, tampoco su `updatedAt`, ni reglas). El número que da es el que
+movería la regla al crearla, no una estimación: sale de la misma función que
+decide qué escribe el `POST`, sobre los mismos movimientos (los pendientes sin
+categoría y los `"closing"`; nunca un `"manual"` ni un `"rule"`) y con todas las
+reglas existentes más la nueva.
+
+Pide la categoría porque sin ella no se sabe si la regla chocará con otra.
+
+**Parámetros (query string)** — los dos obligatorios; cualquier otro parámetro es un
+400, nunca se descarta en silencio. En la URL, `matchText` va codificado
+(`?matchText=Kiosco%20de%20Prueba&categoryId=6`).
+
+| Parámetro    | Tipo   | Reglas |
+| ------------ | ------ | ------ |
+| `matchText`  | string | El texto de la regla, como se le mandaría al `POST`. Las mismas reglas: al menos **3 caracteres tras normalizar** y sin regla con ese mismo texto normalizado. |
+| `categoryId` | number | Id de una categoría existente. |
+
+Este endpoint no tiene mínimo de 3 movimientos ni de 5 caracteres en el texto (eso
+es de [`GET /api/category-rules/suggestions`](#get-apicategory-rulessuggestions)):
+vale para cualquier texto que el `POST` aceptaría.
+
+**Respuesta 200**
+
+```json
+{
+  "matchText": "kiosco de prueba",
+  "categoryId": 6,
+  "categorization": {
+    "categorized": 2,
+    "categorizedMovements": [
+      {
+        "movementId": 421,
+        "description": "8812 KIOSCO DE PRUEBA",
+        "bookingDate": "2026-07-14",
+        "amount": "6.85",
+        "type": "expense",
+        "categoryId": 6,
+        "categoryName": "Prensa",
+        "rules": [{ "ruleId": null, "matchText": "kiosco de prueba" }]
+      },
+      {
+        "movementId": 446,
+        "description": "KIOSCO DE PRUEBA 0412",
+        "bookingDate": "2026-08-09",
+        "amount": "12.30",
+        "type": "expense",
+        "categoryId": 6,
+        "categoryName": "Prensa",
+        "rules": [{ "ruleId": null, "matchText": "kiosco de prueba" }]
+      }
+    ],
+    "conflictCount": 1,
+    "conflicts": [
+      {
+        "movementId": 470,
+        "description": "KIOSCO DE PRUEBA PARAFARMACIA",
+        "bookingDate": "2026-09-08",
+        "matches": [
+          { "ruleId": 11, "matchText": "parafarmacia", "categoryId": 7, "categoryName": "Salud" },
+          { "ruleId": null, "matchText": "kiosco de prueba", "categoryId": 6, "categoryName": "Prensa" }
+        ]
+      }
+    ],
+    "unmatched": 37
+  }
+}
+```
+
+| Campo | Tipo | Qué es |
+| --- | --- | --- |
+| `matchText` | string | El texto **normalizado**, tal como lo guardaría el `POST`. |
+| `categoryId` | number | La categoría pedida. |
+| `categorization` | object | Lo que respondería el `POST` en su campo `categorization`, con **la misma forma** (el detalle campo a campo, en [`POST /api/category-rules/apply`](#post-apicategory-rulesapply)) y dos diferencias: la regla que aún no existe sale con **`"ruleId": null`** en `rules` y en `matches` (siempre la última de cada lista, porque al crearla tendría el id más alto), y **no hay campo `error`**: como no se escribe nada, un fallo es un 500. |
+
+- Con los mismos datos, `categorization` es igual a la del `POST` posterior con el
+  mismo cuerpo, cambiando `null` por el id de la regla creada. Solo puede diferir
+  si entre las dos peticiones cambian los movimientos o las reglas.
+- Igual que en el `POST`, `categorizedMovements` trae **todo** lo que movería esa
+  petición. Lo que mueve la regla nueva es lo que lleva `"ruleId": null` en
+  `rules`.
+- Un movimiento que la regla casaría pero que casa también con una regla de otra
+  categoría no se movería: sale en `conflicts`, como saldría en el `POST`.
+- `unmatched` cuenta, como en el `POST`, los movimientos de este alcance que
+  ninguna regla reconocería, incluida la nueva.
+
+**Errores** — los mismos del `POST`, con el mismo `message`:
+
+| Código HTTP | `code`             | Cuándo |
+| ----------- | ------------------ | ------ |
+| 400         | `VALIDATION_ERROR` | `matchText` queda con menos de 3 caracteres tras normalizar, falta un parámetro, `categoryId` no es un entero positivo o sobra un parámetro. |
+| 404         | `NOT_FOUND`        | La categoría no existe. |
+| 409         | `CONFLICT`         | Ya existe una regla con ese `matchText` normalizado. |
 
 ---
 

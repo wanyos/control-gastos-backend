@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { buildApp } from '../../app.js'
+import { Prisma } from '../../generated/prisma/client.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { defaultCategories, seedDefaultCategories } from '../categories/categories.seed.js'
@@ -21,6 +22,7 @@ import {
   categorizationEligibleWhere,
   matchingRules,
   normalizeForMatch,
+  planCategorization,
 } from './category-rules.service.js'
 
 describe('normalizeForMatch (R6)', () => {
@@ -716,6 +718,60 @@ describe('matchingRules (feature 60: extracted from the run, no behaviour change
     expect(matchingRules('Pago SINTÉTICO Kiosco 4', 'expense', rules)).toEqual([expenseRule])
     expect(matchingRules('Abono kiosco', 'income', rules)).toEqual([incomeRule])
     expect(matchingRules('Nada que ver', 'expense', rules)).toEqual([])
+  })
+})
+
+describe('planCategorization (feature 61: the decision of the run, shared)', () => {
+  function movement(id: number, description: string, type: 'expense' | 'income' = 'expense') {
+    return {
+      id,
+      type,
+      description,
+      bookingDate: new Date('2032-05-14T00:00:00.000Z'),
+      amount: new Prisma.Decimal('41.37'),
+    }
+  }
+  const bakery = { id: 11, matchText: 'horno sintetico', categoryId: 3, category: bakeryCategory() }
+  const pastry = {
+    id: 12,
+    matchText: 'sintetico bolleria',
+    categoryId: 3,
+    category: bakeryCategory(),
+  }
+  const notCreatedYet = {
+    id: null,
+    matchText: 'dulce',
+    categoryId: 4,
+    category: { name: 'Synthetic sweets', kind: 'expense' as const },
+  }
+  function bakeryCategory() {
+    return { name: 'Synthetic bakery', kind: 'expense' as const }
+  }
+
+  it('planCategorization writes a single category, lists two as a conflict and counts no match', () => {
+    const movements = [
+      movement(101, 'HORNO SINTÉTICO CENTRO'),
+      // Two rules, one category: agreement, written.
+      movement(102, 'Horno sintetico bolleria'),
+      // The rule not created yet alone: written by it.
+      movement(103, 'TIENDA DULCE DE PRUEBA'),
+      // The rule not created yet against an existing one of another category.
+      movement(104, 'SINTETICO BOLLERIA DULCE'),
+      // An income: expense rules never match it.
+      movement(105, 'DEVOLUCION HORNO SINTETICO', 'income'),
+      movement(106, 'NADA QUE CASE'),
+    ]
+
+    const plan = planCategorization(movements, [bakery, pastry, notCreatedYet])
+
+    expect(plan.writes.map((write) => [write.movement.id, write.winner.id])).toEqual([
+      [101, 11],
+      [102, 11],
+      [103, null],
+    ])
+    expect(plan.writes[1]?.matches).toEqual([bakery, pastry])
+    expect(plan.conflicts).toEqual([{ movement: movements[3], matches: [pastry, notCreatedYet] }])
+    expect(plan.unmatched).toBe(2)
   })
 })
 

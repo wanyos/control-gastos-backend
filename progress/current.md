@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## F61 `rule-suggestions` — CERRADA (2026-10-18, **sin commit**)
+
+**Qué se hizo:** mejoras B y C de la categorización. `GET /api/category-rules/suggestions` propone reglas con los conceptos que más se repiten en `Otros gastos` / `Otros ingresos` (texto propuesto, movimientos que recogería, `manualMatches`), y `GET /api/category-rules/preview` responde lo que respondería `POST /api/category-rules` en `categorization` sin crear la regla. Las dos de solo lectura, con la misma función (`planCategorization`) que decide qué escribe la categorización por reglas. ADR-039. Lotes A y B hechos; reviewer `CHANGES_REQUESTED` en la primera revisión (se proponía un texto que ya era el `matchText` de una regla del otro tipo) y `APPROVED` en la segunda → [resumen](summaries/rule-suggestions.md), [implementación](implementations/rule-suggestions.md), [revisión](reviews/rule-suggestions.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E6 de `docs/roadmap.md`. **Falta el commit.**
+
 ## F60 `category-origin-and-rule-reapply` — CERRADA (2026-10-18, commit `d97c0d8`)
 
 **Qué se hizo:** mejora A de la categorización (`../docs/ideas.md` del workspace, idea 4). Cada movimiento guarda en `categorySource` quién le puso la categoría (`manual`, `rule`, `closing`; término aprobado en `docs/vocabulary.md`); `POST` y `PATCH /api/category-rules` aplican todas las reglas a lo pendiente sin categoría y a lo `closing`, nunca a lo `manual` ni a lo `rule`, y devuelven lo que movieron en `categorization`. Importar y `POST /api/category-rules/apply` siguen igual. ADR-038. Lotes A y B hechos, reviewer `APPROVED` → [resumen](summaries/category-origin-and-rule-reapply.md), [implementación](implementations/category-origin-and-rule-reapply.md), [revisión](reviews/category-origin-and-rule-reapply.md).
@@ -86,6 +91,11 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 -->
 
 ## Lo que le toca al humano
+
+De la F61 (2026-10-18):
+
+- **La prueba con tus datos**, después de migrar la F60 y con `pnpm run dev`: pide `GET /api/category-rules/suggestions`, elige una propuesta y crea su regla con `POST /api/category-rules` (o mírala antes con `GET /api/category-rules/preview`): los movimientos que mueve por esa regla tienen que ser los de la lista. ⚠️ Crear la regla escribe en tu base.
+- **La sesión del frontend**: la pantalla de reglas propuestas y la pregunta «¿aplicar a todos los que contienen…?» al cambiar a mano una categoría, contra `docs/api-contract.md`.
 
 De la F60 (2026-10-18):
 

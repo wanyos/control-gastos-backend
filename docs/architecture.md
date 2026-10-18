@@ -3252,6 +3252,83 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - Contrato en `docs/api-contract.md` (§`Movement` y §`POST /api/category-rules`);
     lo comprueba `src/modules/category-rules/category-rules.docs.test.ts`.
 
+### ADR-039: Las reglas propuestas (`GET /api/category-rules/suggestions`) y lo que haría crear una regla (`GET /api/category-rules/preview`) se calculan al leer, con la misma función que decide qué escribe la categorización por reglas, y no guardan nada
+
+- **Fecha:** 2026-10-18
+- **Estado:** aceptada (implementada en la feature #61 `rule-suggestions`, SDD;
+  hoja aprobada por el humano el 2026-10-18). Se apoya en ADR-038; no revisa
+  ningún ADR anterior.
+- **Contexto:** desde la feature 60, crear o cambiar una regla recoloca lo que el
+  cierre automático dejó en `Otros gastos` / `Otros ingresos` (`categorySource`
+  `closing`). Para sacar partido de eso, el humano quiere que la aplicación le
+  enseñe qué reglas merece la pena crear y, antes de crear una, cuántos
+  movimientos y cuáles recogería. Pidió dos cosas a la vez: que el número que ve
+  sea **el que de verdad mueve la regla** al crearla, y que la aplicación **no cree
+  reglas ni cambie categorías sola**.
+- **Decisión:**
+  1. **Una sola función decide qué escribe una regla.** El bucle de
+     `applyCategoryRules` decidía, para cada movimiento leído, si se le escribe una
+     categoría (reglas de una sola categoría), si es un choque (dos o más) o si no
+     casa ninguna. Esa decisión sale a `planCategorization` (pura, en
+     `category-rules.service.ts`), que recibe reglas con `id: number | null` (`null`
+     = una regla que aún no existe). La lectura de reglas y movimientos sale a
+     `readCategorizationInput(prisma, scope)`, y la forma de la respuesta a
+     `toCategorizedMovement` / `toCategorizationConflict`. `applyCategoryRules` (la
+     importación, `POST /api/category-rules/apply`, `POST` y `PATCH
+     /api/category-rules`) y las dos consultas nuevas pasan por las mismas tres
+     piezas; el comportamiento de `applyCategoryRules` no cambia.
+  2. **`GET /api/category-rules/preview?matchText=…&categoryId=…`**
+     (`previewCategoryRule`): las mismas validaciones que `createCategoryRule`
+     (400, 404, y el 409 con el mensaje de `duplicateMatchTextMessage`, que usan
+     los dos), sin escribir; lee como la pasada `pendingAndClosing`, añade al final
+     la regla que aún no existe y responde lo que el `POST` respondería en
+     `categorization`, con `ruleId: null` para ella.
+  3. **`GET /api/category-rules/suggestions`** (`listRuleSuggestions`, en
+     `category-rules.suggestions.ts`): de los movimientos del alcance
+     `pendingAndClosing` que ninguna regla existente casa, saca un texto con
+     `proposedMatchText` (normaliza, corta desde `concepto`, quita la palabra del
+     banco antes de la barra, se queda con el primer tramo de palabras sin dígitos;
+     siempre un trozo de la descripción normalizada). Por cada texto, los
+     movimientos que contaría son los que `planCategorization`, con las reglas
+     existentes más una regla con ese texto y una categoría que no es ninguna real,
+     le daría a esa regla. No se propone un texto que ya es el `matchText` de una
+     regla de cualquier tipo (es único en la tabla: crearla daría 409).
+     Mínimo 5 caracteres y 3 movimientos; se quita la
+     propuesta cuyos movimientos recoge otra mayor; `manualMatches` cuenta, sin
+     incluirlos, los `manual` que contienen el texto.
+  4. **Nada se guarda.** Las dos consultas leen y calculan en cada petición; no
+     escriben movimientos (tampoco su `updatedAt`) ni reglas.
+- **Alternativas descartadas:**
+  - **Guardar las propuestas en una tabla** y recalcularlas al importar: cuadrar
+    esa tabla con reglas y movimientos que cambian es justo lo que puede hacer que
+    el número no coincida.
+  - **Calcular en la consulta con un `ILIKE` de SQL:** rápido, pero es otra
+    definición de «casa» (normalización, tipo, choques) que puede divergir de la
+    que usa `applyCategoryRules`. Es lo que el humano pidió que no pase.
+  - **Agrupar por descripción exacta**, sin sacar un texto: solo junta
+    repeticiones idénticas; con números de tienda, referencias y textos libres de
+    transferencias deja fuera buena parte.
+  - **Proponer también la categoría** (por ejemplo, la de los `manual` que
+    contienen el texto): el humano no lo pidió; elige él la categoría.
+  - **Una sola ruta** que devuelva las propuestas y acepte un `matchText` opcional:
+    mezcla en una ruta dos respuestas de forma distinta (una lista frente al
+    resultado de una pasada); dos rutas se documentan y se prueban mejor.
+- **Consecuencias:**
+  - El número de una propuesta y el de `GET /api/category-rules/preview` coinciden
+    con lo que mueve el `POST` siempre que entre las dos peticiones no cambien
+    movimientos ni reglas.
+  - Un movimiento que el texto recogería pero que ya casa con una regla existente
+    no cuenta en la propuesta: al crear la regla chocaría o iría a la otra.
+  - Lo que el banco corta (conceptos de tarjeta de unos 22 caracteres) o escribe de
+    dos formas sale como dos propuestas; el humano las junta escribiendo un texto
+    más corto en `GET /api/category-rules/preview`.
+  - El coste de `GET /api/category-rules/suggestions` crece con textos candidatos ×
+    movimientos del mismo tipo; no se ha medido con un volumen como el de la base
+    del humano.
+  - Contrato en `docs/api-contract.md` (§`GET /api/category-rules/suggestions` y
+    §`GET /api/category-rules/preview`); lo comprueba
+    `src/modules/category-rules/category-rules.docs.test.ts`.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

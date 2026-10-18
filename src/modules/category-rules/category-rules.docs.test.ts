@@ -206,3 +206,119 @@ describe('docs/api-contract.md — categorySource and what a rule recategorizes 
     expect(apply).toContain('su alcance **no cambia**')
   })
 })
+
+// Feature 61 `rule-suggestions`: the two read-only routes (R14).
+describe('docs/api-contract.md — the rule suggestions and the preview of a rule (feature 61)', () => {
+  it('api-contract: describes the rule suggestions and the preview of a rule', () => {
+    // ── ### GET /api/category-rules/suggestions ──
+    const suggestions = routeSection('### `GET /api/category-rules/suggestions`')
+    expect(suggestions, 'the contract has no section for the rule suggestions').not.toBe('')
+
+    // `RuleSuggestion` in `category-rules.types.ts`, in the order it is built.
+    const suggestionFields = ['matchText', 'kind', 'movementCount', 'movements', 'manualMatches']
+    const suggestionMovementFields = ['movementId', 'description', 'bookingDate', 'amount']
+
+    const [suggestionsExample] = jsonBlocks(suggestions)
+    expect(suggestionsExample, 'the suggestions route publishes no json example').toBeDefined()
+    const listed = JSON.parse(suggestionsExample ?? '') as Array<{
+      matchText: string
+      kind: string
+      movementCount: number
+      movements: Array<
+        Record<string, unknown> & { movementId: number; bookingDate: string; amount: string }
+      >
+      manualMatches: number
+    }>
+    expect(Array.isArray(listed)).toBe(true)
+    expect(listed.length).toBeGreaterThan(0)
+    for (const suggestion of listed) {
+      expect(Object.keys(suggestion)).toEqual(suggestionFields)
+      expect(['expense', 'income']).toContain(suggestion.kind)
+      expect(suggestion.movementCount).toBe(suggestion.movements.length)
+      expect(suggestion.movementCount).toBeGreaterThanOrEqual(3)
+      expect(suggestion.matchText.length).toBeGreaterThanOrEqual(5)
+      expect(typeof suggestion.manualMatches).toBe('number')
+      const ids = suggestion.movements.map((movement) => movement.movementId)
+      expect(ids).toEqual([...ids].sort((a, b) => a - b))
+      for (const movement of suggestion.movements) {
+        expect(Object.keys(movement)).toEqual(suggestionMovementFields)
+        expect(movement.bookingDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+        expect(movement.amount).toMatch(/^\d+\.\d{2}$/)
+      }
+    }
+    // The example respects the order it documents: count down, then text up.
+    const order = listed.map(({ movementCount, matchText }) => ({ movementCount, matchText }))
+    const sorted = [...order].sort(
+      (a, b) =>
+        b.movementCount - a.movementCount ||
+        (a.matchText < b.matchText ? -1 : a.matchText > b.matchText ? 1 : 0),
+    )
+    expect(order).toEqual(sorted)
+
+    const flatSuggestions = suggestions.replace(/\s+/g, ' ')
+    for (const field of suggestionFields) {
+      expect(flatSuggestions, `the suggestions section has no row for \`${field}\``).toContain(
+        `| \`${field}\` |`,
+      )
+    }
+    expect(flatSuggestions).toContain('**menos de 5 caracteres**')
+    expect(flatSuggestions).toContain('**menos de 3 movimientos**')
+    expect(flatSuggestions).toContain(
+      '**No se propone un texto que ya es el `matchText` de una regla**, de cualquier tipo',
+    )
+    expect(flatSuggestions).toContain('**no escribe nada**')
+    expect(flatSuggestions).toContain('**Cómo se saca el texto propuesto**')
+    expect(flatSuggestions).toContain('**El número es el que mueve la regla.**')
+
+    // ── ### GET /api/category-rules/preview ──
+    const preview = routeSection('### `GET /api/category-rules/preview`')
+    expect(preview, 'the contract has no section for the preview of a rule').not.toBe('')
+
+    const [previewExample] = jsonBlocks(preview)
+    expect(previewExample, 'the preview route publishes no json example').toBeDefined()
+    const previewed = JSON.parse(previewExample ?? '') as {
+      matchText: string
+      categoryId: number
+      categorization: ExampleResult & {
+        conflicts: Array<{ matches: Array<Record<string, unknown>> }>
+      }
+    }
+    expect(Object.keys(previewed)).toEqual(['matchText', 'categoryId', 'categorization'])
+    // Same fields as the POST's `categorization`, without `error`.
+    expect(Object.keys(previewed.categorization)).toEqual(
+      resultFields.filter((field) => field !== 'error'),
+    )
+    const moved = previewed.categorization.categorizedMovements
+    expect(moved.length).toBeGreaterThan(0)
+    expect(moved).toHaveLength(previewed.categorization.categorized)
+    for (const movement of moved) {
+      expect(Object.keys(movement)).toEqual(categorizedMovementFields)
+      expect(movement.categoryId).toBe(previewed.categoryId)
+      // The rule not created yet: `ruleId` null, the last one, with the normalized text.
+      expect(movement.rules.at(-1)).toEqual({ ruleId: null, matchText: previewed.matchText })
+    }
+    for (const conflict of previewed.categorization.conflicts) {
+      expect(conflict.matches.some((match) => match.ruleId === null)).toBe(true)
+    }
+
+    const flatPreview = preview.replace(/\s+/g, ' ')
+    for (const parameter of ['matchText', 'categoryId']) {
+      expect(flatPreview, `the preview section has no row for \`${parameter}\``).toContain(
+        `| \`${parameter}\` |`,
+      )
+    }
+    expect(flatPreview).toContain('**no escribe nada**')
+    expect(flatPreview).toContain('`"ruleId": null`')
+    expect(flatPreview).toContain('El número que da es el que movería la regla al crearla')
+    // It names both minimums, to say they are the suggestions' and not its own.
+    expect(flatPreview).toContain('mínimo de 3 movimientos ni de 5 caracteres')
+    for (const status of ['400', '404', '409']) {
+      expect(flatPreview, `the preview section does not list ${status}`).toContain(`| ${status} `)
+    }
+    expect(flatPreview).toContain('con el mismo `message`')
+
+    // ── ### POST /api/category-rules points at the preview ──
+    const create = routeSection('### `POST /api/category-rules`')
+    expect(create).toContain('(#get-apicategory-rulespreview)')
+  })
+})

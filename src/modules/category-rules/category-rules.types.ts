@@ -49,22 +49,26 @@ export interface SerializedCategoryRuleWithCategorization extends SerializedCate
   categorization: CategorizationResult
 }
 
-/** One movement two or more rules of DIFFERENT categories fought over (R9, R10). */
-export interface CategorizationConflict {
+/**
+ * One movement two or more rules of DIFFERENT categories fought over (R9, R10).
+ * `RuleId` is `number | null` only in the preview of feature 61, where the
+ * rule not created yet has no id.
+ */
+export interface CategorizationConflict<RuleId extends number | null = number> {
   movementId: number
   description: string
   /** `YYYY-MM-DD`: the column is date-only and the report keeps it that way. */
   bookingDate: string
   matches: Array<{
-    ruleId: number
+    ruleId: RuleId
     matchText: string
     categoryId: number
     categoryName: string
   }>
 }
 
-/** One movement the run wrote `categoryId` on (feature 56). */
-export interface CategorizedMovement {
+/** One movement the run wrote `categoryId` on (feature 56). `RuleId` as in `CategorizationConflict`. */
+export interface CategorizedMovement<RuleId extends number | null = number> {
   movementId: number
   description: string
   /** `YYYY-MM-DD`, as in `CategorizationConflict`. */
@@ -76,7 +80,7 @@ export interface CategorizedMovement {
   categoryId: number
   categoryName: string
   /** Every rule that matched: two rules of the same category do not clash. */
-  rules: Array<{ ruleId: number; matchText: string }>
+  rules: Array<{ ruleId: RuleId; matchText: string }>
 }
 
 /** What one categorization run did, always present in the import report (R10). */
@@ -96,4 +100,52 @@ export interface CategorizationResult {
   unmatched: number
   /** R12: present only when the run failed; the import itself stands. */
   error?: { code: string; message: string }
+}
+
+/**
+ * Feature 61: what `POST /api/category-rules` would answer in `categorization`
+ * right now, without writing. Same fields as `CategorizationResult`; the rule
+ * not created yet appears with `ruleId: null`. No `error`: nothing is written
+ * here, so a failure is a plain 500.
+ */
+export interface PreviewCategorizationResult {
+  categorized: number
+  categorizedMovements: CategorizedMovement<number | null>[]
+  conflictCount: number
+  conflicts: CategorizationConflict<number | null>[]
+  unmatched: number
+}
+
+/** Querystring of `GET /api/category-rules/preview` (feature 61): the body the POST would get. */
+export interface CategoryRulePreviewQuery {
+  matchText: string
+  categoryId: number
+}
+
+/** Answer of `GET /api/category-rules/preview` (feature 61, R10). */
+export interface CategoryRulePreview {
+  /** Normalized, exactly as the rule would be stored. */
+  matchText: string
+  categoryId: number
+  categorization: PreviewCategorizationResult
+}
+
+/** One element of `GET /api/category-rules/suggestions` (feature 61, R1). */
+export interface RuleSuggestion {
+  /** The proposed rule text: a piece of the normalized description (R2, R3). */
+  matchText: string
+  kind: CategoryKind
+  /** Always `movements.length`. */
+  movementCount: number
+  /** What creating the rule would write by this rule, by ascending id (R6). */
+  movements: Array<{
+    movementId: number
+    description: string
+    /** `YYYY-MM-DD`. */
+    bookingDate: string
+    /** Positive decimal string, as in `CategorizedMovement`. */
+    amount: string
+  }>
+  /** Movements set by hand, same kind, that contain the text: never taken (R9). */
+  manualMatches: number
 }

@@ -3,6 +3,8 @@
 // `categorized-movements-list`: the list of categorized movements in its answer.
 // Feature 60 `category-origin-and-rule-reapply`: creating or changing a rule
 // runs the rules over the pending movements and the closing ones (R7–R11).
+// Feature 61 `rule-suggestions`: the preview of a rule (R10, R11) and that
+// neither the preview nor the suggestions write anything (R12).
 //
 // 🔒 Everything here is synthetic: invented match texts, unique category
 // names and `syntheticIban()` accounts, in the throwaway test database.
@@ -793,5 +795,163 @@ describe('/api/category-rules (F43)', () => {
     expect(tooShort.statusCode).toBe(400)
     const after = await app.prisma.movement.findUniqueOrThrow({ where: { id: movement.id } })
     expect(after).toEqual(before)
+  })
+
+  // ── Feature 61: what a rule would move, asked before creating it ──
+
+  function previewUrl(query: Record<string, string | number>): string {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) params.set(key, String(value))
+    return `/api/category-rules/preview?${params.toString()}`
+  }
+
+  it('previews exactly the categorization that creating the rule then returns', async () => {
+    const account = await createAccount()
+    const generic = await createCategory('expense')
+    const genericIncome = await createCategory('income')
+    const marina = await createCategory('expense')
+    const sailing = await createCategory('expense')
+    const harbourRule = await postRule({ categoryId: marina.id, matchText: 'velero puerto' })
+    // Seeded after the first rule ran, so it is still where the closing left it.
+    const base = {
+      accountId: account.id,
+      categoryId: generic.id,
+      categorySource: 'closing' as const,
+    }
+    await seedCategorized({ ...base, description: 'SINTETICO VELERO AMARRE', amount: '84.6' })
+    await seedCategorized({ ...base, description: 'Sintético Velero vela', amount: '19.75' })
+    // Both rules match it: a conflict, in the preview and in the POST.
+    await seedCategorized({ ...base, description: 'SINTETICO VELERO PUERTO', amount: '12.4' })
+    // The existing rule alone: the POST run moves it too, by that rule.
+    await seedCategorized({ ...base, description: 'OTRO VELERO PUERTO', amount: '9.35' })
+    // An income: an expense rule never takes it.
+    await seedCategorized({
+      ...base,
+      categoryId: genericIncome.id,
+      type: 'income',
+      description: 'SINTETICO VELERO DEVOLUCION',
+      amount: '7.2',
+    })
+    await seedPending(account.id, 'SINTETICO VELERO PENDIENTE', '23.5', '2032-06-12')
+    const body = { matchText: '  Sintético VELERO ', categoryId: sailing.id }
+
+    const preview = await app.inject({ method: 'GET', url: previewUrl(body) })
+    const created = await postRule(body)
+
+    expect(preview.statusCode).toBe(200)
+    expect(created.statusCode).toBe(201)
+    const previewed = preview.json()
+    const answered = created.json()
+    expect(previewed.matchText).toBe('sintetico velero')
+    expect(previewed.matchText).toBe(answered.matchText)
+    expect(previewed.categoryId).toBe(answered.categoryId)
+    expect(previewed.categorization).toMatchObject({ categorized: 4, conflictCount: 1 })
+    const withCreatedId = JSON.parse(
+      JSON.stringify(previewed.categorization).replaceAll(
+        '"ruleId":null',
+        `"ruleId":${answered.id}`,
+      ),
+    )
+    expect(withCreatedId).toEqual(answered.categorization)
+    expect(
+      answered.categorization.conflicts[0].matches.map((match: { ruleId: number }) => match.ruleId),
+    ).toEqual([harbourRule.json().id, answered.id])
+  })
+
+  it('rejects a preview like the rule would be rejected', async () => {
+    const category = await createCategory('expense')
+    await postRule({ categoryId: category.id, matchText: 'sintetico preestreno' })
+    const cases = [
+      { categoryId: category.id, matchText: '  Á ' },
+      { categoryId: 999_999_431, matchText: 'sintetico sin dueno' },
+      { categoryId: category.id, matchText: 'SINTÉTICO Preestreno' },
+    ]
+
+    for (const [index, body] of cases.entries()) {
+      const preview = await app.inject({ method: 'GET', url: previewUrl(body) })
+      const created = await postRule(body)
+
+      expect(preview.statusCode).toBe([400, 404, 409][index])
+      expect(preview.statusCode).toBe(created.statusCode)
+      expect(preview.json()).toEqual(created.json())
+    }
+  })
+
+  it('rejects a preview missing a parameter or carrying an unknown one with 400', async () => {
+    const category = await createCategory('expense')
+
+    const missing = await app.inject({ method: 'GET', url: previewUrl({ matchText: 'sintetico' }) })
+    const unknown = await app.inject({
+      method: 'GET',
+      url: previewUrl({ matchText: 'sintetico', categoryId: category.id, scope: 'all' }),
+    })
+    const notANumber = await app.inject({
+      method: 'GET',
+      url: previewUrl({ matchText: 'sintetico', categoryId: 'uno' }),
+    })
+
+    for (const response of [missing, unknown, notANumber]) {
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+    }
+  })
+
+  it('neither the suggestions nor the preview write anything', async () => {
+    const account = await createAccount()
+    const generic = await createCategory('expense')
+    const ferry = await createCategory('expense')
+    const taxi = await createCategory('expense')
+    const existing = await postRule({ categoryId: ferry.id, matchText: 'sintetico ferry' })
+    const base = { accountId: account.id, categoryId: generic.id }
+    for (const amount of ['31.2', '33.6', '35.4']) {
+      await seedCategorized({
+        ...base,
+        categorySource: 'closing',
+        description: `BARCO TAXI ${amount}`,
+        amount,
+      })
+    }
+    await seedCategorized({
+      ...base,
+      categorySource: 'closing',
+      description: 'SINTETICO FERRY BARCO',
+      amount: '41.5',
+    })
+    await seedCategorized({
+      ...base,
+      categorySource: 'manual',
+      description: 'BARCO TAXI A MANO',
+      amount: '28.4',
+    })
+    await seedCategorized({
+      ...base,
+      categorySource: 'rule',
+      description: 'BARCO TAXI REGLA',
+      amount: '26.9',
+    })
+    await seedPending(account.id, 'BARCO TAXI PENDIENTE', '29.7', '2032-06-12')
+    const movementsOf = () =>
+      app.prisma.movement.findMany({ where: { accountId: account.id }, orderBy: { id: 'asc' } })
+    const allRules = () => app.prisma.categoryRule.findMany({ orderBy: { id: 'asc' } })
+    const movementsBefore = await movementsOf()
+    const rulesBefore = await allRules()
+
+    const suggestions = await app.inject({ method: 'GET', url: '/api/category-rules/suggestions' })
+    const preview = await app.inject({
+      method: 'GET',
+      url: previewUrl({ matchText: 'barco', categoryId: taxi.id }),
+    })
+
+    expect(suggestions.statusCode).toBe(200)
+    expect(
+      suggestions
+        .json()
+        .find((suggestion: { matchText: string }) => suggestion.matchText === 'barco taxi'),
+    ).toMatchObject({ movementCount: 4, manualMatches: 1 })
+    expect(preview.statusCode).toBe(200)
+    expect(preview.json().categorization).toMatchObject({ categorized: 4, conflictCount: 1 })
+    expect(await movementsOf()).toEqual(movementsBefore)
+    expect(await allRules()).toEqual(rulesBefore)
+    expect(rulesBefore.map((rule) => rule.id)).toContain(existing.json().id)
   })
 })

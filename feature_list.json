@@ -2834,7 +2834,41 @@
       },
       "acceptance": [],
       "sdd": true,
-      "status": "pending"
+      "status": "done",
+      "checks": [
+        {
+          "descripcion": "La consulta devuelve los conceptos de la categoría genérica ordenados por cuántos movimientos recogería su regla, cada uno con el texto de regla propuesto.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.suggestions.test.ts -t \"lists the concepts of the generic category ordered by how many movements their rule would take, each with its proposed text\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "La consulta devuelve los conceptos de la categoría genérica ordenados por cuántos movimientos recogería su regla, cada uno con el texto de regla propuesto.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.suggestions.test.ts -t \"derives the proposed rule text from bank descriptions\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un concepto que ya recoge una regla existente no se propone.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.suggestions.test.ts -t \"does not propose a concept an existing rule already takes\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Antes de crear una regla puedo saber cuántos movimientos y cuáles recogería, sin que se escriba nada.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.routes.test.ts -t \"previews exactly the categorization that creating the rule then returns\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Antes de crear una regla puedo saber cuántos movimientos y cuáles recogería, sin que se escriba nada.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.suggestions.test.ts -t \"the count of a suggestion is what creating its rule moves by that rule\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Ninguna de las dos consultas escribe nada.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.routes.test.ts -t \"neither the suggestions nor the preview write anything\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md describe las dos consultas.",
+          "comando": "pnpm exec vitest run src/modules/category-rules/category-rules.docs.test.ts -t \"api-contract: describes the rule suggestions and the preview of a rule\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) De «que no quiero»: lo que ya funciona sigue igual al sacar el reparto a una función. La suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ]
     }
   ]
 }
