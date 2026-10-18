@@ -1532,10 +1532,30 @@ cuya regla cumple, en este orden:
    palabra de transferencia (las mismas que usa la detección de traspasos:
    `TRANS`, `TRANSF`, `TRANSF.`, `TRANSFER…`, `TRASPASO…`, al principio de
    palabra, así que `TRANSPORTES` no cuenta) o la palabra `bizum` entera, sin
-   mirar mayúsculas. Se cuelan las transferencias a empresas que el banco
-   escribe igual; salen de aquí marcándolas con `excludedFromTotals`.
+   mirar mayúsculas, **y además** no tiene categoría o su categoría se llama
+   exactamente `Otros gastos` o `Transferencias a personas` (las dos están en la
+   lista inicial de categorías, `src/modules/categories/categories.seed.ts`;
+   feature 59 `recurring-people-by-category`, 2026-10-17).
+   **Una transferencia o un bizum con cualquier otra categoría** (por ejemplo,
+   una de vehículo para el pago a un taller) no va aquí: va al gasto variable,
+   sumado en **esa** categoría con sus movimientos, como cualquier otro gasto de
+   ella. Así una transferencia a una empresa, que el banco escribe igual que una
+   a una persona, sale de este grupo poniéndole su categoría
+   (`PATCH /api/movements/:id`) y sigue contando en el total. Las dos categorías
+   se reconocen **por su nombre exacto**, mayúsculas y tildes incluidas, en
+   cualquier nivel (raíz o subcategoría): si se renombra una, sus transferencias
+   pasan al gasto variable con el nombre nuevo.
 3. **Gasto variable** (`variable`): todo lo demás, agrupado por su `categoryId`.
    Los gastos sin categoría van juntos en una entrada con `category: null`.
+
+**Cambiar de grupo una transferencia no la saca del total.** Mover una
+transferencia de `transfersToPeople` a una entrada de `variable` (o al revés)
+solo cambia dónde se suma: `monthlyTotal` sigue contándola. Como `monthlyTotal`
+suma las partes ya redondeadas (ver abajo), puede cambiar **como mucho un
+céntimo** por ese redondeo, nunca por el importe de la transferencia: con dos
+transferencias de 12,87 € y 9,03 € en el periodo, juntas en
+`transfersToPeople` cuestan `1.83` al mes; con la primera en su categoría,
+`1.07` + `0.75` = `1.82`.
 
 **Un recibo cuyo concepto cambia sigue siendo uno.** Los cargos de un mismo
 recibo se juntan por su `key`: el concepto en minúsculas y sin tildes, cambiando

@@ -152,4 +152,27 @@ describe('docs/api-contract.md — GET /api/recurring-expenses (feature 58)', ()
     expect(prose).toContain('**Respuesta vacía.**')
     expect(prose).toContain('este endpoint **no escribe nada**')
   })
+
+  // Feature 59 `recurring-people-by-category`.
+  it('api-contract: names the two categories that keep a transfer in the transfers to people group', () => {
+    const prose = flat(section('### `GET /api/recurring-expenses`'))
+    expect(prose, 'the contract has no section for GET /api/recurring-expenses').not.toBe('')
+
+    // Which transfers stay in the group: no category, or one of the two names.
+    expect(prose).toContain(
+      'no tiene categoría o su categoría se llama exactamente `Otros gastos` o `Transferencias a personas`',
+    )
+    // Which ones move, and where.
+    expect(prose).toContain('**Una transferencia o un bizum con cualquier otra categoría**')
+    expect(prose).toContain('va al gasto variable, sumado en **esa** categoría')
+    // The two are found by name: a rename moves them.
+    expect(prose).toContain('**por su nombre exacto**')
+    expect(prose).toContain('si se renombra una, sus transferencias pasan al gasto variable')
+    // Changing group does not take it out of the total.
+    expect(prose).toContain('**Cambiar de grupo una transferencia no la saca del total.**')
+    // ... and the total may change by one cent of rounding, no more.
+    expect(prose).toContain('puede cambiar **como mucho un céntimo** por ese redondeo')
+    // The old way out (marking it so it does not count) is no longer the advice.
+    expect(prose).not.toContain('salen de aquí marcándolas con `excludedFromTotals`')
+  })
 })

@@ -42,6 +42,24 @@ export function isBill(description: string): boolean {
   return billStart.test(normalizeForMatch(description))
 }
 
+/**
+ * The two seed categories (`categories.seed.ts`) that keep a transfer or a
+ * bizum in the transfers to people group (feature 59), by their exact name, as
+ * the import's closing step finds `Otros gastos`. Any other category moves it
+ * to the variable expense of that category. Renaming one of them moves its
+ * transfers to the variable expense under the new name.
+ */
+export const transferToPeopleCategoryNames = ['Otros gastos', 'Transferencias a personas']
+
+/**
+ * Whether a transfer or a bizum stays in the transfers to people group
+ * (feature 59): it has no category, or its category is one of
+ * `transferToPeopleCategoryNames`.
+ */
+export function staysWithPeople(categoryName: string | null): boolean {
+  return categoryName === null || transferToPeopleCategoryNames.includes(categoryName)
+}
+
 /** Whether an expense that counts and is not a bill went to a person (design.md §2, rule 2). */
 export function isTransferToPerson(description: string): boolean {
   return transferWords.test(description) || bizumWord.test(description)
@@ -236,7 +254,8 @@ export function periodMonthsBefore(today: string): string[] {
  * The one read of feature 58: what a month costs. Every expense that counts
  * (`isCountedExpense`, the same rule as the income/expense totals) falls in
  * the first group whose rule it meets: a bill (description starts with a bill
- * word), a transfer to a person (a transfer word or `bizum`), or the variable
+ * word), a transfer to a person (a transfer word or `bizum`, with no category
+ * or one of `transferToPeopleCategoryNames`; feature 59), or the variable
  * expense of its category. Each entry costs a month what it charged in the 12
  * complete months before the current one, divided by 12; `monthlyTotal` adds
  * those already rounded, so the screen adds up.
@@ -279,6 +298,7 @@ export async function getRecurringExpenses(
     readDepositMovements(prisma, matchers),
   ])
 
+  const categoryNameById = new Map(categories.map((category) => [category.id, category.name]))
   const bills = new Map<string, Charge[]>()
   const toPeople: Charge[] = []
   const variable = new Map<number | null, Charge[]>()
@@ -304,7 +324,12 @@ export async function getRecurringExpenses(
     }
     // Transfers to people and the variable expense only look at the period.
     if (!periodMonthSet.has(charge.month)) continue
-    if (isTransferToPerson(charge.description)) {
+    if (
+      isTransferToPerson(charge.description) &&
+      staysWithPeople(
+        charge.categoryId === null ? null : (categoryNameById.get(charge.categoryId) ?? null),
+      )
+    ) {
       toPeople.push(charge)
       continue
     }

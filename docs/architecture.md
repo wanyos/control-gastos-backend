@@ -3106,6 +3106,19 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-037: Qué gasto es un recibo, cuál es una transferencia a una persona y cuánto cuesta un mes se decide al leer, en `recurring-expenses`, sin guardar nada
 
+> **Revisado el 2026-10-17 por la feature 59 `recurring-people-by-category`:** en la
+> decisión 3, un gasto con palabra de transferencia o `bizum` solo va al grupo de
+> transferencias a personas si no tiene categoría o su categoría se llama
+> exactamente `Otros gastos` o `Transferencias a personas`; con cualquier otra
+> categoría va al gasto variable de esa categoría. Deja de ser verdad la
+> consecuencia de que una transferencia a una empresa solo sale del grupo con
+> `excludedFromTotals`: sale poniéndole su categoría, y sigue en el total. Por qué:
+> el banco escribe igual las transferencias a personas y a empresas, y el grupo
+> salía inflado. Las dos categorías se reconocen por su nombre, como la importación
+> reconoce `Otros gastos`; es la alternativa que este ADR descartó como regla
+> única, y aquí solo decide entre dos grupos lo que la palabra del concepto ya
+> había reconocido.
+
 - **Fecha:** 2026-10-17
 - **Estado:** aceptada (implementada en la feature #58 `recurring-expenses`, SDD;
   hoja aprobada por el humano el 2026-10-17). No revisa ningún ADR anterior.

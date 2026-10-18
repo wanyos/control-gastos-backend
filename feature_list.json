@@ -2669,6 +2669,65 @@
           "comando": "pnpm test"
         }
       ]
+    },
+    {
+      "id": 59,
+      "name": "recurring-people-by-category",
+      "title": "Que una transferencia o un bizum con una categoría que no es de personas vaya a esa categoría en el gasto variable, no a «a personas»",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-17), del cabo 28 de docs/roadmap.md y de la conversación de ese día: la propuesta la hizo una sesión del frontend y el humano pidió «arranca la nueva feature». Qué categorías se quedan en «a personas» lo eligió el humano ese día entre tres opciones que le dio el leader: «Otros gastos + Transferencias a personas». El nombre de la feature es propuesta del leader. El 2026-10-17 el humano aceptó que el total pueda variar un céntimo al mover una transferencia (rechazo del reviewer por redondeo).",
+        "que_quiero": "En GET /api/recurring-expenses, una transferencia o un bizum que hoy cae en el grupo «a personas» se queda en ese grupo solo si su categoría es Otros gastos o Transferencias a personas. Si tiene cualquier otra categoría (por ejemplo, una de vehículo para el taller), va al gasto variable dentro de esa categoría. «Así tú decides con una categoría dónde va cada una, sin perder nada.»",
+        "por_que": "El banco escribe igual las transferencias a personas que las que hago a empresas (un taller, una tienda pagada con bizum), y todas caen hoy en «a personas», que sale inflado. La única forma de sacarlas es marcarlas como que no cuentan, y eso las borra de todos los totales, cuando son gasto real.",
+        "como_se_que_esta_bien": [
+          "Una transferencia con categoría Otros gastos sale en «a personas».",
+          "Una transferencia con categoría Transferencias a personas sale en «a personas».",
+          "Una transferencia con otra categoría sale en el gasto variable, dentro de esa categoría, y no en «a personas».",
+          "El total de lo que cuesta un mes no cambia por mover una transferencia de grupo, salvo como mucho un céntimo por redondeo (aceptado por el humano el 2026-10-17: el total es la suma de lo que se ve en cada grupo).",
+          "docs/api-contract.md dice qué transferencias van a «a personas» y cuáles a su categoría."
+        ],
+        "que_no_quiero": [
+          "Que una transferencia deje de contar en el total: solo cambia de grupo.",
+          "Que cambie nada de los recibos ni de cómo se reconocen las transferencias emparejadas entre mis cuentas.",
+          "Que el backend escriba o cambie categorías: las pongo yo."
+        ],
+        "delego_en_agente": []
+      },
+      "acceptance": [
+        "[de «qué quiero» / elección del humano] En GET /api/recurring-expenses, un gasto que hoy va al grupo de transferencias a personas sigue ahí si su categoría es la de nombre «Otros gastos» o «Transferencias a personas» (las dos son categorías de la siembra, src/modules/categories/categories.seed.ts).",
+        "[de «qué quiero»] Si tiene cualquier otra categoría, va al bloque de gasto variable sumado en esa categoría, con sus movimientos, igual que cualquier otro gasto variable de esa categoría.",
+        "[de «cómo sé» 4 / «qué no quiero» 1; corregido el 2026-10-17 tras el rechazo del reviewer, con el visto bueno del humano] Mover una transferencia de grupo no la saca del total: el total mensual de la respuesta cambia como mucho un céntimo, por el redondeo de cada grupo (ADR-037, decisión 6: el total es la suma de las partes ya redondeadas). docs/api-contract.md lo dice.",
+        "[de «qué no quiero» 2] Los recibos y la detección de traspasos emparejados no cambian: los tests que ya existen de recurring-expenses y de transfers siguen pasando sin cambiar lo que comprueban.",
+        "[de «qué no quiero» 3] La consulta sigue sin escribir nada en la base.",
+        "[de «cómo sé» 5] docs/api-contract.md, en GET /api/recurring-expenses, describe la regla con los dos nombres de categoría.",
+        "[decisión del leader] Las dos categorías se identifican por su nombre exacto, como ya hace la importación con «Otros gastos» (src/modules/import/import.service.ts). Si el humano renombra una, sus transferencias pasan al gasto variable con esa categoría: queda escrito en el contrato."
+      ],
+      "checks": [
+        {
+          "descripcion": "Una transferencia con categoría Otros gastos sale en «a personas».",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"keeps a transfer categorized Otros gastos in the transfers to people group\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una transferencia con categoría Transferencias a personas sale en «a personas».",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"keeps a transfer categorized Transferencias a personas in the transfers to people group\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una transferencia con otra categoría sale en el gasto variable, dentro de esa categoría, y no en «a personas».",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"moves a transfer with any other category to the variable expense under that category\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "El total de lo que cuesta un mes no cambia por mover una transferencia de grupo, salvo como mucho un céntimo por redondeo (aceptado por el humano el 2026-10-17: el total es la suma de lo que se ve en cada grupo).",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.test.ts -t \"keeps a transfer in the monthly total within one cent when it changes group\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md dice qué transferencias van a «a personas» y cuáles a su categoría.",
+          "comando": "pnpm exec vitest run src/modules/recurring-expenses/recurring-expenses.docs.test.ts -t \"api-contract: names the two categories that keep a transfer in the transfers to people group\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) De lo que no quiero: nada más cambia. La suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ],
+      "status": "done"
     }
   ]
 }

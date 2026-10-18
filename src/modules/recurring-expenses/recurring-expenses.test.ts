@@ -136,6 +136,20 @@ describe('GET /api/recurring-expenses', () => {
     return category
   }
 
+  /**
+   * A root expense category with an exact seed name (feature 59). The suite
+   * database may already have it; only the one this test creates is deleted.
+   */
+  async function seedCategory(name: string) {
+    const existing = await app.prisma.category.findFirst({
+      where: { name, kind: 'expense', parentId: null },
+    })
+    if (existing) return existing
+    const category = await app.prisma.category.create({ data: { name, kind: 'expense' } })
+    createdCategoryIds.push(category.id)
+    return category
+  }
+
   async function createProduct() {
     const product = await app.prisma.investmentProduct.create({
       data: { bank: 'myinvestor', name: `Synthetic recurring fund ${suffix()}`, type: 'fund' },
@@ -432,6 +446,165 @@ describe('GET /api/recurring-expenses', () => {
     // 6.29 / 12 = 0.5241…
     expect(variableOf(response, null).monthlyCost).toBe('0.52')
     expect(response.monthlyTotal).toBe('11.86')
+  })
+
+  it('keeps a transfer categorized Otros gastos in the transfers to people group', async () => {
+    const account = await createAccount()
+    const otherExpenses = await seedCategory('Otros gastos')
+    const transfer = await seed(account.id, {
+      date: dayAgo(3, 11),
+      amount: '64.85',
+      description: 'TRANSFERENCIA PERSONA INVENTADA',
+      categoryId: otherExpenses.id,
+    })
+    const bizum = await seed(account.id, {
+      date: dayAgo(2, 17),
+      amount: '12.40',
+      description: 'BIZUM AMIGA FICTICIA',
+      categoryId: otherExpenses.id,
+    })
+
+    const response = await getRecurring()
+
+    expect(response.transfersToPeople.movements.map((movement) => movement.id)).toEqual([
+      bizum.id,
+      transfer.id,
+    ])
+    // (64.85 + 12.40) / 12 = 6.4375
+    expect(response.transfersToPeople.monthlyCost).toBe('6.44')
+    expect(response.variable).toEqual([])
+  })
+
+  it('keeps a transfer categorized Transferencias a personas in the transfers to people group', async () => {
+    const account = await createAccount()
+    const toPeople = await seedCategory('Transferencias a personas')
+    const transfer = await seed(account.id, {
+      date: dayAgo(4, 2),
+      amount: '150.30',
+      description: 'TRANSF FAMILIAR FICTICIO',
+      categoryId: toPeople.id,
+    })
+    const bizum = await seed(account.id, {
+      date: dayAgo(1, 21),
+      amount: '8.75',
+      description: 'BIZUM COMPANERO INVENTADO',
+      categoryId: toPeople.id,
+    })
+
+    const response = await getRecurring()
+
+    expect(response.transfersToPeople.movements.map((movement) => movement.id)).toEqual([
+      bizum.id,
+      transfer.id,
+    ])
+    expect(monthAmountOf(response.transfersToPeople.months, monthAgo(4))).toBe('150.30')
+    expect(monthAmountOf(response.transfersToPeople.months, monthAgo(1))).toBe('8.75')
+    expect(response.variable).toEqual([])
+  })
+
+  it('moves a transfer with any other category to the variable expense under that category', async () => {
+    const account = await createAccount()
+    const workshop = await createCategory('Synthetic vehicle workshop')
+    const toPeople = await seedCategory('Transferencias a personas')
+    const garage = await seed(account.id, {
+      date: dayAgo(2, 9),
+      amount: '238.64',
+      description: 'TRANSFERENCIA TALLER MECANICO INVENTADO',
+      categoryId: workshop.id,
+    })
+    const shop = await seed(account.id, {
+      date: dayAgo(5, 14),
+      amount: '19.95',
+      description: 'BIZUM TIENDA RECAMBIOS FICTICIA',
+      categoryId: workshop.id,
+    })
+    // A card expense of the same category: the transfers sum with it.
+    const card = await seed(account.id, {
+      date: dayAgo(2, 27),
+      amount: '31.18',
+      description: 'COMPRA RECAMBIOS FICTICIOS',
+      categoryId: workshop.id,
+    })
+    const person = await seed(account.id, {
+      date: dayAgo(1, 5),
+      amount: '42.00',
+      description: 'BIZUM HERMANO INVENTADO',
+      categoryId: toPeople.id,
+    })
+
+    const response = await getRecurring()
+
+    const workshopGroup = variableOf(response, workshop.id)
+    expect(workshopGroup.category).toEqual({
+      id: workshop.id,
+      name: workshop.name,
+      parentId: null,
+    })
+    expect(workshopGroup.movements.map((movement) => movement.id)).toEqual([
+      card.id,
+      garage.id,
+      shop.id,
+    ])
+    expect(monthAmountOf(workshopGroup.months, monthAgo(2))).toBe('269.82')
+    expect(monthAmountOf(workshopGroup.months, monthAgo(5))).toBe('19.95')
+    // (238.64 + 19.95 + 31.18) / 12 = 24.1475
+    expect(workshopGroup.monthlyCost).toBe('24.15')
+    // Only the transfer whose category is a people one stays in the group.
+    expect(response.transfersToPeople.movements.map((movement) => movement.id)).toEqual([person.id])
+    expect(response.variable.map((entry) => entry.category?.id ?? null)).toEqual([workshop.id])
+  })
+
+  it('keeps a transfer in the monthly total within one cent when it changes group', async () => {
+    // The total adds the parts already rounded (ADR-037, decision 6), so moving
+    // a transfer may change it by one cent and never more (accepted by the
+    // human on 2026-10-17). These amounts are chosen so the cent DOES show:
+    // 12.87 / 12 = 1.0725 and 9.03 / 12 = 0.7525 each round down, while
+    // their sum 21.90 / 12 = 1.825 rounds up.
+    const account = await createAccount()
+    const workshop = await createCategory('Synthetic vehicle workshop')
+    const otherExpenses = await seedCategory('Otros gastos')
+    const transfer = await seed(account.id, {
+      date: dayAgo(3, 16),
+      amount: '12.87',
+      description: 'TRANSFERENCIA TALLER CHAPA FICTICIO',
+      categoryId: otherExpenses.id,
+    })
+    const bizum = await seed(account.id, {
+      date: dayAgo(1, 12),
+      amount: '9.03',
+      description: 'BIZUM PERSONA INVENTADA',
+      categoryId: otherExpenses.id,
+    })
+
+    const before = await getRecurring()
+    expect(before.transfersToPeople.movements.map((movement) => movement.id)).toEqual([
+      bizum.id,
+      transfer.id,
+    ])
+    expect(before.transfersToPeople.monthlyCost).toBe('1.83')
+    expect(before.monthlyTotal).toBe('1.83')
+
+    // The human gives the transfer a category of his own.
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: `/api/movements/${transfer.id}`,
+      payload: { categoryId: workshop.id },
+    })
+    expect(patched.statusCode).toBe(200)
+    const after = await getRecurring()
+
+    // It left the group and still counts, now under its category.
+    expect(after.transfersToPeople.movements.map((movement) => movement.id)).toEqual([bizum.id])
+    expect(after.transfersToPeople.monthlyCost).toBe('0.75')
+    const workshopGroup = variableOf(after, workshop.id)
+    expect(workshopGroup.movements.map((movement) => movement.id)).toEqual([transfer.id])
+    expect(workshopGroup.monthlyCost).toBe('1.07')
+    expect(after.monthlyTotal).toBe('1.82')
+    // At most one cent apart, never the amount of the transfer.
+    const drift = Math.abs(
+      Math.round(Number(after.monthlyTotal) * 100) - Math.round(Number(before.monthlyTotal) * 100),
+    )
+    expect(drift).toBeLessThanOrEqual(1)
   })
 
   it('groups the variable expense by its category summed per month', async () => {

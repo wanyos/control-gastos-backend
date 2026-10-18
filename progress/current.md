@@ -25,7 +25,13 @@
 
 **Nivel de consumo:** medio _(bajo / medio / alto; en alto, qué fases usan `fable`)_
 
+
 **Ninguna feature en curso.**
+
+## F59 `recurring-people-by-category` — CERRADA (2026-10-17, sin commit)
+
+**Qué se hizo:** cabo 28 de `docs/roadmap.md`. En `GET /api/recurring-expenses`, una transferencia o un bizum se queda en «a personas» solo sin categoría o con `Otros gastos` o `Transferencias a personas`; con otra categoría va al gasto variable de esa categoría y sigue en el total (como mucho un céntimo de diferencia por redondeo, aceptado por el humano). Flujo simple, reviewer `APPROVED` en la segunda revisión → [resumen](summaries/recurring-people-by-category.md), [implementación](implementations/recurring-people-by-category.md), [revisión](reviews/recurring-people-by-category.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, cabo 28 cerrado. **Sin commit.**
 
 ## F58 `recurring-expenses` — CERRADA (2026-10-17, commit `72a5357`; parte 1 de `../docs/handoff-recurrentes.md` marcada ✅)
 
@@ -75,6 +81,10 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 -->
 
 ## Lo que le toca al humano
+
+De la F59 (2026-10-17):
+
+- **La prueba con tus datos reales**, con `pnpm run dev`: `GET /api/recurring-expenses`. Mira que en `transfersToPeople` solo quedan las transferencias y bizum sin categoría o con `Otros gastos` o `Transferencias a personas`; ponle a una de un taller o una tienda su categoría (`PATCH /api/movements/:id`) y comprueba que pasa a esa categoría en `variable` y que `monthlyTotal` no cambia más de un céntimo.
 
 De la F58 (2026-10-17):
 
