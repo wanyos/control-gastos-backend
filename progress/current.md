@@ -28,10 +28,10 @@
 
 **Ninguna feature en curso.**
 
-## F60 `category-origin-and-rule-reapply` — CERRADA (2026-10-18, sin commit)
+## F60 `category-origin-and-rule-reapply` — CERRADA (2026-10-18, commit `d97c0d8`)
 
 **Qué se hizo:** mejora A de la categorización (`../docs/ideas.md` del workspace, idea 4). Cada movimiento guarda en `categorySource` quién le puso la categoría (`manual`, `rule`, `closing`; término aprobado en `docs/vocabulary.md`); `POST` y `PATCH /api/category-rules` aplican todas las reglas a lo pendiente sin categoría y a lo `closing`, nunca a lo `manual` ni a lo `rule`, y devuelven lo que movieron en `categorization`. Importar y `POST /api/category-rules/apply` siguen igual. ADR-038. Lotes A y B hechos, reviewer `APPROVED` → [resumen](summaries/category-origin-and-rule-reapply.md), [implementación](implementations/category-origin-and-rule-reapply.md), [revisión](reviews/category-origin-and-rule-reapply.md).
-**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E6 de `docs/roadmap.md`. **Sin commit.** Después, F61 `rule-suggestions` (mejoras B y C).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E6 de `docs/roadmap.md`. Commit `d97c0d8`. Después, F61 `rule-suggestions` (mejoras B y C).
 
 ## F59 `recurring-people-by-category` — CERRADA (2026-10-17, commit `eebba15`)
 
