@@ -131,7 +131,8 @@ export default async function accountRoutes(fastify: FastifyInstance) {
     remunerada y descuadres). Textos: `Movement.description`, `Movement.note`,
     `InvestmentProduct.name`, `Account.alias`, `CategoryRule.matchText`,
     `ImportBalanceMismatch.note` e `ImportUnparsedRow.note` (esta última desde la
-    F54). IBAN: `Account.iban`, comparado sin espacios,
+    F54), y desde la F62 `OwnAccount.name`, `OwnAccount.accountNumber`,
+    `OwnAccountText.text` y `AccountHolderName.name`. IBAN: `Account.iban`, comparado sin espacios,
     guiones ni mayúsculas, **sea del país que sea** (la comprobación por forma solo
     ve los españoles). La lista exacta, y la de columnas que **no** se comparan con
     su motivo (nombres de categoría, nombres de banco, nombres de archivo…), está en

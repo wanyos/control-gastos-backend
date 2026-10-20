@@ -8,6 +8,7 @@
 > | --- | --- | --- | --- |
 > | [Parte 1 — Flujo](#parte-1--flujo) | cuentas, movimientos, categorías | 8 `data-model` (2026-08-06) | [ADR-011](architecture.md), [`specs/08-data-model/`](../specs/08-data-model/design.md) |
 > | ↳ **[lo que una importación deja sin resolver](#lo-que-una-importación-deja-sin-resolver-f48-f54)** | las filas que el parser no pudo leer y los descuadres de saldo, con su revisión | 48 `import-warnings-persistence` (2026-09-18) y 54 `unparsed-row-review` (2026-10-02) | [ADR-031](architecture.md) |
+> | ↳ **[las cuentas propias del humano](#las-cuentas-propias-del-humano-f62)** | la tabla de sus cuentas y productos con sus textos, las formas de su nombre y su decisión sobre un movimiento | 62 `own-accounts` (2026-10-20) | [ADR-040](architecture.md), [`specs/62-own-accounts/`](../specs/62-own-accounts/design.md) |
 > | [Parte 2 — Inversiones](#parte-2--inversiones) | productos de inversión y su valoración periódica | 9 `investments-data-model` (2026-08-11) | [ADR-012](architecture.md), [`specs/09-investments-data-model/`](../specs/09-investments-data-model/design.md) |
 > | ↳ **la cuenta remunerada** | quinto tipo de producto y su **foto mensual propia** (`SavingsSnapshot`) | 26 `savings-account-as-product` (2026-08-20) | [ADR-026](architecture.md), [`specs/26-savings-account-as-product/`](../specs/26-savings-account-as-product/design.md) |
 > | ↳ **los otros cuatro tipos** | `Valuation` y las **condiciones del depósito** estrenan escritor; ni una columna nueva | 29 `myinvestor-products-to-db` (2026-08-21) | [ADR-012](architecture.md), [`progress/implementations/myinvestor-products-to-db.md`](../progress/implementations/myinvestor-products-to-db.md) |
@@ -137,6 +138,26 @@ erDiagram
         string transferId
         string undoneTransferId
         int daySequence
+        OwnershipDecision ownershipDecision
+    }
+    OWN_ACCOUNT ||--o{ OWN_ACCOUNT_TEXT : "aparece con"
+    OWN_ACCOUNT {
+        int id PK
+        string name
+        string bank
+        string accountNumber
+        OwnAccountType type
+        date openedAt
+        date closedAt
+    }
+    OWN_ACCOUNT_TEXT {
+        int id PK
+        int ownAccountId FK
+        string text
+    }
+    ACCOUNT_HOLDER_NAME {
+        int id PK
+        string name UK
     }
 ```
 
@@ -153,6 +174,11 @@ erDiagram
 > no pudo leer no llegó a ser un movimiento ni tiene cuenta; se identifica por el
 > archivo del que salió. Las dos tablas `IMPORT_*` se explican en
 > [Lo que una importación deja sin resolver](#lo-que-una-importación-deja-sin-resolver-f48-f54).
+>
+> **`OWN_ACCOUNT` y `ACCOUNT_HOLDER_NAME` tampoco cuelgan de nada, a propósito**
+> (F62): la tabla de cuentas propias no tiene clave ajena a `ACCOUNT` ni a
+> `INVESTMENT_PRODUCT`, y ningún movimiento apunta a ella. Se explican en
+> [Las cuentas propias del humano](#las-cuentas-propias-del-humano-f62).
 
 ### Esquema Prisma (el real; fuente de verdad: `prisma/schema.prisma`)
 
@@ -197,6 +223,13 @@ enum CategorySource {
   manual         // PATCH /api/movements/:id o PATCH /api/movements (el humano)
   rule           // la pasada de categorización por reglas (F43)
   closing        // confirmAllMovements: lo que corre al final de cada importación, o POST /api/movements/confirm-all
+}
+
+// F62: lo que el humano decidió sobre de quién es un movimiento. Manda sobre lo
+// que diga la tabla de cuentas propias.
+enum OwnershipDecision {
+  mine           // dinero suyo que cambia de sitio: fuera de los totales
+  not_mine       // de otra persona: la tabla de cuentas propias no lo saca de los totales
 }
 
 // ── Modelos ──────────────────────────────────────────────
@@ -276,6 +309,7 @@ model Movement {
   transferId  String?   // enlace lógico entre las dos piernas de un traspaso
   undoneTransferId String? // el transferId que las dos piernas llevaban hasta que el humano deshizo esa pareja (F44)
   excludedFromTotals Boolean @default(false) // F49: true = fuera de income/expense de los totales (F57: salvo en un movimiento de depósito, donde no cuenta); el saldo no la mira
+  ownershipDecision OwnershipDecision? // F62: NULL = sin decidir, decide la tabla de cuentas propias; solo la escribe PATCH /api/movements/:id
   daySequence Int?      // posición dentro de su bookingDate (1 = el primero del día)
 
   createdAt DateTime @default(now())
@@ -293,6 +327,7 @@ model Movement {
 | --- | --- |
 | ~~`transferId`~~ | 🔄 **ya lo escribe la detección de traspasos** (F40): corre al final de cada pasada de importación, empareja las parejas inequívocas —y desde la F41 también los grupos dudosos con el mismo número de salidas que de entradas en los que cada salida podría casar con cada entrada— y escribe el mismo `transferId` en las dos piernas, en una transacción por pareja. **Cero migración**: la columna y su índice existen desde la F8. Desde la **F44** tiene además **escritor manual**: `POST /api/transfers` enlaza dos movimientos por id y `DELETE /api/transfers/:transferId` deshace la pareja (manual o de la detección) apuntando la memoria del deshecho en `undoneTransferId` (esa sí trajo migración: una columna nullable, la primera desde la F9) |
 | ~~`categoryId`~~ | 🔄 **ya tiene los dos escritores**: el **manual** desde la F37 (`PATCH /api/movements/:id` la escribe, y la pone a `NULL` para quitar la categoría) y el **automático** desde la F43 —la **pasada de categorización por reglas** sobre el `description` (tabla `CategoryRule`), que corre al final de cada importación y con `POST /api/category-rules/apply`, y solo toca movimientos sin categoría, sin confirmar y no neutrales. Esa sí trajo migración: la tabla `CategoryRule`. 🔄 **Desde la F60 cada escritor deja dicho quién fue en `categorySource`**, en la misma escritura: `manual` los dos `PATCH` de movimientos (y `NULL` al quitar la categoría), `rule` la pasada de categorización, `closing` la función `confirmAllMovements`, que pone `Otros gastos` / `Otros ingresos` a lo que queda sin categoría al final de cada importación y en `POST /api/movements/confirm-all`. Una regla solo puede reescribir un movimiento sin categoría y pendiente, o uno `closing`; nunca uno `manual` ni `rule`. Trajo migración: el enum `CategorySource`, la columna, y una migración de solo datos que dio `closing` a lo que estaba en las raíces `Otros gastos` / `Otros ingresos` y `manual` al resto de movimientos con categoría, sin tocar `updatedAt` |
+| ~~`ownershipDecision`~~ | 🔄 **nace con su escritor** (F62): solo `PATCH /api/movements/:id`, cuando el humano resuelve de quién es un movimiento (`mine`, `not_mine`, o `null` para deshacerlo). `PATCH /api/movements` (varios a la vez), los importadores, la detección de traspasos y el reconocimiento de movimientos propios no la escriben. Trajo migración (`20261020120000_own_accounts`): la columna, nullable, a `NULL` en todos los movimientos que ya existían |
 | `paymentMethod` | la misma feature de reglas (`RECIBO` → `direct_debit`, `PAGO TARJETA` → `card`…) |
 | `note` | anotación manual sobre un movimiento, cuando exista pantalla |
 | ~~`status`~~ | 🔄 **ya tiene quien lo revise** (F37): nace `pending_review` al importar (F12) y `PATCH /api/movements/:id` lo pasa a `confirmed` — y de vuelta — a mano |
@@ -466,6 +501,16 @@ filtra y se devuelve, pero no cambia lo que suma**. La migración
 `20261016120000_deposit_movements_unmark` puso a `false` la marca de los
 movimientos de depósito de cuentas `myinvestor` que la tenían; las demás marcas,
 filas y columnas no las toca.
+
+**Movimientos entre cuentas propias — desde la F62 `own-accounts` (2026-10-20,
+ADR-040).** Además de las tres de arriba, un movimiento cuyo concepto nombra una
+cuenta propia del humano o a él mismo deja de contar: lo decide, **al leer**, el
+reconocimiento de movimientos propios con la tabla `OwnAccount`, sus textos y las
+formas del nombre del titular (ver
+[Las cuentas propias del humano](#las-cuentas-propias-del-humano-f62)). No se
+guarda en ningún movimiento; lo único que se guarda es la decisión del humano en
+`ownershipDecision`, que manda sobre la tabla. Un movimiento de depósito sigue
+sumando lo que dice su regla, diga lo que diga la tabla.
 
 **El saldo no mira ninguna de las tres.** `computeAccountBalance` suma y resta
 por `type`, sin consultar `transferId`, `productId` ni `excludedFromTotals`
@@ -689,6 +734,85 @@ deshaga lo que el humano revisó:
 - **La migración de la F54 solo añade** las tres columnas a `ImportUnparsedRow`
   (`prisma/migrations/20261002120000_unparsed_row_review/`): las filas que ya
   existieran quedan `pending`, sin nota y sin fecha.
+
+### Las cuentas propias del humano (F62)
+
+Tres tablas que **no son movimientos ni cuentas importadas**: lo que el humano
+escribe de sus propias cuentas y productos, de cualquier banco (los importe o no),
+y las formas en que aparece su nombre en los conceptos. Las creó la feature 62
+(ADR-040), **nacen vacías** —las rellena el humano por `/api/own-accounts`— y se
+leen y se escriben solo desde
+[`src/modules/own-accounts/own-accounts.service.ts`](../src/modules/own-accounts/own-accounts.service.ts).
+
+Las lee el reconocimiento de movimientos propios
+([`own-accounts.recognition.ts`](../src/modules/own-accounts/own-accounts.recognition.ts)),
+**en cada lectura**: un movimiento cuyo concepto contiene, como palabras enteras,
+una forma del nombre del titular o un texto de una cuenta que no es el nombre de
+un banco de la tabla, no cuenta en los totales; si lo único que contiene es el
+nombre de un banco de la tabla, queda dudoso y sigue contando. Nada de eso se
+copia al movimiento: cambiar un texto cambia el resultado al momento.
+
+```prisma
+// F62: tipo de una cuenta propia. Solo informativo: el reconocimiento no lo lee.
+enum OwnAccountType {
+  checking       // cuenta corriente
+  savings        // cuenta remunerada
+  investment     // cartera, fondo, ETF
+  deposit
+  crypto
+  other
+}
+
+// Una cuenta o un producto del humano, en cualquier banco. Independiente de
+// Account y de InvestmentProduct: sin clave ajena a ninguna de las dos.
+model OwnAccount {
+  id            Int              @id @default(autoincrement())
+  name          String           // guardado con trim()
+  bank          String           // guardado con trim(); NUNCA se compara con un concepto
+  accountNumber String?          // solo informativo: ningún concepto lo trae
+  type          OwnAccountType
+  openedAt      DateTime?        @db.Date  // solo informativa
+  closedAt      DateTime?        @db.Date  // solo informativa; nunca anterior a openedAt
+  texts         OwnAccountText[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+// Un texto con el que una cuenta propia aparece en los conceptos. Se guarda como
+// lo escribió el humano y se compara normalizado; mínimo 3 caracteres normalizado.
+model OwnAccountText {
+  id           Int        @id @default(autoincrement())
+  ownAccount   OwnAccount @relation(fields: [ownAccountId], references: [id], onDelete: Cascade)
+  ownAccountId Int
+  text         String
+
+  @@unique([ownAccountId, text])
+}
+
+// Las formas en que aparece el nombre del titular. PUT /api/own-accounts/holder-names
+// las sustituye todas; mínimo 3 caracteres normalizado.
+model AccountHolderName {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+}
+```
+
+**Claves naturales:**
+
+| Tabla | Clave | Por qué |
+| --- | --- | --- |
+| `OwnAccount` | **ninguna** | Dos cuentas del mismo banco pueden llamarse igual hasta que el humano las renombre, y no hay importación que haga upsert sobre ellas. |
+| `OwnAccountText` | `@@unique([ownAccountId, text])` | Un texto una vez por cuenta. El servicio ya quita los repetidos que son iguales una vez normalizados, así que la clave solo ve textos distintos. |
+| `AccountHolderName` | `@@unique([name])` | Una forma una vez. Igual que con los textos, las repetidas una vez normalizadas se guardan una sola vez. |
+
+- **No se borran filas de `OwnAccount`** (no hay `DELETE`): el humano pidió dar
+  de alta, cambiar y consultar. Una cuenta que ya no quiera se deja sin textos, y
+  entonces no reconoce nada. El `onDelete: Cascade` de los textos solo actúa si
+  la fila se borra por otro camino (los tests la borran al terminar).
+- **Ninguna de las tres tablas escribe en `Movement`**, y el reconocimiento
+  tampoco: ni `amount`, ni el saldo, ni `transferId`, ni `excludedFromTotals`.
+- **La migración `20261020120000_own_accounts` solo añade**: las tres tablas
+  vacías, los dos enums y la columna `Movement.ownershipDecision` a `NULL`.
 
 ### Puntos abiertos
 

@@ -28,6 +28,12 @@
 
 **Ninguna feature en curso.**
 
+## F62 `own-accounts` — CERRADA (2026-10-20, sin commit)
+
+**Qué se hizo:** tabla de cuentas y productos propios (`/api/own-accounts`) y formas del nombre del titular; lo que el concepto reconoce como propio no cuenta en las tres sumas, lo que solo nombra un banco queda dudoso y sigue contando, y se resuelve con `ownershipDecision` en `PATCH /api/movements/:id`. ADR-040. Lotes A y B hechos; reviewer `CHANGES_REQUESTED` en la primera revisión y `APPROVED` en la segunda → [resumen](summaries/own-accounts.md), [implementación](implementations/own-accounts.md), [revisión](reviews/own-accounts.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E7 de `docs/roadmap.md`. **Sin commit.**
+
+
 ## F61 `rule-suggestions` — CERRADA (2026-10-18, commit `0ddadd2`)
 
 **Qué se hizo:** mejoras B y C de la categorización. `GET /api/category-rules/suggestions` propone reglas con los conceptos que más se repiten en `Otros gastos` / `Otros ingresos` (texto propuesto, movimientos que recogería, `manualMatches`), y `GET /api/category-rules/preview` responde lo que respondería `POST /api/category-rules` en `categorization` sin crear la regla. Las dos de solo lectura, con la misma función (`planCategorization`) que decide qué escribe la categorización por reglas. ADR-039. Lotes A y B hechos; reviewer `CHANGES_REQUESTED` en la primera revisión (se proponía un texto que ya era el `matchText` de una regla del otro tipo) y `APPROVED` en la segunda → [resumen](summaries/rule-suggestions.md), [implementación](implementations/rule-suggestions.md), [revisión](reviews/rule-suggestions.md).
@@ -92,6 +98,13 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 
 ## Lo que le toca al humano
 
+De la F62 (2026-10-20), en este orden:
+
+- **Copia de tu base antes de nada:** `pnpm run db:backup`.
+- **Aplicar la migración:** `pnpm exec prisma migrate deploy`. ⚠️ Escribe en tu base: crea las tablas `OwnAccount`, `OwnAccountText` y `AccountHolderName` vacías y la columna `Movement.ownershipDecision` a `NULL` en todos tus movimientos.
+- **Reiniciar el servidor de desarrollo** (`pnpm run dev`), para que cargue las tablas nuevas.
+- **Rellenar la tabla de cuentas con el leader:** él saca de tu base lo que ya se sabe de cada cuenta y producto, tú completas lo que falte (cuentas no importadas, fechas, textos, formas de tu nombre) y, con tu visto bueno, él lo inserta con las rutas de `/api/own-accounts`. Hasta entonces no cambia ninguna suma.
+
 De la F61 (2026-10-18):
 
 - **La prueba con tus datos**, después de migrar la F60 y con `pnpm run dev`: pide `GET /api/category-rules/suggestions`, elige una propuesta y crea su regla con `POST /api/category-rules` (o mírala antes con `GET /api/category-rules/preview`): los movimientos que mueve por esa regla tienen que ser los de la lista. ⚠️ Crear la regla escribe en tu base.
@@ -126,3 +139,5 @@ _Cada corrección que el humano hace a un agente durante la feature, en una
 línea: qué se hizo, qué agente, qué quería él. El leader la usa al cerrar para
 proponer entradas de `docs/lessons.md`. Esta sección no se vacía al cerrar la
 sesión, solo al cerrar la feature._
+
+- 2026-10-20, leader: al revisar la categorización le planteó varias cosas a la vez (listas de 3-4 puntos y propuestas de orden) cuando él había pedido tres veces «de una en una». Lo que quería: un solo punto por mensaje; se resuelve y solo entonces se plantea el siguiente, sin listar los que vienen.

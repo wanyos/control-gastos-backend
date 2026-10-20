@@ -2869,6 +2869,115 @@
           "comando": "pnpm test"
         }
       ]
+    },
+    {
+      "id": 62,
+      "name": "own-accounts",
+      "title": "Una tabla con mis cuentas y productos, para que una transferencia a una cuenta mía no cuente como gasto ni como ingreso sin tener que marcarla a mano",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-20), de la conversación de ese día con el humano. Retoma la idea 5 de ../docs/ideas-de-mejora.md del workspace (tabla de cuentas propias). El humano propuso primero contar todas las transferencias como gasto e ingreso; el leader le enseñó con sus datos que en 2025 el gasto pasaría de unos 35.300 € a unos 92.500 €, y el humano aceptó la alternativa: reconocer el dinero propio con la tabla, por su nombre y por los textos de cada cuenta, no por el nombre del banco, y dejar como dudoso lo que no esté claro. Las frases entre «» son suyas. El nombre de la feature es propuesta del leader. El humano lo revisa en la puerta del spec.",
+        "que_quiero": "Una tabla con mis cuentas y productos, organizados por banco (un banco puede tener varias cuentas y varios productos): nombre, banco, número de cuenta, tipo, fecha de apertura, fecha de cierre, también los de bancos que no importo, y los textos con los que cada uno aparece en los conceptos de los movimientos. Con ella y con mi nombre como titular, cada movimiento que entra se reconoce: si su concepto nombra una cuenta o un producto míos, o a mí, no cuenta ni como gasto ni como ingreso, solo, sin pareja y sin que yo lo revise. Los movimientos dentro de un mismo banco entre mis cosas (por ejemplo, la aportación de mi cuenta a mi cartera) tampoco cuentan. Lo que no se reconozca como mío cuenta como gasto o ingreso normal. Y «en el caso de que una transferencia no esté clara que es mía o de otra persona, ponerla como dudosa, y la resuelvo a mano».",
+        "por_que": "«Lo ideal es que a partir de ahora contaran como gasto e ingreso de forma natural para no tener que andar revisando si es a una cuenta mía.» Hoy una transferencia a una cuenta mía que la aplicación no importa (Trade Republic, ING, Criptan) o una aportación a mi cartera solo deja de contar si me acuerdo de marcarla a mano; si se me olvida, las sumas salen mal sin aviso. Pasó con dos transferencias a Trade Republic. La duda es «un seguro de no dar una transferencia como mía o a otra persona si no está claro»: mis hijas tienen cuentas en los mismos bancos que yo.",
+        "como_se_que_esta_bien": [
+          "Puedo dar de alta, cambiar y consultar mis cuentas y productos con sus datos y los textos con los que aparecen.",
+          "Un movimiento cuyo concepto nombra una cuenta o un producto míos, o a mí, no cuenta ni como gasto ni como ingreso, sin que yo lo marque.",
+          "Una transferencia a otra persona cuenta como gasto o ingreso normal aunque vaya a un banco donde yo también tengo cuenta.",
+          "Una transferencia que no está claro si es mía o de otra persona queda como dudosa, la veo y la resuelvo a mano, y mi decisión se respeta.",
+          "Vale para los movimientos que ya están en la base y para los que entren en cada importación.",
+          "Los traspasos que ya se emparejan solos siguen igual.",
+          "docs/api-contract.md describe la tabla, cómo se reconoce un movimiento como mío, cómo se señala uno dudoso y cómo se resuelve."
+        ],
+        "que_no_quiero": [
+          "Que una transferencia a otra persona se dé por mía, ni una mía por de otra persona, si no está claro: en ese caso, dudosa.",
+          "Que se reconozca una cuenta mía solo por el nombre del banco.",
+          "Tener que marcar a mano, en cada importación, las transferencias a mis cuentas y las aportaciones.",
+          "Que cambie ningún importe ni ningún saldo: solo si cuenta en las sumas."
+        ],
+        "delego_en_agente": [
+          "Cuándo exactamente un movimiento es «no claro» y queda dudoso.",
+          "Qué pasa con los 53 movimientos que hoy tengo marcados a mano como que no cuentan, y cómo conviven esa marca y el reconocimiento nuevo.",
+          "Cómo se relaciona la tabla con las cuentas que ya se importan y con los productos de inversión que ya existen.",
+          "Cómo se guarda mi nombre como titular y con qué variantes aparece.",
+          "Cómo se ve en cada movimiento que no cuenta por ser mío, y cómo se resuelve uno dudoso."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "done",
+      "checks": [
+        {
+          "descripcion": "Puedo dar de alta, cambiar y consultar mis cuentas y productos con sus datos y los textos con los que aparecen.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.routes.test.ts -t \"creates an own account with its texts and lists it ordered by bank\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Puedo dar de alta, cambiar y consultar mis cuentas y productos con sus datos y los textos con los que aparecen.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.routes.test.ts -t \"updates only the fields sent and replaces the texts\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Puedo dar de alta, cambiar y consultar mis cuentas y productos con sus datos y los textos con los que aparecen.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.routes.test.ts -t \"rejects an invalid own account without writing\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Puedo dar de alta, cambiar y consultar mis cuentas y productos con sus datos y los textos con los que aparecen.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.routes.test.ts -t \"replaces and returns the holder name forms\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un movimiento cuyo concepto nombra una cuenta o un producto míos, o a mí, no cuenta ni como gasto ni como ingreso, sin que yo lo marque.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.recognition.test.ts -t \"recognizes the holder name and a non-bank text as own, whole words only\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un movimiento cuyo concepto nombra una cuenta o un producto míos, o a mí, no cuenta ni como gasto ni como ingreso, sin que yo lo marque.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.totals.test.ts -t \"a movement naming an own account or the holder counts in none of the three sums\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una transferencia a otra persona cuenta como gasto o ingreso normal aunque vaya a un banco donde yo también tengo cuenta.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.recognition.test.ts -t \"does not recognize a movement by the bank field alone\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una transferencia a otra persona cuenta como gasto o ingreso normal aunque vaya a un banco donde yo también tengo cuenta.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.totals.test.ts -t \"a transfer to another person counts even when its bank is in the own accounts table\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una transferencia que no está claro si es mía o de otra persona queda como dudosa, la veo y la resuelvo a mano, y mi decisión se respeta.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.recognition.test.ts -t \"leaves as doubtful a movement named only by a bank name\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una transferencia que no está claro si es mía o de otra persona queda como dudosa, la veo y la resuelvo a mano, y mi decisión se respeta.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.recognition.test.ts -t \"the human decision wins over the recognition\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una transferencia que no está claro si es mía o de otra persona queda como dudosa, la veo y la resuelvo a mano, y mi decisión se respeta.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.totals.test.ts -t \"a doubtful movement keeps counting and is listed with ownership=doubtful\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una transferencia que no está claro si es mía o de otra persona queda como dudosa, la veo y la resuelvo a mano, y mi decisión se respeta.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.totals.test.ts -t \"a decision on a doubtful movement is kept and respected in the three sums\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Vale para los movimientos que ya están en la base y para los que entren en cada importación.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.totals.test.ts -t \"recognizes movements already stored and movements imported afterwards\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los traspasos que ya se emparejan solos siguen igual.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.recognition.test.ts -t \"never makes doubtful a transfer leg or a marked movement\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los traspasos que ya se emparejan solos siguen igual.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.totals.test.ts -t \"recognition writes nothing: amounts, balances, marks and transfer pairs stay the same\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md describe la tabla, cómo se reconoce un movimiento como mío, cómo se señala uno dudoso y cómo se resuelve.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.docs.test.ts -t \"api-contract: describes the own accounts table, the recognition, the doubtful movements and how to resolve them\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) De la regla de depósitos de la feature 57: un movimiento de depósito sigue sumando lo que dice su regla aunque su concepto nombre una cuenta mía.",
+          "comando": "pnpm exec vitest run src/modules/own-accounts/own-accounts.totals.test.ts -t \"a deposit movement still counts by the deposit rule\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) De «que no quiero»: lo que ya funciona sigue igual. La suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ]
     }
   ]
 }

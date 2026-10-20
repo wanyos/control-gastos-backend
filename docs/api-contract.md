@@ -280,6 +280,7 @@ Un apunte del extracto. **Solo entra por importación** (ver
 | `status`        | `"confirmed"` \| `"pending_review"`                         | Estado de revisión. Nacen `"pending_review"`; se pasa a `"confirmed"` (y se vuelve atrás) con [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37). |
 | `transferId`    | string \| null                                              | Enlace lógico entre las **dos piernas** de un traspaso entre cuentas propias. Lo escriben dos cosas (ver la nota de abajo): la **detección de traspasos** que corre al final de cada importación (feature 40) y, desde la feature 44, el **enlace manual** `POST /api/transfers` (se deshace con `DELETE /api/transfers/:transferId`). Siempre lo fabrica el servidor: compartido por las dos piernas de cada pareja, `null` en todo lo demás. |
 | `excludedFromTotals` | boolean                                                | **Desde la feature 49** (2026-09-27). `true` = el movimiento **no cuenta en las sumas** de `income` y `expense` (los `totals` de [`GET /api/movements`](#get-apimovements) y los `period.totals` de [`GET /api/overview`](#get-apioverview)). **No cambia el importe ni el saldo; solo saca el movimiento de `income` y `expense`**: el `amount`, el `type`, las fechas, la descripción, el `balanceAfter` y el `balance` de su cuenta en `GET /api/accounts` siguen iguales. Todo movimiento nace con `false` (también los que ya existían antes de la feature). Lo escribe **solo el humano**, con [`PATCH /api/movements/:id`](#patch-apimovementsid) o [`PATCH /api/movements`](#patch-apimovements), y se deshace escribiendo `false`. Es independiente de `transferId`: se puede marcar una pierna de un traspaso, y enlazar o deshacer un traspaso no lo cambia. **Desde la feature 57, en un movimiento de depósito la marca no cambia lo que suma**: se guarda, se filtra con `excluded` y se devuelve, pero lo que suma ese movimiento lo dice la regla de [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas). Las marcas que ya tenían los movimientos de depósito las quitó la migración de la feature 57. |
+| `ownershipDecision` | `"mine"` \| `"not_mine"` \| null                        | **Desde la feature 62.** Lo que decidió el humano sobre si el movimiento es dinero que se mueve **entre sus propias cuentas**: `"mine"` = sí (no cuenta en las sumas), `"not_mine"` = no (cuenta como contaría sin la tabla de cuentas propias). `null` = sin decidir: lo dice el reconocimiento. Lo escribe **solo** [`PATCH /api/movements/:id`](#patch-apimovementsid); ningún importador, ni la detección de traspasos, ni el reconocimiento lo escriben. Todo movimiento nace con `null`. Ver [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas). |
 | `daySequence`   | number \| null                                              | Posición del movimiento **dentro de su `bookingDate`** (`1` = el primero del día). Fija el orden intradía y forma parte de la clave de deduplicación de importados. |
 | `createdAt`     | string (ISO)                                                | Fecha de creación del registro.                                  |
 | `updatedAt`     | string (ISO)                                                | Fecha de última modificación.                                    |
@@ -311,6 +312,45 @@ Un apunte del extracto. **Solo entra por importación** (ver
 > posición dentro del día (`daySequence`, ausente ordena como 0), luego `id`. Lo
 > que no cumple ni una cosa ni la otra sale en el campo `transfers` del informe de
 > la pasada, sin emparejarse.
+
+### `OwnAccount`
+
+**Desde la feature 62** (2026-10-20). Una cuenta o un producto **del humano**, en
+cualquier banco, se importe o no: la **tabla de cuentas propias**. Con sus textos
+(`texts`) y las formas de su nombre
+([`/api/own-accounts/holder-names`](#get-apiown-accountsholder-names)) se reconoce
+qué movimiento es dinero que se mueve entre sus propias cuentas (ver
+[Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas)).
+Es **independiente** de [`Account`](#account) y de los productos de inversión: no
+se enlaza con ellos ni se rellena sola; la escribe el humano entera.
+
+| Campo           | Tipo                         | Descripción |
+| --------------- | ---------------------------- | ----------- |
+| `id`            | number                       | Identificador. |
+| `name`          | string                       | Nombre que le da el humano. Se guarda sin espacios en los extremos. No es único. |
+| `bank`          | string                       | Banco. Se guarda sin espacios en los extremos. **No sirve para reconocer nada por sí solo**: solo dice qué textos son el nombre de un banco. |
+| `accountNumber` | string \| null               | Número de cuenta, tal cual se escribió. **Solo informativo**: no entra en el reconocimiento. |
+| `type`          | `"checking"` \| `"savings"` \| `"investment"` \| `"deposit"` \| `"crypto"` \| `"other"` | Cuenta corriente, cuenta remunerada, inversión (cartera, fondo, ETF), depósito, cripto u otro. |
+| `openedAt`      | string (`YYYY-MM-DD`) \| null | Fecha de apertura. **Solo informativa.** |
+| `closedAt`      | string (`YYYY-MM-DD`) \| null | Fecha de cierre. **Solo informativa.** No puede ser anterior a `openedAt`. |
+| `texts`         | string[]                     | Los textos con los que la cuenta aparece en el concepto de los movimientos, tal cual se escribieron, en el orden en que se guardaron. |
+| `createdAt`     | string (ISO)                 | Fecha de creación. |
+| `updatedAt`     | string (ISO)                 | Fecha de última modificación (también cuando solo cambian los `texts`). |
+
+```json
+{
+  "id": 4,
+  "name": "Cartera indexada inventada",
+  "bank": "Trade Republic",
+  "accountNumber": null,
+  "type": "investment",
+  "openedAt": "2024-03-11",
+  "closedAt": null,
+  "texts": ["Cartera Indexada Inventada", "Trade Republic"],
+  "createdAt": "2026-10-20T09:12:44.000Z",
+  "updatedAt": "2026-10-20T09:12:44.000Z"
+}
+```
 
 ### Inversiones — quién las escribe y quién las lee
 
@@ -1074,6 +1114,12 @@ suma solo su interés: ver
 [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas). Los
 parámetros no cambian.
 
+Desde la feature 62 `own-accounts` (2026-10-20) cada movimiento trae además el
+campo `ownership`, los `totals` dejan fuera lo que la tabla de cuentas propias
+reconoce como dinero que se mueve entre tus cuentas, y el parámetro nuevo
+`ownership=doubtful` deja solo los dudosos: ver
+[Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas).
+
 **Parámetros de querystring** (todos opcionales, combinables entre sí):
 
 | Parámetro   | Tipo                                     | Qué filtra                                                       |
@@ -1088,6 +1134,7 @@ parámetros no cambian.
 | `q`         | string (2–100 caracteres)                | Solo los movimientos cuya `description` **contiene** ese texto, **ignorando mayúsculas y tildes**. Ver la nota de debajo de la tabla. |
 | `transfer`  | `"only"` \| `"none"`                     | **Desde la feature 49.** `transfer=only` deja solo los movimientos **enlazados como pierna de un traspaso** (`transferId` no nulo); `transfer=none`, solo los **no enlazados** (`transferId: null`). Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. |
 | `excluded`  | `"only"` \| `"none"`                     | **Desde la feature 49.** `excluded=only` deja solo los movimientos **marcados como que no cuentan en las sumas** (`excludedFromTotals: true`); `excluded=none`, solo los **no marcados** (`excludedFromTotals: false`). Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. Se combina con `transfer` y con todos los demás. **Desde la feature 57**, filtra por la marca también en los movimientos de depósito, aunque en ellos la marca no cambie lo que suman. |
+| `ownership` | `"doubtful"`                             | **Desde la feature 62.** `ownership=doubtful` deja solo los movimientos **dudosos** (`ownership.status: "doubtful"`) en este momento. Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. Se combina con todos los demás, y `pagination` y `totals` son los de ese filtro. |
 | `page`      | number (entero ≥ 1)                      | Página pedida. Def. `1`.                                         |
 | `pageSize`  | number (entero 1–200)                    | Movimientos por página. Def. `50`, máximo `200`.                 |
 
@@ -1142,10 +1189,12 @@ parámetros no cambian.
       "status": "pending_review",
       "transferId": null,
       "excludedFromTotals": false,
+      "ownershipDecision": null,
       "daySequence": 2,
       "createdAt": "2026-08-06T18:30:00.000Z",
       "updatedAt": "2026-08-06T18:30:00.000Z",
-      "deposit": null
+      "deposit": null,
+      "ownership": null
     }
   ],
   "pagination": { "page": 1, "pageSize": 50, "total": 132, "totalPages": 3 },
@@ -1155,12 +1204,14 @@ parámetros no cambian.
 
 - `movements`: la página pedida. Cada movimiento con la forma de
   [`Movement`](#movement); desde la feature 49 lleva **un campo más**,
-  `excludedFromTotals`, desde la feature 57 **otro más**, `deposit`, y desde la
-  feature 60 **otro más**, `categorySource` (ningún campo anterior cambia ni
-  desaparece). `categorySource` viaja en todas las respuestas que devuelven
-  movimientos serializados; `deposit` **solo** viaja en esta
+  `excludedFromTotals`, desde la feature 57 **otro más**, `deposit`, desde la
+  feature 60 **otro más**, `categorySource`, y desde la feature 62 **dos más**,
+  `ownershipDecision` y `ownership` (ningún campo anterior cambia ni
+  desaparece). `categorySource` y `ownershipDecision` viajan en todas las
+  respuestas que devuelven movimientos serializados; `deposit` **solo** viaja en esta
   respuesta: las de `PATCH /api/movements`, `PATCH /api/movements/:id` y
-  `/api/transfers` no lo llevan.
+  `/api/transfers` no lo llevan. `ownership` tampoco: **solo** viaja en esta
+  respuesta.
 - `movements[].deposit` (feature 57): `null` si el movimiento **no es de
   depósito**; si lo es, un objeto que dice qué clase de movimiento de depósito es
   y cuánto suma en los `totals` (la regla, en
@@ -1192,6 +1243,28 @@ parámetros no cambian.
       "ambiguous": true, "reason": "several_principals", "candidateMovementIds": [301, 318] }
   ]
   ```
+- `movements[].ownership` (feature 62): si el movimiento es dinero que se mueve
+  entre tus cuentas. `null` si su concepto no casa con nada de la tabla de
+  cuentas propias ni con ninguna forma de tu nombre **y** no tiene
+  `ownershipDecision`; si no, un objeto (la regla, en
+  [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas)):
+
+  | Clave | Tipo | Qué es |
+  | --- | --- | --- |
+  | `status` | `"own"` \| `"doubtful"` \| `"mine"` \| `"not_mine"` | `own` = tuyo por la tabla (no cuenta en las sumas); `doubtful` = dudoso (sigue contando hasta que lo resuelvas); `mine` = lo resolviste como tuyo (no cuenta); `not_mine` = lo resolviste como no tuyo (cuenta como contaría sin la tabla). |
+  | `ownAccountId` | number \| null | El `id` de la fila de la tabla de cuentas propias cuyo texto casó. `null` si casó una forma de tu nombre, o si no casó nada (un `mine` / `not_mine` sin texto). |
+  | `ownAccountName` | string \| null | El `name` de esa fila; `null` en los mismos casos. |
+  | `matchedText` | string \| null | El texto o la forma de tu nombre que casó, **tal como lo escribiste**; `null` si no casó nada. |
+
+  Uno reconocido por tu nombre y uno dudoso (datos inventados):
+
+  ```json
+  { "status": "own", "ownAccountId": null, "ownAccountName": null, "matchedText": "Ana Pérez Gil" }
+  ```
+
+  ```json
+  { "status": "doubtful", "ownAccountId": 4, "ownAccountName": "Cartera indexada inventada", "matchedText": "Trade Republic" }
+  ```
 - `pagination.total`: cuántos movimientos **coinciden con el filtro entero**, no
   cuántos trae la página. `totalPages` = `ceil(total / pageSize)` (`0` si no
   coincide ninguno).
@@ -1212,6 +1285,10 @@ parámetros no cambian.
   un movimiento de depósito** (`deposit` no nulo): suma su `deposit.countedAmount`
   y nada más, tenga o no `transferId`, `productId` o la marca (ver
   [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
+  **Desde la feature 62** queda fuera además todo movimiento con
+  `ownership.status` `"own"` o `"mine"` (dinero entre tus cuentas, ver
+  [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas)),
+  salvo un movimiento de depósito, que sigue sumando lo de su regla.
 - Con `transfer=only` o con `excluded=only` los `totals` salen a `"0.00"` los
   tres mientras el filtro no deje ningún vencimiento de depósito con capital
   cierto: el resto de movimientos de ese filtro están, por construcción, fuera de
@@ -1300,11 +1377,91 @@ los movimientos de depósito antes de la feature las quitó su migración
 (`20261016120000_deposit_movements_unmark`); las demás marcas siguen como
 estaban.
 
+#### Movimientos entre tus cuentas en las sumas
+
+Desde la feature 62 `own-accounts` (2026-10-20). Vale igual para las **tres
+sumas**: los `totals` de [`GET /api/movements`](#get-apimovements), los
+`period.totals` de [`GET /api/overview`](#get-apioverview) y lo que
+[`GET /api/recurring-expenses`](#get-apirecurring-expenses) cuenta como gasto.
+Las tres salen de la misma regla: lo que deja de contar en una deja de contar en
+las tres.
+
+**Con qué se reconoce.** Con lo que escribes tú y nada más:
+
+- la **tabla de cuentas propias** ([`/api/own-accounts`](#get-apiown-accounts)):
+  cada fila con sus `texts`;
+- las **formas de tu nombre**
+  ([`/api/own-accounts/holder-names`](#get-apiown-accountsholder-names)): cómo
+  aparece tu nombre en los conceptos (completo, con los apellidos delante,
+  recortado por el banco…).
+
+**Cómo se compara.** El concepto (`description`) y cada texto se pasan a
+minúsculas, sin tildes, y cada tramo de caracteres que no sean letras `a-z` ni
+cifras se cambia por un espacio. Un texto **casa** si aparece en el concepto
+**como palabras enteras**: `ING` casa con `TRANSF ING` pero no dentro de
+`INGRESO`; `Ana Pérez Gil` casa con `TRANSF /ANA_PEREZ_GIL`. Un texto o una forma
+que se queda en menos de 3 caracteres así no se puede guardar.
+
+**Cuándo un texto es el nombre de un banco.** Cuando, comparado así, es igual al
+`bank` de **cualquier** fila de la tabla (no solo de la suya): si `Trade Republic`
+es el banco de una fila, el texto `Trade Republic` es el nombre de un banco en
+cualquier fila.
+
+**Qué sale de cada movimiento** (`ownership.status`), en este orden:
+
+1. **Tiene `ownershipDecision`** → manda tu decisión: `"mine"` o `"not_mine"`,
+   case lo que case. `ownAccountId`, `ownAccountName` y `matchedText` dicen lo que
+   casaría, para que se vea por qué; `null` si no casa nada.
+2. **Casa una forma de tu nombre, o un texto que no es el nombre de un banco** →
+   `"own"`: es tuyo **sin preguntarte**, y no cuenta en las sumas.
+3. **Solo casa textos que son el nombre de un banco** → `"doubtful"` (dudoso), **salvo** que el
+   movimiento sea una pierna de un traspaso (`transferId` no nulo) o esté marcado
+   con `excludedFromTotals: true`: esos se quedan como estaban, sin `ownership`.
+4. **No casa nada** → `ownership: null`.
+
+**El campo `bank` de la tabla nunca reconoce nada por sí solo.** Una transferencia
+a otra persona cuenta como gasto o ingreso normal aunque vaya a un banco donde
+tienes cuenta, o aunque su concepto nombre ese banco, si no casa con ningún texto
+ni con ninguna forma de tu nombre.
+
+**Qué cuenta en las sumas:**
+
+- `"own"` y `"mine"`: **no cuentan** ni como gasto ni como ingreso, sin
+  marcarlos y sin pareja.
+- `"doubtful"`: **sigue contando** como hasta ahora, hasta que lo resuelvas.
+- `"not_mine"` y `ownership: null`: cuentan como contarían sin la tabla de
+  cuentas propias (una pierna de traspaso o un marcado siguen fuera, como
+  siempre).
+- **Un movimiento de depósito** (`deposit` no nulo) suma lo que diga
+  [su regla](#movimientos-de-depósito-en-las-sumas), sea cual sea su `ownership`.
+
+**Cómo se ven los dudosos.** Con
+[`GET /api/movements?ownership=doubtful`](#get-apimovements): solo los dudosos de
+ahora, con `pagination` y `totals` de ese filtro.
+
+**Cómo se resuelve uno dudoso.** Con
+[`PATCH /api/movements/:id`](#patch-apimovementsid) y
+`{ "ownershipDecision": "mine" }` (es tuyo: deja de contar) o
+`{ "ownershipDecision": "not_mine" }` (no es tuyo: cuenta y deja de salir como
+dudoso). Tu decisión se guarda y **manda sobre la tabla**, también sobre un
+`"own"`. `{ "ownershipDecision": null }` la deshace y el movimiento vuelve al
+reconocimiento. Se resuelve **de uno en uno**: `PATCH /api/movements` no admite
+`ownershipDecision`.
+
+**Se calcula en cada lectura y no se guarda nada**, como la regla de depósitos.
+Vale para los movimientos que ya estaban antes de dar de alta la cuenta propia y
+para los que entren en cada importación, sin marcar nada ni volver a ejecutar
+nada; cambiar un texto vale en la siguiente consulta. **No escribe en ningún
+movimiento**: el `amount`, el `type`, el `balanceAfter`, el `balance` de las
+cuentas, `transferId`, `excludedFromTotals` y las parejas que forma la detección
+de traspasos quedan exactamente como estarían sin la tabla. Lo único que se
+guarda en un movimiento es tu decisión (`ownershipDecision`).
+
 **Errores**
 
 | Código HTTP | `code`             | Cuándo                                                             |
 | ----------- | ------------------ | ------------------------------------------------------------------ |
-| 400         | `VALIDATION_ERROR` | Un parámetro no cumple el esquema (fecha que no es `YYYY-MM-DD`, `type`/`status` fuera de su enumeración, **desde la feature 49** `transfer`/`excluded` con un valor que no es `only` ni `none`, `page` < 1, `pageSize` fuera de 1–200, `accountId` o `categoryId` no entero, `q` fuera de 2–100 caracteres); `from` posterior a `to`; o `page` más allá de la última página con coincidencias. **Desde la feature 47:** `categoryId` y `uncategorized=true` en la misma petición (se piden dos cosas incompatibles: los de una categoría **y** los que no tienen ninguna). |
+| 400         | `VALIDATION_ERROR` | Un parámetro no cumple el esquema (fecha que no es `YYYY-MM-DD`, `type`/`status` fuera de su enumeración, **desde la feature 49** `transfer`/`excluded` con un valor que no es `only` ni `none`, **desde la feature 62** `ownership` con un valor que no es `doubtful`, `page` < 1, `pageSize` fuera de 1–200, `accountId` o `categoryId` no entero, `q` fuera de 2–100 caracteres); `from` posterior a `to`; o `page` más allá de la última página con coincidencias. **Desde la feature 47:** `categoryId` y `uncategorized=true` en la misma petición (se piden dos cosas incompatibles: los de una categoría **y** los que no tienen ninguna). |
 | 404         | `NOT_FOUND`        | El `accountId` pedido no existe. **Desde la feature 47:** o el `categoryId` pedido no existe. |
 
 Un filtro **válido sin coincidencias** (una cuenta que existe pero sin
@@ -1330,7 +1487,8 @@ resultado.
 > la feature 49, `excludedFromTotals` — vía
 > [`PATCH /api/movements/:id`](#patch-apimovementsid) (feature 37) o, para varios
 > movimientos a la vez, [`PATCH /api/movements`](#patch-apimovements) (feature
-> 47). Ninguno de los tres toca el hecho bancario ni el saldo.
+> 47); y desde la feature 62, solo por `PATCH /api/movements/:id`,
+> `ownershipDecision`. Ninguno toca el hecho bancario ni el saldo.
 
 ---
 
@@ -1343,7 +1501,10 @@ cola de pendientes sin mandar una petición por movimiento.
 Vale exactamente lo mismo que en
 [`PATCH /api/movements/:id`](#patch-apimovementsid): los únicos campos que se
 pueden tocar son `categoryId`, `status` y, desde la feature 49,
-`excludedFromTotals`. **Ningún otro campo del movimiento cambia** — importe,
+`excludedFromTotals`. **`ownershipDecision` (feature 62) no se admite aquí**: se
+resuelve de uno en uno con `PATCH /api/movements/:id`, y mandarlo en este body
+es **400 `VALIDATION_ERROR`** como cualquier otra propiedad no admitida.
+**Ningún otro campo del movimiento cambia** — importe,
 tipo, fechas, descripción, `balanceAfter`, `note`, `transferId`, `daySequence`,
 `origin`… quedan idénticos —, y los saldos de las cuentas tampoco se mueven.
 Los `totals` de `GET /api/movements` y de `GET /api/overview` **solo** cambian
@@ -1500,9 +1661,15 @@ tipo, las fechas, la descripción, el `balanceAfter`, el `transferId`… son el
 hecho bancario (o el enlace de un traspaso) y no se tocan; el saldo de la cuenta
 no cambia por nada de lo que viaja aquí. Los `totals` de `GET /api/movements` y
 de `GET /api/overview` no cambian por categorizar ni por confirmar; **solo**
-cambian al escribir `excludedFromTotals`, y desde la feature 57 ni eso si el
+cambian al escribir `excludedFromTotals` (y desde la feature 62
+`ownershipDecision`, ver el párrafo siguiente), y desde la feature 57 ni eso si el
 movimiento es de depósito (ver
 [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
+
+**Desde la feature 62** también se escribe aquí `ownershipDecision`: tu respuesta
+a si el movimiento es dinero entre tus cuentas, que manda sobre lo que reconozca
+la tabla de cuentas propias. Cambia las tres sumas como dice
+[Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas).
 
 **Desde la feature 60**, mandar un `categoryId` numérico deja además
 `categorySource: "manual"` (también si es la categoría que ya tenía): desde ese
@@ -1510,15 +1677,20 @@ momento ninguna regla lo cambia. Mandar `categoryId: null` deja
 `categorySource: null`. Si el body no lleva `categoryId`, `categorySource` no
 cambia.
 
-**Body** (al menos uno de los tres campos; pueden ir juntos en la misma petición)
+**Body** (al menos uno de los cuatro campos; pueden ir juntos en la misma petición)
 | Campo        | Tipo                                    | Reglas                                                            |
 | ------------ | --------------------------------------- | ----------------------------------------------------------------- |
 | `categoryId` | number (entero ≥ 1) \| null             | Id de una categoría existente cuyo `kind` **coincida con el `type`** del movimiento (`expense`↔`expense`, `income`↔`income`). `null` **quita** la categoría. Un movimiento `neutral` (importe 0) no se categoriza. |
 | `status`     | `"confirmed"` \| `"pending_review"`     | Funciona en los dos sentidos: dar por revisado y volver atrás.    |
 | `excludedFromTotals` | boolean (`true` \| `false`, **literales**) | **Desde la feature 49.** `true` saca el movimiento de las sumas de `income` y `expense`; `false` lo devuelve, exactamente como estaba. **Desde la feature 57, salvo en un movimiento de depósito, donde la marca se guarda pero no cambia lo que suma** (ver [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)). Se puede marcar cualquier movimiento, también un `neutral` y también una pierna de traspaso. **Solo vale el booleano JSON**: `null`, `"true"`, `"false"`, `0` o `1` → **400 `VALIDATION_ERROR`**, sin escribir nada (no se convierten a booleano). |
+| `ownershipDecision` | `"mine"` \| `"not_mine"` \| null | **Desde la feature 62.** `"mine"` = es tuyo: sale de las tres sumas; `"not_mine"` = no es tuyo: cuenta como contaría sin la tabla de cuentas propias y deja de salir como dudoso; `null` = deshace la decisión y el movimiento vuelve al reconocimiento. Cualquier otro valor → **400 `VALIDATION_ERROR`**, sin escribir nada. Solo en este endpoint. |
 
 ```json
 { "excludedFromTotals": true }
+```
+
+```json
+{ "ownershipDecision": "mine" }
 ```
 
 > Un body vacío (`{}`) o con cualquier otra propiedad (`amount`,
@@ -1526,9 +1698,9 @@ cambia.
 > descarta en silencio.
 
 **Respuesta 200** — el movimiento serializado completo (la misma forma que cada
-elemento de `movements` en `GET /api/movements`, **salvo `deposit`**, que solo
-viaja en `GET /api/movements` desde la feature 57), con su `account` y su
-`category` embebidos.
+elemento de `movements` en `GET /api/movements`, **salvo `deposit`** y
+**`ownership`**, que solo viajan en `GET /api/movements` desde las features 57 y
+62), con su `account` y su `category` embebidos. Lleva `ownershipDecision`.
 
 **Errores**
 | Código HTTP | `code`             | Cuándo                                                            |
@@ -1756,6 +1928,11 @@ No calcula nada propio — ese es el punto del endpoint:
   [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
   El capital se busca en toda la historia de la cuenta, no solo en el mes
   pedido. Los saldos no cambian.
+- **Desde la feature 62**, `period.totals` deja fuera también lo que la tabla de
+  cuentas propias reconoce como dinero entre tus cuentas, igual que los `totals`
+  de `GET /api/movements` (ver
+  [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas)).
+  Los saldos no cambian.
 
 Las **inversiones no aparecen aquí**: tendrán su propia consulta (feature 39).
 
@@ -1839,9 +2016,13 @@ en `GET /api/transfers/ambiguous`.
 [`GET /api/movements`](#get-apimovements) cuenta como gasto (en el código, la
 misma función, `isCountedExpense`): `type: "expense"`, sin `transferId` (fuera
 las dos piernas de un traspaso), sin `productId` (fuera las aportaciones a un
-producto de inversión), sin `excludedFromTotals: true` y que no sea un
+producto de inversión), sin `excludedFromTotals: true`, que no sea un
 movimiento de depósito (ver
-[Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)).
+[Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)) y,
+desde la feature 62, que no sea dinero entre tus cuentas (`ownership.status`
+`"own"` o `"mine"`, ver
+[Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas);
+un dudoso sí entra).
 Los ingresos y los `neutral` no entran nunca. Para sacar de aquí un gasto que no
 quieres ver, se marca con `excludedFromTotals` (`PATCH /api/movements/:id`): sale
 de esta respuesta y de las sumas a la vez.
@@ -2116,6 +2297,136 @@ error.
 
 > Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
 > `PATCH`, ni `DELETE` bajo `/api/recurring-expenses`).
+
+---
+
+### `GET /api/own-accounts`
+
+**Desde la feature 62** (2026-10-20). La tabla de cuentas propias entera: cada
+fila con la forma de [`OwnAccount`](#ownaccount), ordenadas por `bank`, después
+por `name` y después por `id`. Solo lectura.
+
+**Respuesta 200**
+```json
+{
+  "ownAccounts": [
+    {
+      "id": 7,
+      "name": "Hucha inventada",
+      "bank": "Bankinter",
+      "accountNumber": null,
+      "type": "savings",
+      "openedAt": null,
+      "closedAt": null,
+      "texts": ["Hucha inventada"],
+      "createdAt": "2026-10-20T09:15:02.000Z",
+      "updatedAt": "2026-10-20T09:15:02.000Z"
+    }
+  ]
+}
+```
+
+Una tabla vacía responde `{ "ownAccounts": [] }`.
+
+---
+
+### `POST /api/own-accounts`
+
+**Desde la feature 62.** Da de alta una fila de la tabla de cuentas propias con
+sus textos. No hay `DELETE`: una fila que ya no quieras se deja sin textos, y
+entonces no reconoce nada.
+
+**Body**
+
+| Campo           | Tipo                         | Reglas |
+| --------------- | ---------------------------- | ------ |
+| `name`          | string                       | **Obligatorio.** No vacío ni en blanco; se guarda sin espacios en los extremos. |
+| `bank`          | string                       | **Obligatorio.** Igual que `name`. |
+| `type`          | `"checking"` \| `"savings"` \| `"investment"` \| `"deposit"` \| `"crypto"` \| `"other"` | **Obligatorio.** |
+| `accountNumber` | string \| null               | Opcional. Solo informativo. |
+| `openedAt`      | string (`YYYY-MM-DD`) \| null | Opcional. |
+| `closedAt`      | string (`YYYY-MM-DD`) \| null | Opcional. No puede ser anterior a `openedAt`. |
+| `texts`         | string[]                     | Opcional (def. `[]`). Cada texto tiene que quedarse en **3 caracteres o más** una vez comparado como dice [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas). Dos textos que comparados así son iguales se guardan **una vez**, el primero tal como se escribió. |
+
+```json
+{
+  "name": "Cartera indexada inventada",
+  "bank": "Trade Republic",
+  "type": "investment",
+  "openedAt": "2024-03-11",
+  "texts": ["Cartera Indexada Inventada", "Trade Republic"]
+}
+```
+
+**Respuesta 201** — la fila creada, con la forma de [`OwnAccount`](#ownaccount).
+
+**Errores**
+
+| Código HTTP | `code`             | Cuándo |
+| ----------- | ------------------ | ------ |
+| 400         | `VALIDATION_ERROR` | Falta `name`, `bank` o `type`; `name` o `bank` vacío o en blanco; `type` fuera de la lista; una fecha que no es `YYYY-MM-DD`; `closedAt` anterior a `openedAt`; un texto de menos de 3 caracteres una vez comparado; o una propiedad no admitida. No se escribe nada. |
+
+---
+
+### `PATCH /api/own-accounts/:id`
+
+**Desde la feature 62.** Cambia **solo los campos que viajan** de una fila de la
+tabla de cuentas propias. Los campos y sus reglas son los de
+[`POST /api/own-accounts`](#post-apiown-accounts), todos opcionales, con al menos
+uno. `texts`, si viaja, **sustituye la lista entera**, en una transacción.
+`openedAt`, `closedAt` y `accountNumber` se borran mandando `null`. `closedAt`
+anterior a `openedAt` se comprueba también contra el valor ya guardado del otro.
+
+```json
+{ "texts": ["Cartera Indexada Inventada"] }
+```
+
+**Respuesta 200** — la fila completa, con la forma de [`OwnAccount`](#ownaccount).
+
+**Errores**
+
+| Código HTTP | `code`             | Cuándo |
+| ----------- | ------------------ | ------ |
+| 400         | `VALIDATION_ERROR` | Body vacío (`{}`), una propiedad no admitida, o cualquiera de las condiciones de `POST /api/own-accounts`. No se escribe nada. |
+| 404         | `NOT_FOUND`        | No existe ninguna fila con ese `id`. No se escribe nada. |
+
+---
+
+### `GET /api/own-accounts/holder-names`
+
+**Desde la feature 62.** Las formas en que aparece tu nombre en los conceptos,
+en orden alfabético. Solo lectura.
+
+**Respuesta 200**
+```json
+{ "names": ["Ana Pérez Gil", "Pérez Gil Ana"] }
+```
+
+---
+
+### `PUT /api/own-accounts/holder-names`
+
+**Desde la feature 62.** Sustituye las formas de tu nombre por **exactamente**
+la lista que viaja (una lista vacía las borra todas). Solo vale la forma entera:
+un familiar con tus mismos apellidos no casa con ella.
+
+**Body**
+```json
+{ "names": ["Ana Pérez Gil", "Pérez Gil Ana"] }
+```
+
+Cada forma tiene que quedarse en **3 caracteres o más** una vez comparada como
+dice [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas);
+dos formas iguales una vez comparadas se guardan una vez.
+
+**Respuesta 200** — `{ "names": [...] }`, la lista guardada, como en
+[`GET /api/own-accounts/holder-names`](#get-apiown-accountsholder-names).
+
+**Errores**
+
+| Código HTTP | `code`             | Cuándo |
+| ----------- | ------------------ | ------ |
+| 400         | `VALIDATION_ERROR` | Falta `names`, no es una lista de textos, una forma se queda en menos de 3 caracteres, o hay una propiedad no admitida. **La lista anterior queda intacta.** |
 
 ---
 

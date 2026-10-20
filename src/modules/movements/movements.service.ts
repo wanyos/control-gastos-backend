@@ -10,6 +10,8 @@ import type {
   DepositMaturityMatcherRegistry,
   DepositMovementReading,
 } from '../investments/investments.types.js'
+import type { OwnershipReading } from '../own-accounts/own-accounts.recognition.js'
+import { readOwnership } from '../own-accounts/own-accounts.service.js'
 import type {
   AnchorColumns,
   BalanceAnchor,
@@ -28,6 +30,7 @@ import type {
   MovementWithRelations,
   SerializedDeposit,
   SerializedMovement,
+  SerializedOwnership,
   SerializedMovementTotals,
   TotalsMovement,
   UpdateMovementBody,
@@ -175,7 +178,10 @@ function dateOnlyToDate(value: string): Date {
  * (feature 36). Both date ends are inclusive: the column holds midnight UTC,
  * so `lte` at midnight of `to` covers the whole day.
  */
-function movementListWhere(query: MovementListQuery): Prisma.MovementWhereInput {
+function movementListWhere(
+  query: MovementListQuery,
+  ownership: Map<number, OwnershipReading>,
+): Prisma.MovementWhereInput {
   const where: Prisma.MovementWhereInput = {}
   if (query.accountId !== undefined) where.accountId = query.accountId
   if (query.type !== undefined) where.type = query.type
@@ -190,6 +196,13 @@ function movementListWhere(query: MovementListQuery): Prisma.MovementWhereInput 
   if (query.transfer === 'none') where.transferId = null
   if (query.excluded === 'only') where.excludedFromTotals = true
   if (query.excluded === 'none') where.excludedFromTotals = false
+  // Feature 62 (R12): the reading is computed when reading, not stored, so the
+  // filter is the list of ids that are doubtful right now.
+  if (query.ownership === 'doubtful') {
+    where.id = {
+      in: [...ownership].filter(([, reading]) => reading.status === 'doubtful').map(([id]) => id),
+    }
+  }
   if (query.from !== undefined || query.to !== undefined) {
     where.bookingDate = {
       ...(query.from === undefined ? {} : { gte: dateOnlyToDate(query.from) }),
@@ -259,6 +272,11 @@ const movementListOrder: Prisma.MovementOrderByWithRelationInput[] = [
  * deposit movement only by what `readDepositMovements` says it counts. That map
  * is read over the whole history of the accounts of the registry's banks, not
  * over the filter (R3, R5).
+ *
+ * Since feature 62 every movement carries `ownership` too, and the totals
+ * leave out what `readOwnership` recognizes as the human's own money moving.
+ * That map is also read over the whole table, before the count, so that the
+ * `ownership=doubtful` filter can enter the shared `where` (R12).
  */
 export async function listMovements(
   prisma: AppPrismaClient,
@@ -295,7 +313,10 @@ export async function listMovements(
     if (category === null) throw new NotFoundError('Category not found')
   }
 
-  const where = movementListWhere(query)
+  // Feature 62: read before the count, so the `ownership` filter goes into the
+  // shared `where` and the page, `total` and `totals` see the same set (R12).
+  const ownership = await readOwnership(prisma)
+  const where = movementListWhere(query, ownership)
   const total = await prisma.movement.count({ where })
   const totalPages = Math.ceil(total / query.pageSize)
 
@@ -333,9 +354,25 @@ export async function listMovements(
     movements: pageRows.map((row): ListedMovement => ({
       ...serializeMovement(row),
       deposit: serializeDeposit(deposits.get(row.id)),
+      ownership: serializeOwnership(ownership.get(row.id)),
     })),
     pagination: { page: query.page, pageSize: query.pageSize, total, totalPages },
-    totals: serializeTotals(computeTotals(totalsRows, deposits)),
+    totals: serializeTotals(computeTotals(totalsRows, deposits, ownership)),
+  }
+}
+
+/**
+ * `ownership` of a listed movement (feature 62, R11): `null` when it matches
+ * nothing and the human decided nothing. `leavesTotals` does not travel: the
+ * `status` already says it.
+ */
+function serializeOwnership(reading: OwnershipReading | undefined): SerializedOwnership | null {
+  if (reading === undefined) return null
+  return {
+    status: reading.status,
+    ownAccountId: reading.ownAccountId,
+    ownAccountName: reading.ownAccountName,
+    matchedText: reading.matchedText,
   }
 }
 
@@ -353,8 +390,9 @@ function serializeDeposit(reading: DepositMovementReading | undefined): Serializ
 }
 
 /**
- * Updates the ONLY two writable fields of a movement: `categoryId` and/or
- * `status` (feature 37). The bank fact — amount, type, dates, description,
+ * Updates the ONLY writable fields of a movement: `categoryId` and/or
+ * `status` (feature 37), the mark `excludedFromTotals` (feature 49) and the
+ * human's `ownershipDecision` (feature 62). The bank fact — amount, type, dates, description,
  * balanceAfter… — cannot change here: the input type does not admit it and the
  * route schema rejects it before this runs (R15).
  *
@@ -395,6 +433,10 @@ export async function updateMovement(
   // Feature 49: no domain rule — any movement can be marked, a transfer leg or
   // a neutral one included (R9). Only the mark travels; the amount never does.
   if (input.excludedFromTotals !== undefined) data.excludedFromTotals = input.excludedFromTotals
+  // Feature 62 (R10): the human's answer on whether it is money between his own
+  // accounts. The only writer of the column; `null` hands it back to the
+  // recognition.
+  if (input.ownershipDecision !== undefined) data.ownershipDecision = input.ownershipDecision
 
   const updated = await prisma.movement.update({
     where: { id },
@@ -579,6 +621,7 @@ export function serializeMovement(movement: MovementWithRelations): SerializedMo
     transferId: movement.transferId,
     daySequence: movement.daySequence,
     excludedFromTotals: movement.excludedFromTotals,
+    ownershipDecision: movement.ownershipDecision,
     createdAt: movement.createdAt.toISOString(),
     updatedAt: movement.updatedAt.toISOString(),
     account: {
@@ -607,18 +650,21 @@ function toDateOnly(date: Date): string {
 
 /**
  * Whether a movement adds its `amount` to `expense` in `computeTotals`: an
- * `expense` that is not a deposit movement (feature 57), not marked
- * `excludedFromTotals`, not a leg of a linked transfer and not a contribution
- * to an investment product. The single answer to "is this an expense" in the
- * backend: the totals and `GET /api/recurring-expenses` (feature 58) both ask
- * here, so the two can never disagree.
+ * `expense` that is not a deposit movement (feature 57), not recognized as the
+ * human's own money moving (feature 62: its `ownership` reading leaves the
+ * totals), not marked `excludedFromTotals`, not a leg of a linked transfer and
+ * not a contribution to an investment product. The single answer to "is this
+ * an expense" in the backend: the totals and `GET /api/recurring-expenses`
+ * (feature 58) both ask here, so the two can never disagree.
  */
 export function isCountedExpense(
   movement: TotalsMovement,
   deposits: Map<number, DepositMovementReading>,
+  ownership: Map<number, OwnershipReading>,
 ): boolean {
   return (
     deposits.get(movement.id) === undefined &&
+    ownership.get(movement.id)?.leavesTotals !== true &&
     !movement.excludedFromTotals &&
     movement.transferId === null &&
     movement.productId === null &&
@@ -641,10 +687,18 @@ export function isCountedExpense(
  * only what its entry says: a maturity its `counted` to `income`, an opening or
  * a cancellation nothing. For those the mark, `transferId` and `productId` are
  * not looked at (R9): the rule replaces them.
+ *
+ * Since feature 62 a movement whose `ownership` reading leaves the totals
+ * (status `own` or `mine`, from `readOwnership`) adds nothing either: it is
+ * money moving between the human's own accounts. A deposit movement still goes
+ * by the deposit rule first, whatever its reading (R9); a `doubtful` or a
+ * `not_mine` one counts as it would without the own accounts table (R7, R10).
+ * Nothing is written on the movement (ADR-040).
  */
 export function computeTotals(
   movements: TotalsMovement[],
   deposits: Map<number, DepositMovementReading>,
+  ownership: Map<number, OwnershipReading>,
 ): MovementTotals {
   return movements.reduce<MovementTotals>(
     (totals, movement) => {
@@ -653,7 +707,8 @@ export function computeTotals(
         if (deposit.kind !== 'maturity') return totals
         return { ...totals, income: totals.income.plus(deposit.counted) }
       }
-      if (isCountedExpense(movement, deposits)) {
+      if (ownership.get(movement.id)?.leavesTotals === true) return totals
+      if (isCountedExpense(movement, deposits, ownership)) {
         return { ...totals, expense: totals.expense.plus(toDecimal(movement.amount)) }
       }
       if (movement.excludedFromTotals) return totals

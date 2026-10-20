@@ -3329,6 +3329,90 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     §`GET /api/category-rules/preview`); lo comprueba
     `src/modules/category-rules/category-rules.docs.test.ts`.
 
+### ADR-040: Si un movimiento es entre cuentas propias se decide al leer, con los textos que escribe el humano y nunca con el nombre del banco solo; lo único que se guarda es su decisión
+
+- **Fecha:** 2026-10-20
+- **Estado:** aceptada (implementada en la feature #62 `own-accounts`, SDD; hoja
+  aprobada por el humano el 2026-10-20). Se apoya en ADR-035 (calcular al leer) y no
+  revisa ningún ADR anterior: las exclusiones que ya había en las sumas siguen igual.
+- **Contexto:** hasta la F62, el dinero que el humano mueve entre sus propias cuentas
+  solo salía de las sumas si la detección de traspasos encontraba las dos piernas
+  (ADR-036) o si él lo marcaba a mano con `excludedFromTotals` (F49). Una
+  transferencia a una cuenta suya que no se importa (otro banco, una cartera, un
+  fondo, un exchange) no tiene pareja, y cada importación traía movimientos de esos
+  sin marcar. El humano pidió una tabla con sus cuentas y productos, de cualquier
+  banco, con los textos con los que aparecen en los conceptos, y que lo que nombre una
+  cuenta suya o a él mismo no cuente en las sumas, sin marcarlo; que una transferencia
+  a otra persona cuente aunque vaya a un banco donde él tiene cuenta; y que lo no
+  claro quede dudoso para resolverlo él.
+- **Decisión:**
+  1. **Tres tablas nuevas, escritas solo por el humano** desde
+     `/api/own-accounts` (módulo `src/modules/own-accounts/`): `OwnAccount` (nombre,
+     banco, número, tipo, fechas), `OwnAccountText` (los textos de cada fila) y
+     `AccountHolderName` (las formas de su nombre). **Independientes** de `Account` y
+     de `InvestmentProduct`: sin clave ajena y sin rellenarse solas. Número de cuenta y
+     fechas son solo informativos.
+  2. **El reconocimiento es una función pura**, `resolveOwnership`
+     (`own-accounts.recognition.ts`): compara el concepto y cada texto en minúsculas,
+     sin tildes y con todo lo que no es letra o cifra cambiado por un espacio, y por
+     **palabras enteras**. En orden: la decisión del humano manda; una forma de su
+     nombre o un texto que no es el nombre de un banco → `own`; solo nombres de banco
+     → `doubtful` (salvo una pierna de traspaso o un marcado, que se quedan como
+     estaban); nada → sin lectura. Un texto es el nombre de un banco si es igual al
+     `bank` de cualquier fila de la tabla. El campo `bank` **nunca** casa con un
+     concepto por sí solo.
+  3. **Se calcula en cada lectura y no se guarda nada.** `readOwnership`
+     (`own-accounts.service.ts`, solo `findMany`) lee la tabla, las formas y los
+     movimientos y llama a la función pura. Vale igual para lo que ya estaba y para lo
+     que entre en cada importación, sin volver a ejecutar nada.
+  4. **Una sola regla en las tres sumas.** `computeTotals(movements, deposits,
+     ownership)` e `isCountedExpense(movement, deposits, ownership)`
+     (`movements.service.ts`) reciben el mapa; `listMovements`, `getOverview` y
+     `getRecurringExpenses` lo leen con `readOwnership`. Orden en `computeTotals`:
+     primero la regla de depósitos (ADR-035), después «sale de las sumas si su lectura
+     es `own` o `mine`», después lo de siempre. Un dudoso **sigue contando**.
+  5. **Lo único que se guarda en un movimiento es la decisión del humano**,
+     `Movement.ownershipDecision` (`mine` / `not_mine` / `NULL`), escrita solo por
+     `PATCH /api/movements/:id`. `PATCH /api/movements` (varios a la vez) no la
+     admite.
+  6. **El listado lo enseña y lo filtra:** `GET /api/movements` lleva `ownership` en
+     cada movimiento, y `ownership=doubtful` entra en el `where` compartido como la
+     lista de ids dudosos de ese momento, así que página, `total` y `totals` ven el
+     mismo conjunto.
+- **Alternativas descartadas:**
+  - **Guardar el reconocimiento en una columna del movimiento**, escrita al importar
+    y reescrita al cambiar la tabla: obliga a repasar toda la base cada vez que el
+    humano toca un texto y a acordarse de llamarlo en dos sitios; si uno se olvida,
+    las sumas salen mal sin aviso.
+  - **Reconocer por el banco de la cuenta o por el nombre del banco solo:** el humano
+    lo descartó; una transferencia a otra persona del mismo banco dejaría de contar.
+  - **Una casilla por fila, «en este banco solo tengo cuentas yo»,** para no dejar
+    dudoso lo que solo nombra el banco: descartada por el humano en la hoja.
+  - **Que un dudoso no cuente hasta resolverlo:** las sumas cambiarían sin que él lo
+    haya decidido.
+  - **Enlazar la tabla con `Account` / `InvestmentProduct` y sembrarla en la
+    migración:** la mitad de lo que el humano quiere dar de alta no está en ninguna de
+    las dos, y el reconocimiento solo necesita textos.
+- **Consecuencias:**
+  - No cambia el `amount`, el `type`, el `balanceAfter` ni el `balance` de nada, ni
+    `transferId`, `excludedFromTotals` ni las parejas que forma la detección de
+    traspasos. Las 55 marcas a mano se quedan como están.
+  - Hasta que el humano rellene la tabla y las formas de su nombre, ninguna suma
+    cambia.
+  - Si el banco recorta su nombre de una forma que no escribió, ese movimiento cuenta
+    como de otra persona sin avisar. Si pone como texto el nombre de un banco donde
+    otra persona de su familia tiene cuenta, todo lo que lo nombre saldrá dudoso.
+  - Cada lectura de las tres sumas lee además todas las descripciones (1.667
+    movimientos medidos el 2026-10-20); con la tabla y las formas vacías solo lee los
+    movimientos con decisión.
+  - `OwnAccount.name`, `OwnAccount.accountNumber`, `OwnAccountText.text` y
+    `AccountHolderName.name` entran en los textos que compara
+    `src/no-real-data.test.ts`; `OwnAccount.bank` va a las no comparadas, como los
+    demás nombres de banco.
+  - Contrato en `docs/api-contract.md` (§`OwnAccount`, las cinco rutas de
+    `/api/own-accounts` y §Movimientos entre tus cuentas en las sumas); lo comprueba
+    `src/modules/own-accounts/own-accounts.docs.test.ts`.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

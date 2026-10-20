@@ -82,6 +82,24 @@ enum ImportWarningStatus {
   reviewed
 }
 
+// Feature 62: the kind of an own account. Informative only: the recognition of
+// own movements never reads it.
+enum OwnAccountType {
+  checking // current account
+  savings // remunerated account
+  investment // portfolio, fund, ETF
+  deposit
+  crypto
+  other
+}
+
+/// Feature 62: what the human decided about whose a movement is. It wins over
+/// the recognition of own movements (own-accounts.recognition.ts).
+enum OwnershipDecision {
+  mine // his own money moving: out of the income/expense totals
+  not_mine // someone else's: the own accounts table never takes it out
+}
+
 // ── Models ────────────────────────────────────────────────
 model Account {
   id                       Int                     @id @default(autoincrement())
@@ -180,7 +198,8 @@ model Movement {
   // The investment product this money went to. Nothing writes it yet: marking
   // a contribution is a later feature. It is NOT a source for Valuation.invested.
   // It still leaves the movement out of the income/expense totals, but the
-  // general way to do that is `excludedFromTotals` below (feature 49).
+  // general way to do that is `excludedFromTotals` below (feature 49), and for
+  // money moved to an own account the own accounts table (feature 62).
   // Feature 57: not on a deposit movement, whose sum comes from its own rule.
   product   InvestmentProduct? @relation(fields: [productId], references: [id])
   productId Int?
@@ -192,7 +211,14 @@ model Movement {
   // Feature 57: on a deposit movement (opening, cancellation, maturity) the
   // mark is kept but does not change what it adds to the totals; the
   // migration 20261016120000_deposit_movements_unmark removed those marks.
+  // Feature 62: the own accounts table never removes a mark, and a marked
+  // movement is never doubtful.
   excludedFromTotals Boolean @default(false)
+
+  /// Feature 62: see enum OwnershipDecision. NULL = undecided, the recognition
+  /// of own movements decides. Written only by PATCH /api/movements/:id: no
+  /// importer, no transfer detection and not the recognition itself.
+  ownershipDecision OwnershipDecision?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -353,4 +379,42 @@ model ImportBalanceMismatch {
   // serializing, so it cannot diverge from its two operands.
   @@unique([bank, year, fileName, accountId, bookingDate, check, computed, fromFile], map: "ImportBalanceMismatch_identity_key")
   @@index([status])
+}
+
+/// Feature 62: the human's own accounts and products, in any bank, imported or
+/// not. Read by the recognition of own movements (own-accounts.recognition.ts),
+/// computed when reading; nothing here is copied onto a movement. Independent
+/// of Account and InvestmentProduct on purpose: no foreign key to either.
+/// No natural key: two accounts of one bank may share a name.
+model OwnAccount {
+  id            Int              @id @default(autoincrement())
+  name          String
+  /// Never used as a text to match: a bank name alone recognizes nothing.
+  bank          String
+  /// Informative only: no movement description carries one.
+  accountNumber String?
+  type          OwnAccountType
+  openedAt      DateTime?        @db.Date
+  closedAt      DateTime?        @db.Date
+  texts         OwnAccountText[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+/// Feature 62: a text with which an own account appears in movement
+/// descriptions. Stored as the human typed it; compared normalized.
+model OwnAccountText {
+  id           Int        @id @default(autoincrement())
+  ownAccount   OwnAccount @relation(fields: [ownAccountId], references: [id], onDelete: Cascade)
+  ownAccountId Int
+  text         String
+
+  @@unique([ownAccountId, text])
+}
+
+/// Feature 62: the forms in which the account holder's name appears in
+/// descriptions. `PUT /api/own-accounts/holder-names` replaces them all.
+model AccountHolderName {
+  id   Int    @id @default(autoincrement())
+  name String @unique
 }

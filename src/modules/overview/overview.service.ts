@@ -8,6 +8,7 @@ import { listAccounts } from '../accounts/accounts.service.js'
 import { readDepositMovements } from '../investments/investments.service.js'
 import type { DepositMaturityMatcherRegistry } from '../investments/investments.types.js'
 import { computeTotals, serializeTotals } from '../movements/movements.service.js'
+import { readOwnership } from '../own-accounts/own-accounts.service.js'
 import type { OverviewQuery, OverviewResponse } from './overview.types.js'
 
 /**
@@ -43,7 +44,9 @@ export function monthRange(month: string): { from: string; to: string } {
  *    the contributions to an investment product (`productId != null`), the
  *    movements the human marked `excludedFromTotals` (feature 49) and the
  *    `neutral` movements, and since feature 57 counts a deposit movement only
- *    by its interest. Two different sums of the same money diverge.
+ *    by its interest, and since feature 62 leaves out what the own accounts
+ *    table recognizes as the human's own money moving (`readOwnership`). Two
+ *    different sums of the same money diverge.
  *
  * A month with no movements is not an error: the totals are simply zero.
  * Read-only: this view writes nothing (its queries are `findMany` only).
@@ -56,7 +59,7 @@ export async function getOverview(
   const month = query.month ?? currentMonth()
   const { from, to } = monthRange(month)
 
-  const [accounts, periodMovements, deposits] = await Promise.all([
+  const [accounts, periodMovements, deposits, ownership] = await Promise.all([
     listAccounts(prisma),
     prisma.movement.findMany({
       // Both ends inclusive: `bookingDate` is date-only stored at midnight UTC,
@@ -79,6 +82,8 @@ export async function getOverview(
     // Over the whole history, not the month: a maturity's principal may come
     // from an opening of an earlier month (feature 57).
     readDepositMovements(prisma, matchers),
+    // Feature 62: the same reading `GET /api/movements` uses, so the two sums agree.
+    readOwnership(prisma),
   ])
 
   const totalBalance = accounts.reduce(
@@ -96,6 +101,11 @@ export async function getOverview(
       type: account.type,
       balance: account.balance.toFixed(2),
     })),
-    period: { month, from, to, totals: serializeTotals(computeTotals(periodMovements, deposits)) },
+    period: {
+      month,
+      from,
+      to,
+      totals: serializeTotals(computeTotals(periodMovements, deposits, ownership)),
+    },
   }
 }

@@ -84,13 +84,17 @@ function assertStrictBoolean(body: unknown, property: string): void {
  * §5 and §2.1).
  * What CAN be edited (feature 37) are the two annotation fields of an existing
  * movement — `categoryId` and `status` — and, since feature 49, the mark
- * `excludedFromTotals`; nothing else: the PATCH schema rejects any other
- * property.
+ * `excludedFromTotals`, and since feature 62, on `PATCH /api/movements/:id`
+ * only, the human's `ownershipDecision`; nothing else: the PATCH schema rejects
+ * any other property.
  *
  * Since feature 36 the listing takes combinable filters (account, date range,
  * type, status), is always paginated, and ships the totals of the filter.
  * Since feature 57 a deposit movement counts in those totals only by its
  * interest, and each listed movement says how it counts (`deposit`).
+ * Since feature 62 the totals leave out what the own accounts table recognizes
+ * as the human's own money moving; each listed movement says it (`ownership`)
+ * and `ownership=doubtful` lists only the doubtful ones.
  */
 export default async function movementsRoutes(
   fastify: FastifyInstance,

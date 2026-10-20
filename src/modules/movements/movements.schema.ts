@@ -32,6 +32,9 @@ export const listMovementsSchema = {
       // else is a 400 (R11).
       transfer: { type: 'string', enum: ['only', 'none'] },
       excluded: { type: 'string', enum: ['only', 'none'] },
+      // Feature 62 (R12): only the movements that are doubtful right now. One
+      // value; anything else is a 400.
+      ownership: { type: 'string', enum: ['doubtful'] },
       page: { type: 'integer', minimum: 1, default: 1 },
       pageSize: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
     },
@@ -39,8 +42,9 @@ export const listMovementsSchema = {
 } as const
 
 /**
- * Body of `PATCH /api/movements/:id` (feature 37). Only `categoryId` and
- * `status` can travel: `additionalProperties: false` is what technically
+ * Body of `PATCH /api/movements/:id` (feature 37). Only `categoryId`,
+ * `status`, `excludedFromTotals` (feature 49) and `ownershipDecision`
+ * (feature 62) can travel: `additionalProperties: false` is what technically
  * guarantees that no other field of the movement can be touched this way, and
  * `minProperties: 1` makes an empty `{}` a 400 instead of a silent no-op.
  */
@@ -64,6 +68,9 @@ export const updateMovementSchema = {
       // Feature 49. AJV would coerce `"true"` or `null` into a boolean, so the
       // route also checks the RAW value in its preValidation (R3).
       excludedFromTotals: { type: 'boolean' },
+      // Feature 62 (R10): null hands the movement back to the recognition. Only
+      // on this endpoint: the bulk one does not take it.
+      ownershipDecision: { type: ['string', 'null'], enum: ['mine', 'not_mine', null] },
     },
   },
 } as const

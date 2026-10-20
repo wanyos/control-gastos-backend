@@ -51,6 +51,11 @@ export const comparedColumns: Array<{ table: string; column: string; kind: Colum
   { table: 'CategoryRule', column: 'matchText', kind: 'text' },
   { table: 'ImportBalanceMismatch', column: 'note', kind: 'text' },
   { table: 'ImportUnparsedRow', column: 'note', kind: 'text' },
+  // Feature 62: the human types them, so they are his data.
+  { table: 'OwnAccount', column: 'name', kind: 'text' },
+  { table: 'OwnAccount', column: 'accountNumber', kind: 'text' },
+  { table: 'OwnAccountText', column: 'text', kind: 'text' },
+  { table: 'AccountHolderName', column: 'name', kind: 'text' },
   { table: 'ImportUnparsedRow', column: 'reason', kind: 'ownMessage' },
   { table: 'Account', column: 'iban', kind: 'iban' },
 ]
@@ -80,6 +85,7 @@ export const notComparedColumns: Array<{ table: string; column: string; reason: 
   { table: 'InvestmentProduct', column: 'currency', reason: currencyCode },
   { table: 'Account', column: 'bank', reason: bankName },
   { table: 'InvestmentProduct', column: 'bank', reason: bankName },
+  { table: 'OwnAccount', column: 'bank', reason: bankName },
   { table: 'ImportUnparsedRow', column: 'bank', reason: bankName },
   { table: 'ImportBalanceMismatch', column: 'bank', reason: bankName },
   { table: 'ImportUnparsedRow', column: 'year', reason: yearOnly },

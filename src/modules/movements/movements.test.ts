@@ -519,7 +519,7 @@ describe('computeTotals', () => {
   ]
 
   it('excludes transfer legs and neutral movements from the totals', () => {
-    const totals = computeTotals(dataset, new Map())
+    const totals = computeTotals(dataset, new Map(), new Map())
 
     expect(totals.expense.toFixed(2)).toBe('45.90')
     expect(totals.income.toFixed(2)).toBe('1200.00')
@@ -549,6 +549,7 @@ describe('computeTotals', () => {
         },
       ],
       new Map(),
+      new Map(),
     )
 
     expect(totals.expense.toFixed(2)).toBe('45.90')
@@ -576,6 +577,7 @@ describe('computeTotals', () => {
         },
       ],
       new Map(),
+      new Map(),
     )
 
     expect(totals.expense.toFixed(2)).toBe('10.00')
@@ -583,7 +585,7 @@ describe('computeTotals', () => {
   })
 
   it('returns zero totals for an empty dataset', () => {
-    const totals = computeTotals([], new Map())
+    const totals = computeTotals([], new Map(), new Map())
 
     expect(totals.expense.toFixed(2)).toBe('0.00')
     expect(totals.income.toFixed(2)).toBe('0.00')
@@ -642,6 +644,7 @@ describe('computeTotals', () => {
         },
       ],
       deposits,
+      new Map(),
     )
 
     expect(totals.income.toFixed(2)).toBe('13.86')
@@ -670,6 +673,7 @@ describe('serializeTotals', () => {
           excludedFromTotals: false,
         },
       ],
+      new Map(),
       new Map(),
     )
 
@@ -700,6 +704,7 @@ describe('serializeTotals', () => {
           excludedFromTotals: false,
         },
       ],
+      new Map(),
       new Map(),
     )
 
@@ -1436,12 +1441,16 @@ describe('movement routes (read-only) and database indexes', () => {
         'daySequence',
         // Feature 49 (R4): added since feature 36.
         'excludedFromTotals',
+        // Feature 62 (R10): the human's decision on whether it is his own money.
+        'ownershipDecision',
         'createdAt',
         'updatedAt',
         'account',
         'category',
         // Feature 57 (R10): only on GET /api/movements, `null` on this one.
         'deposit',
+        // Feature 62 (R11): only on GET /api/movements, `null` on this one.
+        'ownership',
       ].sort(),
     )
   })

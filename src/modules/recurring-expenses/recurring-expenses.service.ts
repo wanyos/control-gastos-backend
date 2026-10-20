@@ -8,6 +8,7 @@ import { readDepositMovements } from '../investments/investments.service.js'
 import type { DepositMaturityMatcherRegistry } from '../investments/investments.types.js'
 import { isCountedExpense } from '../movements/movements.service.js'
 import { monthRange } from '../overview/overview.service.js'
+import { readOwnership } from '../own-accounts/own-accounts.service.js'
 import { transferWords } from '../transfers/transfers.service.js'
 import type {
   BillPeriodicity,
@@ -276,7 +277,7 @@ export async function getRecurringExpenses(
     months: periodMonths,
   }
 
-  const [rows, categories, deposits] = await Promise.all([
+  const [rows, categories, deposits, ownership] = await Promise.all([
     prisma.movement.findMany({
       where: { type: 'expense' },
       select: {
@@ -296,6 +297,9 @@ export async function getRecurringExpenses(
     prisma.category.findMany({ select: { id: true, name: true, parentId: true } }),
     // Over the whole history: a deposit movement is recognized by its bank's rule.
     readDepositMovements(prisma, matchers),
+    // Feature 62: what the own accounts table recognizes as the human's own
+    // money moving is not a cost, here as in the other two sums.
+    readOwnership(prisma),
   ])
 
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]))
@@ -304,7 +308,7 @@ export async function getRecurringExpenses(
   const variable = new Map<number | null, Charge[]>()
 
   for (const row of rows) {
-    if (!isCountedExpense(row, deposits)) continue
+    if (!isCountedExpense(row, deposits, ownership)) continue
     const bookingDate = row.bookingDate.toISOString().slice(0, 10)
     const charge: Charge = {
       id: row.id,

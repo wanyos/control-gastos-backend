@@ -24,6 +24,7 @@ import { parseMyinvestorProductFile } from './modules/myinvestor/myinvestor.serv
 import { parseMyinvestorStatement } from './modules/myinvestor/myinvestor.statement.parser.js'
 import { parseN26Statement } from './modules/n26/n26.statement.parser.js'
 import overviewRoutes from './modules/overview/overview.routes.js'
+import ownAccountsRoutes from './modules/own-accounts/own-accounts.routes.js'
 import { parseOpenbankStatement } from './modules/openbank/openbank.statement.parser.js'
 import recurringExpensesRoutes from './modules/recurring-expenses/recurring-expenses.routes.js'
 import { parseRevolutStatement } from './modules/revolut/revolut.statement.parser.js'
@@ -118,6 +119,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
     prefix: '/api/recurring-expenses',
     depositMaturityMatchers,
   })
+  app.register(ownAccountsRoutes, { prefix: '/api/own-accounts' })
   app.register(netWorthRoutes, { prefix: '/api/net-worth' })
   app.register(investmentsRoutes, { prefix: '/api/investments', depositMaturityMatchers })
   app.register(ingestionRoutes, { prefix: '/api/ingestion' })

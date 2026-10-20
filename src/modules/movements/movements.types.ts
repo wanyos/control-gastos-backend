@@ -9,6 +9,7 @@ import type {
   MovementOrigin,
   MovementStatus,
   MovementType,
+  OwnershipDecision,
   PaymentMethod,
 } from '../../generated/prisma/client.js'
 
@@ -16,6 +17,7 @@ import type {
   DepositAmbiguityReason,
   DepositMovementKind,
 } from '../investments/investments.types.js'
+import type { OwnershipStatus } from '../own-accounts/own-accounts.recognition.js'
 
 /** Anything the domain helpers accept as a decimal amount. */
 export type DecimalLike = Prisma.Decimal | number | string
@@ -100,13 +102,19 @@ export interface MovementListQuery {
   transfer?: MovementPresenceFilter
   /** Feature 49: only marked movements (`only`) or only unmarked ones (`none`) (R16). */
   excluded?: MovementPresenceFilter
+  /**
+   * Feature 62: only the movements whose `ownership.status` is `doubtful` right
+   * now (R12). One value for now; the schema enum can grow.
+   */
+  ownership?: 'doubtful'
   page: number
   pageSize: number
 }
 
 /**
- * The body of `PATCH /api/movements/:id` (feature 37): the ONLY two writable
- * fields of a movement. `categoryId: null` removes the category; every other
+ * The body of `PATCH /api/movements/:id` (feature 37): the ONLY writable
+ * fields of a movement (two in feature 37, the mark since feature 49, the
+ * ownership decision since feature 62). `categoryId: null` removes the category; every other
  * column belongs to the bank fact and cannot travel through this type.
  */
 export interface UpdateMovementBody {
@@ -114,6 +122,12 @@ export interface UpdateMovementBody {
   status?: MovementStatus
   /** Feature 49: in or out of the income/expense totals; never the amount (R1). */
   excludedFromTotals?: boolean
+  /**
+   * Feature 62 (R10): the human's answer on a movement the own accounts table
+   * recognizes or leaves doubtful; `null` hands it back to the recognition.
+   * Only here: `PATCH /api/movements` does not take it.
+   */
+  ownershipDecision?: OwnershipDecision | null
 }
 
 /**
@@ -126,6 +140,8 @@ export interface MovementWritableFields {
   categorySource?: CategorySource | null
   status?: MovementStatus
   excludedFromTotals?: boolean
+  /** Feature 62: written only by `PATCH /api/movements/:id`. */
+  ownershipDecision?: OwnershipDecision | null
 }
 
 export interface MovementIdParams {
@@ -202,8 +218,29 @@ export interface SerializedDeposit {
   candidateMovementIds: number[]
 }
 
-/** A movement of `GET /api/movements`: the shared shape plus `deposit` (feature 57). */
-export type ListedMovement = SerializedMovement & { deposit: SerializedDeposit | null }
+/**
+ * Whether a movement is the human's own money moving (feature 62, R11), as the
+ * contract ships it: the reading of `readOwnership` without `leavesTotals`
+ * (the `status` says it). `null` on a movement that matches nothing and has no
+ * decision.
+ */
+export interface SerializedOwnership {
+  status: OwnershipStatus
+  /** `null` when it matched a holder name form, or matched nothing. */
+  ownAccountId: number | null
+  ownAccountName: string | null
+  /** The text or form that matched, as the human typed it. */
+  matchedText: string | null
+}
+
+/**
+ * A movement of `GET /api/movements`: the shared shape plus `deposit`
+ * (feature 57) and `ownership` (feature 62).
+ */
+export type ListedMovement = SerializedMovement & {
+  deposit: SerializedDeposit | null
+  ownership: SerializedOwnership | null
+}
 
 /** Shape of the `GET /api/movements` response since feature 36. */
 export interface MovementListResponse {
@@ -254,6 +291,8 @@ export interface SerializedMovement {
   transferId: string | null
   daySequence: number | null
   excludedFromTotals: boolean
+  /** Feature 62: the human's decision on whether it is his own money moving (R10). */
+  ownershipDecision: OwnershipDecision | null
   createdAt: string
   updatedAt: string
   account: EmbeddedAccount
