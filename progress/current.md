@@ -28,10 +28,10 @@
 
 **Ninguna feature en curso.**
 
-## F62 `own-accounts` — CERRADA (2026-10-20, sin commit)
+## F62 `own-accounts` — CERRADA (2026-10-20, commit `f905fdb`)
 
 **Qué se hizo:** tabla de cuentas y productos propios (`/api/own-accounts`) y formas del nombre del titular; lo que el concepto reconoce como propio no cuenta en las tres sumas, lo que solo nombra un banco queda dudoso y sigue contando, y se resuelve con `ownershipDecision` en `PATCH /api/movements/:id`. ADR-040. Lotes A y B hechos; reviewer `CHANGES_REQUESTED` en la primera revisión y `APPROVED` en la segunda → [resumen](summaries/own-accounts.md), [implementación](implementations/own-accounts.md), [revisión](reviews/own-accounts.md).
-**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E7 de `docs/roadmap.md`. **Sin commit.**
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E7 de `docs/roadmap.md`. Commit `f905fdb`. Tabla rellenada con el humano el 2026-10-20 (12 filas y su nombre, por la API); 67 movimientos reconocidos como suyos, todos ya marcados o emparejados, 0 dudosos, sumas sin cambios. Criptan queda con datos mínimos: el humano los dará más adelante.
 
 
 ## F61 `rule-suggestions` — CERRADA (2026-10-18, commit `0ddadd2`)
