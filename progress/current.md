@@ -28,10 +28,10 @@
 
 **Ninguna feature en curso.**
 
-## F63 `expenses-by-category` — CERRADA (2026-10-21, sin commit)
+## F63 `expenses-by-category` — CERRADA (2026-10-21, commit `977d01c`)
 
 **Qué se hizo:** `GET /api/expenses-by-category` (mes o año natural, tres comparaciones, fijo y variable por la marca `isFixed` de cada categoría, movimientos de cada línea) y `isFixed` en `PATCH /api/categories/:id`. ADR-041. Lotes A, B y C hechos; reviewer `APPROVED` → [resumen](summaries/expenses-by-category.md), [implementación](implementations/expenses-by-category.md), [revisión](reviews/expenses-by-category.md).
-**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E7 de `docs/roadmap.md`, cabo 29 (retirar `GET /api/recurring-expenses` cuando el frontend use la nueva) y cabo 30 (el año `0000`, sin dueño). **Sin commit.**
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E7 de `docs/roadmap.md`, cabo 29 (retirar `GET /api/recurring-expenses` cuando el frontend use la nueva) y cabo 30 (el año `0000`, sin dueño). Commit `977d01c`.
 
 ## F62 `own-accounts` — CERRADA (2026-10-20, commit `f905fdb`)
 
