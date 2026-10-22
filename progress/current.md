@@ -103,42 +103,29 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 
 ## Lo que le toca al humano
 
-De la F63 (2026-10-21), en este orden:
+**Las migraciones ya están todas aplicadas** (comprobado el 2026-10-22 con
+`prisma migrate status`: `Database schema is up to date!`), y la tabla de cuentas de
+la F62 está rellenada desde el 2026-10-20. Lo que queda son **pruebas con tus datos**,
+ninguna bloquea nada:
 
-- **Copia de tu base antes de nada** (`docs/database-backup.md`).
-- **Aplicar la migración:** `pnpm exec prisma migrate deploy`. ⚠️ Escribe en tu base: añade la columna `isFixed` a `Category`, con todas tus categorías en `false` (variables).
-- **Reiniciar el servidor de desarrollo** (`pnpm run dev`): hasta entonces la consulta nueva no puede leer la columna.
-- **Marcar tus categorías fijas** (por ejemplo vivienda, suministros, telefonía) con `PATCH /api/categories/:id` y `{ "isFixed": true }`. Hasta que lo hagas, todo sale en `variable`.
-
-De la F62 (2026-10-20), en este orden:
-
-- **Copia de tu base antes de nada:** `pnpm run db:backup`.
-- **Aplicar la migración:** `pnpm exec prisma migrate deploy`. ⚠️ Escribe en tu base: crea las tablas `OwnAccount`, `OwnAccountText` y `AccountHolderName` vacías y la columna `Movement.ownershipDecision` a `NULL` en todos tus movimientos.
-- **Reiniciar el servidor de desarrollo** (`pnpm run dev`), para que cargue las tablas nuevas.
-- **Rellenar la tabla de cuentas con el leader:** él saca de tu base lo que ya se sabe de cada cuenta y producto, tú completas lo que falte (cuentas no importadas, fechas, textos, formas de tu nombre) y, con tu visto bueno, él lo inserta con las rutas de `/api/own-accounts`. Hasta entonces no cambia ninguna suma.
-
-De la F61 (2026-10-18):
-
-- **La prueba con tus datos**, después de migrar la F60 y con `pnpm run dev`: pide `GET /api/category-rules/suggestions`, elige una propuesta y crea su regla con `POST /api/category-rules` (o mírala antes con `GET /api/category-rules/preview`): los movimientos que mueve por esa regla tienen que ser los de la lista. ⚠️ Crear la regla escribe en tu base.
-- **La sesión del frontend**: la pantalla de reglas propuestas y la pregunta «¿aplicar a todos los que contienen…?» al cambiar a mano una categoría, contra `docs/api-contract.md`.
-
-De la F60 (2026-10-18):
-
-- **Aplicar la migración a tu base, en este orden:** `pnpm run db:backup` (copia antes de nada); luego `pnpm exec prisma migrate deploy`; y **reinicia el servidor de desarrollo**. ⚠️ Escribe en tu base: añade la columna `categorySource` y le da `closing` a lo que está en las raíz `Otros gastos` / `Otros ingresos` y `manual` al resto con categoría. Con el servidor ya arrancado y la base sin migrar, `GET /api/movements` responde 500 (comprobado por el leader; `GET /api/categories` sí responde 200).
-- **La prueba con tus datos**, después de migrar y con `pnpm run dev`: crea una regla para algo que tengas en `Otros gastos` y mira la lista que devuelve en `categorization`.
-
-De la F59 (2026-10-17):
-
-- **La prueba con tus datos reales**, con `pnpm run dev`: `GET /api/recurring-expenses`. Mira que en `transfersToPeople` solo quedan las transferencias y bizum sin categoría o con `Otros gastos` o `Transferencias a personas`; ponle a una de un taller o una tienda su categoría (`PATCH /api/movements/:id`) y comprueba que pasa a esa categoría en `variable` y que `monthlyTotal` no cambia más de un céntimo.
-
-De la F58 (2026-10-17):
-
-- **La prueba con tus datos reales**, con `pnpm run dev`: `GET /api/recurring-expenses`. Los tests solo usan datos inventados; mira que tus recibos salen uno por uno con su periodicidad, que las transferencias a personas y el gasto variable por categoría cuadran, y que `monthlyTotal` es razonable.
-
-De la F57 (2026-10-16):
-
-- **Aplicar la migración a tu base:** `prisma migrate deploy`. ⚠️ Escribe en tu base: quita la marca `excludedFromTotals` de los movimientos de depósito de MyInvestor (migración `20261016120000_deposit_movements_unmark`); las demás marcas se quedan. Haz antes una copia con `pnpm run db:backup` si quieres poder volver atrás.
-- **La prueba real**, después de la migración y con `pnpm run dev`: `GET /api/movements?from=2026-10-01&to=2026-10-31` y comparar `totals` con las cifras de `../docs/handoff-depositos.md`; y lo mismo mes a mes de agosto de 2025 a septiembre de 2026, donde cada vencimiento tiene que sumar su interés (salvo el de agosto de 2025, que sale dudoso, `decisions.md` 🔴 1).
+- **F63** (2026-10-21): **marcar tus categorías fijas** (vivienda, suministros,
+  telefonía…) con `PATCH /api/categories/:id` y `{ "isFixed": true }`. Hasta que lo
+  hagas, `GET /api/expenses-by-category` lo saca todo en `variable`.
+- **F61** (2026-10-18): con `pnpm run dev`, pide `GET /api/category-rules/suggestions`,
+  elige una propuesta y crea su regla con `POST /api/category-rules` (o mírala antes
+  con `GET /api/category-rules/preview`): los movimientos que mueve tienen que ser los
+  de la lista. ⚠️ Crear la regla escribe en tu base.
+- **F60** (2026-10-18): crea una regla para algo que tengas en `Otros gastos` y mira
+  la lista que devuelve en `categorization`.
+- **F59 y F58** (2026-10-17): `GET /api/recurring-expenses`. Tus recibos salen uno por
+  uno con su periodicidad; en `transfersToPeople` solo quedan las transferencias y
+  bizum sin categoría o con `Otros gastos` / `Transferencias a personas`; al ponerle
+  a una de un taller su categoría pasa a `variable` y `monthlyTotal` no cambia más de
+  un céntimo. (Esta ruta la sustituye la F63; cabo 29.)
+- **F57** (2026-10-16): `GET /api/movements?from=2026-10-01&to=2026-10-31` y comparar
+  `totals` con las cifras de `../docs/handoff-depositos.md`; mes a mes de agosto de
+  2025 a septiembre de 2026 cada vencimiento suma solo su interés (el de agosto de
+  2025 sale dudoso, `decisions.md` 🔴 1 de la F57).
 
 El resto de tus deberes pendientes viven en
 [`docs/roadmap.md`](../docs/roadmap.md) §Deberes tuyos pendientes, y los cabos
