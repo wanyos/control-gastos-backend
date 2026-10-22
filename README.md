@@ -69,7 +69,7 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `GET`    | `/api/accounts/:id`            | Una cuenta por id. |
 | `POST`   | `/api/categories`              | Crea una categoría raíz o una subcategoría (un solo nivel). |
 | `GET`    | `/api/categories`              | Las categorías raíz con sus `children`. |
-| `PATCH`  | `/api/categories/:id`          | Renombra una categoría: **solo el `name`**; `kind` y `parentId` son inmutables. |
+| `PATCH`  | `/api/categories/:id`          | Renombra una categoría y/o la marca o desmarca como gasto fijo (`isFixed`, feature 63): **solo el `name` y el `isFixed`**; `kind` y `parentId` son inmutables. |
 | `DELETE` | `/api/categories/:id`          | Borra una categoría **solo si está libre**: sin movimientos, sin subcategorías y sin reglas que la usen. |
 | `POST`   | `/api/category-rules`          | Crea una regla de categorización: «si el concepto del movimiento contiene este texto, ponle esta categoría». Al crearla aplica todas las reglas a lo pendiente sin categoría y a lo que dejó el cierre automático en `Otros gastos` / `Otros ingresos` (`categorySource: "closing"`), nunca a lo puesto a mano, y devuelve lo que movió en `categorization`. |
 | `GET`    | `/api/category-rules`          | Todas las reglas, cada una con su categoría embebida. |
@@ -86,7 +86,8 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `GET`    | `/api/transfers`               | Todas las parejas de traspaso enlazadas, con sus dos piernas. Sin paginar. Solo lectura. |
 | `GET`    | `/api/transfers/ambiguous`     | Los grupos de movimientos que parecen traspasos pero la detección no puede emparejar sin ambigüedad, calculados en el momento. Solo lectura. |
 | `GET`    | `/api/overview`                | Cuánto dinero hay en total, cómo se reparte entre las cuentas, y qué entró, salió y quedó en un mes. |
-| `GET`    | `/api/recurring-expenses`      | Cuánto cuesta un mes: los recibos uno por uno, las transferencias a personas y el gasto variable por categoría, cada uno sumado por mes, con sus movimientos y el total. Calculado en el momento; solo lectura. |
+| `GET`    | `/api/expenses-by-category`    | Lo gastado por categoría en un mes (`month`) o un año natural (`year`) frente al periodo con que se compara (`compare`), con la diferencia, si es nueva o ya no está y sus movimientos, separado en fijo y variable según el `isFixed` de cada categoría (feature 63). Calculado en el momento; solo lectura. |
+| `GET`    | `/api/recurring-expenses`      | Cuánto cuesta un mes: los recibos uno por uno, las transferencias a personas y el gasto variable por categoría, cada uno sumado por mes, con sus movimientos y el total. Calculado en el momento; solo lectura. **Se retirará**: la sustituye `/api/expenses-by-category`; sigue respondiendo igual hasta que el frontend use la nueva (feature 63). |
 | `GET`    | `/api/own-accounts`            | La tabla de cuentas propias: tus cuentas y productos de cualquier banco, con los textos con los que aparecen en los conceptos, por banco y nombre (feature 62). |
 | `POST`   | `/api/own-accounts`            | Da de alta una cuenta o un producto tuyo con sus textos. Sin borrado: una fila que no quieras se deja sin textos. |
 | `PATCH`  | `/api/own-accounts/:id`        | Cambia solo los campos que viajan; `texts`, si viaja, sustituye la lista entera. |
@@ -158,6 +159,7 @@ gastos-backend/
 │   │   ├── movements/       #   Movimientos: SOLO LECTURA + categoría y estado de revisión
 │   │   ├── transfers/       #   Enlace y desenlace manual de las piernas de un traspaso
 │   │   ├── overview/        #   Vista del mes: dinero por cuenta y entradas/salidas
+│   │   ├── expenses-by-category/ # Lo gastado por categoría en un mes o un año, fijo y variable, frente al periodo anterior (solo lectura)
 │   │   ├── recurring-expenses/ # Lo que cuesta un mes: recibos, transferencias a personas y gasto variable (solo lectura)
 │   │   ├── net-worth/       #   Patrimonio neto de hoy: cuentas + inversiones
 │   │   ├── ingestion/       #   Lectura de archivos de banco desde Drive (no mueve)

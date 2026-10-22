@@ -6,9 +6,13 @@ export interface CreateCategoryBody {
   parentId?: number
 }
 
-/** `PATCH /api/categories/:id` renames and nothing else: kind and parentId are immutable. */
-export interface RenameCategoryBody {
-  name: string
+/**
+ * `PATCH /api/categories/:id` changes the name and/or the fixed-expense mark (F63)
+ * and nothing else: kind and parentId are immutable.
+ */
+export interface UpdateCategoryBody {
+  name?: string
+  isFixed?: boolean
 }
 
 export interface CategoryIdParams {
@@ -26,6 +30,7 @@ export interface SerializedCategory {
   name: string
   kind: CategoryKind
   parentId: number | null
+  isFixed: boolean
   createdAt: string
   children: SerializedCategory[]
 }

@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## F63 `expenses-by-category` — CERRADA (2026-10-21, sin commit)
+
+**Qué se hizo:** `GET /api/expenses-by-category` (mes o año natural, tres comparaciones, fijo y variable por la marca `isFixed` de cada categoría, movimientos de cada línea) y `isFixed` en `PATCH /api/categories/:id`. ADR-041. Lotes A, B y C hechos; reviewer `APPROVED` → [resumen](summaries/expenses-by-category.md), [implementación](implementations/expenses-by-category.md), [revisión](reviews/expenses-by-category.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E7 de `docs/roadmap.md`, cabo 29 (retirar `GET /api/recurring-expenses` cuando el frontend use la nueva) y cabo 30 (el año `0000`, sin dueño). **Sin commit.**
+
 ## F62 `own-accounts` — CERRADA (2026-10-20, commit `f905fdb`)
 
 **Qué se hizo:** tabla de cuentas y productos propios (`/api/own-accounts`) y formas del nombre del titular; lo que el concepto reconoce como propio no cuenta en las tres sumas, lo que solo nombra un banco queda dudoso y sigue contando, y se resuelve con `ownershipDecision` en `PATCH /api/movements/:id`. ADR-040. Lotes A y B hechos; reviewer `CHANGES_REQUESTED` en la primera revisión y `APPROVED` en la segunda → [resumen](summaries/own-accounts.md), [implementación](implementations/own-accounts.md), [revisión](reviews/own-accounts.md).
@@ -97,6 +102,13 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 -->
 
 ## Lo que le toca al humano
+
+De la F63 (2026-10-21), en este orden:
+
+- **Copia de tu base antes de nada** (`docs/database-backup.md`).
+- **Aplicar la migración:** `pnpm exec prisma migrate deploy`. ⚠️ Escribe en tu base: añade la columna `isFixed` a `Category`, con todas tus categorías en `false` (variables).
+- **Reiniciar el servidor de desarrollo** (`pnpm run dev`): hasta entonces la consulta nueva no puede leer la columna.
+- **Marcar tus categorías fijas** (por ejemplo vivienda, suministros, telefonía) con `PATCH /api/categories/:id` y `{ "isFixed": true }`. Hasta que lo hagas, todo sale en `variable`.
 
 De la F62 (2026-10-20), en este orden:
 

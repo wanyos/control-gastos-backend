@@ -20,22 +20,26 @@ export const createCategorySchema = {
   },
 } as const
 
-/** Renaming only takes `name`: the kind and the parentId are immutable this way. */
-export const renameCategorySchema = {
+/**
+ * The update takes `name` and/or `isFixed` (F63): the kind and the parentId are
+ * immutable this way. At least one of the two must travel.
+ */
+export const updateCategorySchema = {
   params: categoryIdParams,
   body: {
     type: 'object',
-    required: ['name'],
+    minProperties: 1,
     additionalProperties: false,
     properties: {
       name: { type: 'string', minLength: 1 },
+      isFixed: { type: 'boolean' },
     },
   },
 } as const
 
 /** Derived from the schema so the allow-list and the schema cannot diverge. */
-export const renameCategoryBodyProperties: ReadonlySet<string> = new Set(
-  Object.keys(renameCategorySchema.body.properties),
+export const updateCategoryBodyProperties: ReadonlySet<string> = new Set(
+  Object.keys(updateCategorySchema.body.properties),
 )
 
 export const deleteCategorySchema = {

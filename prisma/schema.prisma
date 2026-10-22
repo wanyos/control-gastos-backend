@@ -130,6 +130,10 @@ model Category {
   children  Category[]     @relation("Subcategories")
   movements Movement[]
   rules     CategoryRule[]
+  /// F63: true = the human marks this category as a fixed expense. Only
+  /// `PATCH /api/categories/:id` writes it (a new category is born `false`) and
+  /// only `GET /api/expenses-by-category` reads it. Not inherited by subcategories.
+  isFixed   Boolean        @default(false)
   createdAt DateTime       @default(now())
 
   // Re-created as NULLS NOT DISTINCT in the migration so two root categories

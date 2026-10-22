@@ -3413,6 +3413,74 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     `/api/own-accounts` y §Movimientos entre tus cuentas en las sumas); lo comprueba
     `src/modules/own-accounts/own-accounts.docs.test.ts`.
 
+### ADR-041: El gasto por categoría se agrupa al leer, con `isCountedExpense`, y el corte fijo/variable es una marca del humano en `Category`
+
+- **Fecha:** 2026-10-21
+- **Estado:** aceptada (implementada en la feature #63 `expenses-by-category`, SDD;
+  hoja aprobada por el humano el 2026-10-21). Se apoya en ADR-035, ADR-037 (la
+  función `isCountedExpense`) y ADR-040, y no revisa ninguno: `GET /api/recurring-expenses`
+  sigue funcionando igual hasta que se retire.
+- **Contexto:** la consulta de las features 58 y 59 (`GET /api/recurring-expenses`,
+  ADR-037) no le sirve al humano: elige los recibos por el concepto que escribe el
+  banco, y eso falla cuando el banco cambia el concepto o dos pólizas lo comparten, y
+  su «lo que cuesta al mes» es una media de 12 meses, no lo gastado en un mes. Las
+  categorías, en cambio, las controla él y ya están revisadas (F60, F61, F62). Pidió
+  ver lo gastado por categoría en un mes o en un año natural, compararlo con el mes
+  anterior, con el mismo mes del año anterior o con el año anterior, y separarlo en
+  fijo y variable según marque él cada categoría.
+- **Decisión:**
+  1. **Un solo `GET /api/expenses-by-category`**, en el módulo
+     `src/modules/expenses-by-category/`, que lo calcula en cada petición con solo
+     `findMany` y no guarda nada. Con `month` o `year` (excluyentes) y, solo con
+     `month`, `compare` (`previous-month` / `same-month-last-year`): una comparación
+     por petición.
+  2. **El gasto que entra es exactamente el que suma `GET /api/overview`.** Cada
+     gasto pasa por `isCountedExpense(movement, deposits, ownership)`
+     (`movements.service.ts`) con las mismas lecturas que el resumen del mes
+     (`readDepositMovements` sobre toda la historia y `readOwnership`). No se
+     reescribe ninguna condición de esa regla en el módulo nuevo, así que el total
+     de un mes es el `period.totals.expense` de ese mes por construcción.
+  3. **Se agrupa solo por `categoryId`.** Una subcategoría es su propia línea; los
+     gastos sin categoría van a una línea con `category: null`; una categoría cuyo
+     gasto que entra es 0 en los dos periodos no sale.
+  4. **El corte fijo/variable es una columna nueva, `Category.isFixed`**
+     (`Boolean`, `false` por defecto, migración `20261021120000_category_is_fixed`),
+     que solo escribe el humano con `PATCH /api/categories/:id`. El backend no
+     decide qué es fijo. No se hereda de la categoría padre.
+  5. **Los periodos:** un mes con el anterior o con el mismo del año anterior; un
+     año cerrado con el anterior entero, y `monthlyAmount` = lo gastado entre 12;
+     el año en curso, de enero al mes de hoy (hora de Madrid) con los mismos meses
+     del año anterior, y entre esos meses.
+  6. **Los movimientos de cada línea van en la misma respuesta**, solo los del
+     periodo pedido y solo los que entran, para que sumen lo de la línea.
+- **Alternativas descartadas:**
+  - **Arreglar `GET /api/recurring-expenses`** (agrupar por categoría y quitar la
+    media de 12 meses): su forma (recibos, transferencias a personas, gasto
+    variable) es justo lo que el humano descartó, y cambiarla rompería a la vez la
+    pantalla del frontend que hoy la usa.
+  - **Dar solo la forma de pedir los movimientos a `GET /api/movements`:** esa lista
+    trae también lo que no cuenta (por ejemplo, las aperturas de depósito en
+    `Otros gastos`) y no sumaría lo de la línea.
+  - **Las dos comparaciones del mes en una sola respuesta:** duplica cada campo de
+    la línea; el frontend pide dos veces.
+  - **Guardar los resultados en una tabla por mes y categoría:** habría que
+    recalcularla con cada cambio de categoría, de marca o de la tabla de cuentas
+    propias; al leer cuadra siempre (como ADR-040).
+  - **Comparar el año en curso con el año anterior entero:** hasta diciembre casi
+    todo saldría bajando.
+- **Consecuencias:**
+  - Hasta que el humano aplique la migración en su base y marque sus categorías
+    fijas, todo el gasto sale en `variable`.
+  - Si cambia la regla de las sumas, esta consulta cambia con ella, como
+    `GET /api/recurring-expenses` y `GET /api/overview`.
+  - Un año con meses sin importar divide igual entre 12: la respuesta no avisa.
+  - `GET /api/recurring-expenses` queda viva hasta que el frontend use la consulta
+    nueva; después se retira en una feature del backend (cabo suelto 29 de
+    `docs/roadmap.md`).
+  - Contrato en `docs/api-contract.md` §`GET /api/expenses-by-category`, §`Category`
+    y §`PATCH /api/categories/:id`; lo comprueba
+    `src/modules/expenses-by-category/expenses-by-category.docs.test.ts`.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

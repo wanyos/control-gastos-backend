@@ -335,14 +335,83 @@ describe('rename and delete category routes (feature 37)', () => {
       parentId: null,
     })
     const empty = await patchCategory(category.id, {})
+    // F63 R7: `isFixed` must be a real boolean. AJV would coerce these three into
+    // one, so each must be a 400 that leaves the mark as it was.
+    const fixedAsString = await patchCategory(category.id, { isFixed: 'true' })
+    const fixedAsNull = await patchCategory(category.id, { isFixed: null })
+    const fixedAsNumber = await patchCategory(category.id, { isFixed: 1 })
 
-    for (const response of [withKind, withExtra, empty]) {
+    for (const response of [
+      withKind,
+      withExtra,
+      empty,
+      fixedAsString,
+      fixedAsNull,
+      fixedAsNumber,
+    ]) {
       expect(response.statusCode).toBe(400)
       expect(response.json()).toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' })
     }
     const stored = await app.prisma.category.findUniqueOrThrow({ where: { id: category.id } })
     expect(stored.name).toBe(category.name)
     expect(stored.kind).toBe('expense')
+    expect(stored.isFixed).toBe(false)
+
+    // F63 R7: `isFixed` is no longer an unknown property — alone it is a valid update.
+    const onlyFixed = await patchCategory(category.id, { isFixed: true })
+    expect(onlyFixed.statusCode).toBe(200)
+    expect(onlyFixed.json()).toMatchObject({ id: category.id, name: category.name, isFixed: true })
+  })
+
+  it('marks and unmarks a category as fixed', async () => {
+    const parent = await createCategory({ name: uniqueName('Housing'), kind: 'expense' })
+    const child = await createCategory({
+      name: uniqueName('Community fees'),
+      kind: 'expense',
+      parentId: parent.id,
+    })
+    // A new category is born variable (R7), and POST says so.
+    expect(parent.isFixed).toBe(false)
+    expect(child.isFixed).toBe(false)
+
+    const marked = await patchCategory(parent.id, { isFixed: true })
+
+    expect(marked.statusCode).toBe(200)
+    expect(marked.json()).toMatchObject({
+      id: parent.id,
+      name: parent.name,
+      kind: 'expense',
+      parentId: null,
+      isFixed: true,
+    })
+    const listed = await app.inject({ method: 'GET', url: '/api/categories' })
+    const listedParent = listed
+      .json<SerializedCategory[]>()
+      .find((category) => category.id === parent.id)
+    expect(listedParent?.isFixed).toBe(true)
+    // The mark is not inherited (F63 R12): the subcategory stays variable.
+    expect(listedParent?.children.map((c) => ({ id: c.id, isFixed: c.isFixed }))).toEqual([
+      { id: child.id, isFixed: false },
+    ])
+
+    // Name and mark can travel together; each one changes only itself.
+    const newName = uniqueName('Home costs')
+    const renamedAndUnmarked = await patchCategory(parent.id, { name: newName, isFixed: false })
+
+    expect(renamedAndUnmarked.statusCode).toBe(200)
+    expect(renamedAndUnmarked.json()).toMatchObject({ name: newName, isFixed: false })
+    const relisted = await app.inject({ method: 'GET', url: '/api/categories' })
+    expect(
+      relisted.json<SerializedCategory[]>().find((category) => category.id === parent.id)?.isFixed,
+    ).toBe(false)
+
+    // A rename alone leaves the mark as it is.
+    await patchCategory(parent.id, { isFixed: true })
+    const renamedOnly = await patchCategory(parent.id, { name: parent.name })
+    expect(renamedOnly.json()).toMatchObject({ name: parent.name, isFixed: true })
+    const stored = await app.prisma.category.findUniqueOrThrow({ where: { id: parent.id } })
+    expect(stored.isFixed).toBe(true)
+    expect(stored.name).toBe(parent.name)
   })
 
   it('PATCH /api/categories/:id rejects an empty and a whitespace-only name (R12)', async () => {
@@ -443,7 +512,13 @@ describe('rename and delete category routes (feature 37)', () => {
     expect(created.statusCode).toBe(201)
     const category = created.json<SerializedCategory>()
     createdCategoryIds.push(category.id)
-    expect(category).toMatchObject({ name, kind: 'expense', parentId: null, children: [] })
+    expect(category).toMatchObject({
+      name,
+      kind: 'expense',
+      parentId: null,
+      isFixed: false,
+      children: [],
+    })
 
     const listed = await app.inject({ method: 'GET', url: '/api/categories' })
     expect(listed.statusCode).toBe(200)

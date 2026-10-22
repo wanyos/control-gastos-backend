@@ -8,8 +8,8 @@ import type { AppPrismaClient } from '../../lib/prisma.js'
 import type {
   CategoryWithChildren,
   CreateCategoryBody,
-  RenameCategoryBody,
   SerializedCategory,
+  UpdateCategoryBody,
 } from './categories.types.js'
 
 /**
@@ -68,20 +68,33 @@ export async function createCategory(
   }
 }
 
-/** Changes ONLY the name: kind and parentId cannot travel through this path (R3). */
-export async function renameCategory(
+/**
+ * Changes ONLY what travels: the name and/or the fixed-expense mark (F63 R7).
+ * Kind and parentId cannot travel through this path (F37 R3). The mark is not
+ * inherited: marking a parent leaves its subcategories as they are (F63 R12).
+ */
+export async function updateCategory(
   prisma: AppPrismaClient,
   id: number,
-  input: RenameCategoryBody,
+  input: UpdateCategoryBody,
 ): Promise<Category> {
-  const name = input.name.trim()
-  if (name.length === 0) throw new ValidationError('name is required')
+  const name = input.name?.trim()
+  if (name !== undefined && name.length === 0) throw new ValidationError('name is required')
+  if (name === undefined && input.isFixed === undefined) {
+    throw new ValidationError('name or isFixed is required')
+  }
 
   const category = await prisma.category.findUnique({ where: { id } })
   if (!category) throw new NotFoundError('Category not found')
 
   try {
-    return await prisma.category.update({ where: { id }, data: { name } })
+    return await prisma.category.update({
+      where: { id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(input.isFixed !== undefined ? { isFixed: input.isFixed } : {}),
+      },
+    })
   } catch (error) {
     // P2002: same unique index as on create — (parentId, kind, name).
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -126,6 +139,7 @@ export function serializeCategory(
     name: category.name,
     kind: category.kind,
     parentId: category.parentId,
+    isFixed: category.isFixed,
     createdAt: category.createdAt.toISOString(),
     children: (category.children ?? []).map(serializeCategory),
   }

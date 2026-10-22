@@ -2978,6 +2978,92 @@
           "comando": "pnpm test"
         }
       ]
+    },
+    {
+      "id": 63,
+      "name": "expenses-by-category",
+      "title": "Ver lo que gasto en un mes o en un año por categoría, separado en fijo y variable, y compararlo con los periodos anteriores",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-21), transcrito de ../docs/ideas.md del workspace, idea 4, «Refinamiento de Recurrentes — decisiones del 2026-10-18», que el humano tomó en una sesión del backend tras probar las features 58 y 59; y del 2026-08-22 (el corte fijo/variable lo decide el humano marcando categorías). Arranca a petición suya el 2026-10-21 («sí, arranca con esto»), con la categorización ya revisada (F60, F61, F62 y la revisión a mano de Otros gastos y Otros ingresos). El nombre de la feature es propuesta del leader. El humano lo revisa en la puerta del spec.",
+        "que_quiero": "Ver de forma fácil qué gastos tengo en un mes o en un año, agrupados por categoría, y compararlos con los anteriores: qué sube, qué baja, qué es nuevo y qué ya no está. Tres comparaciones: el mes con el mes anterior, el mes con el mismo mes del año anterior, y el año (natural, de enero a diciembre) con el año anterior. Separados en gastos fijos y variables, según marque yo cada categoría como fija. Para cada categoría: lo gastado, lo del periodo con que se compara, la diferencia, si es nueva o ya no está, y sus movimientos; en el año, además, cuánto sale al mes. Sustituye a la sección actual de Recurrentes.",
+        "por_que": "La consulta de las features 58 y 59 (GET /api/recurring-expenses) no sirve: elige los recibos por el nombre que escribe el banco, y eso se rompe cuando el banco cambia el nombre (la comunidad salió dos veces) o dos pólizas lo comparten (dos seguros de coche salieron como uno «cada tres meses»); y su «coste al mes» era una media de 12 meses, no lo gastado en un mes. Las categorías las controlo yo, y ya están revisadas.",
+        "como_se_que_esta_bien": [
+          "Para un mes, cada categoría de gasto sale con lo gastado ese mes, lo del mes anterior y la diferencia.",
+          "Para un mes, también se compara con el mismo mes del año anterior.",
+          "Para un año natural, cada categoría sale con lo gastado, lo del año anterior, la diferencia y cuánto sale al mes.",
+          "Una categoría con gasto en el periodo y sin gasto en el que se compara sale como nueva; al revés, como que ya no está.",
+          "Los gastos salen separados en fijos y variables según las categorías que yo marque como fijas, y puedo marcar y desmarcar una categoría como fija.",
+          "Cada categoría trae sus movimientos del periodo, o la forma de pedirlos.",
+          "Lo que suma cada periodo coincide con el gasto que dan las sumas de siempre (GET /api/overview) para ese mes o la suma de sus meses: mismas exclusiones.",
+          "docs/api-contract.md describe la consulta nueva y qué pasa con GET /api/recurring-expenses."
+        ],
+        "que_no_quiero": [
+          "Elegir nada por el nombre que escribe el banco: solo por categoría.",
+          "Medias de 12 meses en lugar de lo gastado en un mes.",
+          "Que el backend decida qué categoría es fija: la marco yo.",
+          "Que cambie ninguna suma, importe o categoría existentes: es una consulta para mirar."
+        ],
+        "delego_en_agente": [
+          "Si los ingresos también entran en la vista o solo los gastos.",
+          "Qué pasa con GET /api/recurring-expenses: si se retira ahora o cuando el frontend tenga la vista nueva.",
+          "Cómo se trata una subcategoría (hoy no hay ninguna en uso).",
+          "Qué se entiende por «cuánto sale al mes» en el año en curso, que aún no ha terminado.",
+          "Cómo se cuentan las categorías Otros gastos y las que solo tienen movimientos que no cuentan."
+        ]
+      },
+      "acceptance": [],
+      "sdd": true,
+      "status": "done",
+      "checks": [
+        {
+          "descripcion": "Para un mes, cada categoría de gasto sale con lo gastado ese mes, lo del mes anterior y la diferencia.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.test.ts -t \"a month lists each category with its amount, the previous month and the difference\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Para un mes, también se compara con el mismo mes del año anterior.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.test.ts -t \"compares a month with the same month of the previous year\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Para un año natural, cada categoría sale con lo gastado, lo del año anterior, la diferencia y cuánto sale al mes.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.test.ts -t \"a closed year compares with the whole previous year and divides by twelve\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Para un año natural, cada categoría sale con lo gastado, lo del año anterior, la diferencia y cuánto sale al mes.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.test.ts -t \"the year in progress compares with the same months of the previous year\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una categoría con gasto en el periodo y sin gasto en el que se compara sale como nueva; al revés, como que ya no está.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.test.ts -t \"marks a category as new or gone against the compared period\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los gastos salen separados en fijos y variables según las categorías que yo marque como fijas, y puedo marcar y desmarcar una categoría como fija.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.test.ts -t \"splits the lines into fixed and variable by the category mark\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los gastos salen separados en fijos y variables según las categorías que yo marque como fijas, y puedo marcar y desmarcar una categoría como fija.",
+          "comando": "pnpm exec vitest run src/modules/categories/categories.test.ts -t \"marks and unmarks a category as fixed\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada categoría trae sus movimientos del periodo, o la forma de pedirlos.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.test.ts -t \"each line carries the counted movements of the period\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lo que suma cada periodo coincide con el gasto que dan las sumas de siempre (GET /api/overview) para ese mes o la suma de sus meses: mismas exclusiones.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.test.ts -t \"the month and the year add up to the expense of GET /api/overview\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "docs/api-contract.md describe la consulta nueva y qué pasa con GET /api/recurring-expenses.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.docs.test.ts -t \"the contract describes GET /api/expenses-by-category and what happens to GET /api/recurring-expenses\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Es una consulta para mirar: no escribe nada en la base.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category/expenses-by-category.test.ts -t \"writes nothing in the database\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Lo que ya funciona sigue igual.",
+          "comando": "pnpm test"
+        }
+      ]
     }
   ]
 }

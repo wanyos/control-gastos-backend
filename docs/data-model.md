@@ -119,6 +119,7 @@ erDiagram
         string name
         CategoryKind kind
         int parentId FK
+        boolean isFixed
     }
     MOVEMENT {
         int id PK
@@ -264,6 +265,7 @@ model Category {
   children  Category[]   @relation("Subcategories")
   movements Movement[]
   rules     CategoryRule[]  // reglas de categorización que apuntan a ella (F43)
+  isFixed   Boolean      @default(false) // F63: true = el humano la marca como gasto fijo; solo la escribe PATCH /api/categories/:id y solo la lee GET /api/expenses-by-category
   createdAt DateTime     @default(now())
 
   @@unique([parentId, kind, name]) // re-creado NULLS NOT DISTINCT en la migración
@@ -328,6 +330,7 @@ model Movement {
 | ~~`transferId`~~ | 🔄 **ya lo escribe la detección de traspasos** (F40): corre al final de cada pasada de importación, empareja las parejas inequívocas —y desde la F41 también los grupos dudosos con el mismo número de salidas que de entradas en los que cada salida podría casar con cada entrada— y escribe el mismo `transferId` en las dos piernas, en una transacción por pareja. **Cero migración**: la columna y su índice existen desde la F8. Desde la **F44** tiene además **escritor manual**: `POST /api/transfers` enlaza dos movimientos por id y `DELETE /api/transfers/:transferId` deshace la pareja (manual o de la detección) apuntando la memoria del deshecho en `undoneTransferId` (esa sí trajo migración: una columna nullable, la primera desde la F9) |
 | ~~`categoryId`~~ | 🔄 **ya tiene los dos escritores**: el **manual** desde la F37 (`PATCH /api/movements/:id` la escribe, y la pone a `NULL` para quitar la categoría) y el **automático** desde la F43 —la **pasada de categorización por reglas** sobre el `description` (tabla `CategoryRule`), que corre al final de cada importación y con `POST /api/category-rules/apply`, y solo toca movimientos sin categoría, sin confirmar y no neutrales. Esa sí trajo migración: la tabla `CategoryRule`. 🔄 **Desde la F60 cada escritor deja dicho quién fue en `categorySource`**, en la misma escritura: `manual` los dos `PATCH` de movimientos (y `NULL` al quitar la categoría), `rule` la pasada de categorización, `closing` la función `confirmAllMovements`, que pone `Otros gastos` / `Otros ingresos` a lo que queda sin categoría al final de cada importación y en `POST /api/movements/confirm-all`. Una regla solo puede reescribir un movimiento sin categoría y pendiente, o uno `closing`; nunca uno `manual` ni `rule`. Trajo migración: el enum `CategorySource`, la columna, y una migración de solo datos que dio `closing` a lo que estaba en las raíces `Otros gastos` / `Otros ingresos` y `manual` al resto de movimientos con categoría, sin tocar `updatedAt` |
 | ~~`ownershipDecision`~~ | 🔄 **nace con su escritor** (F62): solo `PATCH /api/movements/:id`, cuando el humano resuelve de quién es un movimiento (`mine`, `not_mine`, o `null` para deshacerlo). `PATCH /api/movements` (varios a la vez), los importadores, la detección de traspasos y el reconocimiento de movimientos propios no la escriben. Trajo migración (`20261020120000_own_accounts`): la columna, nullable, a `NULL` en todos los movimientos que ya existían |
+| ~~`Category.isFixed`~~ | 🔄 **nace con su escritor** (F63): solo `PATCH /api/categories/:id`, cuando el humano marca (`true`) o desmarca (`false`) una categoría como gasto fijo. `POST /api/categories` no la acepta (nace `false`), el sembrado de categorías no la escribe y una subcategoría no hereda la de su padre. La lee solo `GET /api/expenses-by-category`, para repartir el gasto entre fijo y variable. Trajo migración (`20261021120000_category_is_fixed`): la columna, `NOT NULL DEFAULT false`, así que todas las categorías que ya existían quedan como variables |
 | `paymentMethod` | la misma feature de reglas (`RECIBO` → `direct_debit`, `PAGO TARJETA` → `card`…) |
 | `note` | anotación manual sobre un movimiento, cuando exista pantalla |
 | ~~`status`~~ | 🔄 **ya tiene quien lo revise** (F37): nace `pending_review` al importar (F12) y `PATCH /api/movements/:id` lo pasa a `confirmed` — y de vuelta — a mano |
@@ -412,6 +415,9 @@ model Movement {
   `categorySource` quién le puso la categoría (`manual`, `rule` o `closing`;
   `NULL` sin categoría), y una regla nunca reescribe una `manual` ni una `rule`.
   Categorizar o confirmar no toca ningún otro campo, ni el saldo, ni los totales.
+  Desde la F63 cada categoría lleva `isFixed`, la marca de gasto fijo que pone el
+  humano con `PATCH /api/categories/:id`: no se hereda del padre y no cambia ninguna
+  suma, solo en qué grupo sale la categoría en `GET /api/expenses-by-category`.
 - **Origen / estado:** lo importado entra como `imported` / `pending_review` y
   alimenta la pantalla de revisión (idea #1).
 
@@ -644,6 +650,10 @@ CREATE UNIQUE INDEX "Category_parentId_kind_name_key"
 
 Alternativas descartadas: dos índices parciales (dos objetos donde basta uno) y un
 centinela `parentId = 0` (ensucia el modelo y complica los `include`).
+
+`isFixed` (F63) **no entra** en esta clave: es una marca del humano, no parte de lo
+que identifica a una categoría. La F63 no cambia ninguna clave natural ni ningún
+índice.
 
 ### Lo que una importación deja sin resolver (F48, F54)
 

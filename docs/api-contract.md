@@ -251,6 +251,7 @@ categorías: el catálogo lo da de alta el usuario.
 | `name`      | string                        | Nombre. Único dentro de `(parentId, kind)`; dos **raíces** con el mismo `kind` y `name` no pueden coexistir. |
 | `kind`      | `"expense"` \| `"income"`     | Tipo de la categoría.                                               |
 | `parentId`  | number \| null                | Id de la categoría padre, o `null` si es raíz.                      |
+| `isFixed`   | boolean                       | **Desde la feature 63.** `true` si el humano la ha marcado como gasto fijo. Nace en `false` y solo cambia con [`PATCH /api/categories/:id`](#patch-apicategoriesid). No se hereda: marcar una raíz no marca a sus subcategorías. Solo la lee [`GET /api/expenses-by-category`](#get-apiexpenses-by-category), para repartir el gasto entre fijo y variable. |
 | `children`  | `Category[]`                  | Subcategorías embebidas (vacío en una subcategoría y en la respuesta del `POST`). |
 | `createdAt` | string (ISO)                  | Fecha de creación.                                                  |
 
@@ -493,6 +494,7 @@ Las subcategorías no aparecen como elementos de primer nivel.
     "name": "Food",
     "kind": "expense",
     "parentId": null,
+    "isFixed": false,
     "createdAt": "2026-08-06T18:30:00.000Z",
     "children": [
       {
@@ -500,6 +502,7 @@ Las subcategorías no aparecen como elementos de primer nivel.
         "name": "Groceries",
         "kind": "expense",
         "parentId": 1,
+        "isFixed": false,
         "createdAt": "2026-08-06T18:31:00.000Z",
         "children": []
       }
@@ -522,8 +525,11 @@ Crea una categoría raíz (sin `parentId`) o una subcategoría (con `parentId`).
 | `parentId` | number | no          | Entero. El padre debe existir, **ser raíz** y tener el **mismo `kind`**. |
 
 > No se aceptan propiedades adicionales (`additionalProperties: false`).
+> `isFixed` no está entre los campos del body: una categoría nueva nace siempre
+> con `isFixed: false`, y se marca después con
+> [`PATCH /api/categories/:id`](#patch-apicategoriesid).
 
-**Respuesta 201** — objeto `Category` creado (con `children: []`).
+**Respuesta 201** — objeto `Category` creado (con `isFixed: false` y `children: []`).
 
 **Errores**
 | Código HTTP | `code`             | Cuándo                                                            |
@@ -543,14 +549,17 @@ Crea una categoría raíz (sin `parentId`) o una subcategoría (con `parentId`).
 
 ### `PATCH /api/categories/:id`
 
-Renombra una categoría. **Solo cambia el `name`**: el `kind` y el `parentId` son
+Renombra una categoría y/o la marca o desmarca como gasto fijo. **Solo cambian
+el `name` y, desde la feature 63, `isFixed`**: el `kind` y el `parentId` son
 inmutables por esta vía (convertir una categoría de gasto en una de ingreso con
-movimientos colgando las volvería incoherentes).
+movimientos colgando las volvería incoherentes). Se escribe solo lo que viaja:
+mandar solo `isFixed` no toca el nombre, y mandar solo `name` no toca la marca.
 
-**Body**
-| Campo  | Tipo   | Obligatorio | Reglas                     |
-| ------ | ------ | ----------- | -------------------------- |
-| `name` | string | sí          | No vacío (`minLength: 1`). |
+**Body** — al menos uno de los dos campos.
+| Campo     | Tipo    | Obligatorio | Reglas                     |
+| --------- | ------- | ----------- | -------------------------- |
+| `name`    | string  | no          | No vacío (`minLength: 1`). |
+| `isFixed` | boolean | no          | Literalmente `true` o `false`. `"true"`, `1` o `null` responden **400**: no se convierten a booleano. Marca solo esta categoría: sus subcategorías se quedan como estaban. |
 
 > Cualquier otra propiedad en el body (incluido `kind` o `parentId`) responde
 > **400 `VALIDATION_ERROR`**: no se ignora ni se descarta en silencio.
@@ -560,7 +569,7 @@ movimientos colgando las volvería incoherentes).
 **Errores**
 | Código HTTP | `code`             | Cuándo                                                            |
 | ----------- | ------------------ | ----------------------------------------------------------------- |
-| 400         | `VALIDATION_ERROR` | El body no cumple el esquema: `name` vacío (o solo espacios), body vacío, o propiedades distintas de `name`. |
+| 400         | `VALIDATION_ERROR` | El body no cumple el esquema: `name` vacío (o solo espacios), `isFixed` que no es `true` ni `false`, body vacío, o propiedades distintas de `name` e `isFixed`. |
 | 404         | `NOT_FOUND`        | La categoría no existe.                                           |
 | 409         | `CONFLICT`         | El nombre nuevo colisiona con otra categoría del mismo `(parentId, kind)`. No se modifica nada. |
 
@@ -1384,7 +1393,9 @@ sumas**: los `totals` de [`GET /api/movements`](#get-apimovements), los
 `period.totals` de [`GET /api/overview`](#get-apioverview) y lo que
 [`GET /api/recurring-expenses`](#get-apirecurring-expenses) cuenta como gasto.
 Las tres salen de la misma regla: lo que deja de contar en una deja de contar en
-las tres.
+las tres. Desde la feature 63, lo que
+[`GET /api/expenses-by-category`](#get-apiexpenses-by-category) cuenta como gasto
+sale también de ella.
 
 **Con qué se reconoce.** Con lo que escribes tú y nada más:
 
@@ -2000,7 +2011,203 @@ descarta antes del handler), igual que en `GET /api/movements`.
 
 ---
 
+### `GET /api/expenses-by-category`
+
+Una sola consulta de **solo lectura** (feature 63 `expenses-by-category`,
+2026-10-21) que, para un **mes** o un **año natural**, da lo gastado en cada
+categoría, lo gastado en el periodo con que se compara y la diferencia, si la
+categoría es nueva o ya no está, y sus movimientos; todo separado en **gasto
+fijo** y **gasto variable** según la marca `isFixed` que el humano pone en cada
+categoría ([`PATCH /api/categories/:id`](#patch-apicategoriesid)). Sustituye a
+[`GET /api/recurring-expenses`](#get-apirecurring-expenses). Se calcula en cada
+petición y **no guarda nada**.
+
+Agrupa **solo por categoría** (el `categoryId` del movimiento), nunca por el
+concepto que escribe el banco. **Solo gastos**: los ingresos no entran.
+
+**Parámetros de querystring** — exactamente uno de `month` y `year`.
+
+| Parámetro | Tipo | Qué hace |
+| --------- | ---- | -------- |
+| `month`   | string (`YYYY-MM`, mes 01–12) | El mes que se pide. No puede ir junto con `year`. |
+| `year`    | string (`YYYY`, cuatro cifras) | El año natural que se pide, de enero a diciembre. No puede ir junto con `month`. |
+| `compare` | `"previous-month"` \| `"same-month-last-year"` | **Solo con `month`.** Con qué mes se compara: el anterior (`2026-03` con `2026-02`) o el mismo del año anterior (`2026-03` con `2025-03`). Por defecto, `"previous-month"`. Para ver las dos comparaciones de un mes se hacen dos peticiones. |
+
+**El periodo pedido y el comparado** (las fechas, en hora de Madrid):
+
+- **Un mes:** del día 1 al último día del mes, comparado con el mes que diga
+  `compare`. El **mes en curso** se compara tal cual va con el mes anterior
+  entero, como hace [`GET /api/overview`](#get-apioverview).
+- **Un año anterior al año de hoy:** de enero a diciembre, comparado con el año
+  anterior entero.
+- **El año de hoy (en curso):** de enero al último día del **mes de hoy**,
+  comparado con **los mismos meses del año anterior** (pedido en octubre de
+  2026: enero–octubre de 2026 con enero–octubre de 2025).
+- **Un año posterior al de hoy:** se trata como un año cerrado (de enero a
+  diciembre, con el anterior entero); no es un error, sale todo a `"0.00"`.
+
+**Qué gasto entra.** Exactamente lo que [`GET /api/overview`](#get-apioverview)
+suma como `period.totals.expense` (en el código, la misma función,
+`isCountedExpense`, con las mismas lecturas de depósitos y de cuentas propias):
+`type: "expense"`, sin `transferId` (fuera las dos piernas de un traspaso), sin
+`productId` (fuera las aportaciones a un producto de inversión), sin
+`excludedFromTotals: true`, que no sea un movimiento de depósito (ver
+[Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas))
+y que no sea dinero entre tus cuentas (`ownership.status` `"own"` o `"mine"`,
+ver
+[Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas);
+un dudoso sí entra). Los ingresos y los `neutral` no entran nunca. Por eso **el
+`amount` de un mes es igual al `period.totals.expense` de
+`GET /api/overview?month=` de ese mes**, y el de un año, a la suma de los de sus
+meses.
+
+**Una línea por categoría** que tenga gasto que entre en el periodo pedido o en
+el comparado:
+
+- Una categoría cuyo gasto que entra es `0` en los dos periodos **no tiene
+  línea**, aunque tenga movimientos (por ejemplo, solo aperturas de depósito).
+- Los gastos que entran **sin categoría** van juntos en una línea con
+  `category: null`, siempre en el grupo `variable`.
+- Una **subcategoría tiene su propia línea**, con su `parentId`, y no se suma a
+  la de su padre. Va al grupo que diga **su** `isFixed`, no el de su padre.
+- `Otros gastos` se trata como cualquier otra categoría.
+
+**Respuesta 200** (`?month=2026-09`, sin `compare`)
+```json
+{
+  "period": { "month": "2026-09", "year": null, "from": "2026-09-01", "to": "2026-09-30", "months": 1 },
+  "compared": { "from": "2026-08-01", "to": "2026-08-31", "months": 1 },
+  "compare": "previous-month",
+  "amount": "714.20",
+  "comparedAmount": "688.34",
+  "difference": "25.86",
+  "fixed": {
+    "amount": "612.37",
+    "comparedAmount": "612.37",
+    "difference": "0.00",
+    "lines": [
+      {
+        "category": { "id": 3, "name": "Vivienda", "parentId": null, "isFixed": true },
+        "amount": "612.37",
+        "comparedAmount": "612.37",
+        "difference": "0.00",
+        "change": null,
+        "monthlyAmount": null,
+        "movements": [
+          { "id": 1802, "bookingDate": "2026-09-01", "description": "RECIBO /ALQUILER FICTICIO", "amount": "612.37", "accountId": 1 }
+        ]
+      }
+    ]
+  },
+  "variable": {
+    "amount": "101.83",
+    "comparedAmount": "75.97",
+    "difference": "25.86",
+    "lines": [
+      {
+        "category": { "id": 21, "name": "Combustible", "parentId": 4, "isFixed": false },
+        "amount": "87.46",
+        "comparedAmount": "52.16",
+        "difference": "35.30",
+        "change": null,
+        "monthlyAmount": null,
+        "movements": [
+          { "id": 1847, "bookingDate": "2026-09-24", "description": "ESTACION SERVICIO INVENTADA", "amount": "39.63", "accountId": 2 },
+          { "id": 1771, "bookingDate": "2026-09-12", "description": "ESTACION SERVICIO INVENTADA", "amount": "47.83", "accountId": 2 }
+        ]
+      },
+      {
+        "category": null,
+        "amount": "14.37",
+        "comparedAmount": "0.00",
+        "difference": "14.37",
+        "change": "new",
+        "monthlyAmount": null,
+        "movements": [
+          { "id": 1819, "bookingDate": "2026-09-08", "description": "COMPRA SIN CATEGORIA INVENTADA", "amount": "14.37", "accountId": 1 }
+        ]
+      },
+      {
+        "category": { "id": 9, "name": "Restaurantes", "parentId": null, "isFixed": false },
+        "amount": "0.00",
+        "comparedAmount": "23.81",
+        "difference": "-23.81",
+        "change": "gone",
+        "monthlyAmount": null,
+        "movements": []
+      }
+    ]
+  }
+}
+```
+
+Todos los importes son strings decimales con dos decimales, como en el resto del
+contrato; las fechas, `YYYY-MM-DD`.
+
+- `period`: el periodo pedido. `month` (`YYYY-MM`) o `year` (`YYYY`), el otro a
+  `null`; `from` y `to`, su primer y último día, **ambos incluidos**; `months`,
+  cuántos meses abarca (`1` en un mes, `12` en un año cerrado, los que lleva en
+  el año en curso).
+- `compared`: el periodo comparado, con `from`, `to` y `months`. Nunca se solapa
+  con `period`.
+- `compare`: con qué se comparó: `"previous-month"` o `"same-month-last-year"`
+  con `month`; `"previous-year"` siempre con `year`.
+- `amount` / `comparedAmount` / `difference`: lo gastado en el periodo pedido, en
+  el comparado y `amount − comparedAmount` (positivo, subió; negativo, bajó).
+  En la raíz, la suma de los dos grupos.
+- `fixed` / `variable`: los dos grupos, cada uno con la suma de sus líneas
+  (`amount`, `comparedAmount`, `difference`) y sus `lines`. `fixed` lleva las
+  líneas de las categorías con `isFixed: true`; `variable`, el resto y la línea
+  sin categoría. Un grupo sin líneas sale con los tres importes a `"0.00"` y
+  `lines: []`.
+
+  Cada línea:
+
+  | Campo | Qué es |
+  | --- | --- |
+  | `category` | `id`, `name`, `parentId` e `isFixed` de la categoría, o `null` para los gastos sin categoría. |
+  | `amount` | Lo gastado en esa categoría en el periodo pedido. |
+  | `comparedAmount` | Lo gastado en esa categoría en el periodo comparado. |
+  | `difference` | `amount − comparedAmount`. Puede ser negativo (`"-23.81"`). |
+  | `change` | `"new"` si `comparedAmount` es `0` y `amount` no (nueva); `"gone"` si `amount` es `0` y `comparedAmount` no (ya no está); `null` en el resto. |
+  | `monthlyAmount` | **Solo con `year`:** `amount` entre los `months` del periodo, redondeado a céntimos (entre 12 en un año cerrado; entre los meses que lleva en el año en curso). Con `month`, `null`. |
+  | `movements` | Los gastos que entran de esa categoría **en el periodo pedido** (no los del comparado), con `id`, `bookingDate`, `description`, `amount` y `accountId`, en el orden de [`GET /api/movements`](#get-apimovements): `bookingDate` del más reciente al más antiguo, después la posición dentro del día y después el `id`. Su suma es el `amount` de la línea. Una línea `"gone"` trae `[]`. El resto de campos de un movimiento se pide a `GET /api/movements`. |
+
+  Orden de las líneas dentro de cada grupo: `amount` de mayor a menor; a
+  igualdad, `comparedAmount` de mayor a menor; después, por nombre de
+  categoría, y la línea sin categoría detrás.
+
+Con `?year=2025` la forma es la misma; cambian `period` (`"month": null`,
+`"year": "2025"`, de `2025-01-01` a `2025-12-31`, `"months": 12`), `compared`
+(de `2024-01-01` a `2024-12-31`), `"compare": "previous-year"` y el
+`monthlyAmount` de cada línea, que deja de ser `null`: una línea con
+`"amount": "1471.20"` trae `"monthlyAmount": "122.60"`. ⚠️ Un año en el que
+faltan meses por importar divide igual entre 12: la respuesta no avisa de los
+meses que faltan.
+
+**Respuesta vacía.** Sin ningún gasto que entre en los dos periodos, responde 200
+con los importes a `"0.00"` y los dos grupos con `lines: []`. No es un error.
+
+**Errores**
+
+| Código HTTP | `code`             | Cuándo |
+| ----------- | ------------------ | ------ |
+| 400         | `VALIDATION_ERROR` | No viaja ni `month` ni `year`; viajan los dos; `month` no es `YYYY-MM` con mes 01–12; `year` no son cuatro cifras; `compare` viaja junto con `year`; o `compare` no es `"previous-month"` ni `"same-month-last-year"`. No se escribe nada. |
+
+> Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
+> `PATCH`, ni `DELETE` bajo `/api/expenses-by-category`).
+
+---
+
 ### `GET /api/recurring-expenses`
+
+> ⚠️ **Se retirará (decidido en la feature 63, 2026-10-21).** La sustituye
+> [`GET /api/expenses-by-category`](#get-apiexpenses-by-category). Mientras
+> tanto **sigue respondiendo igual**: misma ruta, mismos campos, mismas reglas,
+> todo lo que dice esta sección. Se retirará en una feature posterior del
+> backend, **cuando el frontend use la consulta nueva** en lugar de esta; hasta
+> entonces no cambia nada para quien la llama. Al retirarla pasará a
+> [Rutas retiradas](#rutas-retiradas).
 
 Una sola consulta de **solo lectura** (feature 58 `recurring-expenses`,
 2026-10-17) que responde cuánto cuesta un mes: los **recibos** uno por uno, las

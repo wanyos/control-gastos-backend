@@ -260,6 +260,7 @@ describe('architecture invariants', () => {
       'modules/categories/categories.routes.ts',
       'modules/movements/movements.routes.ts',
       'modules/overview/overview.routes.ts',
+      'modules/expenses-by-category/expenses-by-category.routes.ts',
     ]
 
     for (const file of files) {
