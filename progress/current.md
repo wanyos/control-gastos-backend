@@ -108,9 +108,9 @@ Plantilla mientras trabajas — borra este comentario y rellena:
 la F62 está rellenada desde el 2026-10-20. Lo que queda son **pruebas con tus datos**,
 ninguna bloquea nada:
 
-- **F63** (2026-10-21): **marcar tus categorías fijas** (vivienda, suministros,
-  telefonía…) con `PATCH /api/categories/:id` y `{ "isFixed": true }`. Hasta que lo
-  hagas, `GET /api/expenses-by-category` lo saca todo en `variable`.
+- ~~**F63**: marcar tus categorías fijas~~ ✅ hecho el 2026-10-23 con el leader, por
+  la API: Vivienda, Suministros, Telefonía e internet, Suscripciones e Impuestos y
+  administración son fijas; las otras diez, variables. Se refina más adelante si hace falta.
 - **F61** (2026-10-18): con `pnpm run dev`, pide `GET /api/category-rules/suggestions`,
   elige una propuesta y crea su regla con `POST /api/category-rules` (o mírala antes
   con `GET /api/category-rules/preview`): los movimientos que mueve tienen que ser los
