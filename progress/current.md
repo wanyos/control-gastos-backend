@@ -28,10 +28,10 @@
 
 **Ninguna feature en curso.**
 
-## Mantenimiento: dependencias al día y fuera `packageManager` — CERRADO (2026-10-28, sin commit)
+## Mantenimiento: dependencias al día y fuera `packageManager` — CERRADO (2026-10-28)
 
 **Qué se hizo:** ver la línea del 2026-10-28 en `history.md`. Reviewer `CHANGES_REQUESTED` en la primera revisión (quedaban dos copias de `pg`, la del adaptador de Prisma en 8.23.0) y `APPROVED` en la segunda.
-**Sin commit.**
+Commit `f599eb7`.
 
 ## F64 `retire-recurring-expenses` — CERRADA (2026-10-25, commit `731414c`)
 
