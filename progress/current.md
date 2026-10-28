@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## Mantenimiento: dependencias al día y fuera `packageManager` — CERRADO (2026-10-28, sin commit)
+
+**Qué se hizo:** ver la línea del 2026-10-28 en `history.md`. Reviewer `CHANGES_REQUESTED` en la primera revisión (quedaban dos copias de `pg`, la del adaptador de Prisma en 8.23.0) y `APPROVED` en la segunda.
+**Sin commit.**
+
 ## F64 `retire-recurring-expenses` — CERRADA (2026-10-25, commit `731414c`)
 
 **Qué se hizo:** cabo 29. `GET /api/recurring-expenses` responde 404; su módulo se borró, el contrato la lista en «Rutas retiradas» y ADR-037, 040 y 041 llevan una nota de la F64. Flujo simple, reviewer `APPROVED` sin hallazgos → [resumen](summaries/retire-recurring-expenses.md), [implementación](implementations/retire-recurring-expenses.md), [revisión](reviews/retire-recurring-expenses.md).
@@ -116,6 +121,7 @@ ninguna bloquea nada:
 - ~~**F63**: marcar tus categorías fijas~~ ✅ hecho el 2026-10-23 con el leader, por
   la API: Vivienda, Suministros, Telefonía e internet, Suscripciones e Impuestos y
   administración son fijas; las otras diez, variables. Se refina más adelante si hace falta.
+- **Mantenimiento del 2026-10-28, `@googleapis/drive` 27:** los tests usan un Drive simulado. Con `pnpm run dev`, una importación que lea tu Drive y mueva el archivo a `procesados/`, y `pnpm run db:backup` (copia nueva en la carpeta de copias). Si algo falla con Drive, es lo primero a mirar.
 - **F61** (2026-10-18): con `pnpm run dev`, pide `GET /api/category-rules/suggestions`,
   elige una propuesta y crea su regla con `POST /api/category-rules` (o mírala antes
   con `GET /api/category-rules/preview`): los movimientos que mueve tienen que ser los

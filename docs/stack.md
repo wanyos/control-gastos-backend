@@ -14,20 +14,20 @@
 
 ## Framework / Runtime
 
-- **Framework:** Fastify `^5.12.5`.
-- **Runtime:** Node.js — probado con `v24.18.0`; `engines.node` exige `>=24` (desde el 2026-09-13: vitest 5 pide `^22.12`, `@googleapis/drive` 26 pide `>=22` y `process.loadEnvFile()` es estable desde `24.10`).
+- **Framework:** Fastify `^5.12.7`.
+- **Runtime:** Node.js — probado con `v24.18.0`; `engines.node` exige `>=24` (desde el 2026-09-13: vitest 5 pide `^22.12`, `@googleapis/drive` 26 y 27 piden `>=22` y `process.loadEnvFile()` es estable desde `24.10`).
 
 ## Librerías clave
 
-- **ORM / DB:** Prisma `^7.9.1` (CLI `prisma` + `@prisma/client`), conectado
-  con el **driver adapter** `@prisma/adapter-pg@^7.9.1` sobre `pg@^8.23.0`.
+- **ORM / DB:** Prisma `^7.10.1` (CLI `prisma` + `@prisma/client`), conectado
+  con el **driver adapter** `@prisma/adapter-pg@^7.10.1` sobre `pg@^8.23.1`.
   El cliente se genera en `src/generated/prisma/` (generador `prisma-client`, ESM).
 - **Validación de schemas:** JSON Schema **nativo de Fastify** (AJV integrado).
   No hay Zod/Typebox instalado; los schemas viven en el `*.schema.ts` de cada
   módulo (ej. `createAccountSchema` en
   [`src/modules/accounts/accounts.schema.ts`](../src/modules/accounts/accounts.schema.ts)).
-- **Encapsulación de plugins:** `fastify-plugin@^6.0.0`.
-- **Google Drive:** `@googleapis/drive@^26.0.0` (cliente Drive v3 + `auth`
+- **Encapsulación de plugins:** `fastify-plugin@^6.0.1`.
+- **Google Drive:** `@googleapis/drive@^27.0.0` (cliente Drive v3 + `auth`
   reexportado; **no** se declara `google-auth-library` aparte, ver ADR-007). Se
   eligió frente al monolito `googleapis` (~85x más pesado) por peso. Auth OAuth2
   con refresh token; el cliente se expone como `fastify.drive`.
@@ -48,8 +48,11 @@
 
 ## Build / Dev tooling
 
-- **Gestor de paquetes:** **pnpm** `12.5.1`, fijado en el campo
-  `packageManager` de `package.json`. El lockfile versionado es
+- **Gestor de paquetes:** **pnpm**, sin versión fijada en `package.json`
+  (desde el 2026-10-28 no hay campo `packageManager`: corre el pnpm que tenga
+  instalado cada equipo). Probado el 2026-10-28 con pnpm `11.22.0` (el instalado
+  en el equipo de desarrollo) y con `12.5.1` (`pnpm install --frozen-lockfile`
+  con las dos deja el lockfile igual). El lockfile versionado es
   `pnpm-lock.yaml`; `init.sh` detecta el gestor por el lockfile y corre
   `pnpm test`. **Usa siempre `pnpm`, nunca `npm`**: mezclarlos genera un
   `node_modules` distinto del que valida `init.sh`.
@@ -58,18 +61,18 @@
 - **Build:** `pnpm run build` → `prisma generate && tsc` (salida a `dist/`).
 - **Arranque producción:** `pnpm start` → `node dist/server.js`.
 - **Type check:** `pnpm run typecheck` → `tsc --noEmit`.
-- **Lint:** `pnpm run lint` → `oxlint` (`oxlint@^1.83.0`, config en
+- **Lint:** `pnpm run lint` → `oxlint` (`oxlint@^1.90.0`, config en
   `.oxlintrc.json`: categoría `correctness`, plugins `typescript`/`unicorn`/
   `oxc`; ignora `src/generated/`, `dist/` y `node_modules/`). `lint:fix` para
   autofix. No pelea con Prettier: `correctness` no trae reglas de formato.
-- **Format:** `pnpm run format:check` / `format` → Prettier `3.9.8`
+- **Format:** `pnpm run format:check` / `format` → Prettier `3.9.10`
   (`.prettierrc`: comillas simples, sin punto y coma, 2 espacios,
   100 columnas). `.prettierignore` excluye artefactos generados, el
   lockfile, los `.md` del harness y `feature_list.json`.
 
 ## Testing
 
-- **Test runner:** **Vitest** `^5.0.1` (elegido 2026-07-10; alternativa
+- **Test runner:** **Vitest** `^5.0.5` (elegido 2026-07-10; alternativa
   `node:test` descartada por requerir cablear el loader tsx a mano).
   - `pnpm test` → `vitest run` (suite completa, la ejecuta también `./init.sh`).
   - `pnpm run test:watch` → `vitest` (modo watch en desarrollo).
