@@ -810,6 +810,30 @@ describe('retired routes of feature 52 (R3)', () => {
   })
 })
 
+// GET /api/recurring-expenses is gone (feature 64, breaking change): GET
+// /api/expenses-by-category replaced it and the frontend no longer called it. It
+// falls through to the central 404 handler, and its module left the tree.
+describe('retired route of feature 64', () => {
+  let app: FastifyInstance
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('GET /api/recurring-expenses responds 404', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/recurring-expenses' })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+    expect(existsSync(join(srcDir, 'modules/recurring-expenses'))).toBe(false)
+  })
+})
+
 // The bootstrap placeholder is gone (feature 8, breaking change): its routes
 // must fall through to the central 404 handler. It lives here, next to the
 // tree guardian, because the module it belonged to no longer exists.

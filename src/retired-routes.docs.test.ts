@@ -165,3 +165,35 @@ describe('docs/architecture.md — the decision is written down without rewritin
     expect(architecture.split(reviewLine)).toHaveLength(reviewed.length + 1)
   })
 })
+
+// Feature 64: GET /api/recurring-expenses was retired too (it answers 404: that is
+// `architecture.test.ts`). The contract lists it in the same «Rutas retiradas»
+// section, with its date and the route that replaced it, and every other line
+// that still names it says it is retired.
+describe('docs/api-contract.md — the route retired by feature 64', () => {
+  const contract = read('docs', 'api-contract.md')
+  const { retired, rest } = splitContract(contract)
+
+  it('api-contract: lists GET /api/recurring-expenses under the retired routes', () => {
+    const row = retired
+      .split('\n')
+      .find((line) => line.startsWith('| 9 | `GET /api/recurring-expenses` |'))
+    expect(row, 'no row for GET /api/recurring-expenses in «Rutas retiradas»').toBeDefined()
+    expect(row).toContain('[`GET /api/expenses-by-category`](#get-apiexpenses-by-category)')
+    expect(retired).toContain(
+      'BREAKING CHANGE (feature 64 `retire-recurring-expenses`, 2026-10-25)',
+    )
+    expect(retired).toContain('`{ "statusCode": 404, "code": "NOT_FOUND", "message": "…" }`')
+
+    // Outside that section: no section of its own, no link to it, and no line
+    // that names it without saying it is retired.
+    expect(rest).not.toContain('### `GET /api/recurring-expenses`')
+    expect(contract).not.toContain('(#get-apirecurring-expenses)')
+    const alive = rest
+      .split('\n')
+      .map((line, index) => ({ line, number: index + 1 }))
+      .filter(({ line }) => line.includes('/api/recurring-expenses') && !line.includes('retirada'))
+      .map(({ number }) => `docs/api-contract.md:${number}`)
+    expect(alive).toEqual([])
+  })
+})

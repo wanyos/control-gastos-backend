@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## F64 `retire-recurring-expenses` — CERRADA (2026-10-25, sin commit)
+
+**Qué se hizo:** cabo 29. `GET /api/recurring-expenses` responde 404; su módulo se borró, el contrato la lista en «Rutas retiradas» y ADR-037, 040 y 041 llevan una nota de la F64. Flujo simple, reviewer `APPROVED` sin hallazgos → [resumen](summaries/retire-recurring-expenses.md), [implementación](implementations/retire-recurring-expenses.md), [revisión](reviews/retire-recurring-expenses.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, cabo 29 cerrado. **Sin commit.**
+
 ## F63 `expenses-by-category` — CERRADA (2026-10-21, commit `977d01c`)
 
 **Qué se hizo:** `GET /api/expenses-by-category` (mes o año natural, tres comparaciones, fijo y variable por la marca `isFixed` de cada categoría, movimientos de cada línea) y `isFixed` en `PATCH /api/categories/:id`. ADR-041. Lotes A, B y C hechos; reviewer `APPROVED` → [resumen](summaries/expenses-by-category.md), [implementación](implementations/expenses-by-category.md), [revisión](reviews/expenses-by-category.md).
@@ -138,5 +143,3 @@ _Cada corrección que el humano hace a un agente durante la feature, en una
 línea: qué se hizo, qué agente, qué quería él. El leader la usa al cerrar para
 proponer entradas de `docs/lessons.md`. Esta sección no se vacía al cerrar la
 sesión, solo al cerrar la feature._
-
-- 2026-10-20, leader: al revisar la categorización le planteó varias cosas a la vez (listas de 3-4 puntos y propuestas de orden) cuando él había pedido tres veces «de una en una». Lo que quería: un solo punto por mensaje; se resuelve y solo entonces se plantea el siguiente, sin listar los que vienen.

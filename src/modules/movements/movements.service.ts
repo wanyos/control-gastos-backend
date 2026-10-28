@@ -654,9 +654,8 @@ function toDateOnly(date: Date): string {
  * human's own money moving (feature 62: its `ownership` reading leaves the
  * totals), not marked `excludedFromTotals`, not a leg of a linked transfer and
  * not a contribution to an investment product. The single answer to "is this
- * an expense" in the backend: the totals, `GET /api/recurring-expenses`
- * (feature 58) and `GET /api/expenses-by-category` (feature 63) all ask here,
- * so they can never disagree.
+ * an expense" in the backend: the totals and `GET /api/expenses-by-category`
+ * (feature 63) both ask here, so they can never disagree.
  */
 export function isCountedExpense(
   movement: TotalsMovement,

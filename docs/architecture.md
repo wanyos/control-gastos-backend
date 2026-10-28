@@ -3106,6 +3106,16 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-037: Qué gasto es un recibo, cuál es una transferencia a una persona y cuánto cuesta un mes se decide al leer, en `recurring-expenses`, sin guardar nada
 
+> **Revisado el 2026-10-25 por la feature 64 `retire-recurring-expenses`:** la ruta
+> que decide este ADR, `GET /api/recurring-expenses`, **quedó retirada** y responde
+> 404; la sustituye `GET /api/expenses-by-category` (ADR-041). El módulo
+> `src/modules/recurring-expenses/` ya no existe, ni su sección del contrato (pasó a
+> «Rutas retiradas» de `docs/api-contract.md`) ni su test de documentación. Lo que
+> este ADR sacó a otros módulos sigue donde estaba y sin cambios:
+> `isCountedExpense` (`movements.service.ts`), que usan las sumas y
+> `GET /api/expenses-by-category`, y `transferWords` (`transfers.service.ts`), que
+> usa la detección de traspasos. El resto del ADR se queda como historia.
+
 > **Revisado el 2026-10-17 por la feature 59 `recurring-people-by-category`:** en la
 > decisión 3, un gasto con palabra de transferencia o `bizum` solo va al grupo de
 > transferencias a personas si no tiene categoría o su categoría se llama
@@ -3331,6 +3341,12 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-040: Si un movimiento es entre cuentas propias se decide al leer, con los textos que escribe el humano y nunca con el nombre del banco solo; lo único que se guarda es su decisión
 
+> **Revisado el 2026-10-25 por la feature 64 `retire-recurring-expenses`:** la
+> tercera de las «tres sumas» de la decisión 4, `getRecurringExpenses`
+> (`GET /api/recurring-expenses`), quedó retirada. Desde la feature 63 lee el mismo
+> mapa `getExpensesByCategory` (`GET /api/expenses-by-category`), y es ella la que
+> comprueban ahora `own-accounts.totals.test.ts` y `own-accounts.docs.test.ts`.
+
 - **Fecha:** 2026-10-20
 - **Estado:** aceptada (implementada en la feature #62 `own-accounts`, SDD; hoja
   aprobada por el humano el 2026-10-20). Se apoya en ADR-035 (calcular al leer) y no
@@ -3414,6 +3430,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     `src/modules/own-accounts/own-accounts.docs.test.ts`.
 
 ### ADR-041: El gasto por categoría se agrupa al leer, con `isCountedExpense`, y el corte fijo/variable es una marca del humano en `Category`
+
+> **Revisado el 2026-10-25 por la feature 64 `retire-recurring-expenses`:**
+> `GET /api/recurring-expenses` **quedó retirada** (responde 404; pasó a «Rutas
+> retiradas» de `docs/api-contract.md`), porque el frontend dejó de usarla en su
+> feature 37. Dejan de ser verdad la frase del estado («sigue funcionando igual
+> hasta que se retire») y la consecuencia de que la ruta vieja «queda viva»; el
+> cabo suelto 29 de `docs/roadmap.md` lo cerró esta feature.
 
 - **Fecha:** 2026-10-21
 - **Estado:** aceptada (implementada en la feature #63 `expenses-by-category`, SDD;

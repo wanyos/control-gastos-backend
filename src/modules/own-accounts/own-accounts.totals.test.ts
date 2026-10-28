@@ -1,7 +1,9 @@
 // Feature 62 `own-accounts`: what the own accounts table does to the three sums
 // — the `totals` of GET /api/movements, the `period.totals` of GET /api/overview
-// and what GET /api/recurring-expenses counts as a cost — and to the listing
-// (R5–R7, R9–R14). Each test measures the sums BEFORE filling the table and
+// and what GET /api/expenses-by-category counts as an expense — and to the
+// listing (R5–R7, R9–R14). Until feature 64 the third sum was the monthly cost
+// of GET /api/recurring-expenses, retired then; GET /api/expenses-by-category
+// replaced it and reads the same rule. Each test measures the sums BEFORE filling the table and
 // after, so the other rows of the test database never change the answer.
 //
 // 🔒 Everything here is invented: the holder «Ana Pérez Gil», the other person
@@ -18,13 +20,13 @@ import { driveWithPendingFiles } from '../../lib/drive.fixture.js'
 import { syntheticIban } from '../../lib/iban.fixture.js'
 import { currentMonthInMadrid } from '../../lib/local-date.js'
 import { importPending } from '../import/import.service.js'
+import type { ExpensesByCategoryResponse } from '../expenses-by-category/expenses-by-category.types.js'
 import type { ListedMovement, MovementListResponse } from '../movements/movements.types.js'
 import type { OverviewResponse } from '../overview/overview.types.js'
-import type { RecurringExpensesResponse } from '../recurring-expenses/recurring-expenses.types.js'
 import { buildRevolutCsv, revolutRow } from '../revolut/revolut.fixture.js'
 import { detectTransfers } from '../transfers/transfers.service.js'
 
-/** The `YYYY-MM` two months before the current one: always inside the 12 months of recurring. */
+/** The `YYYY-MM` two months before the current one: a closed month, in the past. */
 function testMonth(): string {
   const [year, month] = currentMonthInMadrid().split('-').map(Number)
   const index = year * 12 + (month - 1) - 2
@@ -135,24 +137,27 @@ describe('own accounts in the three sums (F62)', () => {
     return response.json<OverviewResponse>().period.totals
   }
 
-  async function recurring(): Promise<{ monthlyTotal: string; ids: Set<number> }> {
-    const response = await app.inject({ method: 'GET', url: '/api/recurring-expenses' })
+  async function byCategory(month = testMonth()): Promise<{ amount: string; ids: Set<number> }> {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/expenses-by-category?month=${month}`,
+    })
     expect(response.statusCode).toBe(200)
-    const body = response.json<RecurringExpensesResponse>()
-    const ids = new Set<number>([
-      ...body.bills.flatMap((bill) => bill.movements.map((movement) => movement.id)),
-      ...body.transfersToPeople.movements.map((movement) => movement.id),
-      ...body.variable.flatMap((group) => group.movements.map((movement) => movement.id)),
-    ])
-    return { monthlyTotal: body.monthlyTotal, ids }
+    const body = response.json<ExpensesByCategoryResponse>()
+    const ids = new Set<number>(
+      [...body.fixed.lines, ...body.variable.lines].flatMap((line) =>
+        line.movements.map((movement) => movement.id),
+      ),
+    )
+    return { amount: body.amount, ids }
   }
 
-  /** The three sums at once: the listing of one account, the month and the monthly cost. */
+  /** The three sums at once: the listing of one account, the month and its expense by category. */
   async function threeSums(accountId: number) {
     return {
       movements: (await list(`accountId=${accountId}`)).totals,
       overview: await overviewTotals(),
-      recurring: await recurring(),
+      byCategory: await byCategory(),
     }
   }
 
@@ -193,13 +198,13 @@ describe('own accounts in the three sums (F62)', () => {
     expect(after.movements).toEqual({ income: '0.00', expense: '57.34', net: '-57.34' })
     expect(minus(before.overview.expense, after.overview.expense)).toBe('360.00')
     expect(minus(before.overview.income, after.overview.income)).toBe('360.00')
-    // 360.00 of the period out of the cost: 30.00 a month.
-    expect(minus(before.recurring.monthlyTotal, after.recurring.monthlyTotal)).toBe('30.00')
-    expect(before.recurring.ids).toContain(byHolder.id)
-    expect(before.recurring.ids).toContain(byProduct.id)
-    expect(after.recurring.ids).not.toContain(byHolder.id)
-    expect(after.recurring.ids).not.toContain(byProduct.id)
-    expect(after.recurring.ids).toContain(ordinary.id)
+    // The two expenses of the month out of the expense by category: 120.00 + 240.00.
+    expect(minus(before.byCategory.amount, after.byCategory.amount)).toBe('360.00')
+    expect(before.byCategory.ids).toContain(byHolder.id)
+    expect(before.byCategory.ids).toContain(byProduct.id)
+    expect(after.byCategory.ids).not.toContain(byHolder.id)
+    expect(after.byCategory.ids).not.toContain(byProduct.id)
+    expect(after.byCategory.ids).toContain(ordinary.id)
 
     const listed = await list(`accountId=${account.id}`)
     expect(rowOf(listed, byHolder.id).ownership).toEqual({
@@ -241,8 +246,8 @@ describe('own accounts in the three sums (F62)', () => {
     expect(after.movements).toEqual({ income: '0.00', expense: '84.00', net: '-84.00' })
     expect(after.movements).toEqual(before.movements)
     expect(after.overview).toEqual(before.overview)
-    expect(after.recurring.monthlyTotal).toBe(before.recurring.monthlyTotal)
-    expect(after.recurring.ids).toContain(toSomeoneElse.id)
+    expect(after.byCategory.amount).toBe(before.byCategory.amount)
+    expect(after.byCategory.ids).toContain(toSomeoneElse.id)
     expect(rowOf(await list(`accountId=${account.id}`), toSomeoneElse.id).ownership).toBeNull()
   })
 
@@ -272,7 +277,7 @@ describe('own accounts in the three sums (F62)', () => {
       ownAccountName: 'Cuenta inventada',
       matchedText: 'Trade Republic',
     })
-    expect((await recurring()).ids).toContain(doubtful.id)
+    expect((await byCategory()).ids).toContain(doubtful.id)
 
     const onlyDoubtful = await list(`accountId=${account.id}&ownership=doubtful`)
     expect(onlyDoubtful.movements.map((movement) => movement.id)).toEqual([doubtful.id])
@@ -318,8 +323,8 @@ describe('own accounts in the three sums (F62)', () => {
     const afterMine = await threeSums(account.id)
     expect(afterMine.movements.expense).toBe('0.00')
     expect(minus(counting.overview.expense, afterMine.overview.expense)).toBe('144.00')
-    expect(minus(counting.recurring.monthlyTotal, afterMine.recurring.monthlyTotal)).toBe('12.00')
-    expect(afterMine.recurring.ids).not.toContain(doubtful.id)
+    expect(minus(counting.byCategory.amount, afterMine.byCategory.amount)).toBe('144.00')
+    expect(afterMine.byCategory.ids).not.toContain(doubtful.id)
     expect(rowOf(await list(`accountId=${account.id}`), doubtful.id).ownership?.status).toBe('mine')
     expect(await doubtfulIds()).toEqual([])
 
@@ -327,7 +332,7 @@ describe('own accounts in the three sums (F62)', () => {
     const afterNotMine = await threeSums(account.id)
     expect(afterNotMine.movements).toEqual(counting.movements)
     expect(afterNotMine.overview).toEqual(counting.overview)
-    expect(afterNotMine.recurring.monthlyTotal).toBe(counting.recurring.monthlyTotal)
+    expect(afterNotMine.byCategory.amount).toBe(counting.byCategory.amount)
     expect(rowOf(await list(`accountId=${account.id}`), doubtful.id).ownership?.status).toBe(
       'not_mine',
     )
@@ -529,7 +534,7 @@ describe('own accounts in the three sums (F62)', () => {
     await list(`accountId=${from.id}`)
     await list(`accountId=${from.id}&ownership=doubtful`)
     await overviewTotals()
-    await recurring()
+    await byCategory()
 
     expect(await snapshot()).toEqual(before)
 

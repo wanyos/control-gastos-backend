@@ -181,12 +181,12 @@ describe('docs/api-contract.md — GET /api/expenses-by-category (feature 63)', 
     }[]
     expect(listed[0]?.isFixed).toBe(false)
 
-    // ── GET /api/recurring-expenses keeps answering and will be retired ──
-    const recurring = flat(section('### `GET /api/recurring-expenses`'))
-    expect(recurring, 'the contract has no section for GET /api/recurring-expenses').not.toBe('')
-    expect(recurring).toContain('**Se retirará (decidido en la feature 63, 2026-10-21).**')
-    expect(recurring).toContain('**sigue respondiendo igual**')
-    expect(recurring).toContain('**cuando el frontend use la consulta nueva**')
-    expect(recurring).toContain('[`GET /api/expenses-by-category`](#get-apiexpenses-by-category)')
+    // ── GET /api/recurring-expenses, which this route replaced, is retired ──
+    // (feature 64; the «Rutas retiradas» side is checked in
+    // `src/retired-routes.docs.test.ts`)
+    expect(section('### `GET /api/recurring-expenses`')).toBe('')
+    expect(prose).toContain('Sustituye a `GET /api/recurring-expenses`')
+    expect(prose).toContain('retirada en la feature 64')
+    expect(prose).toContain('[Rutas retiradas](#rutas-retiradas)')
   })
 })

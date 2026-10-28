@@ -3064,6 +3064,58 @@
           "comando": "pnpm test"
         }
       ]
+    },
+    {
+      "id": 64,
+      "name": "retire-recurring-expenses",
+      "title": "Retirar GET /api/recurring-expenses, que sustituye GET /api/expenses-by-category",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-10-23), del cabo 29 de docs/roadmap.md y de las palabras del humano: «aquí debemos eliminar el endpoint» (2026-10-25) y el aviso de la sesión del frontend de ese día: «El frontend ya no usa GET /api/recurring-expenses: la pantalla Monthly cost se quitó en la feature 37 del frontend (2026-10-25) y la sustituye Expenses by category». El leader le propuso este intent el 2026-10-23 y el humano dio la señal de arrancar el 2026-10-25. El nombre de la feature es propuesta del leader.",
+        "que_quiero": "Retirar GET /api/recurring-expenses, porque la sustituye GET /api/expenses-by-category y el frontend ya no la usa. Incluye el módulo src/modules/recurring-expenses/ con sus tests, su registro en src/app.ts, su sección de docs/api-contract.md (pasa a «Rutas retiradas»), su fila del README.md y sus menciones en el resto de documentos.",
+        "por_que": "El planteamiento de recurrentes no sirvió (refinamiento del 2026-10-18 en ../docs/ideas.md) y su pantalla ya no existe. Mantener una ruta que nadie usa es código que hay que seguir probando y documentando.",
+        "como_se_que_esta_bien": [
+          "GET /api/recurring-expenses responde 404.",
+          "GET /api/expenses-by-category sigue respondiendo igual.",
+          "docs/api-contract.md la lista en «Rutas retiradas».",
+          "La suite pasa."
+        ],
+        "que_no_quiero": [
+          "Que cambie nada de lo que responde GET /api/expenses-by-category ni de las sumas de las demás rutas.",
+          "Tocar la base de datos: no hay migración."
+        ],
+        "delego_en_agente": []
+      },
+      "acceptance": [
+        "[de «qué quiero» / «cómo sé» 1] GET /api/recurring-expenses responde 404: la ruta deja de estar registrada en src/app.ts y la carpeta src/modules/recurring-expenses/ desaparece con todos sus archivos, tests incluidos.",
+        "[de «cómo sé» 2 / «qué no quiero» 1] GET /api/expenses-by-category responde exactamente igual: sus tests siguen pasando sin cambiar lo que comprueban. Si algo que vive en el módulo retirado lo usa otro módulo (por ejemplo src/modules/movements/movements.service.ts o los tests de own-accounts), se mueve a donde lo use, sin cambiar su comportamiento.",
+        "[de «cómo sé» 3] docs/api-contract.md quita la sección de GET /api/recurring-expenses y la añade a «Rutas retiradas», con la fecha y la ruta que la sustituye.",
+        "[de «qué quiero»] README.md quita su fila, y docs/architecture.md (ADR-037, ADR-041), docs/roadmap.md (cabo 29 cerrado, fila E7) y el resto de documentos dejan de presentarla como vigente. Los ADR no se borran: se anota que la ruta quedó retirada por la F64.",
+        "[de «qué no quiero» 2] Sin migración ni cambio en prisma/schema.prisma.",
+        "[decisión del leader] Si src/architecture.test.ts tiene la lista de árbol esperado con los archivos del módulo, se quitan de ella."
+      ],
+      "checks": [
+        {
+          "descripcion": "GET /api/recurring-expenses responde 404.",
+          "comando": "pnpm exec vitest run -t \"GET /api/recurring-expenses responds 404\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) La carpeta del módulo retirado ya no existe.",
+          "comando": "test ! -d src/modules/recurring-expenses"
+        },
+        {
+          "descripcion": "GET /api/expenses-by-category sigue respondiendo igual.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category"
+        },
+        {
+          "descripcion": "docs/api-contract.md la lista en «Rutas retiradas».",
+          "comando": "pnpm exec vitest run -t \"api-contract: lists GET /api/recurring-expenses under the retired routes\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "La suite pasa.",
+          "comando": "pnpm test"
+        }
+      ],
+      "status": "done"
     }
   ]
 }

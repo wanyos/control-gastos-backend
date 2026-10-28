@@ -103,7 +103,7 @@ describe('docs/api-contract.md — own accounts (feature 62)', () => {
     for (const route of [
       '`GET /api/movements`',
       '`GET /api/overview`',
-      '`GET /api/recurring-expenses`',
+      '`GET /api/expenses-by-category`',
     ]) {
       expect(rule).toContain(route)
     }
@@ -154,8 +154,9 @@ describe('docs/api-contract.md — own accounts (feature 62)', () => {
       movementModel.split('\n').find((line) => line.startsWith('| `ownershipDecision` |')),
     ).toContain('Lo escribe **solo** [`PATCH /api/movements/:id`]')
 
-    // ── The other two sums point to the same rule ──
-    for (const heading of ['### `GET /api/overview`', '### `GET /api/recurring-expenses`']) {
+    // ── The other two sums point to the same rule (the third one is
+    //    GET /api/expenses-by-category since feature 64 retired GET /api/recurring-expenses) ──
+    for (const heading of ['### `GET /api/overview`', '### `GET /api/expenses-by-category`']) {
       expect(section(heading)).toContain('(#movimientos-entre-tus-cuentas-en-las-sumas)')
     }
   })
