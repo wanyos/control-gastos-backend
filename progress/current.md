@@ -28,10 +28,10 @@
 
 **Ninguna feature en curso.**
 
-## F64 `retire-recurring-expenses` — CERRADA (2026-10-25, sin commit)
+## F64 `retire-recurring-expenses` — CERRADA (2026-10-25, commit `731414c`)
 
 **Qué se hizo:** cabo 29. `GET /api/recurring-expenses` responde 404; su módulo se borró, el contrato la lista en «Rutas retiradas» y ADR-037, 040 y 041 llevan una nota de la F64. Flujo simple, reviewer `APPROVED` sin hallazgos → [resumen](summaries/retire-recurring-expenses.md), [implementación](implementations/retire-recurring-expenses.md), [revisión](reviews/retire-recurring-expenses.md).
-**Estado:** `done` en `feature_list.json`, línea en `history.md`, cabo 29 cerrado. **Sin commit.**
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, cabo 29 cerrado. Commit `731414c`.
 
 ## F63 `expenses-by-category` — CERRADA (2026-10-21, commit `977d01c`)
 
