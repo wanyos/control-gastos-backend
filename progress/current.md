@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## F65 `expenses-by-category-reject-year-zero` — CERRADA (2026-11-02, sin commit todavía)
+
+**Qué se hizo:** cabo 30. `GET /api/expenses-by-category` solo acepta `year` y `month` con años desde el 2000 (decisión del humano el 2026-11-02, después de ver que `0001` y los meses con año por debajo de 1000 respondían 500); lo anterior, `0000` incluido, es `400 VALIDATION_ERROR` en el schema de la ruta y `resolvePeriods` no cambia. Flujo simple, reviewer `APPROVED` sin hallazgos → [resumen](summaries/expenses-by-category-reject-year-zero.md), [implementación](implementations/expenses-by-category-reject-year-zero.md), [revisión](reviews/expenses-by-category-reject-year-zero.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, cabo 30 cerrado. Sin commit.
+
 ## Mantenimiento: dependencias al día y fuera `packageManager` — CERRADO (2026-10-28)
 
 **Qué se hizo:** ver la línea del 2026-10-28 en `history.md`. Reviewer `CHANGES_REQUESTED` en la primera revisión (quedaban dos copias de `pg`, la del adaptador de Prisma en 8.23.0) y `APPROVED` en la segunda.

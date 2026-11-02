@@ -1,7 +1,8 @@
 /**
  * Schema of `GET /api/expenses-by-category` (feature 63). A malformed `month`,
- * `year` or `compare` is a `400 VALIDATION_ERROR` from the central error
- * handler; which of them may travel together is checked by `resolvePeriods`.
+ * `year` or `compare`, or a year before 2000 (feature 65), is a `400 VALIDATION_ERROR`
+ * from the central error handler; which of them may travel together is checked
+ * by `resolvePeriods`.
  * The response schema lists EVERY key of `expenses-by-category.types.ts`:
  * Fastify serializes only what is declared here.
  */
@@ -72,8 +73,10 @@ export const getExpensesByCategorySchema = {
     type: 'object',
     additionalProperties: false,
     properties: {
-      month: { type: 'string', pattern: '^\\d{4}-(0[1-9]|1[0-2])$' },
-      year: { type: 'string', pattern: '^\\d{4}$' },
+      // `[2-9]\d{3}`: only years from 2000 onwards (feature 65). An earlier year,
+      // 0000 included, is rejected like any malformed value.
+      month: { type: 'string', pattern: '^[2-9]\\d{3}-(0[1-9]|1[0-2])$' },
+      year: { type: 'string', pattern: '^[2-9]\\d{3}$' },
       compare: { type: 'string', enum: ['previous-month', 'same-month-last-year'] },
     },
   },

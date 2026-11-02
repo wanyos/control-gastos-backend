@@ -2046,8 +2046,8 @@ concepto que escribe el banco. **Solo gastos**: los ingresos no entran.
 
 | Parámetro | Tipo | Qué hace |
 | --------- | ---- | -------- |
-| `month`   | string (`YYYY-MM`, mes 01–12) | El mes que se pide. No puede ir junto con `year`. |
-| `year`    | string (`YYYY`, cuatro cifras) | El año natural que se pide, de enero a diciembre. No puede ir junto con `month`. |
+| `month`   | string (`YYYY-MM`, mes 01–12, año desde el 2000) | El mes que se pide. No puede ir junto con `year`. Un año anterior al 2000 (también el `0000`) se rechaza con `400 VALIDATION_ERROR` (feature 65). |
+| `year`    | string (`YYYY`, cuatro cifras, desde el 2000) | El año natural que se pide, de enero a diciembre. No puede ir junto con `month`. Un año anterior al 2000 (también el `0000`) se rechaza con `400 VALIDATION_ERROR` (feature 65). |
 | `compare` | `"previous-month"` \| `"same-month-last-year"` | **Solo con `month`.** Con qué mes se compara: el anterior (`2026-03` con `2026-02`) o el mismo del año anterior (`2026-03` con `2025-03`). Por defecto, `"previous-month"`. Para ver las dos comparaciones de un mes se hacen dos peticiones. |
 
 **El periodo pedido y el comparado** (las fechas, en hora de Madrid):
@@ -2209,7 +2209,7 @@ con los importes a `"0.00"` y los dos grupos con `lines: []`. No es un error.
 
 | Código HTTP | `code`             | Cuándo |
 | ----------- | ------------------ | ------ |
-| 400         | `VALIDATION_ERROR` | No viaja ni `month` ni `year`; viajan los dos; `month` no es `YYYY-MM` con mes 01–12; `year` no son cuatro cifras; `compare` viaja junto con `year`; o `compare` no es `"previous-month"` ni `"same-month-last-year"`. No se escribe nada. |
+| 400         | `VALIDATION_ERROR` | No viaja ni `month` ni `year`; viajan los dos; `month` no es `YYYY-MM` con mes 01–12; `year` no son cuatro cifras; el año de `month` o `year` es anterior al 2000 (feature 65); `compare` viaja junto con `year`; o `compare` no es `"previous-month"` ni `"same-month-last-year"`. No se escribe nada. |
 
 > Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
 > `PATCH`, ni `DELETE` bajo `/api/expenses-by-category`).

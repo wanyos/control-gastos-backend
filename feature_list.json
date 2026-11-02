@@ -3116,6 +3116,63 @@
         }
       ],
       "status": "done"
+    },
+    {
+      "id": 65,
+      "name": "expenses-by-category-reject-year-zero",
+      "title": "GET /api/expenses-by-category solo acepta años desde el 2000 (400 VALIDATION_ERROR por debajo)",
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-11-01), del cabo 30 de docs/roadmap.md y de las palabras del humano: «después aquí arreglar ambos cabos» y «empieza con los dos cabos». Aprobado por el humano el 2026-11-01 («si hazlo de esa forma»), incluidas las tres decisiones del leader: 400 VALIDATION_ERROR, válidos del 0001 en adelante (solo se rechaza el 0000) y el nombre de la feature. Cambio aprobado por el humano el 2026-11-02 («si me parece bien desde el año 2000»): el implementer encontró que year=0001 y month=0001-01 ya respondían 500 antes de la F65 (resolvePeriods pierde los ceros a la izquierda del año comparado); en vez de «válidos del 0001 en adelante», el año mínimo pasa a ser el 2000.",
+        "que_quiero": "Que GET /api/expenses-by-category rechace cualquier year o month anterior al 2000 (incluido el 0000) como un parámetro mal escrito, en vez de calcular un periodo con fechas mal formadas o responder 500.",
+        "por_que": "Fallo encontrado por el reviewer de la F63 (cabo 30). No afecta a ningún año real, pero la ruta no debe devolver datos sin sentido.",
+        "como_se_que_esta_bien": [
+          "year=0000 responde 400 VALIDATION_ERROR.",
+          "month=0000-01 responde 400 VALIDATION_ERROR.",
+          "year=1999 y month=1999-12 responden 400 VALIDATION_ERROR.",
+          "year=2000, month=2000-01 y los años reales siguen respondiendo 200 como hoy.",
+          "La suite pasa."
+        ],
+        "que_no_quiero": [
+          "Que cambie nada de lo que responde la ruta con años válidos.",
+          "Tocar otras rutas."
+        ],
+        "delego_en_agente": [
+          "Qué responde: 400 VALIDATION_ERROR (decidido por el leader, aprobado).",
+          "Qué años son válidos: del 2000 en adelante (decidido por el leader, aprobado el 2026-11-02; sustituye a «del 0001 en adelante»)."
+        ]
+      },
+      "acceptance": [
+        "[de «cómo sé» 1] GET /api/expenses-by-category?year=0000 responde 400 con code VALIDATION_ERROR, el mismo formato que un year mal escrito.",
+        "[de «cómo sé» 2] GET /api/expenses-by-category?month=0000-01 responde 400 con code VALIDATION_ERROR.",
+        "[de «cómo sé» 3] year=1999 y month=1999-12 (y cualquier year o month con año anterior al 2000) responden 400 con code VALIDATION_ERROR.",
+        "[de «cómo sé» 4 / «qué no quiero» 1] year=2000 y month=2000-01 responden 200, y los tests existentes de la ruta pasan sin cambiar lo que comprueban. El test de year=0001 → 200 se sustituye por estos.",
+        "[de «qué no quiero» 2] No cambia ninguna otra ruta ni ningún otro schema. resolvePeriods no se toca.",
+        "[decisión del leader, aprobada] El rechazo se hace en la validación de parámetros (schema de la ruta), no en resolvePeriods.",
+        "[de «qué quiero»] docs/api-contract.md, sección GET /api/expenses-by-category, dice que year y month solo aceptan años desde el 2000 y que lo anterior es 400 VALIDATION_ERROR; docs/roadmap.md cierra el cabo 30 nombrando la F65."
+      ],
+      "checks": [
+        {
+          "descripcion": "year=0000 responde 400 VALIDATION_ERROR.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category -t \"year=0000 responds 400\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "month=0000-01 responde 400 VALIDATION_ERROR.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category -t \"month=0000-01 responds 400\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "year=1999 y month=1999-12 responden 400 VALIDATION_ERROR.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category -t \"year=1999 and month=1999-12 respond 400\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "year=2000, month=2000-01 y los años reales siguen respondiendo 200.",
+          "comando": "pnpm exec vitest run src/modules/expenses-by-category"
+        },
+        {
+          "descripcion": "La suite pasa.",
+          "comando": "pnpm test"
+        }
+      ],
+      "status": "done"
     }
   ]
 }

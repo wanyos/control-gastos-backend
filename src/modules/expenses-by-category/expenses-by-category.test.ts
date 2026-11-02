@@ -930,6 +930,71 @@ describe('GET /api/expenses-by-category', () => {
     ).toEqual(before)
   })
 
+  // Feature 65 (cabo 30): the year 0000 is rejected by the route schema, the
+  // same way as a malformed year, before `resolvePeriods` ever runs.
+  it('year=0000 responds 400 VALIDATION_ERROR, like a malformed year', async () => {
+    const zero = await app.inject({ method: 'GET', url: '/api/expenses-by-category?year=0000' })
+    const malformed = await app.inject({
+      method: 'GET',
+      url: '/api/expenses-by-category?year=20x6',
+    })
+
+    expect(zero.statusCode, zero.body).toBe(400)
+    expect(zero.json().code).toBe('VALIDATION_ERROR')
+    expect(Object.keys(zero.json()).sort()).toEqual(Object.keys(malformed.json()).sort())
+    expect(zero.json().statusCode).toBe(malformed.json().statusCode)
+    expect(zero.json().code).toBe(malformed.json().code)
+  })
+
+  it('month=0000-01 responds 400 VALIDATION_ERROR, and so does every month of the year 0000', async () => {
+    for (const month of ['0000-01', '0000-06', '0000-12']) {
+      for (const compare of ['', '&compare=previous-month', '&compare=same-month-last-year']) {
+        const search = `month=${month}${compare}`
+        const response = await app.inject({
+          method: 'GET',
+          url: `/api/expenses-by-category?${search}`,
+        })
+        expect(response.statusCode, search).toBe(400)
+        expect(response.json().code, search).toBe('VALIDATION_ERROR')
+      }
+    }
+  })
+
+  it('year=1999 and month=1999-12 respond 400 VALIDATION_ERROR, like every year before 2000', async () => {
+    for (const search of [
+      'year=1999',
+      'month=1999-12',
+      'month=1999-12&compare=same-month-last-year',
+      'year=0001',
+      'month=0001-01',
+      'year=0999',
+      'month=0999-02',
+      'year=1000',
+      'month=1000-06',
+    ]) {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/expenses-by-category?${search}`,
+      })
+      expect(response.statusCode, search).toBe(400)
+      expect(response.json().code, search).toBe('VALIDATION_ERROR')
+    }
+  })
+
+  it('year=2000 and month=2000-01 respond 200', async () => {
+    const year = await query('year=2000')
+    const month = await query('month=2000-01')
+    const lastYear = await query('month=2000-01&compare=same-month-last-year')
+
+    expect(year.period).toMatchObject({ year: '2000', month: null, months: 12 })
+    expect(year.compared).toMatchObject({ from: '1999-01-01', to: '1999-12-31' })
+    expect(year.amount).toBe('0.00')
+    expect(month.period).toMatchObject({ month: '2000-01', year: null })
+    expect(month.compared).toMatchObject({ from: '1999-12-01', to: '1999-12-31' })
+    expect(month.amount).toBe('0.00')
+    expect(lastYear.compared).toMatchObject({ from: '1999-01-01', to: '1999-01-31' })
+  })
+
   it('writes nothing in the database', async () => {
     const account = await createAccount()
     const category = await createCategory('Synthetic leisure')
