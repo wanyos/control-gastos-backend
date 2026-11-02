@@ -11,7 +11,7 @@ import type {
   ProductParserAdapter,
   SavingsSnapshotInput,
 } from '../investments/investments.types.js'
-import type { AppPrismaClient } from '../../lib/prisma.js'
+import type { AppPrismaClient, TransactionClient } from '../../lib/prisma.js'
 import {
   deriveAnchorFromStatement,
   importPending,
@@ -2135,15 +2135,88 @@ interface AccountCall {
   balanceAnchor: string | null
 }
 
+/** The options each `$transaction` of a wrapped client was opened with, in order. */
+type RecordedTransactionOptions = unknown[]
+
+/**
+ * The real client, except that every `$transaction(fn, options)` hands `fn` the
+ * transaction client passed through `wrap` (feature 66). Since then a statement
+ * writes through the `tx` Prisma gives its callback, not through the client the
+ * test passed in, so a `Proxy` of the client alone no longer sees those writes:
+ * this is where a test reaches them. The options of every call are recorded in
+ * `options`, so a test can read the timeout a statement was opened with (R12).
+ */
+function insideStatementTransaction(
+  prisma: AppPrismaClient,
+  wrap: (tx: TransactionClient) => TransactionClient,
+  options: RecordedTransactionOptions = [],
+): AppPrismaClient {
+  const transaction = async (
+    fn: (tx: TransactionClient) => Promise<unknown>,
+    transactionOptions?: unknown,
+  ) => {
+    options.push(transactionOptions)
+    return prisma.$transaction((tx) => fn(wrap(tx)), transactionOptions as never)
+  }
+
+  return new Proxy(prisma, {
+    get(target, property) {
+      if (property === '$transaction') return transaction
+      const value = Reflect.get(target, property)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  }) as AppPrismaClient
+}
+
+/**
+ * A transaction client whose ONLY difference is that `<model>.<method>` throws
+ * `message`. Everything else is the real `tx`, so what a test observes is the
+ * reaction to that one failure, inside the transaction of the statement.
+ */
+function txWhere<T extends TransactionClient | AppPrismaClient>(
+  tx: T,
+  model: string,
+  method: string,
+  message: string,
+): T {
+  const delegate = Reflect.get(tx, model) as Record<string, unknown>
+  const broken = new Proxy(delegate, {
+    get(target, property) {
+      if (property === method) {
+        return () => {
+          throw new Error(message)
+        }
+      }
+      const value = Reflect.get(target, property)
+      return typeof value === 'function' ? (value as () => unknown).bind(target) : value
+    },
+  })
+
+  return new Proxy(tx, {
+    get(target, property) {
+      if (property === model) return broken
+      const value = Reflect.get(target, property)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  }) as T
+}
+
 /**
  * The real client with every `account` call recorded, in order. It is the only
  * way to pin the ONE thing the preamble check depends on and no black-box
  * assertion can see: that the anchor it receives is the one from BEFORE this
  * file anchored the account. Read it afterwards and the check compares the file
  * against itself, finds nothing for ever, and stays green while checking nothing.
+ *
+ * Since feature 66 those calls go through the transaction of the statement, so
+ * the recording is applied to its `tx` (`insideStatementTransaction`).
  */
 function recordingPrisma(prisma: AppPrismaClient, calls: AccountCall[]): AppPrismaClient {
-  const delegate = prisma.account as unknown as Record<string, unknown>
+  return insideStatementTransaction(prisma, (tx) => recordingAccountCalls(tx, calls))
+}
+
+function recordingAccountCalls(tx: TransactionClient, calls: AccountCall[]): TransactionClient {
+  const delegate = tx.account as unknown as Record<string, unknown>
   const spied = new Proxy(delegate, {
     get(target, property) {
       const original = Reflect.get(target, property)
@@ -2165,13 +2238,13 @@ function recordingPrisma(prisma: AppPrismaClient, calls: AccountCall[]): AppPris
     },
   })
 
-  return new Proxy(prisma, {
+  return new Proxy(tx, {
     get(target, property) {
       if (property === 'account') return spied
       const value = Reflect.get(target, property)
       return typeof value === 'function' ? value.bind(target) : value
     },
-  }) as AppPrismaClient
+  }) as TransactionClient
 }
 
 describe('the importer reports the descuadres of a file and lets nothing else change', () => {
@@ -2966,28 +3039,14 @@ describe('the importer stores the warnings of the files that entered (feature 48
   /**
    * A client whose ONLY difference is that storing a warning blows up. It is the
    * single seam R5 needs: everything before it behaves exactly as in production,
-   * so what the test observes is the reaction to that one failure.
+   * so what the test observes is the reaction to that one failure. Since feature
+   * 66 the warnings are stored through the transaction of the statement, so it
+   * is its `tx` that is broken.
    */
   function prismaThatCannotStoreWarnings(prisma: AppPrismaClient): AppPrismaClient {
-    const broken = new Proxy(prisma.importUnparsedRow as unknown as Record<string, unknown>, {
-      get(target, property) {
-        if (property === 'upsert') {
-          return () => {
-            throw new Error('la escritura del aviso ha fallado')
-          }
-        }
-        const value = Reflect.get(target, property)
-        return typeof value === 'function' ? (value as () => unknown).bind(target) : value
-      },
-    })
-
-    return new Proxy(prisma, {
-      get(target, property) {
-        if (property === 'importUnparsedRow') return broken
-        const value = Reflect.get(target, property)
-        return typeof value === 'function' ? value.bind(target) : value
-      },
-    }) as AppPrismaClient
+    return insideStatementTransaction(prisma, (tx) =>
+      txWhere(tx, 'importUnparsedRow', 'upsert', 'la escritura del aviso ha fallado'),
+    )
   }
 
   function storedWarningsOf(bank: string) {
@@ -3238,5 +3297,451 @@ describe('the importer stores the warnings of the files that entered (feature 48
     expect(update).not.toHaveBeenCalled()
     expect(result.failedCount).toBe(1)
     expect(await storedWarningsOf(bank)).toEqual([[], []])
+  })
+})
+
+// ── Feature 66 `import-statement-all-or-nothing` ────────────────────────────
+//
+// 🔒 Every amount, concept and IBAN here is invented (ADR-017). The failures are
+// provoked inside the transaction of the statement (`insideStatementTransaction`)
+// because that is where the writes of a file go since this feature.
+
+describe('importStatement is all or nothing per file (feature 66)', () => {
+  let app: FastifyInstance
+  const usedBanks: string[] = []
+  let bankCounter = 0
+
+  function uniqueBank(): string {
+    bankCounter += 1
+    const slug = `zz-f66-${Date.now()}-${bankCounter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function attempted(report: { files: unknown[] }, index = 0): AttemptedFileReport {
+    const file = report.files[index] as AttemptedFileReport
+    expect(file.status).not.toBe('skipped')
+    return file
+  }
+
+  /** The `n`-th transaction opened (1-based) gets `breakIt`; every other one, the real `tx`. */
+  function onTransaction(
+    n: number,
+    breakIt: (tx: TransactionClient) => TransactionClient,
+  ): (tx: TransactionClient) => TransactionClient {
+    let opened = 0
+    return (tx) => {
+      opened += 1
+      return opened === n ? breakIt(tx) : tx
+    }
+  }
+
+  const cannotStoreWarnings = (tx: TransactionClient) =>
+    txWhere(tx, 'importUnparsedRow', 'upsert', 'la escritura del aviso ha fallado')
+
+  const cannotReadMovements = (tx: TransactionClient) =>
+    txWhere(tx, 'movement', 'findMany', 'la lectura de movimientos ha fallado')
+
+  function movementsDescribedAs(descriptions: string[]) {
+    return app.prisma.movement.count({ where: { description: { in: descriptions } } })
+  }
+
+  function storedWarningsOf(bank: string) {
+    return Promise.all([
+      app.prisma.importUnparsedRow.count({ where: { bank } }),
+      app.prisma.importBalanceMismatch.count({ where: { bank } }),
+    ])
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    if (usedBanks.length > 0) {
+      const accounts = await app.prisma.account.findMany({
+        where: { OR: usedBanks.map((bank) => ({ bank: { equals: bank, mode: 'insensitive' } })) },
+      })
+      const ids = accounts.map((account) => account.id)
+      await app.prisma.importBalanceMismatch.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.importUnparsedRow.deleteMany({ where: { bank: { in: usedBanks } } })
+      await app.prisma.movement.deleteMany({ where: { accountId: { in: ids } } })
+      await app.prisma.account.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('F66 R1 rolls back every movement of a file whose preamble check throws', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    await app.prisma.account.create({
+      data: {
+        iban,
+        bank,
+        alias: 'anclada a mano',
+        balanceAnchor: 400,
+        balanceAnchorDate: new Date('2026-07-01T00:00:00Z'),
+        balanceAnchorDaySequence: 1,
+      },
+    })
+    const descriptions = ['RECIBO F66 COMPROBACION UNO', 'RECIBO F66 COMPROBACION DOS']
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'preambulo.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          accountBalance: 365,
+          movements: [
+            movement({ bookingDate: '2026-07-08', description: descriptions[0], amount: -15 }),
+            movement({ bookingDate: '2026-07-12', description: descriptions[1], amount: -20 }),
+          ],
+        }),
+      ),
+    ]
+
+    const result = await importPending({
+      client,
+      prisma: insideStatementTransaction(app.prisma, onTransaction(1, cannotReadMovements)),
+      rootFolderId: 'root',
+      parsers,
+    })
+
+    const file = attempted(result)
+    expect(file.status).toBe('failed')
+    expect(file.error?.message).toBe('la lectura de movimientos ha fallado')
+    expect(file.movedToProcessed).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+    expect(await movementsDescribedAs(descriptions)).toBe(0)
+  })
+
+  it('F66 R2 rolls back every movement of a file whose warnings cannot be stored', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const account = await app.prisma.account.create({ data: { iban, bank, alias: 'ya existía' } })
+    const { client, update } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'medio-legible.csv' }]))
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          movements: [
+            movement({ bookingDate: '2026-07-03', description: 'COMPRA F66 AVISOS UNO' }),
+            movement({ bookingDate: '2026-07-04', description: 'COMPRA F66 AVISOS DOS' }),
+          ],
+          unparsedRows: [{ row: 5, reason: 'la columna del importe viene vacía' }],
+        }),
+      ),
+    ]
+
+    const result = await importPending({
+      client,
+      prisma: insideStatementTransaction(app.prisma, onTransaction(1, cannotStoreWarnings)),
+      rootFolderId: 'root',
+      parsers,
+    })
+
+    const file = attempted(result)
+    expect(file.status).toBe('failed')
+    expect(file.error?.message).toBe('la escritura del aviso ha fallado')
+    expect(file.movedToProcessed).toBe(false)
+    expect(update).not.toHaveBeenCalled()
+    expect(await app.prisma.movement.count({ where: { accountId: account.id } })).toBe(0)
+    // R6: no warning of that file either, of either kind.
+    expect(await storedWarningsOf(bank)).toEqual([0, 0])
+  })
+
+  it('F66 R3 removes the account a failed file had just created', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const adapter = fakeAdapter(bank, () =>
+      statement(bank, {
+        accountIban: iban,
+        movements: [movement({ description: 'COMPRA F66 CUENTA NUEVA' })],
+        unparsedRows: [{ row: 3, reason: 'la fecha no se ha podido interpretar' }],
+      }),
+    )
+
+    const stored = await importStatement({
+      prisma: insideStatementTransaction(app.prisma, cannotStoreWarnings),
+      content: Buffer.from('raw'),
+      adapter,
+      bankSlug: bank,
+      file: { bank, year: '2026', name: 'cuenta-nueva.csv' },
+    })
+
+    expect(stored.status).toBe('failed')
+    expect(await app.prisma.account.findUnique({ where: { iban } })).toBeNull()
+  })
+
+  it('F66 R4 leaves unanchored the account a failed file had anchored', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const account = await app.prisma.account.create({ data: { iban, bank, alias: 'sin ancla' } })
+    const adapter = fakeAdapter(bank, () =>
+      statement(bank, {
+        accountIban: iban,
+        accountBalance: 275,
+        movements: [movement({ bookingDate: '2026-07-09', description: 'COMPRA F66 SIN ANCLA' })],
+        unparsedRows: [{ row: 4, reason: 'la columna del importe viene vacía' }],
+      }),
+    )
+
+    const stored = await importStatement({
+      prisma: insideStatementTransaction(app.prisma, cannotStoreWarnings),
+      content: Buffer.from('raw'),
+      adapter,
+      bankSlug: bank,
+      file: { bank, year: '2026', name: 'ancla.csv' },
+    })
+
+    expect(stored.status).toBe('failed')
+    const after = await app.prisma.account.findUniqueOrThrow({ where: { id: account.id } })
+    expect(after.balanceAnchor).toBeNull()
+    expect(after.balanceAnchorDate).toBeNull()
+    expect(after.balanceAnchorDaySequence).toBeNull()
+  })
+
+  it('F66 R5 leaves empty the balances a failed file had filled', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const description = 'RECIBO F66 SALDO VACIO'
+    const line = { bookingDate: '2026-07-14', daySequence: 1, description, amount: -12 }
+
+    // First import, healthy: the row is stored with no balance.
+    const first = await importStatement({
+      prisma: app.prisma,
+      content: Buffer.from('raw'),
+      adapter: fakeAdapter(bank, () =>
+        statement(bank, { accountIban: iban, movements: [movement({ ...line, balance: null })] }),
+      ),
+      bankSlug: bank,
+      file: { bank, year: '2026', name: 'sin-saldo.csv' },
+    })
+    expect(first.status).toBe('imported')
+
+    // Second import of the same row, now with its balance, failing at the warnings.
+    const second = await importStatement({
+      prisma: insideStatementTransaction(app.prisma, cannotStoreWarnings),
+      content: Buffer.from('raw'),
+      adapter: fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          movements: [movement({ ...line, balance: 88 })],
+          unparsedRows: [{ row: 6, reason: 'la fecha no se ha podido interpretar' }],
+        }),
+      ),
+      bankSlug: bank,
+      file: { bank, year: '2026', name: 'con-saldo.csv' },
+    })
+
+    expect(second.status).toBe('failed')
+    const rows = await app.prisma.movement.findMany({ where: { description } })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.balanceAfter).toBeNull()
+  })
+
+  it('F66 R7 reports a failed file with no account and zero counters', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const unparsedRows = [{ row: 3, reason: 'la fecha no se ha podido interpretar' }]
+    const adapter = fakeAdapter(bank, () =>
+      statement(bank, {
+        accountIban: iban,
+        accountBalance: 190,
+        movements: [movement({ description: 'COMPRA F66 INFORME CERO' })],
+        unparsedRows,
+      }),
+    )
+
+    const stored = await importStatement({
+      prisma: insideStatementTransaction(app.prisma, cannotStoreWarnings),
+      content: Buffer.from('raw'),
+      adapter,
+      bankSlug: bank,
+      file: { bank, year: '2026', name: 'informe.csv' },
+    })
+
+    expect(stored).toEqual({
+      status: 'failed',
+      account: null,
+      imported: 0,
+      duplicates: 0,
+      unparsedCount: 1,
+      unparsedRows,
+      anchored: false,
+      balancesFilled: 0,
+      balanceMismatches: [],
+      error: { code: 'INTERNAL_SERVER_ERROR', message: 'la escritura del aviso ha fallado' },
+    })
+  })
+
+  it('F66 R8 keeps the files of the same run that were imported', async () => {
+    const bank = uniqueBank()
+    const first = syntheticIban()
+    const other = syntheticIban()
+    const { client, update } = buildDrive(
+      treeWith(bank, [
+        { id: 'f1', name: 'a-ancla.csv' },
+        { id: 'f2', name: 'b-falla.csv' },
+        { id: 'f3', name: 'c-otra-cuenta.csv' },
+      ]),
+    )
+    const parsers = [
+      fakeAdapter(bank, (content) => {
+        const id = content.toString()
+        if (id.includes('f1')) {
+          return statement(bank, {
+            accountIban: first,
+            accountBalance: 320,
+            movements: [movement({ bookingDate: '2026-07-10', description: 'COMPRA F66 PRIMERO' })],
+          })
+        }
+        if (id.includes('f2')) {
+          return statement(bank, {
+            accountIban: first,
+            accountBalance: 300,
+            movements: [
+              movement({
+                bookingDate: '2026-07-15',
+                description: 'COMPRA F66 SEGUNDO',
+                amount: -20,
+              }),
+            ],
+          })
+        }
+        return statement(bank, {
+          accountIban: other,
+          accountBalance: 145,
+          movements: [movement({ bookingDate: '2026-07-16', description: 'COMPRA F66 TERCERO' })],
+        })
+      }),
+    ]
+
+    const result = await importPending({
+      client,
+      // The second statement is the second transaction of the run, and its
+      // preamble check is the only `movement.findMany` that runs inside it: the
+      // first file had no anchor before it, so its check reads nothing.
+      prisma: insideStatementTransaction(app.prisma, onTransaction(2, cannotReadMovements)),
+      rootFolderId: 'root',
+      parsers,
+    })
+
+    expect(attempted(result, 0).status).toBe('imported')
+    expect(attempted(result, 1).status).toBe('failed')
+    expect(attempted(result, 1).error?.message).toBe('la lectura de movimientos ha fallado')
+    expect(attempted(result, 2).status).toBe('imported')
+    expect(update).toHaveBeenCalledTimes(2)
+    expect(await movementsDescribedAs(['COMPRA F66 PRIMERO'])).toBe(1)
+    expect(await movementsDescribedAs(['COMPRA F66 SEGUNDO'])).toBe(0)
+    expect(await movementsDescribedAs(['COMPRA F66 TERCERO'])).toBe(1)
+    const anchored = await app.prisma.account.findUniqueOrThrow({ where: { iban: first } })
+    expect(anchored.balanceAnchor?.toFixed(2)).toBe('320.00')
+    const third = await app.prisma.account.findUniqueOrThrow({ where: { iban: other } })
+    expect(third.balanceAnchor?.toFixed(2)).toBe('145.00')
+  })
+
+  it('F66 R10 still imports a file whose preamble does not match', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const account = await app.prisma.account.create({
+      data: {
+        iban,
+        bank,
+        alias: 'anclada',
+        balanceAnchor: 400,
+        balanceAnchorDate: new Date('2026-07-01T00:00:00Z'),
+        balanceAnchorDaySequence: 1,
+      },
+    })
+    // 400 - 10 = 390 by the stored anchor, while the file says 450: a descuadre.
+    const adapter = fakeAdapter(bank, () =>
+      statement(bank, {
+        accountIban: iban,
+        accountBalance: 450,
+        movements: [
+          movement({ bookingDate: '2026-07-10', description: 'COMPRA F66 DESCUADRE', amount: -10 }),
+        ],
+      }),
+    )
+
+    const stored = await importStatement({
+      prisma: app.prisma,
+      content: Buffer.from('raw'),
+      adapter,
+      bankSlug: bank,
+      file: { bank, year: '2026', name: 'descuadra.csv' },
+    })
+
+    expect(stored.status).toBe('imported')
+    expect(stored.balanceMismatches).toHaveLength(1)
+    const mismatches = await app.prisma.importBalanceMismatch.findMany({
+      where: { accountId: account.id },
+    })
+    expect(mismatches).toHaveLength(1)
+    expect(mismatches[0]?.check).toBe('statement-balance')
+    expect(await app.prisma.movement.count({ where: { accountId: account.id } })).toBe(1)
+  })
+
+  it('F66 R11 keeps what a statement stored when only its move to procesados fails', async () => {
+    const bank = uniqueBank()
+    const iban = syntheticIban()
+    const update = vi.fn(async () => {
+      throw new Error('Drive no ha podido mover el archivo')
+    })
+    const { client } = buildDrive(treeWith(bank, [{ id: 'f1', name: 'no-se-mueve.csv' }]), {
+      update,
+    })
+    const parsers = [
+      fakeAdapter(bank, () =>
+        statement(bank, {
+          accountIban: iban,
+          movements: [movement({ description: 'COMPRA F66 SIN MOVER' })],
+        }),
+      ),
+    ]
+
+    const result = await importPending({
+      client,
+      prisma: app.prisma,
+      rootFolderId: 'root',
+      parsers,
+    })
+
+    const file = attempted(result)
+    expect(file.status).toBe('failed')
+    expect(file.movedToProcessed).toBe(false)
+    // What was stored stays, and the report still says so (only the move failed).
+    expect(file.imported).toBe(1)
+    expect(update).toHaveBeenCalled()
+    const account = await app.prisma.account.findUniqueOrThrow({ where: { iban } })
+    expect(await app.prisma.movement.count({ where: { accountId: account.id } })).toBe(1)
+  })
+
+  it('F66 R12 opens the transaction of a statement with a 60 second timeout', async () => {
+    const bank = uniqueBank()
+    const options: RecordedTransactionOptions = []
+    const adapter = fakeAdapter(bank, () =>
+      statement(bank, {
+        accountIban: syntheticIban(),
+        movements: [movement({ description: 'COMPRA F66 TIEMPO MAXIMO' })],
+      }),
+    )
+
+    const stored = await importStatement({
+      prisma: insideStatementTransaction(app.prisma, (tx) => tx, options),
+      content: Buffer.from('raw'),
+      adapter,
+      bankSlug: bank,
+      file: { bank, year: '2026', name: 'tiempo.csv' },
+    })
+
+    expect(stored.status).toBe('imported')
+    expect(options).toHaveLength(1)
+    expect(options[0]).toMatchObject({ timeout: 60_000 })
   })
 })

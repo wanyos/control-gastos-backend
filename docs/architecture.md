@@ -2670,6 +2670,10 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
      hallazgo en silencio. Las filas ilegibles y los descuadres de un mismo
      archivo entran en **una**
      transacción: o todos o ninguno. Un archivo sin nada raro no abre transacción.
+     > **Revisado el 2026-11-02 por la feature 66 (ADR-042):** esa transacción ya no
+     > la abre `persistImportWarnings`; es la de todo el extracto, que abre
+     > `importStatement`, y si falla deshace también los movimientos, la cuenta
+     > creada y el ancla de ese archivo.
   6. **Un único módulo lee y escribe las dos tablas**
      ([`src/modules/import/import.warnings.service.ts`](../src/modules/import/import.warnings.service.ts)),
      y las dos rutas
@@ -3503,6 +3507,74 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - Contrato en `docs/api-contract.md` §`GET /api/expenses-by-category`, §`Category`
     y §`PATCH /api/categories/:id`; lo comprueba
     `src/modules/expenses-by-category/expenses-by-category.docs.test.ts`.
+
+### ADR-042: Todo lo que un extracto escribe en la base va en una transacción por archivo, y si algo falla no queda nada de ese archivo
+
+- **Fecha:** 2026-11-02
+- **Estado:** aceptada (implementada en la feature #66 `import-statement-all-or-nothing`,
+  SDD; hoja aprobada por el humano el 2026-11-02). Revisa el punto 5 del ADR-031.
+- **Contexto:** cabo suelto 26 de `docs/roadmap.md`. `importStatement`
+  ([`src/modules/import/import.service.ts`](../src/modules/import/import.service.ts))
+  escribía cada paso con el cliente global: si fallaba la comprobación de saldo o
+  el guardado de avisos después de guardar los movimientos, el archivo salía
+  `failed` pero sus movimientos (y la cuenta, si se acababa de crear, y el ancla)
+  se quedaban en la base. Reintentar era seguro, pero la base quedaba a medias con
+  un archivo que decía haber fallado.
+- **Decisión:**
+  1. **Una transacción de la base de datos por archivo de extracto**
+     (`deps.prisma.$transaction(async (tx) => …)`), desde `resolveAccount` hasta
+     `persistImportWarnings`, en el mismo orden de antes. Leer el archivo y
+     comprobar que trae movimientos van **fuera**: no escriben, y un archivo vacío o
+     ilegible no abre ninguna.
+  2. **Las nueve funciones que escriben o leen dentro** reciben el tipo
+     `TransactionClient` ([`src/lib/prisma.ts`](../src/lib/prisma.ts)): `resolveAccount`,
+     `findOrCreateAccountFromMetadata`, `persistMovements`,
+     `backfillMissingBalances`, `readStoredAnchor`, `anchorAccountIfMissing`,
+     `readAccountAnchor`, `findStatementBalanceMismatch` (por
+     `StatementBalanceCheckDeps.prisma`) y `persistImportWarnings`. El cliente
+     global también es de ese tipo, así que los llamantes que ya existían no cambian.
+  3. **`persistImportWarnings` deja de abrir su propia transacción**: hace sus
+     `upsert` uno detrás de otro, dentro de la de `importStatement`, que es su único
+     llamante de producción.
+  4. **Tiempo máximo de 60 s** (`STATEMENT_TRANSACTION_TIMEOUT_MS`). Prisma 7 corta
+     a los 5 s si no se dice nada, y reimportar un extracto largo hace una consulta
+     por línea con saldo (`backfillMissingBalances`). No está medido con datos
+     reales.
+  5. **Un archivo `failed` se informa sin cuenta y con todo a cero**
+     (`failedStatementResult`): `account: null`, `imported`, `duplicates` y
+     `balancesFilled` a `0`, `anchored: false`, `balanceMismatches: []`; conserva
+     sus filas ilegibles y el error.
+  6. **Un descuadre sigue sin hacer fallar el archivo**: se guarda como aviso, como
+     desde la feature 48. Lo que deshace el archivo es que la comprobación **no se
+     pueda hacer** (que lance un error).
+- **Alternativas descartadas:**
+  - **Una transacción por llamada a `POST /api/import`** (todos los archivos o
+    ninguno): contradice la decisión del humano de deshacer solo el archivo que
+    falla, y tendría la base bloqueada mientras dura toda la importación.
+  - **Mover a `procesados/` dentro de la transacción:** si Drive mueve y luego la
+    base falla al confirmar, el archivo acaba en `procesados/` sin nada guardado y
+    nadie lo reintenta.
+  - **Borrar a mano lo escrito si algo falla:** habría que saber qué filas eran
+    nuevas, qué saldos se rellenaron y si la cuenta se creó, y un fallo en el propio
+    borrado dejaría la base a medias otra vez.
+  - **Que `persistImportWarnings` decida si abre transacción según el cliente que
+    recibe:** una función que se comporta distinto según el tipo de cliente es más
+    difícil de leer que «la transacción la pone quien llama».
+  - **Dejar los 5 s por defecto:** convertiría en fallo una reimportación grande que
+    hoy entra.
+- **Consecuencias:**
+  - Si cualquier paso de un extracto falla, no quedan sus movimientos, ni la cuenta
+    si se creó con él, ni el ancla si la fijó él, ni los saldos que rellenó, ni sus
+    avisos. Los demás archivos de la misma importación que entraron se quedan.
+  - **Si todo se guardó y lo único que falla es moverlo a `procesados/`, lo guardado
+    se queda**, como antes: el archivo sale `failed` y reintentarlo no duplica nada.
+  - Si un extracto tardase más de 60 s en guardarse, saldría `failed` sin dejar
+    nada. Lo comprueba el humano con su extracto más largo (deber en
+    `docs/roadmap.md`).
+  - Lo que corre después de todos los archivos (traspasos, reglas de categoría y el
+    cierre a `Otros gastos` / `Otros ingresos`) no cambia ni entra en la
+    transacción. La importación de archivos de producto tampoco cambia.
+  - Sin migraciones. Contrato en `docs/api-contract.md` §`POST /api/import`.
 
 ## Qué NO hacer
 

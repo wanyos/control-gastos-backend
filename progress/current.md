@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## F66 `import-statement-all-or-nothing` — CERRADA (2026-11-02, sin commit todavía)
+
+**Qué se hizo:** cabo 26. Todo lo que un extracto escribe en la base (la cuenta si es nueva, sus movimientos, los saldos que rellena, el ancla y sus avisos) va en una transacción por archivo con 60 s como máximo; si algo falla no queda nada de ese archivo y el informe lo da sin cuenta y con todo a cero. Si lo único que falla es moverlo a `procesados/`, lo guardado se queda. ADR-042. SDD, lote A (único); reviewer `APPROVED` sin hallazgos → [resumen](summaries/import-statement-all-or-nothing.md), [implementación](implementations/import-statement-all-or-nothing.md), [revisión](reviews/import-statement-all-or-nothing.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, cabo 26 cerrado. Sin commit. La prueba con datos reales es deber del humano, en `docs/roadmap.md` §Deberes tuyos pendientes.
+
 ## F65 `expenses-by-category-reject-year-zero` — CERRADA (2026-11-02, sin commit todavía)
 
 **Qué se hizo:** cabo 30. `GET /api/expenses-by-category` solo acepta `year` y `month` con años desde el 2000 (decisión del humano el 2026-11-02, después de ver que `0001` y los meses con año por debajo de 1000 respondían 500); lo anterior, `0000` incluido, es `400 VALIDATION_ERROR` en el schema de la ruta y `resolvePeriods` no cambia. Flujo simple, reviewer `APPROVED` sin hallazgos → [resumen](summaries/expenses-by-category-reject-year-zero.md), [implementación](implementations/expenses-by-category-reject-year-zero.md), [revisión](reviews/expenses-by-category-reject-year-zero.md).

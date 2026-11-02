@@ -2904,7 +2904,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 | ---------- | ----------------------------------------------------------------------------- | ---------- |
 | `imported` | Sus movimientos están guardados (aunque alguna línea no se haya interpretado). En un archivo de **producto**: el producto y la foto del mes están guardados. | Sí         |
 | `skipped`  | **Ninguno de los dos registros** lee ese archivo: ni el de extractos ni el de productos. El `reason` es el del registro de extractos, igual que antes de la feature 26. | No         |
-| `failed`   | Falló la descarga, el parseo, la resolución de cuenta o el guardado, **o el archivo no aportó ni un movimiento** (feature 25). | No         |
+| `failed`   | Falló la descarga, el parseo, la resolución de cuenta o el guardado, **o el archivo no aportó ni un movimiento** (feature 25). Un extracto `failed` **no deja nada guardado** de ese archivo (feature 66), salvo si lo único que falló fue moverlo a `procesados/`. | No         |
 
 > **Un archivo del que no entra ni un movimiento NO se cuenta como importado**
 > (feature 25). «Cero movimientos» son tres casos distintos y no se tratan igual:
@@ -3220,11 +3220,21 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 > mueve ese saldo, **no** toca el ancla y **no** añade ninguna columna a la base de
 > datos. Los descuadres solo existen mientras dura la respuesta de la importación:
 > si quieres volver a verlos, se vuelve a importar.
-- **En un archivo `failed` no se ancla ni se rellena nada**: `anchored` es `false`,
-  `balancesFilled` es `0` y `account.balanceAnchor` puede venir `null` aunque la
-  cuenta sí esté anclada, porque el ancla se lee **después** de guardar los
-  movimientos. Un archivo que falla deja la cuenta **exactamente como la
-  encontró**.
+- **En un extracto `failed` no se ancla ni se rellena nada, y no queda nada de él**
+  (feature 66): todo lo que el archivo escribe en la base —la cuenta si es nueva,
+  sus movimientos, los saldos que rellena, el ancla y sus avisos— se guarda en una
+  sola transacción por archivo, y si cualquier paso falla se deshace entera. No
+  quedan sus movimientos, ni la cuenta si se creó con él, ni el ancla si la fijó
+  él, ni sus avisos. El informe lo dice así: `account` es `null`, `imported`,
+  `duplicates` y `balancesFilled` son `0`, `anchored` es `false` y
+  `balanceMismatches` es `[]`; conserva `unparsedRows`, `unparsedCount` y `error`.
+  Un archivo que falla deja la cuenta **exactamente como la encontró**. Solo se
+  deshace el archivo que falla: los demás de la misma llamada que salieron
+  `imported` se quedan.
+- **Excepción: si todo se guardó y lo único que falla es moverlo a `procesados/`**,
+  lo guardado **se queda** (Drive no puede deshacerse junto con la base). El archivo
+  sale `failed` con `movedToProcessed: false`, y el informe conserva lo que se
+  guardó; al reintentarlo no se duplica nada.
 - `error`: `code` estable + `message` **sanitizado** (nunca tokens ni secretos ni
   rutas absolutas de la máquina).
 - Un fallo por archivo **NO** cambia el código HTTP: la respuesta es 200 con el
@@ -3272,8 +3282,9 @@ tipo**—. **No se guarda ni el producto ni la foto** y **no** se mueve a `proce
 >
 > **Qué se guarda y cuándo:** solo lo de un archivo que terminó en
 > `status: "imported"`, al terminar ese archivo. Un archivo `failed` no deja
-> nada, y si el guardado falla, ese archivo sale `failed` y **no** se mueve a
-> `procesados/`. Un archivo sin ninguna de las dos cosas no guarda nada.
+> nada, y si el guardado falla, ese archivo sale `failed`, **no** se mueve a
+> `procesados/` y no queda nada de él (feature 66). Un archivo sin ninguna de las
+> dos cosas no guarda nada.
 >
 > **Reimportar el mismo archivo no duplica.** Dos son el mismo cuando coinciden
 > el archivo del que salen (`bank`, `year`, `name`) y su contenido: el número de

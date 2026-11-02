@@ -1,7 +1,7 @@
 import type { Prisma } from '../../generated/prisma/client.js'
 
 import { NotFoundError } from '../../errors/app-error.js'
-import type { AppPrismaClient } from '../../lib/prisma.js'
+import type { AppPrismaClient, TransactionClient } from '../../lib/prisma.js'
 import type {
   ImportWarningsInput,
   ImportWarningsReport,
@@ -76,8 +76,11 @@ function serializeBalanceMismatch(row: MismatchRow): SerializedBalanceMismatch {
 }
 
 /**
- * Stores the warnings of ONE statement file that was imported, in a single
- * transaction: either all the warnings of that file are in, or none is.
+ * Stores the warnings of ONE statement file that was imported, inside the
+ * transaction of its caller (`importStatement`, feature 66): either all the
+ * warnings of that file are in, or none is, because a write that fails undoes
+ * the whole file. It opens no transaction of its own: a transaction client has
+ * no `$transaction`.
  *
  * Reimporting the same file UPDATES on the natural key (R6) and the update
  * touches neither `status`, nor `note`, nor `reviewedAt`, of a descuadre or of
@@ -85,10 +88,10 @@ function serializeBalanceMismatch(row: MismatchRow): SerializedBalanceMismatch {
  * single omission is what keeps a reimport from resurrecting something already
  * reviewed (R7).
  *
- * A file with no warning at all opens no transaction and writes nothing (R8).
+ * A file with no warning at all writes nothing (R8).
  */
 export async function persistImportWarnings(
-  prisma: AppPrismaClient,
+  prisma: TransactionClient,
   file: WarningFileRef,
   warnings: ImportWarningsInput,
 ): Promise<void> {
@@ -97,43 +100,32 @@ export async function persistImportWarnings(
 
   const seenAt = new Date()
 
-  const writes = [
-    ...unparsedRows.map((unparsed) =>
-      prisma.importUnparsedRow.upsert({
-        where: {
-          bank_year_fileName_rowNumber: {
-            bank: file.bank,
-            year: file.year,
-            fileName: file.name,
-            rowNumber: unparsed.row,
-          },
-        },
-        create: {
+  for (const unparsed of unparsedRows) {
+    await prisma.importUnparsedRow.upsert({
+      where: {
+        bank_year_fileName_rowNumber: {
           bank: file.bank,
           year: file.year,
           fileName: file.name,
           rowNumber: unparsed.row,
-          reason: unparsed.reason,
         },
-        // Never status, note nor reviewedAt: they are the human's (feature 54).
-        update: { reason: unparsed.reason, updatedAt: seenAt },
-      }),
-    ),
-    ...balanceMismatches.map((mismatch) =>
-      prisma.importBalanceMismatch.upsert({
-        where: {
-          bank_year_fileName_accountId_bookingDate_check_computed_fromFile: {
-            bank: file.bank,
-            year: file.year,
-            fileName: file.name,
-            accountId: mismatch.accountId,
-            bookingDate: toDateOnly(mismatch.date),
-            check: mismatch.check,
-            computed: mismatch.computed,
-            fromFile: mismatch.fromFile,
-          },
-        },
-        create: {
+      },
+      create: {
+        bank: file.bank,
+        year: file.year,
+        fileName: file.name,
+        rowNumber: unparsed.row,
+        reason: unparsed.reason,
+      },
+      // Never status, note nor reviewedAt: they are the human's (feature 54).
+      update: { reason: unparsed.reason, updatedAt: seenAt },
+    })
+  }
+
+  for (const mismatch of balanceMismatches) {
+    await prisma.importBalanceMismatch.upsert({
+      where: {
+        bank_year_fileName_accountId_bookingDate_check_computed_fromFile: {
           bank: file.bank,
           year: file.year,
           fileName: file.name,
@@ -143,13 +135,21 @@ export async function persistImportWarnings(
           computed: mismatch.computed,
           fromFile: mismatch.fromFile,
         },
-        // Only the timestamp: status, note and reviewedAt are the human's (R7).
-        update: { updatedAt: seenAt },
-      }),
-    ),
-  ]
-
-  await prisma.$transaction(writes)
+      },
+      create: {
+        bank: file.bank,
+        year: file.year,
+        fileName: file.name,
+        accountId: mismatch.accountId,
+        bookingDate: toDateOnly(mismatch.date),
+        check: mismatch.check,
+        computed: mismatch.computed,
+        fromFile: mismatch.fromFile,
+      },
+      // Only the timestamp: status, note and reviewedAt are the human's (R7).
+      update: { updatedAt: seenAt },
+    })
+  }
 }
 
 /**

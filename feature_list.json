@@ -3173,6 +3173,74 @@
         }
       ],
       "status": "done"
+    },
+    {
+      "id": 66,
+      "name": "import-statement-all-or-nothing",
+      "title": "Una importación de extracto que falla no deja nada guardado",
+      "sdd": true,
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-11-02), del cabo 26 de docs/roadmap.md y de las palabras del humano: «arreglemos el otro cabo que teníamos pendiente». Aprobado por el humano el 2026-11-02 («si me parece bien»), incluidas las cuatro decisiones del leader: con spec (sdd), solo se deshace lo del archivo que falla, el nombre de la feature y una prueba con datos reales como deber del humano. Corregido el 2026-11-02 al aprobar la hoja de decisiones: el leader había puesto «el saldo no cuadra» como ejemplo de fallo, pero un descuadre se guarda como aviso desde la F48 y sigue así (decisión 1 de decisions.md).",
+        "que_quiero": "Que importar un extracto sea todo o nada: si algo falla después de guardar los movimientos (no se puede hacer la comprobación de saldo, no se pueden guardar los avisos…), no queda nada de ese archivo en la base de datos: ni sus movimientos, ni la cuenta si se creó con él, ni el saldo de partida si se fijó con él.",
+        "por_que": "Hoy un archivo puede salir failed y dejar sus movimientos guardados. Reintentar es seguro, pero la base queda a medias con un archivo que dice que falló.",
+        "como_se_que_esta_bien": [
+          "Si falla la comprobación de saldo, el archivo sale failed, no se mueve a procesados/ y no queda ningún movimiento suyo.",
+          "Si falla el guardado de avisos, igual.",
+          "Si la cuenta se creó con ese archivo, tampoco queda.",
+          "Un archivo que se importa bien sigue guardando lo mismo que hoy.",
+          "La suite pasa."
+        ],
+        "que_no_quiero": [
+          "Que cambie nada de lo que se guarda cuando la importación va bien.",
+          "Tocar la importación de archivos de producto.",
+          "Migraciones."
+        ],
+        "delego_en_agente": [
+          "Con spec (sdd: true) (decidido por el leader, aprobado).",
+          "Solo se deshace lo del archivo que falla; los demás archivos de la misma importación que salieron bien se quedan (decidido por el leader, aprobado).",
+          "Prueba con datos reales al terminar, como deber del humano (decidido por el leader, aprobado)."
+        ]
+      },
+      "acceptance": [
+        "[de «cómo sé» 1] Si la comprobación de saldo del extracto falla, el archivo sale failed, no se mueve a procesados/ y no queda en la base ningún movimiento de ese archivo.",
+        "[de «cómo sé» 2] Si persistImportWarnings falla, el archivo sale failed, no se mueve y no queda ningún movimiento de ese archivo.",
+        "[de «cómo sé» 3 / «qué quiero»] Si la cuenta se creó al importar ese archivo, o su saldo de partida (anchorAccountIfMissing) se fijó con él, tampoco queda tras el fallo.",
+        "[de «cómo sé» 4 / «qué no quiero» 1] Un archivo que se importa bien guarda exactamente lo mismo que hoy: los tests existentes de la importación pasan sin cambiar lo que comprueban.",
+        "[decisión del leader, aprobada] En una importación con varios archivos, el fallo de uno no deshace los que salieron bien.",
+        "[de «qué no quiero» 2 y 3] Sin cambios en la importación de archivos de producto ni en prisma/schema.prisma.",
+        "[de «qué quiero»] docs/api-contract.md (POST /api/import) y docs/architecture.md dicen que un extracto que falla no deja nada guardado; docs/roadmap.md cierra el cabo 26 nombrando la F66 y añade a «Deberes tuyos» la prueba con datos reales."
+      ],
+      "checks": [
+        {
+          "descripcion": "Si falla la comprobación de saldo, el archivo sale failed, no se mueve a procesados/ y no queda ningún movimiento suyo.",
+          "comando": "pnpm exec vitest run src/modules/import -t \"F66 R1 rolls back every movement of a file whose preamble check throws\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Si falla el guardado de avisos, igual.",
+          "comando": "pnpm exec vitest run src/modules/import -t \"F66 R2 rolls back every movement of a file whose warnings cannot be stored\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Si la cuenta se creó con ese archivo, tampoco queda.",
+          "comando": "pnpm exec vitest run src/modules/import -t \"F66 R3 removes the account a failed file had just created\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Si el saldo de partida se fijó con ese archivo, tampoco queda.",
+          "comando": "pnpm exec vitest run src/modules/import -t \"F66 R4 leaves unanchored the account a failed file had anchored\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) En una importación con varios archivos, el fallo de uno no deshace los que salieron bien.",
+          "comando": "pnpm exec vitest run src/modules/import -t \"F66 R8 keeps the files of the same run that were imported\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un archivo que se importa bien sigue guardando lo mismo que hoy.",
+          "comando": "pnpm exec vitest run src/modules/import src/modules/accounts"
+        },
+        {
+          "descripcion": "La suite pasa.",
+          "comando": "pnpm test"
+        }
+      ],
+      "status": "done"
     }
   ]
 }

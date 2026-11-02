@@ -9,7 +9,7 @@ import {
   ValidationError,
 } from '../../errors/app-error.js'
 import { normalizeIban, requireValidIban } from '../../lib/iban.js'
-import type { AppPrismaClient } from '../../lib/prisma.js'
+import type { AppPrismaClient, TransactionClient } from '../../lib/prisma.js'
 import {
   computeAccountBalance,
   readAnchor,
@@ -211,7 +211,7 @@ export async function createAccount(
  * over HTTP; the importer (next feature) chains it (R30-R32).
  */
 export async function findOrCreateAccountFromMetadata(
-  prisma: AppPrismaClient,
+  prisma: TransactionClient,
   meta: AccountMetadata,
 ): Promise<FindOrCreateAccountResult> {
   const iban = normalizeIban(meta.iban ?? '')

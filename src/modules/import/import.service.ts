@@ -24,7 +24,7 @@ import {
 } from '../../lib/drive-structure.js'
 import { normalizeIban } from '../../lib/iban.js'
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
-import type { AppPrismaClient } from '../../lib/prisma.js'
+import type { AppPrismaClient, TransactionClient } from '../../lib/prisma.js'
 import { findOrCreateAccountFromMetadata } from '../accounts/accounts.service.js'
 import { applyCategoryRules } from '../category-rules/category-rules.service.js'
 import { persistProductSnapshot } from '../investments/investments.service.js'
@@ -142,7 +142,7 @@ function toDateOnly(isoDate: string): Date {
  * `MissingAccountDataError` asking the human to write the IBAN once.
  */
 export async function resolveAccount(
-  prisma: AppPrismaClient,
+  prisma: TransactionClient,
   statement: ParsedStatement,
   bankSlug: string,
 ): Promise<AccountResolution> {
@@ -183,7 +183,7 @@ export async function resolveAccount(
  * their `daySequence` differs and both are stored.
  */
 export async function persistMovements(
-  prisma: AppPrismaClient,
+  prisma: TransactionClient,
   rows: Prisma.MovementCreateManyInput[],
 ): Promise<{ imported: number; duplicates: number; balancesFilled: number }> {
   if (rows.length === 0) {
@@ -213,7 +213,7 @@ export async function persistMovements(
  * outright: there is nothing to fill them with.
  */
 export async function backfillMissingBalances(
-  prisma: AppPrismaClient,
+  prisma: TransactionClient,
   rows: Prisma.MovementCreateManyInput[],
 ): Promise<number> {
   const withBalance = rows.filter(
@@ -321,7 +321,7 @@ function toAnchor(amount: number, at: ParsedMovement): BalanceAnchor {
  * rejected. `balanceAnchorDaySequence` may stay null on its own.
  */
 export async function anchorAccountIfMissing(
-  prisma: AppPrismaClient,
+  prisma: TransactionClient,
   accountId: number,
   anchor: BalanceAnchor,
 ): Promise<boolean> {
@@ -684,9 +684,24 @@ export interface ImportStatementDeps {
 }
 
 /**
+ * How long the transaction of ONE statement may stay open (feature 66, R12).
+ * Prisma 7 cuts an interactive transaction at 5 000 ms when nothing is said,
+ * and reimporting a long statement makes one query per line with a balance
+ * (`backfillMissingBalances`): the default would turn into a failure an import
+ * that worked before. Not measured with a real statement yet.
+ */
+const STATEMENT_TRANSACTION_TIMEOUT_MS = 60_000
+
+/**
  * The core of an import with Drive taken out (feature 25): parse, resolve the
  * account, map and store. What a statement file means is decided here, in ONE
  * place.
+ *
+ * Everything the file writes -- the account if it is new, its movements, the
+ * balances it fills, the anchor and its warnings -- goes in ONE database
+ * transaction per file (feature 66): if any step fails, nothing of that file
+ * stays. Parsing and the "brings movements" check write nothing and run before
+ * it, so an empty or unreadable file opens no transaction.
  *
  * It never throws: a per-file failure comes back as `status: 'failed'` plus its
  * sanitized error, exactly as it travelled inside the report before. The rows
@@ -702,63 +717,85 @@ export async function importStatement(deps: ImportStatementDeps): Promise<Statem
 
     assertTheFileBringsMovements(statement)
 
-    const resolution = await resolveAccount(deps.prisma, statement, deps.bankSlug)
-    const account = toAccountReport(resolution)
-    result.account = account
+    await deps.prisma.$transaction(
+      async (tx) => {
+        const resolution = await resolveAccount(tx, statement, deps.bankSlug)
+        const account = toAccountReport(resolution)
+        result.account = account
 
-    const rows = toMovementRows(statement.movements, resolution.account.id)
-    const stored = await persistMovements(deps.prisma, rows)
-    result.imported = stored.imported
-    result.duplicates = stored.duplicates
-    result.balancesFilled = stored.balancesFilled
+        const rows = toMovementRows(statement.movements, resolution.account.id)
+        const stored = await persistMovements(tx, rows)
+        result.imported = stored.imported
+        result.duplicates = stored.duplicates
+        result.balancesFilled = stored.balancesFilled
 
-    // 🔴 READ BEFORE ANCHORING (feature 32, R4), and this line order is the whole
-    // check: it is the ONLY thing that tells "the account was already anchored"
-    // from "this very file has just anchored it". Move it below
-    // `anchorAccountIfMissing` and the preamble check compares the file against
-    // itself, always finds nothing, and the feature is dead while looking alive.
-    const storedAnchor = await readStoredAnchor(deps.prisma, resolution.account.id)
+        // 🔴 READ BEFORE ANCHORING (feature 32, R4), and this line order is the whole
+        // check: it is the ONLY thing that tells "the account was already anchored"
+        // from "this very file has just anchored it". Move it below
+        // `anchorAccountIfMissing` and the preamble check compares the file against
+        // itself, always finds nothing, and the feature is dead while looking alive.
+        const storedAnchor = await readStoredAnchor(tx, resolution.account.id)
 
-    // AFTER storing and BEFORE calling the file imported (feature 31): the date
-    // of the anchor comes from the movements of this very file, and a file that
-    // fails must leave the account exactly as it found it.
-    const anchor = deriveAnchorFromStatement(statement)
-    if (anchor !== null) {
-      result.anchored = await anchorAccountIfMissing(deps.prisma, resolution.account.id, anchor)
-    }
-    account.balanceAnchor = await readAccountAnchor(deps.prisma, resolution.account.id)
+        // AFTER storing and BEFORE calling the file imported (feature 31): the date
+        // of the anchor comes from the movements of this very file, and a file that
+        // fails must leave the account exactly as it found it (since feature 66 the
+        // transaction is what undoes it).
+        const anchor = deriveAnchorFromStatement(statement)
+        if (anchor !== null) {
+          result.anchored = await anchorAccountIfMissing(tx, resolution.account.id, anchor)
+        }
+        account.balanceAnchor = await readAccountAnchor(tx, resolution.account.id)
 
-    // The two checks of feature 32. They change NOTHING -- not the anchor, not a
-    // balance, not a row -- and a descuadre does not fail the file (R7, R8): what
-    // they find only travels in the report of this file.
-    const perLine = findPerLineMismatches(statement, resolution.account)
-    const statementBalance = await findStatementBalanceMismatch({
-      prisma: deps.prisma,
-      statement,
-      account: resolution.account,
-      anchor: storedAnchor,
-    })
-    result.balanceMismatches = [
-      ...perLine,
-      ...(statementBalance === null ? [] : [statementBalance]),
-    ]
+        // The two checks of feature 32. They change NOTHING -- not the anchor, not a
+        // balance, not a row -- and a descuadre does not fail the file (R7, R8): what
+        // they find only travels in the report of this file. A check that THROWS
+        // does fail it, and undoes everything above (feature 66, R1).
+        const perLine = findPerLineMismatches(statement, resolution.account)
+        const statementBalance = await findStatementBalanceMismatch({
+          prisma: tx,
+          statement,
+          account: resolution.account,
+          anchor: storedAnchor,
+        })
+        result.balanceMismatches = [
+          ...perLine,
+          ...(statementBalance === null ? [] : [statementBalance]),
+        ]
 
-    // Feature 48: what this file leaves unresolved stops dying with the report.
-    // The line order IS the rule: after the two checks, so both kinds of warning
-    // are already known; before `imported`, and inside this `try`, so a write
-    // that fails reports the file as failed and it does NOT move (R5). A file
-    // that failed earlier never reaches this line, which is all R4 needs.
-    await persistImportWarnings(deps.prisma, deps.file, {
-      unparsedRows: statement.unparsedRows,
-      balanceMismatches: result.balanceMismatches,
-    })
+        // Feature 48: what this file leaves unresolved stops dying with the report.
+        // The line order IS the rule: after the two checks, so both kinds of warning
+        // are already known; before `imported`, and inside this transaction, so a
+        // write that fails reports the file as failed, undoes the file (feature 66)
+        // and it does NOT move (R5). A file that failed earlier never reaches this
+        // line, which is all R4 needs.
+        await persistImportWarnings(tx, deps.file, {
+          unparsedRows: statement.unparsedRows,
+          balanceMismatches: result.balanceMismatches,
+        })
+      },
+      { timeout: STATEMENT_TRANSACTION_TIMEOUT_MS },
+    )
 
     result.status = 'imported'
     return result
   } catch (error) {
-    result.status = 'failed'
-    result.error = describeError(error)
-    return result
+    return failedStatementResult(result, error)
+  }
+}
+
+/**
+ * The report of a statement that failed (feature 66, R7): nothing of it stays in
+ * the database, so it carries no account and every counter at zero. It keeps the
+ * rows the parser could not read, which do not depend on the database, and the
+ * error.
+ */
+function failedStatementResult(result: StatementResult, error: unknown): StatementResult {
+  return {
+    ...emptyStatementResult(),
+    unparsedRows: result.unparsedRows,
+    unparsedCount: result.unparsedCount,
+    status: 'failed',
+    error: describeError(error),
   }
 }
 
@@ -823,7 +860,7 @@ function toAccountReport(resolution: AccountResolution): AccountReport {
  * this file wished: an already anchored account reports the anchor it kept (R3).
  */
 async function readAccountAnchor(
-  prisma: AppPrismaClient,
+  prisma: TransactionClient,
   accountId: number,
 ): Promise<string | null> {
   const account = await prisma.account.findUnique({
@@ -843,7 +880,7 @@ async function readAccountAnchor(
  * one is read BEFORE and is what makes the preamble check check anything at all.
  */
 async function readStoredAnchor(
-  prisma: AppPrismaClient,
+  prisma: TransactionClient,
   accountId: number,
 ): Promise<BalanceAnchor | null> {
   const account = await prisma.account.findUnique({

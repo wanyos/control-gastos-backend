@@ -17,3 +17,10 @@ export function createPrismaClient(databaseUrl: string) {
 
 /** Type of the instance returned by `createPrismaClient`. */
 export type AppPrismaClient = ReturnType<typeof createPrismaClient>
+
+/**
+ * The client handed to the callback of an interactive transaction (no
+ * `$transaction`). `AppPrismaClient` is assignable to it, so a function typed
+ * with it accepts both the global client and a transaction (feature 66).
+ */
+export type TransactionClient = Parameters<Parameters<AppPrismaClient['$transaction']>[0]>[0]

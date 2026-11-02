@@ -1,7 +1,7 @@
 import { Prisma } from '../../generated/prisma/client.js'
 
 import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement.js'
-import type { AppPrismaClient } from '../../lib/prisma.js'
+import type { TransactionClient } from '../../lib/prisma.js'
 import { isAfter, netOf } from '../movements/movements.service.js'
 import type { BalanceAnchor, BalanceMovement, RecencyPoint } from '../movements/movements.types.js'
 
@@ -158,7 +158,7 @@ export function findPerLineMismatches(
 }
 
 export interface StatementBalanceCheckDeps {
-  prisma: AppPrismaClient
+  prisma: TransactionClient
   statement: ParsedStatement
   account: MismatchAccount
   /** The anchor as it stood BEFORE this file tried to anchor the account. */
