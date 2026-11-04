@@ -17,7 +17,13 @@ import type {
   DepositInput,
   DepositMaturityMatcherRegistry,
   DepositMovementReading,
+  ClosedGainsProduct,
+  ExcludedFromGainsTotal,
   ExcludedFromPeriodGain,
+  GainsProduct,
+  GainsProductCommon,
+  GainsReason,
+  InvestmentGainsResponse,
   InvestmentProductOverview,
   InvestmentsNetWorth,
   InvestmentsOverviewQuery,
@@ -899,4 +905,339 @@ export async function readLatestInvestmentDate(prisma: AppPrismaClient): Promise
   )
   if (dates.length === 0) return null
   return new Date(Math.max(...dates.map((date) => date.getTime())))
+}
+
+/** The four types that are an investment of this view (R2: never a savings account). */
+const gainsProductTypes: InvestmentProduct['type'][] = [
+  'fund',
+  'etf',
+  'managed_portfolio',
+  'deposit',
+]
+
+const millisecondsPerDay = 86_400_000
+
+type FluctuatingProduct = InvestmentProduct & { type: 'fund' | 'etf' | 'managed_portfolio' }
+
+/** A product of the view plus, when its `gain` is there, the two numbers the total adds. */
+interface GainsRow {
+  product: GainsProduct
+  sum: { gain: Prisma.Decimal; invested: Prisma.Decimal } | null
+}
+
+/**
+ * The read of feature 67: what each fund, ETF, managed portfolio and deposit
+ * gained or lost SINCE IT WAS OPENED, live and closed apart, plus the total of
+ * the live ones (`GET /api/investments/gains`, ADR-043).
+ *
+ * It lives here and not in a file of its own because this is the only file of
+ * `src/` allowed to name the investment tables (`src/architecture.test.ts`).
+ *
+ * Rules (decisions.md of feature 67, approved on 2026-11-04):
+ *  - closing date: `closedAt` of a fluctuating product; the earliest of
+ *    `closedAt` and `maturityDate` of a deposit. Closed when it is <= `today`;
+ *  - fluctuating: the figures of its most recent photo with `date` <= today
+ *    (live) or <= its closing date (closed), EXACTLY as stored -- nothing is
+ *    recomputed (ADR-012); `currentValue` is `marketValue`, the cash apart;
+ *  - live deposit: its expected gain spread over the calendar days since it
+ *    opened, rounded to the cent (half up); its principal counts as invested;
+ *  - closed deposit: the rule of `getDepositEarnings` (feature 50), CALLED and
+ *    not copied; one cancelled before maturity closes with gain 0;
+ *  - what cannot be obtained is `null` with its reason, never `0`, and a live
+ *    product without `gain` is listed in `total.excluded`.
+ *
+ * `today` is injected (date-only, midnight UTC) so the tests fix the clock.
+ * Only `find*` in the whole path: this view writes NOTHING (R14).
+ */
+export async function getInvestmentGains(
+  prisma: AppPrismaClient,
+  matchers: DepositMaturityMatcherRegistry,
+  today: Date,
+): Promise<InvestmentGainsResponse> {
+  const products = await prisma.investmentProduct.findMany({
+    where: { type: { in: gainsProductTypes } },
+    orderBy: { id: 'asc' },
+  })
+  const productIds = products.map((product) => product.id)
+
+  // Newest first and capped at `today`: per product, the first row is the photo
+  // of a live product, and the first row with `date <= closing date` the one of
+  // a closed product (its closing date is <= today, so it is in this result).
+  const [valuations, depositEarnings] = await Promise.all([
+    prisma.valuation.findMany({
+      where: { productId: { in: productIds }, date: { lte: today } },
+      orderBy: { date: 'desc' },
+    }),
+    getDepositEarnings(prisma, matchers, today),
+  ])
+  const earningsById = new Map(depositEarnings.deposits.map((entry) => [entry.id, entry]))
+
+  const liveRows: GainsRow[] = []
+  const closedRows: { product: GainsProduct; closedOn: Date }[] = []
+
+  for (const product of products) {
+    const closedOn = closingDate(product)
+    if (closedOn !== null && closedOn <= today) {
+      closedRows.push({
+        product: gainsOfClosedProduct(product, closedOn, valuations, earningsById),
+        closedOn,
+      })
+    } else {
+      liveRows.push(gainsOfLiveProduct(product, valuations, today))
+    }
+  }
+
+  // Live: oldest first (`openedAt` ascending, `null` last), then `id`.
+  liveRows.sort((a, b) => {
+    const left = a.product.openedAt
+    const right = b.product.openedAt
+    if (left !== right) {
+      if (left === null) return 1
+      if (right === null) return -1
+      return left < right ? -1 : 1
+    }
+    return a.product.id - b.product.id
+  })
+  // Closed: the most recently closed first, then `id` descending.
+  closedRows.sort(
+    (a, b) => b.closedOn.getTime() - a.closedOn.getTime() || b.product.id - a.product.id,
+  )
+
+  // The total adds the LIVE products only (R9-R13), with the ALREADY rounded
+  // gain of each deposit, so it matches the sum of the rows.
+  let gain = new Prisma.Decimal(0)
+  let invested = new Prisma.Decimal(0)
+  const excluded: ExcludedFromGainsTotal[] = []
+  for (const row of liveRows) {
+    if (row.sum === null) {
+      // A live product without `gain` always carries its reason.
+      if (row.product.reason !== null) {
+        excluded.push({
+          productId: row.product.id,
+          name: row.product.name,
+          reason: row.product.reason,
+        })
+      }
+      continue
+    }
+    gain = gain.plus(row.sum.gain)
+    invested = invested.plus(row.sum.invested)
+  }
+
+  return {
+    asOf: serializeDateOnly(today),
+    total: {
+      gain: gain.toFixed(2),
+      invested: invested.toFixed(2),
+      gainPercent: invested.isZero() ? null : percentOf(gain, invested),
+      excluded,
+    },
+    live: liveRows.map((row) => row.product),
+    closed: closedRows.map((row) => withClosedOn(row.product, row.closedOn)),
+  }
+}
+
+/**
+ * The closing date of a product (requirements.md of feature 67): `closedAt` of a
+ * fluctuating one; the earliest non-null of `closedAt` and `maturityDate` of a
+ * deposit -- a deposit is over the day it matures, closing written or not.
+ */
+function closingDate(product: InvestmentProduct): Date | null {
+  if (product.type !== 'deposit') return product.closedAt
+  const dates = [product.closedAt, product.maturityDate].filter(
+    (date): date is Date => date !== null,
+  )
+  if (dates.length === 0) return null
+  return new Date(Math.min(...dates.map((date) => date.getTime())))
+}
+
+/** `part / base × 100`, two decimals, half up, always padded (`"0.60"`). */
+function percentOf(part: Prisma.Decimal, base: Prisma.Decimal): string {
+  return part.dividedBy(base).times(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2)
+}
+
+/** Calendar days from `from` to `to`, both date-only at midnight UTC. */
+function daysBetween(from: Date, to: Date): number {
+  return Math.round((to.getTime() - from.getTime()) / millisecondsPerDay)
+}
+
+function isFluctuating(product: InvestmentProduct): product is FluctuatingProduct {
+  return product.type === 'fund' || product.type === 'etf' || product.type === 'managed_portfolio'
+}
+
+/** Identity of a product of the view, with every figure still empty. */
+function gainsCommon(product: InvestmentProduct): GainsProductCommon {
+  return {
+    id: product.id,
+    bank: product.bank,
+    name: product.name,
+    openedAt: product.openedAt === null ? null : serializeDateOnly(product.openedAt),
+    closedAt: product.closedAt === null ? null : serializeDateOnly(product.closedAt),
+    invested: null,
+    currentValue: null,
+    gain: null,
+    gainPercent: null,
+    valuedAt: null,
+    reason: null,
+  }
+}
+
+/** The figures of a fluctuating product from ONE photo, exactly as stored (R4, R5, R8). */
+function gainsFromPhoto(product: FluctuatingProduct, photo: Valuation | undefined): GainsRow {
+  const common = gainsCommon(product)
+  if (photo === undefined) {
+    return {
+      product: { ...common, type: product.type, uninvestedCash: null, reason: 'no_photo' },
+      sum: null,
+    }
+  }
+  return {
+    product: {
+      ...common,
+      type: product.type,
+      invested: photo.invested.toFixed(2),
+      currentValue: photo.marketValue.toFixed(2),
+      gain: photo.gain === null ? null : photo.gain.toFixed(2),
+      gainPercent: photo.gainPercent === null ? null : photo.gainPercent.toString(),
+      uninvestedCash: photo.uninvestedCash === null ? null : photo.uninvestedCash.toFixed(2),
+      valuedAt: serializeDateOnly(photo.date),
+      reason:
+        photo.gain === null
+          ? 'gain_not_reported'
+          : photo.gainPercent === null
+            ? 'gain_percent_not_reported'
+            : null,
+    },
+    sum: photo.gain === null ? null : { gain: photo.gain, invested: photo.invested },
+  }
+}
+
+/** A deposit with no figure, and why (R8). `invested` is its principal, as stored. */
+function depositWithoutFigures(product: InvestmentProduct, reason: GainsReason): GainsProduct {
+  return {
+    ...gainsCommon(product),
+    type: 'deposit',
+    conditions: depositConditions(product),
+    invested: product.principal === null ? null : product.principal.toFixed(2),
+    reason,
+  }
+}
+
+/** A live product (R4, R6). */
+function gainsOfLiveProduct(
+  product: InvestmentProduct,
+  valuations: Valuation[],
+  today: Date,
+): GainsRow {
+  if (isFluctuating(product)) {
+    return gainsFromPhoto(
+      product,
+      valuations.find((row) => row.productId === product.id),
+    )
+  }
+
+  const { openedAt, principal, expectedGain, maturityDate } = product
+  if (openedAt === null || principal === null || expectedGain === null || maturityDate === null) {
+    return { product: depositWithoutFigures(product, 'missing_conditions'), sum: null }
+  }
+  // Calendar days of the whole term (D) and of the part already lived (d),
+  // clamped to [0, D]: never a division by zero, never more than the expected gain.
+  const term = daysBetween(openedAt, maturityDate)
+  if (term <= 0) return { product: depositWithoutFigures(product, 'missing_conditions'), sum: null }
+  const lived = Math.min(Math.max(daysBetween(openedAt, today), 0), term)
+  const gain = expectedGain
+    .times(lived)
+    .dividedBy(term)
+    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+
+  return {
+    product: {
+      ...gainsCommon(product),
+      type: 'deposit',
+      conditions: depositConditions(product),
+      invested: principal.toFixed(2),
+      currentValue: principal.plus(gain).toFixed(2),
+      gain: gain.toFixed(2),
+      gainPercent: percentOf(gain, principal),
+      valuedAt: serializeDateOnly(today),
+    },
+    sum: { gain, invested: principal },
+  }
+}
+
+/** A closed product (R5, R7, R8, R16). It never adds to the total (R9). */
+function gainsOfClosedProduct(
+  product: InvestmentProduct,
+  closedOn: Date,
+  valuations: Valuation[],
+  earningsById: Map<number, DepositEarningsEntry>,
+): GainsProduct {
+  if (isFluctuating(product)) {
+    const photo = valuations.find((row) => row.productId === product.id && row.date <= closedOn)
+    return gainsFromPhoto(product, photo).product
+  }
+
+  const { principal, maturityDate } = product
+  if (principal === null || maturityDate === null) {
+    return depositWithoutFigures(product, 'missing_conditions')
+  }
+
+  const entry = earningsById.get(product.id)
+  if (entry === undefined || entry.status === 'active') {
+    // Cannot happen: a closed deposit is cancelled or already due, and both
+    // reads see the same products. Failing loud beats inventing a figure.
+    throw new Error(`Deposit ${product.id} is closed but the deposit rule does not see it due`)
+  }
+
+  const common = {
+    ...gainsCommon(product),
+    type: 'deposit' as const,
+    conditions: depositConditions(product),
+    invested: principal.toFixed(2),
+  }
+
+  if (entry.status === 'cancelled') {
+    // Cancelled before maturity: the principal comes back and nothing is
+    // earned (decisions.md of feature 67, point 2).
+    return {
+      ...common,
+      currentValue: principal.toFixed(2),
+      gain: '0.00',
+      gainPercent: '0.00',
+      valuedAt: entry.closedAt,
+    }
+  }
+
+  if (entry.status === 'matured') {
+    if (entry.earned === null || entry.maturity === null) {
+      // Cannot happen: `getDepositEarnings` always fills both on `matured`.
+      throw new Error(`Deposit ${product.id} is matured without its maturity movement`)
+    }
+    return {
+      ...common,
+      currentValue: entry.maturity.amount,
+      gain: entry.earned,
+      gainPercent: percentOf(new Prisma.Decimal(entry.earned), principal),
+      valuedAt: entry.maturity.date,
+    }
+  }
+
+  // `maturity_not_found`, `ambiguous` or `below_principal`: no figure, and the
+  // status of the deposit rule is the reason.
+  return depositWithoutFigures(product, entry.status)
+}
+
+/** The closed entry: `closedOn` right after `closedAt`, the order of the contract. */
+function withClosedOn(product: GainsProduct, closedOn: Date): ClosedGainsProduct {
+  const { invested, currentValue, gain, gainPercent, valuedAt, reason, ...identity } = product
+  return {
+    ...identity,
+    closedOn: serializeDateOnly(closedOn),
+    invested,
+    currentValue,
+    gain,
+    gainPercent,
+    valuedAt,
+    reason,
+  } as ClosedGainsProduct
 }

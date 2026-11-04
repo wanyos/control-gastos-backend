@@ -31,3 +31,16 @@ export const getDepositEarningsSchema = {
     properties: {},
   },
 } as const
+
+/**
+ * Querystring of `GET /api/investments/gains` (feature 67): there are NO
+ * parameters -- it answers for today, over every fund, ETF, managed portfolio
+ * and deposit. Same pattern as `getDepositEarningsSchema`.
+ */
+export const getInvestmentGainsSchema = {
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {},
+  },
+} as const

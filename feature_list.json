@@ -3241,6 +3241,126 @@
         }
       ],
       "status": "done"
+    },
+    {
+      "id": 67,
+      "name": "investments-gains",
+      "title": "Lo que gana o pierde cada inversión desde que la abrí, y el total",
+      "sdd": true,
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-11-03) a partir del encargo del leader del frontend (gastos-frontend/progress/backend-investments-gains.md, para su feature 40) y de las tres decisiones del humano del 2026-11-03. Aprobado por el humano el 2026-11-03 («aprobado»). Procedencia de cada frase, tal como se le enseñó: [humano] = sus decisiones 1-3 o docs/ideas.md; [encargo] = lo escribió el leader del frontend; [leader] = propuesta del leader del backend. Cambiado por el humano el 2026-11-04 en la puerta del spec: un depósito vivo es inversión, su ganancia esperada repartida por días entra en el total de lo vivo (antes: «ganancia 0 hasta que vence»); un depósito cancelado antes de tiempo va a cerrados sin ganancia; y cada cerrado enseña fecha de cierre, valor y ganancia o pérdida.",
+        "que_quiero": "Una consulta, solo de lectura, que me diga por cada producto de inversión (fondos, ETF, carteras gestionadas y depósitos) cuánto he metido, cuánto vale ahora y cuánto gano o pierdo en € y en %, desde que lo abrí, con la fecha del dato [encargo]. Los cerrados salen aparte, con lo que ganaron y la fecha de cierre [humano]. Arriba, un total solo de lo que sigue vivo [humano].",
+        "por_que": "La pantalla Investments del frontend (su feature 40) tiene que enseñarme de forma simple cuánto gano o pierdo con las inversiones, y hoy el backend solo da la foto del mes que se le pida [encargo].",
+        "como_se_que_esta_bien": [
+          "Un fondo cuya última foto es de un mes anterior sale con esa foto y su fecha, no vacío [encargo].",
+          "Las cuentas corrientes y remuneradas no salen [humano, decisión 1].",
+          "Un depósito vivo sale con su capital, TAE, ganancia esperada y vencimiento; su ganancia es la esperada al vencer repartida por días desde que lo abrí hasta hoy, su capital cuenta como invertido y los dos suman al total de lo vivo [humano, 2026-11-04, en la puerta del spec].",
+          "Un depósito cancelado antes de vencer pasa a cerrados y su ganancia no cuenta, porque no se cobra nada [humano, 2026-11-04].",
+          "Cada producto cerrado sale con cómo fue: cuándo se cerró, su valor y lo que ganó o perdió [humano, 2026-11-04].",
+          "Un depósito vencido con su cobro encontrado sale con lo que ganó; si no se encontró el cobro, sin cifra y con el motivo [encargo].",
+          "Un fondo vendido sale en cerrados con lo que ganó o perdió según su última foto antes del cierre, y no suma al total [humano, decisión 2; lo de la última foto, encargo].",
+          "Si una cifra no se puede sacar, sale vacía con un motivo, nunca 0, y el total dice qué productos no ha podido sumar [encargo].",
+          "El total suma solo los vivos y la fórmula de su % está escrita en el contrato [humano, decisión 3; la fórmula, encargo].",
+          "Nada se escribe en la base [encargo]."
+        ],
+        "que_no_quiero": [
+          "Ningún cambio en GET /api/net-worth [encargo].",
+          "Recalcular valoraciones: se usan tal como están guardadas (ADR-012) [encargo].",
+          "Evolución en el tiempo ni series [encargo]."
+        ],
+        "delego_en_agente": [
+          "Sobre qué se calcula el % del total [encargo, propuesta suya].",
+          "Si el capital de un depósito vivo entra como invertido en ese % [encargo, propuesta suya].",
+          "Endpoint nuevo o ampliación de GET /api/investments/overview [encargo].",
+          "Con spec (sdd: true) y el nombre investments-gains (decidido por el leader, aprobado)."
+        ]
+      },
+      "acceptance": [
+        "[de «qué quiero» / delegado, aprobado] GET /api/investments/gains (ruta nueva, sin parámetros, a fecha de hoy en Madrid) responde 200 con asOf, total, live y closed; GET /api/investments/overview, GET /api/investments/deposits y GET /api/net-worth no cambian.",
+        "[de «cómo sé» 2] Ningún producto savings_account aparece en live, closed ni total.",
+        "[de «qué quiero» / aprobado] Un producto es cerrado si su fecha de cierre es ≤ hoy (fondo/ETF/cartera: closedAt; depósito: la primera entre closedAt y maturityDate) y sale en closed con closedOn; el resto, en live.",
+        "[de «cómo sé» 1] Un fondo, ETF o cartera vivo sale con su última foto con fecha ≤ hoy, sea del mes que sea, con invested, currentValue (= marketValue), gain y gainPercent tal como están guardados, uninvestedCash aparte y valuedAt.",
+        "[de «cómo sé» 3] Un depósito vivo sale con conditions (principal, interestRate, expectedGain, maturityDate), invested = principal, gain = expectedGain × días de openedAt a hoy ÷ días de openedAt a maturityDate (2 decimales, mitad hacia arriba), currentValue = principal + gain; su gain y su principal entran en el total.",
+        "[de «cómo sé» 4] Un depósito cancelado antes de vencer (status cancelled en la regla de GET /api/investments/deposits) sale en closed con closedOn = closedAt, invested = currentValue = principal y gain 0.",
+        "[de «cómo sé» 5] Cada producto de closed lleva closedOn, currentValue, gain y gainPercent (o null con reason si no se pueden sacar).",
+        "[de «cómo sé» 6] Un depósito cerrado con status matured sale con lo que ganó (earned) y su %; con maturity_not_found, ambiguous o below_principal, gain null y reason = su status.",
+        "[de «cómo sé» 7] Un fondo cerrado sale en closed con su última foto con fecha ≤ closedAt y no suma al total.",
+        "[de «cómo sé» 8] Una cifra que no se puede sacar sale null con reason de la lista cerrada (no_photo, gain_not_reported, gain_percent_not_reported, maturity_not_found, ambiguous, below_principal, missing_conditions), nunca 0; total.excluded lista los vivos con gain null.",
+        "[de «cómo sé» 9 / delegado] total.gain = suma de los gain no nulos de live; total.invested = suma de invested de los productos de live que entran, depósitos incluidos; total.gainPercent = gain / invested × 100 a 2 decimales, null si invested es 0; las fórmulas están en docs/api-contract.md.",
+        "[de «cómo sé» 10] La consulta no escribe nada en la base.",
+        "[de «qué no quiero»] Sin cambios en GET /api/net-worth, sin recalcular valoraciones (ADR-012) y sin series. docs/architecture.md recoge la decisión como ADR-043."
+      ],
+      "checks": [
+        {
+          "descripcion": "Un fondo cuya última foto es de un mes anterior sale con esa foto y su fecha, no vacío.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a live fund whose last photo is from an earlier month comes with that photo and its date\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Las cuentas corrientes y remuneradas no salen.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"leaves savings accounts out of the lists and the total\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un depósito vivo sale con su capital, TAE, ganancia esperada y vencimiento; su ganancia es la esperada al vencer repartida por días desde que lo abrí hasta hoy, su capital cuenta como invertido y los dos suman al total de lo vivo.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a live deposit earns its expected gain spread over the days since it opened\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un depósito vivo sale con su capital, TAE, ganancia esperada y vencimiento; su ganancia es la esperada al vencer repartida por días desde que lo abrí hasta hoy, su capital cuenta como invertido y los dos suman al total de lo vivo.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"the total adds only live products and its percent is gain over invested\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un depósito cancelado antes de vencer pasa a cerrados y su ganancia no cuenta, porque no se cobra nada.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a deposit cancelled before maturity comes in closed with no gain\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada producto cerrado sale con cómo fue: cuándo se cerró, su valor y lo que ganó o perdió.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a sold fund comes in closed with its last photo before closing and does not add to the total\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada producto cerrado sale con cómo fue: cuándo se cerró, su valor y lo que ganó o perdió.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a matured deposit with its payment found comes with what it earned\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Cada producto cerrado sale con cómo fue: cuándo se cerró, su valor y lo que ganó o perdió.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a deposit cancelled before maturity comes in closed with no gain\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un depósito vencido con su cobro encontrado sale con lo que ganó; si no se encontró el cobro, sin cifra y con el motivo.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a matured deposit with its payment found comes with what it earned\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un depósito vencido con su cobro encontrado sale con lo que ganó; si no se encontró el cobro, sin cifra y con el motivo.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a matured deposit without its payment comes with no figure and the reason\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un fondo vendido sale en cerrados con lo que ganó o perdió según su última foto antes del cierre, y no suma al total.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a sold fund comes in closed with its last photo before closing and does not add to the total\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Si una cifra no se puede sacar, sale vacía con un motivo, nunca 0, y el total dice qué productos no ha podido sumar.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"a figure that cannot be obtained is null with its reason and the total lists the product\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "El total suma solo los vivos y la fórmula de su % está escrita en el contrato.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"the total adds only live products and its percent is gain over invested\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "El total suma solo los vivos y la fórmula de su % está escrita en el contrato.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.docs.test.ts -t \"the contract describes GET /api/investments/gains with the formula of its percent\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Nada se escribe en la base.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"writes nothing in the database\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) La consulta responde por la ruta nueva con la fecha de hoy, el total, los vivos y los cerrados.",
+          "comando": "pnpm exec vitest run src/modules/investments/investments.gains.test.ts -t \"answers asOf, total, live and closed for today\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Lo que ya funciona sigue igual (GET /api/investments/overview, GET /api/investments/deposits, GET /api/net-worth).",
+          "comando": "pnpm test"
+        }
+      ],
+      "status": "done"
     }
   ]
 }

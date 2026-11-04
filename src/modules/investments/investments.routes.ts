@@ -1,8 +1,17 @@
 import type { FastifyInstance } from 'fastify'
 
 import { todayInMadridAsDate } from '../../lib/local-date.js'
-import { getDepositEarningsSchema, getInvestmentsOverviewSchema } from './investments.schema.js'
-import { getDepositEarnings, getInvestmentsOverview, investmentsDb } from './investments.service.js'
+import {
+  getDepositEarningsSchema,
+  getInvestmentGainsSchema,
+  getInvestmentsOverviewSchema,
+} from './investments.schema.js'
+import {
+  getDepositEarnings,
+  getInvestmentGains,
+  getInvestmentsOverview,
+  investmentsDb,
+} from './investments.service.js'
 import type {
   DepositMaturityMatcherRegistry,
   InvestmentsOverviewQuery,
@@ -22,6 +31,7 @@ export interface InvestmentsRoutesOptions {
  * prefix (see `src/app.ts`), so it resolves to:
  *   GET /api/investments/overview   (feature 39)
  *   GET /api/investments/deposits   (feature 50)
+ *   GET /api/investments/gains      (feature 67)
  *
  * Read-only endpoints and nothing else: no POST, no PATCH, no DELETE. The data
  * enters the system through the importer only (features 26 and 29).
@@ -46,5 +56,10 @@ export default async function investmentsRoutes(
     // as `bookingDate` and net worth (see `src/lib/local-date.ts`).
     const today = todayInMadridAsDate()
     return getDepositEarnings(db, depositMaturityMatchers, today)
+  })
+
+  fastify.get('/gains', { schema: getInvestmentGainsSchema }, async () => {
+    // Same clock as `/deposits`: the closed deposits are read with its rule.
+    return getInvestmentGains(db, depositMaturityMatchers, todayInMadridAsDate())
   })
 }

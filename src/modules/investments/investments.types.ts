@@ -476,6 +476,88 @@ export interface DepositEarningsResponse {
   total: string
 }
 
+// ---------------------------------------------------------------------------
+// Read side (feature 67): what each investment gained or lost SINCE IT WAS
+// OPENED, for `GET /api/investments/gains`. Computed on every request, stored
+// nowhere.
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a figure of a product could not be obtained (R8 of feature 67). Closed
+ * enum, part of the contract: the four figures are `null` and never `0`.
+ */
+export type GainsReason =
+  | 'no_photo'
+  | 'gain_not_reported'
+  | 'gain_percent_not_reported'
+  | 'maturity_not_found'
+  | 'ambiguous'
+  | 'below_principal'
+  | 'missing_conditions'
+
+/** What every product of the view carries, whatever its type. */
+export interface GainsProductCommon {
+  id: number
+  bank: string
+  name: string
+  /** `YYYY-MM-DD` as stored, or `null`. */
+  openedAt: string | null
+  /** `YYYY-MM-DD` as stored, or `null`. */
+  closedAt: string | null
+  invested: string | null
+  currentValue: string | null
+  gain: string | null
+  gainPercent: string | null
+  /** `YYYY-MM-DD` of the figures; `null` when there are none. */
+  valuedAt: string | null
+  /** `null` when the four figures are there. */
+  reason: GainsReason | null
+}
+
+/** A fund, ETF or managed portfolio, with the figures of one of its photos. */
+export interface FluctuatingGainsProduct extends GainsProductCommon {
+  type: 'fund' | 'etf' | 'managed_portfolio'
+  /** APART from `currentValue`: never added into it nor into any total (ADR-012). */
+  uninvestedCash: string | null
+}
+
+/** A deposit, with its four conditions as stored (same object as the overview). */
+export interface DepositGainsProduct extends GainsProductCommon {
+  type: 'deposit'
+  conditions: DepositConditions
+}
+
+/** The shape of each product depends on its type, as in `NetWorthProduct`. */
+export type GainsProduct = FluctuatingGainsProduct | DepositGainsProduct
+
+/** A closed product also says when it closed (`YYYY-MM-DD`). */
+export type ClosedGainsProduct = GainsProduct & { closedOn: string }
+
+/** A live product whose `gain` is `null`, left out of the total (R13). */
+export interface ExcludedFromGainsTotal {
+  productId: number
+  name: string
+  reason: GainsReason
+}
+
+/** The total of the LIVE products only (R9-R13). */
+export interface InvestmentGainsTotal {
+  gain: string
+  invested: string
+  /** `gain / invested × 100`, two decimals; `null` when `invested` is zero. */
+  gainPercent: string | null
+  excluded: ExcludedFromGainsTotal[]
+}
+
+/** Shape of the `GET /api/investments/gains` response (feature 67). */
+export interface InvestmentGainsResponse {
+  /** `YYYY-MM-DD`, the "today" the view was computed for. */
+  asOf: string
+  total: InvestmentGainsTotal
+  live: GainsProduct[]
+  closed: ClosedGainsProduct[]
+}
+
 /**
  * What one product file left in the database. `created` is what tells "it has
  * been stored" apart from "the same thing has been stored again", which is the

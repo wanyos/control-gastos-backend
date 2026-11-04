@@ -3576,6 +3576,80 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     transacción. La importación de archivos de producto tampoco cambia.
   - Sin migraciones. Contrato en `docs/api-contract.md` §`POST /api/import`.
 
+### ADR-043: Lo que gana cada inversión desde que se abrió se lee en una ruta propia, a fecha de hoy, con las fotos tal como están y la regla de los depósitos de la F50; un depósito vivo reparte su ganancia esperada por días y entra en el total con su capital
+
+- **Fecha:** 2026-11-04
+- **Estado:** aceptada (implementada en la feature #67 `investments-gains`, SDD;
+  hoja aprobada por el humano el 2026-11-04).
+- **Contexto:** la pantalla de inversiones del frontend (su feature 40) tiene que
+  enseñar de forma simple cuánto se gana o se pierde con cada inversión, y el
+  backend solo daba la foto del mes que se le pidiera
+  (`GET /api/investments/overview`). Encargo del leader del frontend y decisiones
+  del humano del 2026-11-03 (las cuentas no salen; los cerrados aparte y sin
+  sumar; el total solo de lo vivo), cambiadas en la puerta del spec el 2026-11-04
+  (un depósito vivo es inversión y su ganancia entra en el total).
+- **Decisión:**
+  1. **Ruta nueva, `GET /api/investments/gains`**, sin parámetros y a fecha de hoy
+     en Madrid (`todayInMadridAsDate()`). La función es `getInvestmentGains`, en
+     [`src/modules/investments/investments.service.ts`](../src/modules/investments/investments.service.ts):
+     es el único archivo que puede nombrar las tablas de inversiones
+     (`src/architecture.test.ts`). Solo `find*`: no escribe nada.
+  2. **Salen fondos, ETF, carteras gestionadas y depósitos**; ningún
+     `savings_account`.
+  3. **Vivo o cerrado por la fecha de cierre**: `closedAt` en lo que fluctúa; en un
+     depósito, la más temprana de `closedAt` y `maturityDate`. Cerrado si es ≤ hoy,
+     con esa fecha en `closedOn`.
+  4. **Lo que fluctúa usa su foto tal como está** (ADR-012): la más reciente con
+     fecha ≤ hoy si está vivo, o ≤ su `closedAt` si está cerrado, sea del mes que
+     sea; `currentValue` = `marketValue` y `uninvestedCash` aparte.
+  5. **Un depósito vivo reparte su ganancia esperada por días naturales**:
+     `expectedGain × d / D` (`d` de `openedAt` a hoy, acotado a `[0, D]`; `D` de
+     `openedAt` a `maturityDate`), redondeado al céntimo con el medio hacia arriba.
+     Vale `principal + gain`, y su `principal` cuenta como invertido.
+  6. **Un depósito cerrado sigue la regla de la F50 llamándola**
+     (`getDepositEarnings`), no copiándola: `matured` da lo ganado y el importe del
+     vencimiento; `maturity_not_found`, `ambiguous` y `below_principal` pasan a
+     `reason` sin cifra; `cancelled` (cancelado antes de vencer) sale con ganancia
+     `"0.00"` y su `principal` como valor.
+  7. **Lo que no se puede sacar es `null` con un motivo** de una lista cerrada de
+     siete (`no_photo`, `gain_not_reported`, `gain_percent_not_reported`,
+     `maturity_not_found`, `ambiguous`, `below_principal`, `missing_conditions`),
+     nunca `0`.
+  8. **El total es solo de `live`**: suma de los `gain` no nulos, sobre la suma de
+     los `invested` de esos mismos productos; % = ganancia / invertido × 100 a dos
+     decimales, `null` si no entra ninguno. Lo que no entra se lista en
+     `total.excluded`.
+- **Alternativas descartadas:**
+  - **Ampliar `GET /api/investments/overview`** (p. ej. `?since=opened`): es una
+    vista de un mes y su `periodGain` es variación de un mes; darle también lo
+    acumulado le daría dos significados a la misma respuesta y rompería lo que el
+    frontend ya consume.
+  - **Dejar fuera del total los depósitos vivos** (propuesta inicial): rechazada
+    por el humano el 2026-11-04, un depósito vivo es inversión.
+  - **Sumar la `expectedGain` entera de un depósito vivo**: el humano eligió el
+    reparto por días. **Repartir con la TAE a interés compuesto**: más fino en
+    teoría, pero se aparta de `expectedGain`, que es la cifra que escribe el humano.
+  - **`currentValue` = `marketValue + uninvestedCash`** (como `GET /api/net-worth`):
+    dejaría de cumplirse `invested + gain = currentValue` con las cifras guardadas.
+  - **Rehacer la búsqueda del vencimiento** dentro de la consulta nueva: dos copias
+    de la misma regla que acabarían separándose.
+  - **Un archivo de servicio propio** (`investments.gains.ts`): lo impide la
+    comprobación de `src/architecture.test.ts` que solo deja nombrar las tablas de
+    inversiones desde `investments.service.ts`.
+- **Consecuencias:**
+  - Un depósito vencido sin `closedAt` cuenta aquí como cerrado, pero
+    `GET /api/net-worth` lo sigue sumando con `matured_not_closed`. A propósito:
+    allí importa dónde está el dinero; aquí, si el producto terminó.
+  - Lo que vale hoy un depósito vivo es aquí `principal` + ganancia repartida, y en
+    `GET /api/net-worth` solo el `principal`: no coinciden hasta que vence.
+  - Un depósito cancelado sale siempre con ganancia 0: la consulta no mira el
+    extracto, así que si un banco pagara algo al cancelar no se vería aquí.
+  - Un fondo vendido solo sale en `closed` si su archivo lleva la fecha de cierre:
+    dejar de subirlo no lo cierra.
+  - `GET /api/investments/overview`, `GET /api/investments/deposits` y
+    `GET /api/net-worth` no cambian. Sin migraciones. Contrato en
+    `docs/api-contract.md` §`GET /api/investments/gains`.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

@@ -383,7 +383,9 @@ feature 39 tiene un lector**:
 lectura que devuelve cada producto con su foto del mes, la variación frente a la
 foto anterior y la ganancia total del periodo. Desde la feature 50 tiene un
 segundo, [`GET /api/investments/deposits`](#get-apiinvestmentsdeposits) (lo que
-generó cada depósito). Bajo `/api/investments` solo hay `GET`: no hay `POST`,
+generó cada depósito), y desde la feature 67 un tercero,
+[`GET /api/investments/gains`](#get-apiinvestmentsgains) (lo que gana o pierde cada
+inversión desde que se abrió, vivas y cerradas, con el total de las vivas). Bajo `/api/investments` solo hay `GET`: no hay `POST`,
 `PATCH` ni `DELETE` — los datos entran solamente por la importación. **Y desde la feature 42 existe la consulta de
 patrimonio neto**: [`GET /api/net-worth`](#get-apinet-worth), que suma el saldo
 real de las cuentas y el valor de las inversiones según sus últimas fotos
@@ -2355,7 +2357,8 @@ periodo, sumando la fluctuación de los productos que fluctúan y los intereses
 abonados en las cuentas remuneradas. Es el primer lector de la capa que
 escriben las features 26 y 29. Desde la feature 50 no es el único endpoint bajo
 `/api/investments`: también está
-[`GET /api/investments/deposits`](#get-apiinvestmentsdeposits).
+[`GET /api/investments/deposits`](#get-apiinvestmentsdeposits), y desde la
+feature 67 [`GET /api/investments/gains`](#get-apiinvestmentsgains).
 
 Reglas que gobiernan toda la respuesta:
 
@@ -2593,6 +2596,183 @@ vencimiento) y `candidateMovementIds`.
 > que además saca el capital de las aperturas cuando no hay archivo de producto.
 > Por eso un vencimiento antiguo sin archivo de producto no aparece aquí pero sí
 > suma su interés allí.
+
+### `GET /api/investments/gains`
+
+Lo que gana o pierde cada inversión **desde que se abrió** (feature
+"investments-gains", 2026-11-04): por cada fondo, ETF, cartera gestionada y
+depósito, cuánto se metió, cuánto vale, cuánto se gana o se pierde en € y en %, y
+de qué fecha es el dato. Los productos **vivos** y los **cerrados** en dos listas,
+y un total solo de los vivos. **Solo lectura**: se calcula en cada petición y no
+guarda nada. [`GET /api/investments/overview`](#get-apiinvestmentsoverview),
+[`GET /api/investments/deposits`](#get-apiinvestmentsdeposits) y
+[`GET /api/net-worth`](#get-apinet-worth) siguen exactamente igual.
+
+**No tiene parámetros**: responde siempre a fecha de hoy (el día de hoy en
+Madrid, como `GET /api/investments/deposits`). Un parámetro de querystring
+desconocido **se ignora**.
+
+**Qué productos salen.** Los de `type` `fund`, `etf`, `managed_portfolio` y
+`deposit`. **Ninguna cuenta**: un producto `savings_account` no sale en `live`,
+ni en `closed`, ni suma en `total`, tenga las fotos que tenga.
+
+**Vivo o cerrado.** La **fecha de cierre** de un producto es:
+
+- en un fondo, ETF o cartera, su `closedAt`;
+- en un depósito, la más temprana de `closedAt` y `maturityDate` (de las que no
+  son `null`): un depósito cuenta como cerrado **el día que vence**, aunque no se
+  haya escrito su cierre.
+
+Un producto con fecha de cierre **anterior o igual a hoy** va a `closed`, con esa
+fecha en `closedOn`; el resto va a `live`.
+
+**Las cifras de cada producto** (`invested`, `currentValue`, `gain`,
+`gainPercent`, y `valuedAt`, la fecha del dato):
+
+| Producto | De dónde salen |
+| --- | --- |
+| Fondo, ETF o cartera **vivo** | Su foto (`Valuation`) más reciente con fecha ≤ hoy, **sea del mes que sea**, tal como está guardada: `invested`, `currentValue` = `marketValue`, `gain` y `gainPercent`, sin recalcular nada (ADR-012). El efectivo sin invertir va aparte, en `uninvestedCash`, y no se suma a nada. `valuedAt` = fecha de la foto. |
+| Fondo, ETF o cartera **cerrado** | Igual, con su foto más reciente con fecha ≤ su `closedAt`. Una foto posterior al cierre no se usa. |
+| Depósito **vivo** | Su ganancia esperada **repartida por días** (fórmula abajo). `invested` = `principal`, `currentValue` = `principal + gain`, `gainPercent` = `gain / principal × 100`, `valuedAt` = hoy. |
+| Depósito **vencido** (cerrado, `closedAt` vacío o no anterior a `maturityDate`) | La regla de [`GET /api/investments/deposits`](#get-apiinvestmentsdeposits): con `status` `matured`, `invested` = `principal`, `currentValue` = importe del movimiento del vencimiento, `gain` = `earned` (importe − `principal`), `gainPercent` = `earned / principal × 100`, `valuedAt` = fecha de ese movimiento. |
+| Depósito **cancelado antes de vencer** (`closedAt` anterior a `maturityDate`) | `invested` = `currentValue` = `principal`, `gain` = `"0.00"`, `gainPercent` = `"0.00"`, `valuedAt` = su `closedAt`. La consulta no mira el extracto: si el banco pagara algo al cancelar, aquí seguiría saliendo 0. |
+
+**Reparto por días de un depósito vivo:**
+
+```
+gain = expectedGain × d / D
+```
+
+- `D` = días naturales de `openedAt` a `maturityDate`;
+- `d` = días naturales de `openedAt` a hoy (0 si hoy es anterior a `openedAt`);
+- redondeado a 2 decimales, el medio céntimo hacia arriba. El día que se abre gana
+  `"0.00"`; el día que vence ya está en `closed`.
+
+El `gainPercent` de un depósito (vivo o vencido) es lo ganado sobre el capital, no
+la TAE: uno de 3 meses al 2,5 % sale con algo más de 0,6 % al vencer. Los
+`gainPercent` calculados (depósitos y total) llevan siempre dos decimales; el de
+una foto sale tal como está guardado, sin rellenar ceros (como en
+`GET /api/investments/overview`).
+
+> **No coincide con `GET /api/net-worth` a propósito.** Allí un depósito vivo vale
+> solo su capital, y uno vencido sin `closedAt` sigue sumando con el aviso
+> `matured_not_closed`; aquí ese depósito ya está en `closed`. Allí importa dónde
+> está el dinero; aquí, si el producto terminó.
+
+**Cifra que no se puede sacar.** Sale `null` (nunca `0`) y `reason` dice por qué,
+de esta lista cerrada:
+
+| `reason` | Cuándo | Qué sale `null` |
+| --- | --- | --- |
+| `no_photo` | Fondo, ETF o cartera sin foto en la fecha que le toca. | `invested`, `currentValue`, `gain`, `gainPercent`, `uninvestedCash` y `valuedAt`. |
+| `gain_not_reported` | La foto no trae `gain`. | `gain` (y `gainPercent` si tampoco lo trae). |
+| `gain_percent_not_reported` | La foto trae `gain` pero no `gainPercent`. | `gainPercent`. |
+| `maturity_not_found` | Depósito vencido sin el movimiento del vencimiento (p. ej. el extracto de ese día aún no está importado). | `currentValue`, `gain`, `gainPercent` y `valuedAt`. |
+| `ambiguous` | Depósito vencido con más de un movimiento candidato. | Ídem. |
+| `below_principal` | Depósito vencido cuyo único candidato es menor que el `principal`. | Ídem. |
+| `missing_conditions` | Depósito con `principal` o `maturityDate` vacíos; o, si está vivo, con `openedAt` o `expectedGain` vacíos, o con `openedAt` igual o posterior a `maturityDate`. | Ídem. |
+
+Un producto con sus cuatro cifras lleva `reason: null`. En un depósito,
+`invested` es su `principal` aunque falte el resto.
+
+**El total** (`total`) suma **solo los productos de `live`**; uno de `closed` no
+suma nunca:
+
+- `total.gain` = suma de los `gain` no nulos de `live` (`"0.00"` si no hay
+  ninguno). Con la ganancia ya redondeada de cada depósito, así cuadra con la
+  suma de las filas.
+- `total.invested` = suma de los `invested` de los productos de `live` **cuyo
+  `gain` entró en `total.gain`**, depósitos incluidos (su `principal`).
+- **Fórmula del %:**
+
+  ```
+  total.gainPercent = total.gain / total.invested × 100
+  ```
+
+  redondeado a 2 decimales (el medio céntimo hacia arriba), o `null` si
+  `total.invested` es `0` (no hay ningún vivo que entre).
+- `total.excluded` lista, en el orden de `live`, cada producto de `live` con
+  `gain` `null`, como `{ productId, name, reason }`.
+
+**Orden:** `live` del más antiguo al más nuevo (`openedAt` ascendente, sin
+`openedAt` al final) y después `id`; `closed` del cerrado más reciente al más
+antiguo (`closedOn` descendente) y después `id` descendente.
+
+**Respuesta 200** (cifras inventadas)
+
+```json
+{
+  "asOf": "2026-11-03",
+  "total": {
+    "gain": "686.35",
+    "invested": "22300.00",
+    "gainPercent": "3.08",
+    "excluded": [{ "productId": 2, "name": "ETF Mundo", "reason": "no_photo" }]
+  },
+  "live": [
+    {
+      "id": 1, "bank": "myinvestor", "name": "Fondo Global", "type": "fund",
+      "openedAt": "2025-11-03", "closedAt": null,
+      "invested": "12300.00", "currentValue": "12800.50", "gain": "500.50",
+      "gainPercent": "4.07", "uninvestedCash": "10.25", "valuedAt": "2026-09-30",
+      "reason": null
+    },
+    {
+      "id": 4, "bank": "myinvestor", "name": "Deposito 12m", "type": "deposit",
+      "openedAt": "2026-03-02", "closedAt": "2027-03-01",
+      "conditions": { "principal": "10000.00", "interestRate": "2.75",
+                      "expectedGain": "275.00", "maturityDate": "2027-03-01" },
+      "invested": "10000.00", "currentValue": "10185.85", "gain": "185.85",
+      "gainPercent": "1.86", "valuedAt": "2026-11-03", "reason": null
+    },
+    {
+      "id": 2, "bank": "myinvestor", "name": "ETF Mundo", "type": "etf",
+      "openedAt": null, "closedAt": null,
+      "invested": null, "currentValue": null, "gain": null, "gainPercent": null,
+      "uninvestedCash": null, "valuedAt": null, "reason": "no_photo"
+    }
+  ],
+  "closed": [
+    {
+      "id": 7, "bank": "myinvestor", "name": "Deposito 3m", "type": "deposit",
+      "openedAt": "2026-06-01", "closedAt": "2026-09-01", "closedOn": "2026-09-01",
+      "conditions": { "principal": "5000.00", "interestRate": "2.5",
+                      "expectedGain": "31.25", "maturityDate": "2026-09-01" },
+      "invested": "5000.00", "currentValue": "5031.20", "gain": "31.20",
+      "gainPercent": "0.62", "valuedAt": "2026-09-01", "reason": null
+    },
+    {
+      "id": 3, "bank": "myinvestor", "name": "Deposito 6m", "type": "deposit",
+      "openedAt": "2026-01-12", "closedAt": "2026-04-20", "closedOn": "2026-04-20",
+      "conditions": { "principal": "2000.00", "interestRate": "2.2",
+                      "expectedGain": "22.00", "maturityDate": "2026-07-12" },
+      "invested": "2000.00", "currentValue": "2000.00", "gain": "0.00",
+      "gainPercent": "0.00", "valuedAt": "2026-04-20", "reason": null
+    }
+  ]
+}
+```
+
+En el ejemplo, el depósito vivo lleva 246 de sus 364 días: 275,00 × 246 / 364 =
+185,85 (redondeado), y vale 10.000,00 + 185,85. El total es 500,50 + 185,85 =
+686,35 sobre 12.300,00 + 10.000,00 = 22.300,00 → 3,08 %. El ETF sin foto no suma y
+sale en `excluded`; los dos cerrados (uno vencido y uno cancelado) no suman.
+
+Cada entrada lleva `id`, `bank`, `name`, `type`, `openedAt` y `closedAt` (tal
+como están guardados), `invested`, `currentValue`, `gain`, `gainPercent`,
+`valuedAt` y `reason`; las de `closed`, además, `closedOn`. Un fondo, ETF o
+cartera lleva también `uninvestedCash` (tal cual; `null` si no está). Un depósito
+lleva `conditions` (`principal`, `interestRate`, `expectedGain`, `maturityDate`),
+el mismo objeto y formato que en `GET /api/investments/overview`. Importes con dos
+decimales y fechas `YYYY-MM-DD`.
+
+**Errores:** ninguno propio. Sin productos, `200` con `live: []`, `closed: []`,
+`total.gain` y `total.invested` `"0.00"`, `total.gainPercent: null` y
+`total.excluded: []`.
+
+> Solo existe el `GET`: este endpoint **no escribe nada**. No hay series ni
+> evolución en el tiempo; lo de un mes concreto sigue en
+> `GET /api/investments/overview`.
 
 ### `GET /api/net-worth`
 

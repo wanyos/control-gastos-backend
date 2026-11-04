@@ -28,7 +28,14 @@
 
 **Ninguna feature en curso.**
 
-## F66 `import-statement-all-or-nothing` — CERRADA (2026-11-02, sin commit todavía)
+## F67 `investments-gains` — CERRADA (2026-11-04, commiteada: commit `feat(investments): F67…`)
+
+**Qué se hizo:** encargo del frontend para su feature 40. `GET /api/investments/gains`: por cada fondo, ETF, cartera y depósito, invertido, valor, ganancia en € y % desde que se abrió y fecha del dato; vivos y cerrados aparte; total solo de los vivos. Un depósito vivo reparte su ganancia esperada por días y uno cancelado cierra con 0. ADR-043. SDD, lote A (único); reviewer `CHANGES_REQUESTED` en la primera revisión (faltaban tests de motivos de R8 y tres arreglos de documentos) y `APPROVED` en la segunda → [resumen](summaries/investments-gains.md), [implementación](implementations/investments-gains.md), [revisión](reviews/investments-gains.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E7 de `docs/roadmap.md`. Sin commit. Sección publicada en `docs/api-contract.md`: el frontend puede relanzar el spec de su feature 40.
+
+## Correcciones del humano
+
+## F66 `import-statement-all-or-nothing` — CERRADA (2026-11-02, commit `8dde37d`)
 
 **Qué se hizo:** cabo 26. Todo lo que un extracto escribe en la base (la cuenta si es nueva, sus movimientos, los saldos que rellena, el ancla y sus avisos) va en una transacción por archivo con 60 s como máximo; si algo falla no queda nada de ese archivo y el informe lo da sin cuenta y con todo a cero. Si lo único que falla es moverlo a `procesados/`, lo guardado se queda. ADR-042. SDD, lote A (único); reviewer `APPROVED` sin hallazgos → [resumen](summaries/import-statement-all-or-nothing.md), [implementación](implementations/import-statement-all-or-nothing.md), [revisión](reviews/import-statement-all-or-nothing.md).
 **Estado:** `done` en `feature_list.json`, línea en `history.md`, cabo 26 cerrado. Sin commit. La prueba con datos reales es deber del humano, en `docs/roadmap.md` §Deberes tuyos pendientes.
