@@ -51,7 +51,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 | E5 | **La importación** — del fichero parseado a la base de datos | ✅; ampliada después con los totales de la pasada (**F45**, 2026-09-11) y con lo que una importación deja sin resolver, que ya no se pierde (**F48**, 2026-09-18), y con el rechazo del segundo archivo de producto de una misma importación que declara el mismo banco, nombre y fecha que otro (**F53**, 2026-10-02), y con poder dar por revisada, con una nota, una fila que el parser no pudo leer (**F54**, 2026-10-02), y con que un extracto que falla no deje nada guardado (**F66**, 2026-11-02) | **F12**, **F45**, **F48**, **F53**, **F54**, **F66** |
 | E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **casi entera**: categorías a mano y confirmación ✅ (**F37**), traspasos ✅ (**F40** + **F41** + marcado manual **F44**), reglas automáticas ✅ (**F43**, 2026-09-06), y confirmar y categorizar **varios movimientos en una sola petición** ✅ (**F47**, 2026-09-18, `PATCH /api/movements`), y aplicar las reglas dice **qué movimientos categorizó** ✅ (**F56**, 2026-10-13, `categorizedMovements`), y crear o cambiar una regla **recoloca lo que quedó en `Otros gastos` / `Otros ingresos`** sin tocar lo puesto a mano ✅ (**F60**, 2026-10-18, `categorySource`), y proponer reglas y decir qué movería una antes de crearla ✅ (**F61**, 2026-10-18, `GET /api/category-rules/suggestions` y `GET /api/category-rules/preview`); queda solo el enlace aportación ↔ producto (`Movement.productId`, sin escritor y sin feature) | **F37**, **F40**, **F41**, **F43**, **F44**, **F47**, **F56**, **F60**, **F61** |
 | E7 | **Consultar** — filtros, saldos, totales, patrimonio | ✅ **entera** (2026-09-11): saldo real ✅ (F31), su comprobación ✅ (F32), filtros y totales ✅ (F36), resumen del dinero ✅ (**F38**, `GET /api/overview`), vista de inversiones ✅ (**F39**, 2026-09-05, `GET /api/investments/overview`); patrimonio neto total ✅ (**F42**, 2026-09-06, `GET /api/net-worth`); y los dos filtros que le faltaban al listado —por **categoría** / «sin categoría» y por **texto del concepto**— ✅ (**F47**, 2026-09-18); y en los totales un depósito solo cuenta por sus intereses ✅ (**F57**, 2026-10-16, commit `f8b2aa0`); y lo que el concepto reconoce como dinero entre cuentas propias del humano no cuenta en las sumas, y lo no claro queda dudoso ✅ (**F62**, 2026-10-20, commit `f905fdb`, tabla `OwnAccount`); y lo gastado por categoría en un mes o un año, fijo y variable, frente al periodo anterior ✅ (**F63**, 2026-10-21, commit `977d01c`, `GET /api/expenses-by-category`), que sustituye a `GET /api/recurring-expenses` (F58, F59), retirada ✅ (**F64**, 2026-10-25, commit `731414c`); y lo que gana o pierde cada inversión desde que se abrió, vivas y cerradas, con el total de las vivas ✅ (**F67**, 2026-11-04, commit `c17e578`, `GET /api/investments/gains`). ⚠️ Esta fila siguió diciendo «aún sin feature» cinco días después de cerrarse la F42, hasta el 2026-09-11 | **F31**, **F32**, **F36**, **F38**, **F39**, **F42**, **F47**, **F57**, **F62**, **F63**, **F64**, **F67** |
-| E8 | **Ver** — el frontend | ⬜ | otro proyecto |
+| E8 | **Ver** — el frontend | 🟡 en marcha en su propio proyecto (40 features `done` a 2026-11-04) | otro proyecto |
 | E9 | **Que esto viva en algún sitio** — despliegue y acceso | ⬜ | *sin etapa hasta hoy* |
 
 > 🔄 **E3 y E4 se intercambiaron el 2026-08-11.** El modelo va **antes** que los
@@ -275,7 +275,7 @@ media línea de filtros y el patrimonio a una fecha. Lo que había y lo que falt
   a una fecha pasada y como serie** — ver el cabo suelto 20, que es lo que
   bloquea dos bloques de la primera vista del frontend.
 
-### E8 — Ver: el frontend ⬜
+### E8 — Ver: el frontend 🟡
 
 Otro proyecto y **otra sesión** (regla de oro del workspace: backend primero,
 frontend después). A 2026-11-04 tiene 40 features `done`; su estado vive en su
@@ -403,6 +403,7 @@ tiene etapa, es que se va a perder.
 | ~~30~~ | ~~**`GET /api/expenses-by-category` acepta el año `0000`.** `year=0000` y `month=0000-01` pasan la validación de parámetros, y `resolvePeriods` les calcula un periodo comparado con fechas mal formadas (el año anterior a `0000`). Encontrado por el reviewer de la F63 el 2026-10-21, comprobado llamando a la función; **por HTTP no comprobado** (qué responde la ruta con esos valores). No afecta a ningún año real~~ | ✅ **cerrado por la F65 `expenses-by-category-reject-year-zero`** (2026-11-02). Al probarlo por HTTP salió más: `year=0001` y cualquier `month` con año por debajo de 1000 respondían **500**, por `resolvePeriods` (el año del periodo comparado salía sin ceros delante, o caía en el año `0000`, que Postgres rechaza). Decisión del humano: `year` y `month` solo aceptan años **desde el 2000**; lo anterior, `0000` incluido, se rechaza en el schema de la ruta con `400 VALIDATION_ERROR`, así que esos años ya no llegan a `resolvePeriods`, que no cambia |
 | 31 | **Un ingreso que llega en un mes distinto del que paga cuenta en el mes de la fecha del banco.** Las sumas de cada mes (`GET /api/overview`, y lo que enseña `Overview` en el frontend: entrada, ahorro, tasa de ahorro y si fue un mes normal) usan la fecha del banco y no saben a qué mes pertenece un ingreso. Ya pasó con los 350 € mensuales (`Pensión`): el 1 y el 30 de junio de 2026 caen los dos en junio y mayo queda sin ninguno. La nómina de la EMT no lo ha hecho nunca: de enero de 2024 a septiembre de 2026 llegó siempre entre el 26 y el 31 (comprobado en la base el 2026-10-29). No afecta a la suma de un año ni de varios meses, ni al gasto por categoría | **riesgo aceptado por el humano el 2026-10-29**, sin código: «de momento lo dejamos así». Se reabre si él lo pide |
 | 32 | **Los tests de copias de seguridad hacen más lentas las pasadas de `./init.sh`.** `src/modules/backup/backup.service.test.ts` crea y borra unas 12 bases de prueba en cada pasada, y cada borrado obliga a PostgreSQL a escribir en disco todo lo pendiente; con eso y la carga de la máquina, una pasada de los tests tarda entre unos 25 s y unos 70 s (medido el 2026-11-04 en [la investigación](../progress/explorations/init-intermitente-2026-11-04.md)). Ya no da rojos: el cierre de ese archivo tiene 60 s desde el 2026-11-05. Reducirlo pediría que esos tests usen menos bases distintas, en un archivo de tests grande, y no se ha medido cuánto se ganaría | **aceptado por el humano el 2026-11-06**, sin código: «si esos test tardan más o menos un minuto o algo más, se pueden dejar como están». Se reabre si él lo pide |
+| 33 | **`GET /api/net-worth` no dice desde cuándo hay dato de cada producto.** Lo pidió el frontend el 2026-11-06 como opcional (su cabo 4): la fecha del primer dato de cada producto, para un detalle de la ficha de Net Worth | **aparcado por el humano el 2026-11-06**, junto con el cabo 20 y las etapas sin empezar. Se abre si él lo pide |
 | ~~25~~ | ~~**La consulta que elige el movimiento del que sale el saldo de una cuenta ordena sin último criterio.** `src/modules/accounts/accounts.service.ts:121` y `:140` piden, dentro de una cuenta, el movimiento con `balanceAfter` más reciente por `bookingDate desc, daySequence desc` y `take: 1`, sin `id` y sin decir dónde van los `daySequence` nulos; la comparación en memoria `byMostRecent` de `movements.service.ts` tiene el mismo hueco. El esquema no impide que dos movimientos de una cuenta compartan fecha y `daySequence` (leído en `prisma/schema.prisma` y en la migración `20260806191700_data_model` el 2026-10-04). **Comprobado el 2026-10-05 con una consulta de solo lectura sobre la base `gastos`: hoy no hay ningún caso.** De 1.607 movimientos, ningún grupo de cuenta, fecha y `daySequence` tiene más de una fila y ninguno tiene `daySequence` nulo. Vale para los datos de ese día, no para los que entren después. Encontrado al arreglar el orden de `GET /api/movements` (`progress/implementations/movements-stable-order.md` §Punto 6)~~ | ✅ **cerrado el 2026-10-16**, sin feature: la consulta de `listAccounts` y `getAccountById` ordena por `bookingDate desc, daySequence desc` (los nulos al final) **e `id desc`**, y `isAfter` —la única comparación de recencia del módulo de movimientos, con la que `byMostRecent` ordena en memoria— desempata por `id` cuando los dos puntos lo traen (el ancla guardada en la cuenta no tiene id y sigue empatando). Con empate completo, da el saldo la fila de id más alto y las otras dos de ese día no se suman encima. Tests de empate en `accounts.test.ts` y `movements.test.ts` |
 
 > **Sobre el 6:** volver a parsear desde Drive te reconstruye lo importado, pero
@@ -428,6 +429,12 @@ tiene etapa, es que se va a perder.
   última foto; que un depósito vivo da una ganancia razonable para los días que
   lleva abierto; que no sale ninguna cuenta; y que los cerrados, si tienes alguno,
   salen aparte y fuera del total.
+  **2026-11-06:** la llamada ya se hizo contra tu base y las cuentas internas cuadran
+  (reparto por días del depósito, suma y % del total; ninguna cuenta sale). Falta
+  solo tu comparación con la web de MyInvestor: las carteras y el fondo en la fecha de
+  su última foto, y el cobro del depósito de agosto (sale menos que la ganancia
+  esperada). El depósito a 3 meses vencido el 2026-11-03 sale sin cifra hasta que
+  importes el extracto de MyInvestor de ese día.
 
 - **La prueba real de la F66 `import-statement-all-or-nothing`** (2026-11-02). Solo
   está probada con archivos inventados. ⚠️ Escribe en tu base real: saca antes la
@@ -461,6 +468,9 @@ tiene etapa, es que se va a perder.
   desde `progress/current.md` el 2026-09-30). Ya está commiteada en `00c6790` y
   no bloquea nada. ⚠️ Los pasos 3 y 4 **escriben en tu base de datos real**:
   hazlos con tres o cuatro movimientos que elijas tú. Con `pnpm run dev`:
+  **Los pasos 1 y 2 hechos el 2026-11-06** contra tu base, en verde (el de que no
+  arrastra subcategorías no se pudo ver: no tienes ninguna categoría con hijas). Quedan
+  los pasos 3 y 4, que haces tú cuando importes.
   1. `GET /api/movements?categoryId=<id>&pageSize=5`: todos los que salen son de
      esa categoría, los `totals` son solo los de esa categoría y **no** arrastra
      los de sus subcategorías (a propósito).
@@ -524,7 +534,7 @@ tiene etapa, es que se va a perder.
 - ~~**La plantilla mensual, en una carpeta HERMANA de `notas-banco/`**~~ ✅ **hecho**
   (2026-08-13): la carpeta ya está creada en Drive, fuera de `notas-banco/`. De
   [`specs/13-myinvestor-products/decisions.md`](../specs/13-myinvestor-products/decisions.md).
-- 🔴 **Actualizar esa plantilla con `openedAt`** (F15, 2026-08-13). Nadie comprueba
+- ~~🔴 **Actualizar esa plantilla con `openedAt`** (F15, 2026-08-13).~~ ✅ **hecho** (confirmado por el humano el 2026-11-06). Nadie comprueba
   que la plantilla de Drive coincida con la documentación, así que **todo archivo
   escrito con la plantilla vieja fallará** por falta de la fecha de apertura. Es una
   línea; cópiala de

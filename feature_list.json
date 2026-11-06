@@ -3361,6 +3361,75 @@
         }
       ],
       "status": "done"
+    },
+    {
+      "id": 68,
+      "name": "movements-hide-not-counted",
+      "title": "Esconder lo que no cuenta sin esconder los vencimientos de depósito que suman",
+      "sdd": true,
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-11-06) a partir del encargo del leader del frontend (gastos-frontend/progress/backend-hide-not-counted.md, cabo 37 b de su roadmap). Aprobado por el humano el 2026-11-06 («me parece bien»). Procedencia de cada frase, tal como se le enseñó: [encargo] = lo escribió el leader del frontend; [frontend, a confirmar] = propuesta del frontend que el humano confirma en la puerta del spec; [leader] = propuesta del leader del backend.",
+        "que_quiero": "La consulta de movimientos tiene una forma de pedir el mes escondiendo lo marcado como que no cuenta y lo emparejado como traspaso, salvo los movimientos de depósito que suman algo (un vencimiento con su interés), que siguen en la lista y en los totales del mes [encargo]. Con eso la casilla Hide what does not count del frontend deja de esconderlos [encargo].",
+        "por_que": "Hoy esa casilla esconde un vencimiento marcado o emparejado aunque su interés sí suma, y ese interés falta en los totales del mes. Todavía no ha pasado con mis datos, pero puede pasar [encargo].",
+        "como_se_que_esta_bien": [
+          "Un vencimiento de depósito con capital, marcado como que no cuenta, sale con el filtro y su interés está en los totales [encargo].",
+          "Lo mismo si está emparejado como traspaso [encargo].",
+          "Un movimiento normal marcado o emparejado no sale [encargo].",
+          "Un vencimiento dudoso (suma 0) marcado o emparejado no sale [frontend, a confirmar].",
+          "Una apertura o cancelación de depósito (suman 0) marcada o emparejada no sale [frontend, a confirmar].",
+          "Los totales del mes con el filtro son exactamente los mismos que sin él, porque lo que se esconde ya no sumaba [leader].",
+          "Lo que se ve con el filtro más lo que esconde son todos los movimientos del mes, así sigue cuadrando el contador Hiding N movements del frontend [encargo]."
+        ],
+        "que_no_quiero": [
+          "Que cambie lo que suma cada movimiento ni los totales sin el filtro [encargo].",
+          "Que cambien excluded=only/none y transfer=only/none tal como funcionan hoy [encargo].",
+          "Tocar el frontend: cambia la casilla en su propia sesión cuando esté publicado el contrato [encargo]."
+        ],
+        "delego_en_agente": [
+          "El nombre y la forma del parámetro nuevo.",
+          "Cómo pide el frontend el número de escondidos con el filtro nuevo."
+        ]
+      },
+      "acceptance": [],
+      "checks": [
+        {
+          "descripcion": "Un vencimiento de depósito con capital, marcado como que no cuenta, sale con el filtro y su interés está en los totales.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.hide-not-counted.test.ts -t \"keeps a marked maturity with interest and counts its interest\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lo mismo si está emparejado como traspaso.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.hide-not-counted.test.ts -t \"keeps a paired maturity with interest and counts its interest\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un movimiento normal marcado o emparejado no sale.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.hide-not-counted.test.ts -t \"hides a normal movement that is marked or paired\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un vencimiento dudoso (suma 0) marcado o emparejado no sale.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.hide-not-counted.test.ts -t \"hides a doubtful maturity that is marked or paired\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una apertura o cancelación de depósito (suman 0) marcada o emparejada no sale.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.hide-not-counted.test.ts -t \"hides a deposit opening or cancellation that is marked or paired\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los totales del mes con el filtro son exactamente los mismos que sin él, porque lo que se esconde ya no sumaba.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.hide-not-counted.test.ts -t \"gives the same totals with and without hideNotCounted\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lo que se ve con el filtro más lo que esconde son todos los movimientos del mes, así sigue cuadrando el contador Hiding N movements del frontend.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.hide-not-counted.test.ts -t \"what it shows plus what it hides is every movement of the month\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) El contrato publica el parámetro nuevo y cómo contar lo que esconde.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.hide-not-counted.docs.test.ts -t \"the contract describes hideNotCounted and how to count what it hides\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Lo que ya funciona sigue igual: lo que suma cada movimiento, los totales sin el filtro y excluded/transfer/ownership.",
+          "comando": "pnpm test"
+        }
+      ],
+      "status": "done"
     }
   ]
 }

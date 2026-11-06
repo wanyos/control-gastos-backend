@@ -35,6 +35,9 @@ export const listMovementsSchema = {
       // Feature 62 (R12): only the movements that are doubtful right now. One
       // value; anything else is a 400.
       ownership: { type: 'string', enum: ['doubtful'] },
+      // Feature 68: hides marked and paired movements, except the deposit ones
+      // that add something to the totals. Same coercion as `uncategorized`.
+      hideNotCounted: { type: 'boolean' },
       page: { type: 'integer', minimum: 1, default: 1 },
       pageSize: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
     },

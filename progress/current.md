@@ -28,9 +28,13 @@
 
 **Ninguna feature en curso.**
 
-## Mantenimiento 2026-11-04 / 06 — CERRADO, sin commit todavía
+## F68 `movements-hide-not-counted` — CERRADA (2026-11-06, sin commit todavía)
 
-Todo aprobado por el reviewer; pendiente de commit cuando lo pida el humano.
+**Qué se hizo:** encargo del frontend (su cabo 37 b). `GET /api/movements` acepta `hideNotCounted=true`: esconde lo marcado y lo emparejado salvo los movimientos de depósito que suman algo. Spec aprobado sin cambios; lote A; review 1 CHANGES_REQUESTED (fila del README y esta línea), review 2 `APPROVED` sin hallazgos → [resumen](summaries/movements-hide-not-counted.md), [implementación](implementations/movements-hide-not-counted.md), [revisión](reviews/movements-hide-not-counted.md). Pendiente: que la sesión del frontend cambie su casilla al parámetro nuevo.
+
+## Mantenimiento 2026-11-04 / 06 — CERRADO (commit `60495c2`)
+
+Todo aprobado por el reviewer y commiteado.
 
 - Avisos de `pnpm audit` (cabo 27, cerrado): `brace-expansion`, `fast-uri` y `qs` subidos dentro de rango; `uuid` aceptado. Informe `implementations/audit-2026-11-04.md`, revisión `reviews/audit-2026-11-04.md`.
 - Rojos intermitentes de `./init.sh`: `no-real-data.test.ts` más rápido, bloqueo contra dos ejecuciones de vitest a la vez, `afterAll` de backup a 60 s, `architecture.test.ts` lee `src/` una vez. `implementations/` y `reviews/` `init-intermitente.md` y `no-real-data-timeout.md`; diagnóstico en `explorations/init-intermitente-2026-11-04.md`.

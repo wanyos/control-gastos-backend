@@ -181,6 +181,7 @@ function dateOnlyToDate(value: string): Date {
 function movementListWhere(
   query: MovementListQuery,
   ownership: Map<number, OwnershipReading>,
+  deposits: Map<number, DepositMovementReading>,
 ): Prisma.MovementWhereInput {
   const where: Prisma.MovementWhereInput = {}
   if (query.accountId !== undefined) where.accountId = query.accountId
@@ -208,6 +209,20 @@ function movementListWhere(
       ...(query.from === undefined ? {} : { gte: dateOnlyToDate(query.from) }),
       ...(query.to === undefined ? {} : { lte: dateOnlyToDate(query.to) }),
     }
+  }
+  // Feature 68 (R1–R4): in `AND` so it never overwrites `id`, `transferId` or
+  // `excludedFromTotals` set above (R11). Whether a deposit movement adds
+  // something comes from the whole history of its account, not the filter (R5).
+  if (query.hideNotCounted === true) {
+    const depositsThatCount = [...deposits]
+      .filter(([, reading]) => !reading.counted.isZero())
+      .map(([id]) => id)
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : []),
+      {
+        OR: [{ excludedFromTotals: false, transferId: null }, { id: { in: depositsThatCount } }],
+      },
+    ]
   }
   return where
 }
@@ -277,6 +292,9 @@ const movementListOrder: Prisma.MovementOrderByWithRelationInput[] = [
  * leave out what `readOwnership` recognizes as the human's own money moving.
  * That map is also read over the whole table, before the count, so that the
  * `ownership=doubtful` filter can enter the shared `where` (R12).
+ *
+ * Since feature 68 the deposit map is read before the count as well, so that
+ * `hideNotCounted` can enter the shared `where`.
  */
 export async function listMovements(
   prisma: AppPrismaClient,
@@ -315,8 +333,10 @@ export async function listMovements(
 
   // Feature 62: read before the count, so the `ownership` filter goes into the
   // shared `where` and the page, `total` and `totals` see the same set (R12).
+  // Feature 68: the deposit readings too, for `hideNotCounted` (R6).
   const ownership = await readOwnership(prisma)
-  const where = movementListWhere(query, ownership)
+  const deposits = await readDepositMovements(prisma, matchers)
+  const where = movementListWhere(query, ownership, deposits)
   const total = await prisma.movement.count({ where })
   const totalPages = Math.ceil(total / query.pageSize)
 
@@ -326,7 +346,7 @@ export async function listMovements(
     )
   }
 
-  const [pageRows, totalsRows, deposits] = await Promise.all([
+  const [pageRows, totalsRows] = await Promise.all([
     prisma.movement.findMany({
       where,
       orderBy: movementListOrder,
@@ -347,7 +367,6 @@ export async function listMovements(
         excludedFromTotals: true,
       },
     }),
-    readDepositMovements(prisma, matchers),
   ])
 
   return {

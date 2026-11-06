@@ -107,6 +107,11 @@ export interface MovementListQuery {
    * now (R12). One value for now; the schema enum can grow.
    */
   ownership?: 'doubtful'
+  /**
+   * Feature 68: leave out marked and paired movements, except the deposit
+   * movements whose counted amount is not zero (R1–R4).
+   */
+  hideNotCounted?: boolean
   page: number
   pageSize: number
 }

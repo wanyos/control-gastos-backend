@@ -1148,6 +1148,17 @@ reconoce como dinero que se mueve entre tus cuentas, y el parámetro nuevo
 `ownership=doubtful` deja solo los dudosos: ver
 [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas).
 
+Desde la feature 68 `movements-hide-not-counted` (2026-11-06) hay un parámetro
+nuevo, `hideNotCounted=true`, que **esconde lo marcado como que no cuenta**
+(`excludedFromTotals: true`) **y lo emparejado como traspaso** (`transferId` no
+nulo), **salvo los movimientos de depósito que suman algo** (`deposit` no nulo
+con `deposit.countedAmount` distinto de `"0.00"`; hoy, solo un vencimiento con
+capital cierto e interés mayor que 0), que siguen en la lista y en los `totals`.
+Lo que no está marcado ni emparejado sale siempre, aunque no sume. Los `totals`
+**son los mismos que sin el parámetro**: todo lo que esconde suma `0`. La
+respuesta no cambia de forma: ver
+[Esconder lo que no cuenta](#esconder-lo-que-no-cuenta).
+
 **Parámetros de querystring** (todos opcionales, combinables entre sí):
 
 | Parámetro   | Tipo                                     | Qué filtra                                                       |
@@ -1163,6 +1174,7 @@ reconoce como dinero que se mueve entre tus cuentas, y el parámetro nuevo
 | `transfer`  | `"only"` \| `"none"`                     | **Desde la feature 49.** `transfer=only` deja solo los movimientos **enlazados como pierna de un traspaso** (`transferId` no nulo); `transfer=none`, solo los **no enlazados** (`transferId: null`). Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. |
 | `excluded`  | `"only"` \| `"none"`                     | **Desde la feature 49.** `excluded=only` deja solo los movimientos **marcados como que no cuentan en las sumas** (`excludedFromTotals: true`); `excluded=none`, solo los **no marcados** (`excludedFromTotals: false`). Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. Se combina con `transfer` y con todos los demás. **Desde la feature 57**, filtra por la marca también en los movimientos de depósito, aunque en ellos la marca no cambie lo que suman. |
 | `ownership` | `"doubtful"`                             | **Desde la feature 62.** `ownership=doubtful` deja solo los movimientos **dudosos** (`ownership.status: "doubtful"`) en este momento. Sin el parámetro no filtra. Cualquier otro valor → **400 `VALIDATION_ERROR`**. Se combina con todos los demás, y `pagination` y `totals` son los de ese filtro. |
+| `hideNotCounted` | boolean (`true` / `false`)          | **Desde la feature 68.** `hideNotCounted=true` deja fuera los movimientos **marcados** (`excludedFromTotals: true`) o **emparejados** (`transferId` no nulo), **salvo los movimientos de depósito que suman algo** (`deposit.countedAmount` distinto de `"0.00"`), que salen estén marcados, emparejados o las dos cosas. Un vencimiento dudoso, una apertura, una cancelación y un vencimiento con interés exactamente `0`, marcados o emparejados, se esconden. `hideNotCounted=false` **no filtra nada**, es igual que no mandarlo. Se combina con todos los demás, también con `excluded`, `transfer` y `ownership`: se cumplen los dos a la vez. Cualquier otro valor → **400 `VALIDATION_ERROR`**. Los `totals` son los mismos que sin él. |
 | `page`      | number (entero ≥ 1)                      | Página pedida. Def. `1`.                                         |
 | `pageSize`  | number (entero 1–200)                    | Movimientos por página. Def. `50`, máximo `200`.                 |
 
@@ -1323,6 +1335,44 @@ reconoce como dinero que se mueve entre tus cuentas, y el parámetro nuevo
   las sumas. **Desde la feature 57**, un vencimiento de depósito marcado (o con
   `transferId`) sí suma su interés también ahí. No es un error;
   `pagination.total` sí cuenta cuántos hay.
+- **Desde la feature 68**, con `hideNotCounted=true` los `totals` son los mismos
+  que sin él (ver [Esconder lo que no cuenta](#esconder-lo-que-no-cuenta)).
+
+#### Esconder lo que no cuenta
+
+Desde la feature 68 `movements-hide-not-counted` (2026-11-06). Con
+`hideNotCounted=true`:
+
+- **Sale** todo movimiento que no esté marcado (`excludedFromTotals: false`) ni
+  emparejado (`transferId: null`), sea o no de depósito y sea cual sea su
+  `ownership`, su `productId` o su `type`, aunque no sume (dinero entre tus
+  cuentas, un `neutral`, una aportación a un producto, una apertura sin marcar).
+- **Sale** todo movimiento de depósito que suma algo
+  (`deposit.countedAmount` distinto de `"0.00"`), esté marcado, emparejado, las dos
+  cosas o ninguna. Si suma algo se decide con toda la historia de su cuenta, no con
+  el filtro (igual que en
+  [Movimientos de depósito en las sumas](#movimientos-de-depósito-en-las-sumas)):
+  un vencimiento de octubre cuya apertura es de septiembre sale aunque se pida solo
+  octubre.
+- **No sale** el resto: un movimiento marcado o emparejado que no es de depósito,
+  y uno de depósito marcado o emparejado que suma `0` (vencimiento dudoso,
+  apertura, cancelación, o vencimiento con interés exactamente `0`).
+
+**Los `totals` son los mismos que sin el parámetro**, porque todo lo que esconde
+ya sumaba `0`. `pagination` se calcula sobre lo que deja el filtro, como con
+cualquier otro parámetro.
+
+**Se combina con todos los demás parámetros**, también con `excluded`, `transfer`
+y `ownership`, sin error: salen los movimientos que cumplen los dos a la vez. Por
+ejemplo, `excluded=only&hideNotCounted=true` deja solo los marcados que son
+movimientos de depósito que suman algo; `ownership=doubtful&hideNotCounted=true`
+deja los dudosos (un dudoso nunca está marcado ni emparejado).
+
+**Cuántos esconde.** La respuesta no lo trae: se pide **la misma petición sin
+`hideNotCounted`** (basta con `pageSize=1`) y se **restan los dos
+`pagination.total`**: el de sin el parámetro menos el de con él. Como el parámetro
+solo quita movimientos, nunca añade, lo que se ve más lo escondido son todos los
+movimientos de la petición sin el parámetro.
 
 #### Movimientos de depósito en las sumas
 
@@ -1490,7 +1540,7 @@ guarda en un movimiento es tu decisión (`ownershipDecision`).
 
 | Código HTTP | `code`             | Cuándo                                                             |
 | ----------- | ------------------ | ------------------------------------------------------------------ |
-| 400         | `VALIDATION_ERROR` | Un parámetro no cumple el esquema (fecha que no es `YYYY-MM-DD`, `type`/`status` fuera de su enumeración, **desde la feature 49** `transfer`/`excluded` con un valor que no es `only` ni `none`, **desde la feature 62** `ownership` con un valor que no es `doubtful`, `page` < 1, `pageSize` fuera de 1–200, `accountId` o `categoryId` no entero, `q` fuera de 2–100 caracteres); `from` posterior a `to`; o `page` más allá de la última página con coincidencias. **Desde la feature 47:** `categoryId` y `uncategorized=true` en la misma petición (se piden dos cosas incompatibles: los de una categoría **y** los que no tienen ninguna). |
+| 400         | `VALIDATION_ERROR` | Un parámetro no cumple el esquema (fecha que no es `YYYY-MM-DD`, `type`/`status` fuera de su enumeración, **desde la feature 49** `transfer`/`excluded` con un valor que no es `only` ni `none`, **desde la feature 62** `ownership` con un valor que no es `doubtful`, **desde la feature 68** `hideNotCounted` con un valor que no es `true` ni `false`, `page` < 1, `pageSize` fuera de 1–200, `accountId` o `categoryId` no entero, `q` fuera de 2–100 caracteres); `from` posterior a `to`; o `page` más allá de la última página con coincidencias. **Desde la feature 47:** `categoryId` y `uncategorized=true` en la misma petición (se piden dos cosas incompatibles: los de una categoría **y** los que no tienen ninguna). |
 | 404         | `NOT_FOUND`        | El `accountId` pedido no existe. **Desde la feature 47:** o el `categoryId` pedido no existe. |
 
 Un filtro **válido sin coincidencias** (una cuenta que existe pero sin
