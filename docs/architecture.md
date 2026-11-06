@@ -2292,6 +2292,28 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 > (`withReadOnlyClient` en `src/lib/test-real-data.ts`). Sigue siendo el único archivo de
 > la suite que abre esa base: ningún test la abre. Por qué: la comparación del ADR-017
 > necesita esos valores, y que el test abriera él la base rompía esta decisión.
+>
+> **Revisado el 2026-11-04 (mantenimiento, sin feature): una sola ejecución de la suite
+> a la vez contra el mismo PostgreSQL.** El nombre de cada base de worker sale solo de
+> `VITEST_POOL_ID`, que empieza en 1 en cada proceso vitest, así que dos procesos
+> lanzados a la vez usaban las mismas `gastos_test_1..8`: el `globalSetup` de uno
+> reclonaba la base del otro y cada uno veía filas que no había creado (reproducido en
+> `progress/explorations/init-intermitente-2026-11-04.md`). Desde hoy
+> `vitest.global-setup.ts`, **antes de tocar ninguna base**, toma un bloqueo consultivo
+> de PostgreSQL con `pg_try_advisory_lock` (`lockTestSuite` en `src/lib/test-db.ts`) por
+> una conexión a la base de mantenimiento `postgres` que queda abierta hasta el
+> teardown, que suelta el bloqueo y la cierra. Si otro proceso ya lo tiene, la ejecución
+> falla en el acto con «Ya hay otra ejecución de la suite de tests en marcha contra ese
+> PostgreSQL (…). Hay que esperar a que acabe…». Por qué en `postgres`: un bloqueo
+> consultivo solo choca con la misma clave tomada **en la misma base**, así que todas las
+> ejecuciones tienen que usar una que exista siempre, que la suite no borre nunca (las
+> de worker se borran y reclonan, y eso cortaría la conexión) y que no sea la del humano.
+> Si un proceso muere a mitad, PostgreSQL suelta el bloqueo al cerrarse su conexión.
+> *Alternativa descartada:* nombrar las bases con algo propio de cada proceso; serían 8
+> `DROP DATABASE` más por pasada (cada uno fuerza un checkpoint) y quedarían bases
+> sueltas si una pasada se mata a mitad. Ejecutar la suite varias veces **seguidas**
+> (como hace `./init.sh --checks`) sigue funcionando: cada una suelta el bloqueo al
+> acabar.
 
 - **Fecha:** 2026-08-20
 - **Estado:** aceptada (implementada en la feature #27)

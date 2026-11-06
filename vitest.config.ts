@@ -1,12 +1,17 @@
 import { availableParallelism } from 'node:os'
 
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 import { testWorkerCount } from './src/lib/test-db.js'
 
 export default defineConfig({
   test: {
     environment: 'node',
+    // `dist/` is the compiled output of `pnpm run build` (tsconfig.build.json
+    // keeps tests out of it). If an older build ever left compiled tests there,
+    // vitest must not pick them up: they would run a second time, from the
+    // wrong place. The defaults (node_modules, .git) are kept.
+    exclude: [...configDefaults.exclude, 'dist/**'],
     // Prisma 7 does not autoload .env; tests need DATABASE_URL just like
     // src/server.ts does (its first import is src/lib/load-env-file.ts, which
     // calls Node's process.loadEnvFile() before the app is built).

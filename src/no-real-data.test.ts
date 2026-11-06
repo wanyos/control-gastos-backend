@@ -401,13 +401,13 @@ const stopWords = new Set([
 ])
 
 /** Words only: digits are the amount layer's business, and mixing them in here
- * turns `intereses brutos 25` into a false positive. */
+ * turns `intereses brutos 25` into a false positive.
+ *
+ * The runs of letters, taken with ONE `match`. It used to replace every non-letter
+ * with a space, split and drop the empties: the same words, measured equal on the
+ * 154 175 lines of the repository (2026-11-04), at half the cost. */
 function words(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^\p{L}]+/gu, ' ')
-    .split(' ')
-    .filter(Boolean)
+  return text.toLowerCase().match(/\p{L}+/gu) ?? []
 }
 
 /**
@@ -462,7 +462,20 @@ interface SourceFile {
   text: string
 }
 
+let repositorySources: SourceFile[] | null = null
+
+/**
+ * The versioned files, read ONCE per run of this file and shared by every scan below.
+ * Each of the four scans of the repository and the vocabulary of our own source used to
+ * list and read the ~660 files again by itself (about 100 ms each time, 2026-11-04). The
+ * run looks at one state of the working tree either way.
+ */
 function versionedSources(): SourceFile[] {
+  repositorySources ??= readVersionedSources()
+  return repositorySources
+}
+
+function readVersionedSources(): SourceFile[] {
   return versionedFiles().flatMap((file) => {
     try {
       return [{ file, text: readFileSync(join(repoRoot, file), 'utf8') }]
@@ -475,6 +488,13 @@ function versionedSources(): SourceFile[] {
 }
 
 /**
+ * What a leak check is given: the chunk joined with spaces, and the same chunk as its
+ * separate lines, for a check that can reuse what it already worked out about a line
+ * (`phraseLeak`). Both carry exactly the same text.
+ */
+type LineCheck = (text: string, lines: readonly string[]) => string | null
+
+/**
  * Runs `check` over every line of every given file. With `window = 2` it runs it over
  * each line JOINED WITH THE NEXT ONE: prose wraps, and a concept split in two lines got
  * past the first sweep of feature 14.
@@ -485,7 +505,7 @@ function versionedSources(): SourceFile[] {
  */
 function scanSources(
   sources: SourceFile[],
-  check: (text: string) => string | null,
+  check: LineCheck,
   skipAllowedPaths: boolean,
   window = 1,
 ): Finding[] {
@@ -496,18 +516,14 @@ function scanSources(
     lines.forEach((_line, index) => {
       const chunk = lines.slice(index, index + window)
       if (skipAllowedPaths && chunk.some((text) => text.includes(skipMarker))) return
-      const reason = check(chunk.join(' '))
+      const reason = check(chunk.join(' '), chunk)
       if (reason) findings.push({ file: source.file, line: index + 1, reason })
     })
   }
   return findings
 }
 
-function scan(
-  check: (text: string) => string | null,
-  skipAllowedPaths: boolean,
-  window = 1,
-): Finding[] {
+function scan(check: LineCheck, skipAllowedPaths: boolean, window = 1): Finding[] {
   return scanSources(versionedSources(), check, skipAllowedPaths, window)
 }
 
@@ -535,14 +551,44 @@ function amountLeak(secrets: Set<number>): (text: string) => string | null {
   }
 }
 
-function phraseLeak(phrases: string[]): (text: string) => string | null {
+function phraseLeak(phrases: string[]): LineCheck {
   // The chunk's own trigrams are looked UP in a set, instead of trying every phrase of
   // the reference on every line. Same verdict for a real copy —a phrase is three
   // consecutive words either way— and the cost stops depending on how much there is to
   // compare against. It is also STRICTER: `includes` matched a phrase glued to the tail
   // of a longer word.
+  //
+  // WHAT IT COSTS, measured on 2026-11-04 over the 154 175 lines of the repository: it
+  // was the slowest test of this file (about 1.3 s alone, over 5 s with the whole suite
+  // running beside it, so it failed by timeout). Three things make it cheaper and none
+  // changes the verdict:
+  //  - each LINE is split into words once, and the chunk's words are its lines' words one
+  //    after the other. The space that joins two lines is not a letter, so those are
+  //    exactly the words of the joined chunk;
+  //  - a trigram is only built when its FIRST word starts some phrase of the reference:
+  //    a trigram whose first word starts none can never be in `wanted`;
+  //  - `words()` reads the runs of letters with one `match`.
   const wanted = new Set(phrases)
-  return (text) => (trigramsOf(text).some((trigram) => wanted.has(trigram)) ? phraseReason : null)
+  const firstWords = new Set(phrases.map((phrase) => phrase.split(' ')[0] ?? ''))
+  const wordsOfLine = new Map<string, string[]>()
+  const lineWords = (line: string): string[] => {
+    let found = wordsOfLine.get(line)
+    if (!found) {
+      found = words(line)
+      wordsOfLine.set(line, found)
+    }
+    return found
+  }
+  return (text, lines = [text]) => {
+    const tokens = lines.flatMap(lineWords)
+    for (let index = 0; index + 2 < tokens.length; index += 1) {
+      if (!firstWords.has(tokens[index] ?? '')) continue
+      if (wanted.has(`${tokens[index]} ${tokens[index + 1]} ${tokens[index + 2]}`)) {
+        return phraseReason
+      }
+    }
+    return null
+  }
 }
 
 /** An IBAN as it is compared: no spaces, no hyphens, upper case. */
@@ -867,6 +913,26 @@ describe('the comparison against the database (feature 51)', () => {
       expect(finding.reason).not.toContain('TRAMONTANA')
       expect(finding.reason.toLowerCase()).not.toContain('tramontana')
     }
+  })
+
+  it('catches a concept of the database split across two lines, however it is punctuated', () => {
+    // `phraseLeak` reads the words of each line apart and puts them one after the other:
+    // this is the case that proves it still sees a phrase that straddles the line break.
+    const { phrases } = comparisonOf(inventedReference, emptyVocabulary)
+
+    const document: SourceFile = {
+      file: 'docs/example.md',
+      text: ['Primera línea.', 'El cargo «Compra mensual', '— tramontana» del extracto.'].join(
+        '\n',
+      ),
+    }
+
+    expect(report(scanSources([document], phraseLeak(phrases), true, 2))).toEqual([
+      'docs/example.md:2 — ' +
+        'a three-word sequence copied from the database (a concept of his movements?)',
+    ])
+    // Read line by line, neither line alone carries the three words.
+    expect(report(scanSources([document], phraseLeak(phrases), true, 1))).toEqual([])
   })
 
   it('catches an IBAN of the database copied into a versioned file', () => {

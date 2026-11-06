@@ -4,7 +4,7 @@
 > **qué viene después** y **por qué en ese orden**. Es el mapa del recorrido
 > completo, no el detalle de ninguna parada.
 >
-> **Última revisión:** 2026-10-22.
+> **Última revisión:** 2026-11-04.
 
 ## Este documento frente a los otros cuatro
 
@@ -27,74 +27,15 @@ es el `intent` de una feature.
 
 ## Dónde estás ahora mismo 📍
 
-**Ya sabes traer ficheros del banco, entenderlos y guardarlos.** Desde la F12
-(2026-08-12) `POST /api/import` cierra el camino entero: Drive → parser → base de
-datos → `procesados/`. Es la primera vez que la app **guarda datos de verdad**.
+**Revisado el 2026-11-04, con la F67 cerrada.** Las 67 features de `feature_list.json` están `done` y no hay ninguna `pending`.
 
-**Ya tienes el sitio donde guardarlo todo (E3 ✅, F9) y la forma común en que los
-parsers hablan (F11 ✅).** Ambas cerradas el 2026-08-11.
+- **Traer, entender y guardar (E0–E5) ✅.** Los seis bancos se leen y se importan desde Drive; un extracto que falla no deja nada guardado (F66).
+- **Enriquecer (E6) 🟡.** Categorías (a mano, por reglas y sugeridas), traspasos y revisión están hechos. Falta enlazar una aportación con su producto (`Movement.productId`); la forma de pago y las notas están sin decidir.
+- **Consultar (E7) ✅.** Movimientos con filtros y totales, resumen del mes, inversiones del mes, patrimonio de hoy, gasto por categoría y, desde la F67, lo que gana o pierde cada inversión (`GET /api/investments/gains`). Sigue abierto el cabo 20: el patrimonio a una fecha pasada o como serie.
+- **El frontend (E8)** avanza en su propio proyecto con 40 features `done` (contado el 2026-11-04).
+- **Despliegue (E9) ⬜.** La API sigue sin autenticación y solo corre en tu máquina.
 
-Y **ya hay dos bancos que sabes leer**, con las dos entradas de MyInvestor
-cerradas: el extracto (F10) y los JSON de producto (F13, 2026-08-12). La antigua
-F10 se **partió en dos** porque 70 requirements escondían dos features.
-
-**El repositorio ya no guarda datos tuyos** y no depende de que nadie se acuerde:
-la F14 dejó un guardián en la suite que falla señalando archivo y línea si
-reaparece uno.
-
-**Y desde el 2026-08-26, cada cuenta corriente sabe cuánto dinero tiene dentro**,
-no solo cuánto ha variado (F31): se ancla con el saldo que trae el extracto una
-sola vez y a partir de ahí se mantiene con los movimientos. Donde el archivo trae
-saldo, sigue mandando el archivo. Y desde el **2026-08-30**, al importar un
-archivo la app **compara sus propias sumas contra lo que dice el archivo** y
-escribe los descuadres en el informe de esa importación, con la cuenta, la fecha,
-los dos números y la diferencia (F32). Tolerancia cero, y un descuadre no tumba
-la importación ni cambia ningún saldo. Y desde el **2026-09-18**, eso ya no se
-queda en el informe: los descuadres y las filas que el parser no pudo leer
-**quedan guardados** con el archivo del que salieron, se consultan cuando quieras
-y un descuadre se puede dar por revisado con una nota (F48).
-
-✅ **El siguiente paso ya está elegido (2026-09-01).** Las 35 primeras features
-están `done` y hay **cinco nuevas escritas y `pending`**, dictadas por el humano
-en esa sesión y en este orden:
-
-| # | Feature | Qué trae | Spec |
-|---|---|---|---|
-| **36** | `movements-filters-and-totals` | Filtrar por cuenta, fechas, tipo y estado; paginar; y los totales del filtro pedido | no |
-| **37** | `categories-and-tagging` ✅ (2026-09-02) | Crear categorías y ponérselas a un movimiento, con una lista genérica de arranque, y dar un movimiento por revisado | **sí** |
-| **40** | `transfer-detection` ✅ (2026-09-03) | Reconocer los traspasos entre cuentas propias (el escritor de `transferId` que el modelo dejó previsto) para que no cuenten ni como gasto ni como ingreso | **sí** |
-| **38** | `money-overview` ✅ (2026-09-05) | Cuánto dinero hay en total, cómo está repartido y qué se ahorró en el mes (`GET /api/overview`) | no |
-| **39** | `investments-overview` ✅ (2026-09-05) | Qué valen los productos, si suben o bajan y cuánto se ganó en el mes (`GET /api/investments/overview`) | **sí** |
-
-**Por qué en ese orden.** La 36 va primera porque hoy `GET /api/movements`
-devuelve los 1520 movimientos de golpe y sin filtros (medido el 2026-09-01), así
-que no hay forma de encontrar nada: sin eso, categorizar a mano es impracticable.
-La **40 va antes que la 38** por decisión del humano del 2026-09-02: sin ella, el
-resumen contaría como entradas y salidas los traspasos entre sus propias cuentas
-(36 parejas moviendo 44.550 € medidas ese día), y la 38 se apoya además en los
-totales de la 36 para no escribir dos sumas distintas del mismo dinero. La 39 no
-depende de ninguna y puede adelantarse si apetece.
-
-**Lo que cierran de esta tabla:** la 36 el cabo 8, la 37 el cabo 3 ✅, la 39 el
-cabo 12, y la 40 ✅ le puso por fin escritor a `Movement.transferId` (reservado
-desde la F8): desde el 2026-09-03 cada importación cruza los movimientos sin
-marcar y enlaza las parejas inequívocas.
-
-✅ **La tanda entera (36–41) quedó cerrada, probada en real y commiteada el
-2026-09-05.** Ese mismo día el humano pidió «dejar arreglado lo que falta» y hay
-**tres features nuevas escritas y `pending`, esperando su aprobación del intent**
-(los redactó el leader a partir de decisiones previas del humano; ninguna
-arranca sin su visto bueno):
-
-| # | Feature | Qué traería | Spec |
-|---|---|---|---|
-| **42** | `net-worth` ✅ (2026-09-06) | El patrimonio total: cuentas + inversiones en una consulta, con desglose (`GET /api/net-worth`) | sí |
-| **43** | `auto-categorization` ✅ (2026-09-06) | Categorías automáticas por reglas sobre el concepto (`/api/category-rules` + pasada tras cada importación y bajo demanda; borrador de 61 reglas sembrable) | sí |
-| **44** | `manual-transfer-marking` ✅ (2026-09-06) | Enlazar y desenlazar a mano un traspaso que la detección no puede resolver (`POST/DELETE /api/transfers`, con la memoria de «estos dos no» que anticipó la decisión 4 de la F41; primera migración desde la F9: `Movement.undoneTransferId`) | sí |
-
-~~**La E4 sigue con Revolut pendiente**, aparcado por decisión del humano hasta que
-ese banco tenga movimientos.~~ ✅ **Cerrado por la F46 `revolut-statement`**
-(2026-09-15): la E4 tiene los 6 bancos.
+Lo que había antes en esta sección (las tandas 36–44) está en el histórico de git.
 
 ## El recorrido en etapas
 
@@ -109,7 +50,7 @@ Leyenda: ✅ hecho · ⏸ esperándote a ti · ⬜ sin empezar · ⚠️ hecho c
 | E4 | **Entender los ficheros** — un parser por banco, con salida común | ✅ **6 de 6 bancos**, **contrato ✅** · inventario ✅ (2026-08-17); Revolut entró con la **F46** (2026-09-15) (Trade Republic entró por `.json` escrito a mano, sin parser de PDF: provisional) | F6, F7, F11, F10, F13, **F18**, **F19**, **F20**, **F46** |
 | E5 | **La importación** — del fichero parseado a la base de datos | ✅; ampliada después con los totales de la pasada (**F45**, 2026-09-11) y con lo que una importación deja sin resolver, que ya no se pierde (**F48**, 2026-09-18), y con el rechazo del segundo archivo de producto de una misma importación que declara el mismo banco, nombre y fecha que otro (**F53**, 2026-10-02), y con poder dar por revisada, con una nota, una fila que el parser no pudo leer (**F54**, 2026-10-02), y con que un extracto que falla no deje nada guardado (**F66**, 2026-11-02) | **F12**, **F45**, **F48**, **F53**, **F54**, **F66** |
 | E6 | **Enriquecer lo importado** — categoría, traspaso, aportación, confirmación | 🟡 **casi entera**: categorías a mano y confirmación ✅ (**F37**), traspasos ✅ (**F40** + **F41** + marcado manual **F44**), reglas automáticas ✅ (**F43**, 2026-09-06), y confirmar y categorizar **varios movimientos en una sola petición** ✅ (**F47**, 2026-09-18, `PATCH /api/movements`), y aplicar las reglas dice **qué movimientos categorizó** ✅ (**F56**, 2026-10-13, `categorizedMovements`), y crear o cambiar una regla **recoloca lo que quedó en `Otros gastos` / `Otros ingresos`** sin tocar lo puesto a mano ✅ (**F60**, 2026-10-18, `categorySource`), y proponer reglas y decir qué movería una antes de crearla ✅ (**F61**, 2026-10-18, `GET /api/category-rules/suggestions` y `GET /api/category-rules/preview`); queda solo el enlace aportación ↔ producto (`Movement.productId`, sin escritor y sin feature) | **F37**, **F40**, **F41**, **F43**, **F44**, **F47**, **F56**, **F60**, **F61** |
-| E7 | **Consultar** — filtros, saldos, totales, patrimonio | ✅ **entera** (2026-09-11): saldo real ✅ (F31), su comprobación ✅ (F32), filtros y totales ✅ (F36), resumen del dinero ✅ (**F38**, `GET /api/overview`), vista de inversiones ✅ (**F39**, 2026-09-05, `GET /api/investments/overview`); patrimonio neto total ✅ (**F42**, 2026-09-06, `GET /api/net-worth`); y los dos filtros que le faltaban al listado —por **categoría** / «sin categoría» y por **texto del concepto**— ✅ (**F47**, 2026-09-18); y en los totales un depósito solo cuenta por sus intereses ✅ (**F57**, 2026-10-16, commit `f8b2aa0`); y lo que el concepto reconoce como dinero entre cuentas propias del humano no cuenta en las sumas, y lo no claro queda dudoso ✅ (**F62**, 2026-10-20, commit `f905fdb`, tabla `OwnAccount`); y lo gastado por categoría en un mes o un año, fijo y variable, frente al periodo anterior ✅ (**F63**, 2026-10-21, commit `977d01c`, `GET /api/expenses-by-category`), que sustituye a `GET /api/recurring-expenses` (F58, F59), retirada ✅ (**F64**, 2026-10-25, sin commit todavía); y lo que gana o pierde cada inversión desde que se abrió, vivas y cerradas, con el total de las vivas ✅ (**F67**, 2026-11-04, sin commit todavía, `GET /api/investments/gains`). ⚠️ Esta fila siguió diciendo «aún sin feature» cinco días después de cerrarse la F42, hasta el 2026-09-11 | **F31**, **F32**, **F36**, **F38**, **F39**, **F42**, **F47**, **F57**, **F62**, **F63**, **F64**, **F67** |
+| E7 | **Consultar** — filtros, saldos, totales, patrimonio | ✅ **entera** (2026-09-11): saldo real ✅ (F31), su comprobación ✅ (F32), filtros y totales ✅ (F36), resumen del dinero ✅ (**F38**, `GET /api/overview`), vista de inversiones ✅ (**F39**, 2026-09-05, `GET /api/investments/overview`); patrimonio neto total ✅ (**F42**, 2026-09-06, `GET /api/net-worth`); y los dos filtros que le faltaban al listado —por **categoría** / «sin categoría» y por **texto del concepto**— ✅ (**F47**, 2026-09-18); y en los totales un depósito solo cuenta por sus intereses ✅ (**F57**, 2026-10-16, commit `f8b2aa0`); y lo que el concepto reconoce como dinero entre cuentas propias del humano no cuenta en las sumas, y lo no claro queda dudoso ✅ (**F62**, 2026-10-20, commit `f905fdb`, tabla `OwnAccount`); y lo gastado por categoría en un mes o un año, fijo y variable, frente al periodo anterior ✅ (**F63**, 2026-10-21, commit `977d01c`, `GET /api/expenses-by-category`), que sustituye a `GET /api/recurring-expenses` (F58, F59), retirada ✅ (**F64**, 2026-10-25, commit `731414c`); y lo que gana o pierde cada inversión desde que se abrió, vivas y cerradas, con el total de las vivas ✅ (**F67**, 2026-11-04, commit `c17e578`, `GET /api/investments/gains`). ⚠️ Esta fila siguió diciendo «aún sin feature» cinco días después de cerrarse la F42, hasta el 2026-09-11 | **F31**, **F32**, **F36**, **F38**, **F39**, **F42**, **F47**, **F57**, **F62**, **F63**, **F64**, **F67** |
 | E8 | **Ver** — el frontend | ⬜ | otro proyecto |
 | E9 | **Que esto viva en algún sitio** — despliegue y acceso | ⬜ | *sin etapa hasta hoy* |
 
@@ -283,21 +224,21 @@ Decisiones en el **ADR-015** de [`docs/architecture.md`](./architecture.md).
   las que quedan sin revisar. Reimportar el archivo no le quita la marca ni la
   nota. No crea movimientos ni borra la fila. Cierra el cabo 23.
 
-### E6 — Enriquecer lo importado ⬜
+### E6 — Enriquecer lo importado 🟡
 
 El modelo ya tiene los huecos reservados; lo que falta es **quién los llena**.
 Cada línea de esta tabla es, como mínimo, una feature:
 
 | Hueco en el modelo | Quién lo llenará | Feature |
 |---|---|---|
-| `Movement.categoryId` | categorización por reglas sobre `description` | ⬜ |
-| `Movement.transferId` | detección de las dos piernas de un traspaso | ⬜ |
+| `Movement.categoryId` | categorización por reglas sobre `description` | ✅ F37 (a mano), F43 (reglas), F56, F60, F61 |
+| `Movement.transferId` | detección de las dos piernas de un traspaso | ✅ F40, F41, F44 (a mano) |
 | `Movement.productId` | enlace aportación ↔ producto de inversión | ⬜ |
-| `Movement.status` | pantalla de revisar y confirmar lo importado | ⬜ |
+| `Movement.status` | pantalla de revisar y confirmar lo importado | ✅ F37, F47 (en bloque) |
 | `Movement.paymentMethod`, `note` | sin decidir | ⬜ |
 | `Movement.origin = manual` | sin productor a propósito (F8) | — |
 
-### E7 — Consultar 🟡 (casi entera; **revisada el 2026-09-11**)
+### E7 — Consultar ✅ (**revisada el 2026-09-11**; queda abierto el cabo 20)
 
 ~~Hoy existen `GET /api/accounts`, `/api/categories` y `/api/movements`, y son
 **listados planos: sin filtros, sin rango de fechas y sin paginación**.~~
@@ -337,12 +278,9 @@ media línea de filtros y el patrimonio a una fecha. Lo que había y lo que falt
 ### E8 — Ver: el frontend ⬜
 
 Otro proyecto y **otra sesión** (regla de oro del workspace: backend primero,
-frontend después). Tiene los cimientos hechos (bootstrap, Tailwind, design
-tokens, e2e) y **cero features de producto**. Le esperan el botón «importar», el
-aviso de «N nuevos», la pantalla de revisión y los dashboards.
+frontend después). A 2026-11-04 tiene 40 features `done`; su estado vive en su
+propio harness.
 
-> ⚠️ **Breaking change vigente:** `/api/expenses*` → 404. El contrato nuevo está
-> en [`docs/api-contract.md`](./api-contract.md) y **aún no lo consume nadie**.
 
 **2026-09-11 — por dónde arranca el frontend (decidido en una sesión de nivel
 workspace).** La primera pantalla es **Patrimonio**, y consume
@@ -458,12 +396,13 @@ tiene etapa, es que se va a perder.
 | 22 | **`exceljs` pesa 23 MB, no saca versión estable desde octubre de 2023 y trae 7 de los 8 avisos de subdependencias obsoletas de cada instalación.** Solo lo usan el parser de Bankinter (lee el `.xlsx`), su fixture de tests (escribe uno inventado) y dos scripts de un solo uso. Candidato revisado el 2026-09-13: `read-excel-file` (2,4 MB, actualizado en agosto de 2026) y `write-excel-file` para la fixture. **No es un cambio de una línea**: devuelven las celdas con otra forma, así que toca el parser y pide prueba real con un extracto de Bankinter de verdad. No se ha comprobado que lea bien esos archivos | **aparcado por el humano el 2026-10-02**: «el día que falle esa librería hacemos el cambio». No se toca mientras `exceljs` funcione |
 | ~~23~~ | ~~**Una fila que el parser no sabe leer no se puede arreglar ni borrar.** Con la F48 esas filas quedan guardadas y se pueden consultar, pero ahí se acaba: no hay forma de meter a mano el movimiento que representan (el hecho bancario es de solo lectura, sin `POST` ni `DELETE` de movimientos) ni de descartar la fila cuando no importa. Anotado el 2026-09-17 al dictar la F48, con la decisión explícita del humano de dejarlo para después: «más adelante poder arreglarlas o borrarlas, para ello deberemos crear mecanismos que ahora no tenemos»~~ | ✅ **cerrado por la F54** (2026-10-02): la fila se puede dar por revisada, con una nota, por `PATCH /api/import/warnings/unparsed-rows/:id`, y quitarle esa marca; sigue saliendo en `GET /api/import/warnings`, marcada, y no se borra. Crear a mano el movimiento que la fila representa quedó **descartado por el humano** ese mismo día: «si en el futuro noto que es un problema ya haremos algo» |
 | 24 | **No se puede borrar un producto de inversión ni uno de sus valores desde la API.** Si un archivo de producto entra con un dato equivocado, deshacerlo exige tocar la base de datos a mano; pasó el 2026-09-12. Separado del cabo 21 el 2026-10-02 por decisión del humano: «lo de borrar lo dejamos para otra feature, pero que no se pierda esta idea» | **sin abrir**, aparcado por el humano el 2026-10-02: «el día que esto sea un problema lo retomamos». El caso que lo originó ya lo impide la F53, y desde la F55 hay copia de seguridad antes de tocar la base a mano |
-| ~~26~~ | ~~**`importStatement` no va en una transacción.** Si falla `persistImportWarnings` o la comprobación de saldo después de `persistMovements`, los movimientos (y la cuenta, si se acababa de crear) ya están guardados y el archivo sale `failed` sin moverse. Reintentar es seguro (índice de duplicados; los avisos se reescriben), así que el impacto es bajo. Envolverlo exige que ocho funciones acepten el cliente de transacción y que `anchorAccountIfMissing` deje de abrir la suya propia. Encontrado el 2026-10-16 en una revisión; no se arregló ese día para no tocar el camino crítico sin prueba real~~ | ✅ **cerrado por la F66 `import-statement-all-or-nothing`** (2026-11-02, sin commit todavía): cada extracto se guarda en una transacción por archivo y si algo falla no queda nada de él. Al mirarlo, eran **nueve** funciones, no ocho, y la que abría su propia transacción era `persistImportWarnings`, no `anchorAccountIfMissing`. ADR-042 |
-| 27 | **Dependencias con avisos de `pnpm audit --prod`**, todos en dependencias de otras. El 2026-10-16 eran 16 high y 8 moderate. El 2026-10-28, antes de subir dependencias, 34 (16 high, 13 moderate, 5 low); después de subir fastify 5.12.7, @prisma/client 7.10.1 y @googleapis/drive 27.0.0, **30 (14 high, 12 moderate, 4 low)**. Desaparecen los de `mysql2` y `deepmerge-ts` (@prisma/client) y el low de `fastify`. Quedan: `fast-uri` 3.1.5 y 4.1.2 (20 avisos; lo traen fastify y prisma vía `ajv`), `brace-expansion` 1.1.18 y 2.1.4 (6) y `uuid` 8.3.2 (1), los dos de exceljs (cabo 22), y `qs` 6.15.3 (3; @googleapis/drive vía `googleapis-common`). Las versiones que quedan son las que fija el lockfile para esas dependencias de otras; subirlas no entraba en el cambio del 2026-10-28 y no se ha probado si las versiones corregidas caben en los rangos que piden fastify, prisma, exceljs y googleapis-common. Ninguno en código que corra con datos de fuera. Detalle en [el informe](../progress/implementations/dependency-upgrade-2026-10.md) | **sin abrir** |
-| 28 | **`GET /api/recurring-expenses` mete en «a personas» las transferencias y bizum a empresas.** La F58 manda a ese grupo todo gasto cuyo concepto lleve «transferencia» o «bizum», y el banco escribe igual los pagos a un taller o a una tienda. Con los datos reales del humano, el grupo sale inflado en varios cientos de euros al mes. Hoy la única salida es `excludedFromTotals`, que los saca de todas las sumas, y son gasto real. Propuesta (de una sesión del frontend, 2026-10-17): si el humano le ha puesto a una transferencia una categoría propia, va al gasto variable con esa categoría, y a «a personas» solo las que no la tengan. Falta concretar qué cuenta como «categoría propia», porque desde el 2026-10-16 todo movimiento tiene alguna (la genérica cuando ninguna regla lo reconoce). Después, una frase en el frontend | ✅ **cerrado el 2026-10-17 por la F59 `recurring-people-by-category`**: se quedan en «a personas» las transferencias sin categoría o con `Otros gastos` o `Transferencias a personas` (elección del humano); con cualquier otra categoría van al gasto variable de esa categoría y siguen en el total (puede moverse un céntimo por redondeo, aceptado por el humano). Sin commit todavía. Falta la frase en el frontend → [resumen](../progress/summaries/recurring-people-by-category.md) |
-| ~~29~~ | ~~**Retirar `GET /api/recurring-expenses`.** La sustituye `GET /api/expenses-by-category` (F63, 2026-10-21). Por decisión del humano en la hoja de la F63 (punto 1), la ruta vieja **sigue respondiendo igual** mientras la sección Recurrentes del frontend la use. Cuando la sesión del frontend tenga la vista nueva y quite Recurrentes, una feature del backend retira la ruta: el módulo `src/modules/recurring-expenses/` con sus tests, su registro en `src/app.ts`, su sección de `docs/api-contract.md` (pasa a «Rutas retiradas»), su fila del `README.md` y sus menciones en el resto de documentos. ADR-041~~ | ✅ **cerrado el 2026-10-25 por la F64 `retire-recurring-expenses`**: `GET /api/recurring-expenses` responde 404, el módulo `src/modules/recurring-expenses/` ya no existe, su sección del contrato pasó a «Rutas retiradas» y el README, ADR-037, ADR-040 y ADR-041 lo dicen. Se abrió cuando la feature 37 del frontend quitó `Monthly cost` (2026-10-25). Sin commit todavía |
+| ~~26~~ | ~~**`importStatement` no va en una transacción.** Si falla `persistImportWarnings` o la comprobación de saldo después de `persistMovements`, los movimientos (y la cuenta, si se acababa de crear) ya están guardados y el archivo sale `failed` sin moverse. Reintentar es seguro (índice de duplicados; los avisos se reescriben), así que el impacto es bajo. Envolverlo exige que ocho funciones acepten el cliente de transacción y que `anchorAccountIfMissing` deje de abrir la suya propia. Encontrado el 2026-10-16 en una revisión; no se arregló ese día para no tocar el camino crítico sin prueba real~~ | ✅ **cerrado por la F66 `import-statement-all-or-nothing`** (2026-11-02, commit `8dde37d`): cada extracto se guarda en una transacción por archivo y si algo falla no queda nada de él. Al mirarlo, eran **nueve** funciones, no ocho, y la que abría su propia transacción era `persistImportWarnings`, no `anchorAccountIfMissing`. ADR-042 |
+| ~~27~~ | ~~**Dependencias con avisos de `pnpm audit --prod`**, todos en dependencias de otras. El 2026-10-16 eran 16 high y 8 moderate. El 2026-10-28, antes de subir dependencias, 34 (16 high, 13 moderate, 5 low); después de subir fastify 5.12.7, @prisma/client 7.10.1 y @googleapis/drive 27.0.0, **30 (14 high, 12 moderate, 4 low)**. Desaparecen los de `mysql2` y `deepmerge-ts` (@prisma/client) y el low de `fastify`. Quedan: `fast-uri` 3.1.5 y 4.1.2 (20 avisos; lo traen fastify y prisma vía `ajv`), `brace-expansion` 1.1.18 y 2.1.4 (6) y `uuid` 8.3.2 (1), los dos de exceljs (cabo 22), y `qs` 6.15.3 (3; @googleapis/drive vía `googleapis-common`). Las versiones que quedan son las que fija el lockfile para esas dependencias de otras; subirlas no entraba en el cambio del 2026-10-28 y no se ha probado si las versiones corregidas caben en los rangos que piden fastify, prisma, exceljs y googleapis-common. Ninguno en código que corra con datos de fuera. Detalle en [el informe](../progress/implementations/dependency-upgrade-2026-10.md). El 2026-11-04 eran **31 (14 high, 13 moderate, 4 low)**: los de antes más 1 moderate de `minimatch` (también de exceljs). Ese día se subió `brace-expansion` a 1.1.21 y 2.1.7 dentro del rango que ya pide `minimatch` (`pnpm update brace-expansion`; solo cambia `pnpm-lock.yaml`), y quedan **25 (10 high, 11 moderate, 4 low)**: `fast-uri` 20, `qs` 3, `uuid` 1 y `minimatch` 1. El mismo día se subió `fast-uri` a 3.1.9 y 4.2.3 dentro del rango que ya piden fastify y AJV (`pnpm update fast-uri`; solo cambia `pnpm-lock.yaml`), y quedan **5 (5 moderate)**: `qs` 3, `uuid` 1 y `minimatch` 1. El 2026-11-06, antes de tocar nada más, `minimatch` ya no salía en `pnpm audit` con las mismas versiones (por qué, no comprobado), y se subió `qs` a 6.17.1 dentro del rango que pide `googleapis-common` (`pnpm update qs`; solo cambia `pnpm-lock.yaml`), probado contra Drive real con `GET /health/drive` y `pnpm run db:backup`: queda **1 (moderate)**, `uuid` (de exceljs). Análisis de los cinco en [la exploración](../progress/explorations/audit-2026-11-04.md) y lo hecho en [el informe](../progress/implementations/audit-2026-11-04.md)~~ | ✅ **cerrado el 2026-11-06**: `brace-expansion` y `fast-uri` resueltos el 2026-11-04, `qs` el 2026-11-06 (falta que el humano pruebe una ingesta: ver «Deberes tuyos»). `uuid` queda como **riesgo aceptado por el humano** el 2026-11-06 («déjalo como está»): solo lo trae exceljs, que usa `v4()` sin buffer y el aviso es de `v3`/`v5`/`v6` (comprobado leyendo el código de exceljs, no ejecutándolo); la versión corregida (11.1.1) está fuera del rango que pide exceljs y solo entraría forzándola en `pnpm-workspace.yaml`. Desaparece si se cambia exceljs (cabo 22). Se reabre si el humano lo pide |
+| 28 | **`GET /api/recurring-expenses` mete en «a personas» las transferencias y bizum a empresas.** La F58 manda a ese grupo todo gasto cuyo concepto lleve «transferencia» o «bizum», y el banco escribe igual los pagos a un taller o a una tienda. Con los datos reales del humano, el grupo sale inflado en varios cientos de euros al mes. Hoy la única salida es `excludedFromTotals`, que los saca de todas las sumas, y son gasto real. Propuesta (de una sesión del frontend, 2026-10-17): si el humano le ha puesto a una transferencia una categoría propia, va al gasto variable con esa categoría, y a «a personas» solo las que no la tengan. Falta concretar qué cuenta como «categoría propia», porque desde el 2026-10-16 todo movimiento tiene alguna (la genérica cuando ninguna regla lo reconoce). Después, una frase en el frontend | ✅ **cerrado el 2026-10-17 por la F59 `recurring-people-by-category`**: se quedan en «a personas» las transferencias sin categoría o con `Otros gastos` o `Transferencias a personas` (elección del humano); con cualquier otra categoría van al gasto variable de esa categoría y siguen en el total (puede moverse un céntimo por redondeo, aceptado por el humano). Commit `eebba15`. Falta la frase en el frontend → [resumen](../progress/summaries/recurring-people-by-category.md) |
+| ~~29~~ | ~~**Retirar `GET /api/recurring-expenses`.** La sustituye `GET /api/expenses-by-category` (F63, 2026-10-21). Por decisión del humano en la hoja de la F63 (punto 1), la ruta vieja **sigue respondiendo igual** mientras la sección Recurrentes del frontend la use. Cuando la sesión del frontend tenga la vista nueva y quite Recurrentes, una feature del backend retira la ruta: el módulo `src/modules/recurring-expenses/` con sus tests, su registro en `src/app.ts`, su sección de `docs/api-contract.md` (pasa a «Rutas retiradas»), su fila del `README.md` y sus menciones en el resto de documentos. ADR-041~~ | ✅ **cerrado el 2026-10-25 por la F64 `retire-recurring-expenses`**: `GET /api/recurring-expenses` responde 404, el módulo `src/modules/recurring-expenses/` ya no existe, su sección del contrato pasó a «Rutas retiradas» y el README, ADR-037, ADR-040 y ADR-041 lo dicen. Se abrió cuando la feature 37 del frontend quitó `Monthly cost` (2026-10-25). Commit `731414c` |
 | ~~30~~ | ~~**`GET /api/expenses-by-category` acepta el año `0000`.** `year=0000` y `month=0000-01` pasan la validación de parámetros, y `resolvePeriods` les calcula un periodo comparado con fechas mal formadas (el año anterior a `0000`). Encontrado por el reviewer de la F63 el 2026-10-21, comprobado llamando a la función; **por HTTP no comprobado** (qué responde la ruta con esos valores). No afecta a ningún año real~~ | ✅ **cerrado por la F65 `expenses-by-category-reject-year-zero`** (2026-11-02). Al probarlo por HTTP salió más: `year=0001` y cualquier `month` con año por debajo de 1000 respondían **500**, por `resolvePeriods` (el año del periodo comparado salía sin ceros delante, o caía en el año `0000`, que Postgres rechaza). Decisión del humano: `year` y `month` solo aceptan años **desde el 2000**; lo anterior, `0000` incluido, se rechaza en el schema de la ruta con `400 VALIDATION_ERROR`, así que esos años ya no llegan a `resolvePeriods`, que no cambia |
 | 31 | **Un ingreso que llega en un mes distinto del que paga cuenta en el mes de la fecha del banco.** Las sumas de cada mes (`GET /api/overview`, y lo que enseña `Overview` en el frontend: entrada, ahorro, tasa de ahorro y si fue un mes normal) usan la fecha del banco y no saben a qué mes pertenece un ingreso. Ya pasó con los 350 € mensuales (`Pensión`): el 1 y el 30 de junio de 2026 caen los dos en junio y mayo queda sin ninguno. La nómina de la EMT no lo ha hecho nunca: de enero de 2024 a septiembre de 2026 llegó siempre entre el 26 y el 31 (comprobado en la base el 2026-10-29). No afecta a la suma de un año ni de varios meses, ni al gasto por categoría | **riesgo aceptado por el humano el 2026-10-29**, sin código: «de momento lo dejamos así». Se reabre si él lo pide |
+| 32 | **Los tests de copias de seguridad hacen más lentas las pasadas de `./init.sh`.** `src/modules/backup/backup.service.test.ts` crea y borra unas 12 bases de prueba en cada pasada, y cada borrado obliga a PostgreSQL a escribir en disco todo lo pendiente; con eso y la carga de la máquina, una pasada de los tests tarda entre unos 25 s y unos 70 s (medido el 2026-11-04 en [la investigación](../progress/explorations/init-intermitente-2026-11-04.md)). Ya no da rojos: el cierre de ese archivo tiene 60 s desde el 2026-11-05. Reducirlo pediría que esos tests usen menos bases distintas, en un archivo de tests grande, y no se ha medido cuánto se ganaría | **aceptado por el humano el 2026-11-06**, sin código: «si esos test tardan más o menos un minuto o algo más, se pueden dejar como están». Se reabre si él lo pide |
 | ~~25~~ | ~~**La consulta que elige el movimiento del que sale el saldo de una cuenta ordena sin último criterio.** `src/modules/accounts/accounts.service.ts:121` y `:140` piden, dentro de una cuenta, el movimiento con `balanceAfter` más reciente por `bookingDate desc, daySequence desc` y `take: 1`, sin `id` y sin decir dónde van los `daySequence` nulos; la comparación en memoria `byMostRecent` de `movements.service.ts` tiene el mismo hueco. El esquema no impide que dos movimientos de una cuenta compartan fecha y `daySequence` (leído en `prisma/schema.prisma` y en la migración `20260806191700_data_model` el 2026-10-04). **Comprobado el 2026-10-05 con una consulta de solo lectura sobre la base `gastos`: hoy no hay ningún caso.** De 1.607 movimientos, ningún grupo de cuenta, fecha y `daySequence` tiene más de una fila y ninguno tiene `daySequence` nulo. Vale para los datos de ese día, no para los que entren después. Encontrado al arreglar el orden de `GET /api/movements` (`progress/implementations/movements-stable-order.md` §Punto 6)~~ | ✅ **cerrado el 2026-10-16**, sin feature: la consulta de `listAccounts` y `getAccountById` ordena por `bookingDate desc, daySequence desc` (los nulos al final) **e `id desc`**, y `isAfter` —la única comparación de recencia del módulo de movimientos, con la que `byMostRecent` ordena en memoria— desempata por `id` cuando los dos puntos lo traen (el ancla guardada en la cuenta no tiene id y sigue empatando). Con empate completo, da el saldo la fila de id más alto y las otras dos de ese día no se suman encima. Tests de empate en `accounts.test.ts` y `movements.test.ts` |
 
 > **Sobre el 6:** volver a parsear desde Drive te reconstruye lo importado, pero
@@ -473,6 +412,22 @@ tiene etapa, es que se va a perder.
 ---
 
 ## Deberes tuyos pendientes (no son código)
+
+- **Comprobar la ingesta con `qs` 6.17.1** (2026-11-06). Se subió `qs`, que usa la
+  librería de Google Drive para montar sus peticiones. Ya está probada contra tu Drive
+  la conexión (`GET /health/drive`) y la subida de copias (`pnpm run db:backup`); falta
+  la ingesta. No tienes que hacer nada especial: la próxima vez que subas un extracto,
+  comprueba que se importa y que el archivo se mueve de carpeta como siempre. Si falla
+  al listar o al descargar, no estropea datos (el archivo se queda donde estaba): avisa
+  y se vuelve a `qs` 6.15.3 en `pnpm-lock.yaml`.
+
+- **La prueba real de la F67 `investments-gains`** (2026-11-04). Solo está probada
+  con datos inventados. Es de solo lectura: no escribe nada en la base. Con
+  `pnpm run dev`, pide `GET /api/investments/gains` y comprueba con la web de
+  MyInvestor que un fondo sale con lo invertido, el valor y la ganancia de su
+  última foto; que un depósito vivo da una ganancia razonable para los días que
+  lleva abierto; que no sale ninguna cuenta; y que los cerrados, si tienes alguno,
+  salen aparte y fuera del total.
 
 - **La prueba real de la F66 `import-statement-all-or-nothing`** (2026-11-02). Solo
   está probada con archivos inventados. ⚠️ Escribe en tu base real: saca antes la
@@ -608,28 +563,9 @@ tiene etapa, es que se va a perder.
 
 ---
 
-## ⚠️ `docs/ideas.md` está desactualizado y te va a volver a asustar
+## ~~⚠️ `docs/ideas.md` está desactualizado~~ ✅ resuelto
 
-Es un documento de **producto** que dejó de actualizarse cuando las features
-cambiaron las decisiones. Hoy **contradice al código en cinco puntos**, y eso es
-exactamente lo que hace pensar que se ha perdido el control del proyecto cuando
-en realidad se está leyendo un documento viejo:
-
-| `docs/ideas.md` dice | El código dice |
-|---|---|
-| «las ~7 cuentas bancarias **+ efectivo**» | No hay cuenta de efectivo ([`schema.prisma:16`](../prisma/schema.prisma#L16)) |
-| «`type` = `expense` \| `income` \| **`transfer`**» | No existe `transfer`; existe `neutral` ([`schema.prisma:29`](../prisma/schema.prisma#L29)) |
-| «**Alta manual** de movimientos también posible» | `/api/movements` es **solo lectura** |
-| Dedup por «cuenta + fecha + importe + concepto» | Además `daySequence` |
-| «convertir esto en la **feature 6**» | Acabó siendo la **feature 8** |
-
-Y su tabla final «Decisiones: de idea a features» sigue **vacía** después de diez
-features.
-
-**Qué hacer con él:** o se actualiza al cerrar cada feature que cambie una
-decisión de producto, o se marca arriba como captura histórica y se pone que la
-verdad viva está en `docs/data-model.md` y en este roadmap. Lo que no puede
-seguir es pareciendo vigente.
+Comprobado el 2026-11-04 en el `docs/ideas.md` del workspace: los cinco puntos que contradecían al código llevan su corrección escrita en el propio documento (cuenta de efectivo, valor `transfer`, alta manual, deduplicación, número de feature) y la tabla «Decisiones: de idea a features» está rellena. La tabla antigua de este aviso está en el histórico de git.
 
 ---
 

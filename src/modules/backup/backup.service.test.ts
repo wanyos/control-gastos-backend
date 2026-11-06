@@ -209,7 +209,7 @@ describe('backup commands', { timeout: 60_000 }, () => {
     await truncateAll(workerUrl)
     await dropTargetDatabases()
     expect(await targetDatabases()).toEqual([])
-  })
+  }, 60_000)
 
   describe('createBackup', () => {
     it('uploads a new dump file named with the local date and time into the configured folder', async () => {

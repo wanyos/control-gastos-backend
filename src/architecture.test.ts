@@ -493,10 +493,24 @@ describe('architecture invariants', () => {
     // `modules/movements/`, which is NOT a bank module.
     const allowedRelative = ['./', '../../errors/', '../../lib/', '../movements/']
 
+    // Every file of `src/` listed and read ONCE, and shared by the three checks
+    // below. They used to list and read the whole tree again for each bank (six
+    // times), and the test failed by timeout when the suite ran beside other work
+    // (2026-11-04). `sourceFiles(join(srcDir, 'modules', bank))` gives exactly the
+    // files of `sources` whose path starts with `modules/<bank>/`: same walk, same
+    // filters.
+    const sources = sourceFiles(srcDir).map((file) => ({
+      file,
+      path: relative(srcDir, file).replace(/\\/g, '/'),
+      text: readFileSync(file, 'utf8'),
+    }))
+    const sourcesOf = (bank: string) =>
+      sources.filter(({ path }) => path.startsWith(`modules/${bank}/`))
+
     const forbiddenImports = bankModules
-      .flatMap((bank) => sourceFiles(join(srcDir, 'modules', bank)))
-      .flatMap((file) =>
-        [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)]
+      .flatMap(sourcesOf)
+      .flatMap(({ file, text }) =>
+        [...text.matchAll(/from '([^']+)'/g)]
           .map((match) => match[1])
           .filter(
             (specifier) =>
@@ -512,20 +526,17 @@ describe('architecture invariants', () => {
     // And no other bank module reaches into one. `app.ts` is the composition
     // root and registers every module: it is the single expected importer.
     for (const bank of bankModules) {
-      const outsideImporters = sourceFiles(srcDir)
-        .filter(
-          (file) => !relative(srcDir, file).replace(/\\/g, '/').startsWith(`modules/${bank}/`),
-        )
-        .filter((file) => readFileSync(file, 'utf8').includes(bank))
-        .map((file) => relative(srcDir, file).replace(/\\/g, '/'))
+      const outsideImporters = sources
+        .filter(({ path }) => !path.startsWith(`modules/${bank}/`))
+        .filter(({ text }) => text.includes(bank))
+        .map(({ path }) => path)
 
       expect(outsideImporters).toEqual(['app.ts'])
     }
     // Neither bank module names the other one.
     for (const bank of bankModules) {
       const others = bankModules.filter((name) => name !== bank)
-      for (const file of sourceFiles(join(srcDir, 'modules', bank))) {
-        const source = readFileSync(file, 'utf8')
+      for (const { text: source } of sourcesOf(bank)) {
         for (const other of others) {
           expect(source).not.toContain(`modules/${other}`)
           expect(source).not.toContain(`../${other}/`)

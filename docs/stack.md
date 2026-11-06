@@ -58,9 +58,18 @@
   `node_modules` distinto del que valida `init.sh`.
 - **Arranque dev (recarga en caliente):** `pnpm run dev` → `tsx watch src/server.ts`
   (`tsx@^4.23.15`).
-- **Build:** `pnpm run build` → `prisma generate && tsc` (salida a `dist/`).
+- **Build:** `pnpm run build` → `prisma generate && tsc -p tsconfig.build.json`
+  (salida a `dist/`, que es lo que se despliega). `tsconfig.build.json` extiende
+  `tsconfig.json` y solo cambia `exclude`: deja fuera `src/**/*.test.ts`,
+  `src/**/*.fixture.ts` y `src/lib/test-*.ts` (los helpers que solo usan los tests
+  y la configuración de vitest), para que `dist/` no lleve tests. Si algún día el
+  código de producción importa uno de esos archivos, `tsc` lo compila igual
+  (`exclude` solo quita puntos de entrada), así que el build no se rompe.
+  Además, `vitest.config.ts` excluye `dist/**` de la búsqueda de tests
+  (conservando las exclusiones por defecto de vitest).
 - **Arranque producción:** `pnpm start` → `node dist/server.js`.
-- **Type check:** `pnpm run typecheck` → `tsc --noEmit`.
+- **Type check:** `pnpm run typecheck` → `tsc --noEmit` (con `tsconfig.json`: comprueba
+  también los tests, fixtures y helpers de test).
 - **Lint:** `pnpm run lint` → `oxlint` (`oxlint@^1.90.0`, config en
   `.oxlintrc.json`: categoría `correctness`, plugins `typescript`/`unicorn`/
   `oxc`; ignora `src/generated/`, `dist/` y `node_modules/`). `lint:fix` para

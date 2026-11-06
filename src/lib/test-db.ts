@@ -300,6 +300,83 @@ async function ensureTemplateDatabase(
   )
 }
 
+/**
+ * Key of the PostgreSQL advisory lock a run of the suite holds from its global
+ * setup to its teardown (2026-11-04). The number means nothing by itself: it only
+ * has to be the same in every run and not used by anything else of the project.
+ */
+export const testSuiteLockKey = 20_271_104
+
+/** What `lockTestSuite` hands back: the way to let go of the lock. */
+export interface TestSuiteLock {
+  /** Releases the lock and closes its connection. Safe to call more than once. */
+  release(): Promise<void>
+}
+
+/**
+ * Makes sure only ONE run of the suite works against this PostgreSQL at a time.
+ *
+ * Why (measured on 2026-11-04, `progress/explorations/init-intermitente-2026-11-04.md`):
+ * the worker databases are named by `VITEST_POOL_ID` only, so two vitest processes
+ * started at once use the same `gastos_test_1..8`, delete each other's rows and go
+ * red with rows they never created.
+ *
+ * How: `pg_try_advisory_lock` on a connection that stays open until `release`. If
+ * another run already holds it, this throws at once, before any database is
+ * touched. PostgreSQL drops the lock by itself when that connection closes, so a
+ * run killed halfway does not leave it taken.
+ *
+ * It connects to the `postgres` maintenance database: an advisory lock only
+ * collides with the same key taken in the SAME database, so every run has to use
+ * one that always exists and that the suite never drops (the worker databases are
+ * dropped and re-cloned, which would cut this connection), and that is not his.
+ * It only runs `select`s: nothing is written.
+ */
+export async function lockTestSuite(
+  realDatabaseUrl: string,
+  key: number = testSuiteLockKey,
+): Promise<TestSuiteLock> {
+  const client = new Client({
+    connectionString: withDatabase(realDatabaseUrl, maintenanceDatabaseName),
+  })
+  await client.connect()
+
+  let taken: boolean
+  try {
+    const result = await client.query<{ taken: boolean }>(
+      `select pg_try_advisory_lock($1::bigint) as taken`,
+      [key],
+    )
+    taken = result.rows[0]?.taken === true
+  } catch (error) {
+    await client.end()
+    throw error
+  }
+
+  if (!taken) {
+    await client.end()
+    throw new Error(
+      `Ya hay otra ejecución de la suite de tests en marcha contra ese PostgreSQL ` +
+        `(${new URL(realDatabaseUrl).host}). Hay que esperar a que acabe y volver a lanzarla: ` +
+        `las dos usarían las mismas bases ${testDatabasePrefix}* y se borrarían las filas ` +
+        `la una a la otra (ver ADR-027).`,
+    )
+  }
+
+  let released = false
+  return {
+    async release() {
+      if (released) return
+      released = true
+      try {
+        await client.query(`select pg_advisory_unlock($1::bigint)`, [key])
+      } finally {
+        await client.end()
+      }
+    },
+  }
+}
+
 export interface PreparedTestDatabases {
   /** Connection string of each worker database, indexed by pool id − 1. */
   urls: string[]

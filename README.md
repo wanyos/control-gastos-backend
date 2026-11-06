@@ -38,10 +38,10 @@ El servidor queda escuchando en `http://localhost:3000` (configurable con `PORT`
 | Script                    | Descripción                                                   |
 | ------------------------- | ------------------------------------------------------------- |
 | `pnpm run dev`             | Servidor en desarrollo con recarga en caliente (`tsx watch`). |
-| `pnpm run build`           | Genera el cliente de Prisma y compila TypeScript a `dist/`.   |
+| `pnpm run build`           | Genera el cliente de Prisma y compila TypeScript a `dist/` con `tsconfig.build.json`, que deja fuera los tests (`*.test.ts`), los fixtures (`*.fixture.ts`) y los helpers de test (`src/lib/test-*.ts`). |
 | `pnpm start`               | Ejecuta la versión compilada (`dist/server.js`).              |
 | `pnpm test`                | Suite completa con Vitest. Necesita PostgreSQL levantado, pero **no escribe en tu base**: cada worker usa una base desechable `gastos_test_<n>` (F27). Desde la F55 necesita además Docker: los tests de la copia de la base de datos ejecutan `docker exec gastos-postgres`. |
-| `pnpm run typecheck`       | Comprueba tipos sin emitir archivos.                          |
+| `pnpm run typecheck`       | Comprueba tipos sin emitir archivos, tests incluidos (usa `tsconfig.json`). |
 | `pnpm run lint`            | oxlint sobre el proyecto (`lint:fix` para autocorregir).      |
 | `pnpm run format:check`    | Prettier en modo comprobación (`format` para escribir).       |
 | `pnpm run prisma:migrate`  | Crea y aplica migraciones (`prisma migrate dev`).             |

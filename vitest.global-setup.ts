@@ -25,6 +25,13 @@
 // is written to disk nor printed. This file stays the only place of the suite
 // that opens his database.
 //
+// Since 2026-11-04 it also makes sure only ONE run of the suite works against
+// this PostgreSQL at a time: before anything else it takes a PostgreSQL advisory
+// lock (`lockTestSuite`) and keeps its connection open until the teardown, which
+// releases it. A second vitest process started meanwhile fails at once, before
+// touching any database, saying another run is going on; without this, both used
+// the same `gastos_test_1..8` and deleted each other's rows.
+//
 // It is deliberately thin: the logic it calls lives in `src/lib/test-db.ts`,
 // `src/lib/test-guard.ts` and `src/lib/test-real-data.ts`, type-checked by `tsc`
 // and each with its own tests.
@@ -35,10 +42,12 @@ import {
   describeLeftoverRows,
   describeSnapshotDifferences,
   findLeftoverRows,
+  lockTestSuite,
   prepareTestDatabases,
   snapshotDatabase,
   testWorkerCount,
 } from './src/lib/test-db.js'
+import type { TestSuiteLock } from './src/lib/test-db.js'
 import { failRun } from './src/lib/test-guard.js'
 import { readRealDataReference } from './src/lib/test-real-data.js'
 import type { RealDataReference } from './src/lib/test-real-data.js'
@@ -56,6 +65,19 @@ export default async function setup(project: ProvidingProject) {
     )
   }
 
+  // First of all, and before any database is touched: if another run of the suite
+  // holds the lock, this throws and the run stops here.
+  const lock = await lockTestSuite(realDatabaseUrl)
+  try {
+    return await prepareRun(project, realDatabaseUrl, lock)
+  } catch (error) {
+    // No teardown will run: let the lock go here, or its open connection keeps it.
+    await lock.release()
+    throw error
+  }
+}
+
+async function prepareRun(project: ProvidingProject, realDatabaseUrl: string, lock: TestSuiteLock) {
   const workerCount = testWorkerCount(availableParallelism())
   const { urls } = await prepareTestDatabases(realDatabaseUrl, workerCount, process.env)
 
@@ -70,28 +92,34 @@ export default async function setup(project: ProvidingProject) {
     // longer hides the rest.
     const problems: string[] = []
 
-    const after = await snapshotDatabase(realDatabaseUrl)
-    const differences = describeSnapshotDifferences(before, after)
-    if (differences.length > 0) {
-      problems.push(
-        `TU BASE DE DATOS HA CAMBIADO DURANTE LA SUITE. Los tests deben escribir solo en ` +
-          `sus bases desechables (ver ADR-027). Diferencias:\n  - ${differences.join('\n  - ')}\n` +
-          `Si estabas importando algo a la vez, esa es la causa; si no, hay un test escribiendo ` +
-          `en tu base y hay que arreglarlo antes de seguir.`,
-      )
-    }
+    try {
+      const after = await snapshotDatabase(realDatabaseUrl)
+      const differences = describeSnapshotDifferences(before, after)
+      if (differences.length > 0) {
+        problems.push(
+          `TU BASE DE DATOS HA CAMBIADO DURANTE LA SUITE. Los tests deben escribir solo en ` +
+            `sus bases desechables (ver ADR-027). Diferencias:\n  - ${differences.join('\n  - ')}\n` +
+            `Si estabas importando algo a la vez, esa es la causa; si no, hay un test escribiendo ` +
+            `en tu base y hay que arreglarlo antes de seguir.`,
+        )
+      }
 
-    const dirty: string[] = []
-    for (const url of urls) {
-      const leftovers = await findLeftoverRows(url)
-      if (leftovers.length > 0)
-        dirty.push(`${url.split('/').pop()} → ${describeLeftoverRows(leftovers)}`)
-    }
-    if (dirty.length > 0) {
-      problems.push(
-        `La suite ha dejado filas en sus bases de prueba:\n  - ${dirty.join('\n  - ')}\n` +
-          `Cada test limpia lo que crea (docs/conventions.md §Tests con base de datos).`,
-      )
+      const dirty: string[] = []
+      for (const url of urls) {
+        const leftovers = await findLeftoverRows(url)
+        if (leftovers.length > 0)
+          dirty.push(`${url.split('/').pop()} → ${describeLeftoverRows(leftovers)}`)
+      }
+      if (dirty.length > 0) {
+        problems.push(
+          `La suite ha dejado filas en sus bases de prueba:\n  - ${dirty.join('\n  - ')}\n` +
+            `Cada test limpia lo que crea (docs/conventions.md §Tests con base de datos).`,
+        )
+      }
+    } finally {
+      // Whatever the checks found, or if one of them failed, the next run must be
+      // able to start.
+      await lock.release()
     }
 
     // NOT a `throw`: see the header. This is what makes `vitest run` exit != 0.

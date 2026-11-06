@@ -21,6 +21,7 @@ import {
   describeSnapshotDifferences,
   findLeftoverRows,
   localMigrations,
+  lockTestSuite,
   snapshotDatabase,
   testDatabasePrefix,
   testWorkerCount,
@@ -127,6 +128,15 @@ describe('the guardians are WIRED, not just written', () => {
     expect(globalSetup).toContain('describeSnapshotDifferences(before, after)')
     expect(globalSetup).toContain('TU BASE DE DATOS HA CAMBIADO DURANTE LA SUITE')
   })
+
+  it('takes the lock of one run at a time before preparing any database, and lets it go at the end', () => {
+    const globalSetup = repoFile('vitest.global-setup.ts')
+
+    const locking = globalSetup.indexOf('await lockTestSuite(realDatabaseUrl)')
+    expect(locking).toBeGreaterThanOrEqual(0)
+    expect(locking).toBeLessThan(globalSetup.indexOf('await prepareTestDatabases('))
+    expect(globalSetup.match(/await lock\.release\(\)/g)).toHaveLength(2)
+  })
 })
 
 describe('the leftover guardian goes RED with a row left behind', () => {
@@ -230,5 +240,56 @@ describe('the «tu base ha cambiado» guardian goes RED even if the row is delet
       'Account: 4 filas antes, 19 después',
       'Movement: 455 filas antes, 460 después',
     ])
+  })
+})
+
+describe('only one run of the suite at a time against the same PostgreSQL', () => {
+  // A key of this file's own, so these tests do not depend on (nor disturb) the lock
+  // the global setup of THIS run is holding.
+  const keyOfThisFile = 913_457_208
+
+  it('refuses a second holder of the same key while the first one keeps it', async () => {
+    const first = await lockTestSuite(workerDatabaseUrl, keyOfThisFile)
+    try {
+      await expect(lockTestSuite(workerDatabaseUrl, keyOfThisFile)).rejects.toThrow(
+        'Ya hay otra ejecución de la suite de tests en marcha contra ese PostgreSQL',
+      )
+    } finally {
+      await first.release()
+    }
+  })
+
+  it('lets the next one in once the first has released it', async () => {
+    const first = await lockTestSuite(workerDatabaseUrl, keyOfThisFile)
+    await first.release()
+    // Releasing twice is harmless: the teardown and an error path may both call it.
+    await first.release()
+
+    const second = await lockTestSuite(workerDatabaseUrl, keyOfThisFile)
+    await second.release()
+  })
+
+  it('finds the lock of this very run already taken, and says to wait for it to end', async () => {
+    // The global setup took it before this file started and keeps it until the end.
+    const attempt = lockTestSuite(workerDatabaseUrl)
+
+    await expect(attempt).rejects.toThrow(/hay que esperar a que acabe/i)
+    await expect(attempt).rejects.toThrow(`${testDatabasePrefix}*`)
+  })
+
+  it('names the server but never its password', async () => {
+    const first = await lockTestSuite(workerDatabaseUrl, keyOfThisFile)
+    try {
+      const refused = await lockTestSuite(workerDatabaseUrl, keyOfThisFile).catch(
+        (error: unknown) => error,
+      )
+      const message = refused instanceof Error ? refused.message : ''
+      const url = new URL(workerDatabaseUrl)
+
+      expect(message).toContain(`(${url.host})`)
+      if (url.password) expect(message).not.toContain(decodeURIComponent(url.password))
+    } finally {
+      await first.release()
+    }
   })
 })
