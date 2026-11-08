@@ -113,6 +113,7 @@ erDiagram
         decimal balanceAnchor
         date balanceAnchorDate
         int balanceAnchorDaySequence
+        datetime lastImportedAt
     }
     CATEGORY {
         int id PK
@@ -250,6 +251,11 @@ model Account {
   balanceAnchor            Decimal?    @db.Decimal(10, 2)
   balanceAnchorDate        DateTime?   @db.Date
   balanceAnchorDaySequence Int?        // posición dentro de ese día, para desempatar
+  // ── Última importación (F69 `last-imports`, 2026-11-08) ──
+  // Instante en que una importación guardó por última vez un extracto de esta
+  // cuenta (también si todas sus filas ya estaban). Solo lo escribe
+  // `importStatement`, dentro de la transacción del archivo. NULL = nunca importada.
+  lastImportedAt           DateTime?
   movements      Movement[]
   importBalanceMismatches ImportBalanceMismatch[]  // relación inversa (F48); no es una columna
   createdAt      DateTime    @default(now())
@@ -340,6 +346,7 @@ model Movement {
 | ~~`InvestmentProduct.closedAt`~~ | 🔄 **ya la escribe** `persistSavingsSnapshot` (F26): sale del campo `closedAt` del fichero, tal cual, `null` incluido. Sigue siendo un acto explícito del humano, escrito una sola vez |
 | ~~`InvestmentProduct.openedAt`~~ | 🔄 **ya la escribe** `persistSavingsSnapshot` (F26): sale del campo `openedAt` del fichero, **obligatorio desde la F15** (un archivo sin él es un archivo fallido, nunca un producto con la fecha en blanco). **Cero migración**: la columna ya existía desde la F9 |
 | ~~`InvestmentProduct.principal`, `.interestRate`, `.expectedGain`, `.maturityDate`~~ | 🔄 **ya las escribe** `persistDeposit` (F29), las cuatro de golpe y **solo en un `deposit`**: salen tal cual del `.json` del depósito. En los otros cuatro tipos se escriben explícitamente a `NULL`, nunca se inventan. **Cero migración**: existen desde la F9 |
+| ~~`Account.lastImportedAt`, `InvestmentProduct.lastImportedAt`~~ | 🔄 **nacen con su escritor** (F69): el instante de la última importación que guardó un archivo de esa cuenta o de ese producto. En la cuenta la escribe solo `importStatement`, dentro de la transacción del extracto y como último paso, también cuando todos sus movimientos ya estaban; un extracto que falla no la cambia. En el producto la escribe solo `upsertProduct` (en `create` y en `update`, desde los tres escritores de producto), en la misma transacción que el producto y su foto; un archivo que falla tampoco la cambia. Ninguna otra ruta la escribe. Trajo dos migraciones: `20261108120000_last_imported_at` (las dos columnas, nullable) y `20261108120100_last_imported_at_backfill` (solo datos: a lo importado antes le da el `createdAt` más reciente de sus movimientos, o el más reciente entre el del producto y los de sus fotos; una cuenta sin movimientos se queda `NULL`; no toca `updatedAt`) |
 | ~~`Valuation` (la tabla entera)~~ | 🔄 **ya la escribe** `persistValuation` (F29): una fila por `(productId, date)` con los cinco números del `.json` de un `fund`, `etf` o `managed_portfolio`. Nació en la F9 sin escritor y lo ha tenido pendiente **veinte features** |
 
 > Las filas de **`Movement.productId`, `InvestmentProduct.closedAt` y
@@ -890,6 +897,7 @@ erDiagram
         decimal interestRate
         decimal expectedGain
         date maturityDate
+        datetime lastImportedAt
     }
     VALUATION {
         int id PK
@@ -952,6 +960,11 @@ model InvestmentProduct {
   interestRate Decimal?  @db.Decimal(6, 4)   // 🔴 TAE EN PORCENTAJE: 2.7500 = 2,75 %
   expectedGain Decimal?  @db.Decimal(10, 2)  // ganancia final, conocida desde el día uno
   maturityDate DateTime? @db.Date            // vencimiento
+
+  // F69 `last-imports`: instante en que una importación guardó por última vez un
+  // archivo de este producto. Solo lo escribe `upsertProduct` (los tres escritores
+  // de producto). NO es `updatedAt`: un renombrado a mano mueve ese.
+  lastImportedAt DateTime?
 
   valuations       Valuation[]        // serie de fund / etf / managed_portfolio
   savingsSnapshots SavingsSnapshot[]  // serie de savings_account (F26)
@@ -1095,6 +1108,10 @@ comercial, no una condición del producto contratado.
   fichero, el importador lo verá como un producto **nuevo** y la serie anterior
   quedará colgando del nombre viejo. Es el precio de usar el nombre como clave; a
   cambio, el fichero no necesita ningún identificador técnico que copiar a mano.
+- **`lastImportedAt` (F69) no entra en ninguna clave natural**, ni en la de
+  `InvestmentProduct` ni en la de `Account` (`iban`): cambia en cada importación,
+  así que volver a subir el mismo archivo la mueve y deja la fila donde estaba.
+  La F69 no cambia ninguna clave natural ni ningún índice.
 - **Cero SQL crudo:** los **cuatro** índices de esta parte (`@@unique([bank, name])`,
   los **dos** `@@unique([productId, date])` —el de `Valuation` y el de
   `SavingsSnapshot`, F26— y `@@index([productId])`) son **declarativos**, así que

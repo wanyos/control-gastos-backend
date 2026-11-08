@@ -115,6 +115,10 @@ model Account {
   balanceAnchorDate        DateTime?               @db.Date
   /// Position within that day, to break ties. NULL when the bank gives none.
   balanceAnchorDaySequence Int?
+  /// Feature 69: when an import last stored a statement of this account
+  /// (status imported, also when every row was a duplicate). Written only by
+  /// `importStatement`, inside the file's transaction. NULL = never imported.
+  lastImportedAt           DateTime?
   movements                Movement[]
   importBalanceMismatches  ImportBalanceMismatch[]
   createdAt                DateTime                @default(now())
@@ -259,6 +263,11 @@ model InvestmentProduct {
   interestRate Decimal?  @db.Decimal(6, 4)
   expectedGain Decimal?  @db.Decimal(10, 2)
   maturityDate DateTime? @db.Date
+
+  /// Feature 69: when an import last stored a file of this product. Written only
+  /// by `upsertProduct` (the three product writers). NOT `updatedAt`: a manual
+  /// rename moves that one.
+  lastImportedAt DateTime?
 
   valuations       Valuation[]
   savingsSnapshots SavingsSnapshot[]

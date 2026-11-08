@@ -385,7 +385,9 @@ foto anterior y la ganancia total del periodo. Desde la feature 50 tiene un
 segundo, [`GET /api/investments/deposits`](#get-apiinvestmentsdeposits) (lo que
 generó cada depósito), y desde la feature 67 un tercero,
 [`GET /api/investments/gains`](#get-apiinvestmentsgains) (lo que gana o pierde cada
-inversión desde que se abrió, vivas y cerradas, con el total de las vivas). Bajo `/api/investments` solo hay `GET`: no hay `POST`,
+inversión desde que se abrió, vivas y cerradas, con el total de las vivas). Desde la
+feature 69, [`GET /api/last-imports`](#get-apilast-imports) lee también las fechas de
+sus fotos y de su última importación. Bajo `/api/investments` solo hay `GET`: no hay `POST`,
 `PATCH` ni `DELETE` — los datos entran solamente por la importación. **Y desde la feature 42 existe la consulta de
 patrimonio neto**: [`GET /api/net-worth`](#get-apinet-worth), que suma el saldo
 real de las cuentas y el valor de las inversiones según sus últimas fotos
@@ -2963,6 +2965,137 @@ direccionable que dé 404. Solo los genéricos (500) del handler central.
 > Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
 > `PATCH`, ni `DELETE` bajo `/api/net-worth`).
 
+### `GET /api/last-imports`
+
+Las últimas importaciones (feature 69, 2026-11-08): por cada cuenta y cada producto
+de inversión vivo, **hasta qué fecha hay datos**, **qué día se importó por última
+vez**, si se espera un archivo **cada mes** y los **tramos sin datos**. Es de solo
+lectura: consultarla no escribe nada en la base.
+
+**No tiene parámetros**: responde a fecha de hoy en el calendario de Madrid. Un
+parámetro de querystring desconocido **se descarta antes del handler** — nunca es
+un 400.
+
+| Campo | Tipo | Qué es |
+| --- | --- | --- |
+| `asOf` | string `YYYY-MM-DD` | Hoy, en Madrid. |
+| `accounts` | lista | Una entrada por **cada** cuenta (`Account`), ordenadas por `bank` e `id`. |
+| `products` | lista | Una entrada por cada producto de inversión **vivo**, ordenados por `bank` y `name`. |
+
+Cada entrada de `accounts`:
+
+| Campo | Tipo | Qué es |
+| --- | --- | --- |
+| `accountId` | int | El `id` de la cuenta. |
+| `bank` | string | El banco de la cuenta. |
+| `alias` | string | El alias de la cuenta. |
+| `dataUntil` | string `YYYY-MM-DD` o `null` | El `bookingDate` de su movimiento más reciente. `null` si no tiene movimientos. |
+| `importedAt` | string `YYYY-MM-DD` o `null` | Qué día se importó por última vez un extracto suyo (ver abajo). `null` si nunca. |
+| `expectedMonthly` | boolean | Siempre `true`: una cuenta no tiene fecha de cierre ni de vencimiento. |
+| `gaps` | lista de `{ from, to }` | Los tramos sin movimientos entre dos importaciones (ver abajo), en orden cronológico. |
+
+Cada entrada de `products`:
+
+| Campo | Tipo | Qué es |
+| --- | --- | --- |
+| `productId` | int | El `id` del producto. |
+| `bank` | string | El banco del producto. |
+| `name` | string | El nombre del producto. |
+| `type` | string | `fund`, `etf`, `managed_portfolio`, `deposit` o `savings_account`. |
+| `maturityDate` | string `YYYY-MM-DD` o `null` | Su fecha de vencimiento; solo la tiene un depósito. |
+| `dataUntil` | string `YYYY-MM-DD` o `null` | La fecha de su foto más reciente (`Valuation` o `SavingsSnapshot`). `null` si no tiene ninguna: hoy, los depósitos, que no tienen serie. |
+| `importedAt` | string `YYYY-MM-DD` o `null` | Qué día se importó por última vez un archivo suyo (ver abajo). `null` si nunca. |
+| `expectedMonthly` | boolean | `false` si tiene `maturityDate` (futura: si no, ya no saldría); `true` si no la tiene. |
+| `gaps` | lista de `{ from, to }` | Los meses enteros sin foto (ver abajo), en orden cronológico. `[]` si `expectedMonthly` es `false`. |
+
+Reglas que gobiernan toda la respuesta:
+
+- **Producto vivo.** La fecha de cierre de un producto es la más temprana de las
+  que tenga escritas entre `closedAt` y `maturityDate`, sea del tipo que sea. Un
+  producto sale en `products` si no tiene fecha de cierre o si es **posterior a
+  hoy**: el mismo día del cierre o del vencimiento ya no sale (misma regla que
+  `GET /api/investments/gains`). Un depósito vencido sin `closedAt` tampoco sale.
+- **`expectedMonthly`.** Lo que no tiene fecha de vencimiento se espera cada mes
+  (todas las cuentas, y los fondos, ETF, carteras y cuentas remuneradas). Lo que
+  tiene una fecha de vencimiento futura no: sale con `expectedMonthly: false` y
+  `gaps: []`.
+- **`gaps` de una cuenta.** Se recorren sus movimientos en orden `bookingDate`,
+  posición dentro del día e `id`. Entre dos movimientos seguidos que llegaron en
+  **importaciones distintas** y cuyos `bookingDate` distan **más de 31 días**, sale
+  un tramo con `from` = el día siguiente al primero y `to` = el día anterior al
+  segundo. 31 días justos no es un tramo. Dos movimientos son de la misma
+  importación si se guardaron en el mismo instante (todas las filas que guarda un
+  archivo se guardan juntas): **dentro de un mismo extracto nunca hay tramo**, por
+  mucho que pase entre dos movimientos, porque el banco ya cubrió ese periodo.
+- **`gaps` de un producto.** Entre el mes de su primera foto y el mes de su última
+  foto (los dos excluidos), cada racha de meses naturales sin ninguna foto es un
+  tramo: `from` = el día 1 del primer mes que falta y `to` = el último día del
+  último mes que falta. Se busca en toda su historia, no solo en los últimos meses.
+- **`importedAt` es una fecha de Madrid.** La importación guarda el instante
+  (`lastImportedAt` en la cuenta y en el producto) y aquí se publica el **día en
+  Madrid** de ese instante: una importación a las 00:30 de Madrid cuenta para ese
+  día, aunque en UTC fuera el anterior. Un extracto cuenta como importado también
+  si todos sus movimientos ya estaban; un archivo que falla no cambia la fecha.
+- **Lo importado antes de la feature 69.** Al aplicar su migración, la fecha se
+  rellenó con el día en que entraron las filas más recientes: en una cuenta, el de
+  sus movimientos más recientes (sigue `null` si no tiene ninguno); en un producto,
+  el más reciente entre el día en que se creó y el día en que entraron sus fotos. Si
+  una foto se volvió a subir después, sale el día de la primera vez. Desde la
+  primera importación posterior, sale el día de esa importación.
+
+Ejemplo (inventado):
+
+```json
+{
+  "asOf": "2026-11-08",
+  "accounts": [
+    {
+      "accountId": 1,
+      "bank": "bankinter",
+      "alias": "Bankinter",
+      "dataUntil": "2026-10-15",
+      "importedAt": "2026-11-02",
+      "expectedMonthly": true,
+      "gaps": []
+    }
+  ],
+  "products": [
+    {
+      "productId": 7,
+      "bank": "myinvestor",
+      "name": "Fondo X",
+      "type": "fund",
+      "maturityDate": null,
+      "dataUntil": "2026-10-14",
+      "importedAt": "2026-10-15",
+      "expectedMonthly": true,
+      "gaps": [{ "from": "2026-09-01", "to": "2026-09-30" }]
+    },
+    {
+      "productId": 9,
+      "bank": "myinvestor",
+      "name": "Depósito Y",
+      "type": "deposit",
+      "maturityDate": "2027-05-20",
+      "dataUntil": null,
+      "importedAt": "2026-05-21",
+      "expectedMonthly": false,
+      "gaps": []
+    }
+  ]
+}
+```
+
+Una base sin cuentas ni productos no es un error: 200 con las dos listas vacías.
+
+**Errores**
+
+Ninguno propio: sin parámetros no hay 400 posible y no hay recurso direccionable
+que dé 404. Solo los genéricos (500) del handler central.
+
+> Solo existe el `GET`: este endpoint **no escribe nada** (no hay `POST`, ni
+> `PATCH`, ni `DELETE` bajo `/api/last-imports`).
+
 ---
 
 ## Ingesta desde Google Drive
@@ -3075,8 +3208,10 @@ depósitos, ADR-016). Para esos archivos los pasos 4 y 5 son otros:
 
 4'. **upsert del producto** sobre `(bank, name)` — el `bank` lo dice la **carpeta**,
     nunca el contenido — con su `type`, `currency`, `openedAt` y `closedAt` tal como
-    vienen. Un `name` que **ya existe en ese banco con otro tipo** se **rechaza**: un
-    producto no cambia de tipo, y convertirlo dejaría su serie anterior huérfana;
+    vienen, y (feature 69) con el instante de la importación en `lastImportedAt`,
+    también si el producto ya existía. Un `name` que **ya existe en ese banco con otro
+    tipo** se **rechaza**: un producto no cambia de tipo, y convertirlo dejaría su
+    serie anterior huérfana;
 5'. **upsert de la foto de la fecha** sobre `(productId, date)`, con los importes **tal
     como están escritos** (nada se calcula). Qué tabla es la foto lo decide el tipo:
 
@@ -3452,7 +3587,8 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 > si quieres volver a verlos, se vuelve a importar.
 - **En un extracto `failed` no se ancla ni se rellena nada, y no queda nada de él**
   (feature 66): todo lo que el archivo escribe en la base —la cuenta si es nueva,
-  sus movimientos, los saldos que rellena, el ancla y sus avisos— se guarda en una
+  sus movimientos, los saldos que rellena, el ancla, sus avisos y (feature 69) la
+  fecha de importación de la cuenta (`lastImportedAt`)— se guarda en una
   sola transacción por archivo, y si cualquier paso falla se deshace entera. No
   quedan sus movimientos, ni la cuenta si se creó con él, ni el ancla si la fijó
   él, ni sus avisos. El informe lo dice así: `account` es `null`, `imported`,

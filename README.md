@@ -96,6 +96,7 @@ El contrato completo (cuerpos, respuestas y errores) vive en
 | `GET`    | `/api/investments/overview`    | Las inversiones del mes: la foto de cada producto, cuánto cambió desde la anterior y la ganancia del periodo. |
 | `GET`    | `/api/investments/deposits`    | Cada depósito con su archivo de producto y, si ya venció, lo que generó (importe del vencimiento menos el principal), con el total. Solo lectura. |
 | `GET`    | `/api/investments/gains`       | Lo que gana o pierde cada fondo, ETF, cartera y depósito desde que se abrió (invertido, valor, ganancia en € y %, fecha del dato), vivos y cerrados aparte, con el total de los vivos. A fecha de hoy; solo lectura. |
+| `GET`    | `/api/last-imports`            | Por cada cuenta y cada producto vivo: hasta qué fecha hay datos, qué día se importó por última vez, si se espera cada mes y los tramos sin datos. A fecha de hoy; solo lectura. |
 | `GET`    | `/api/ingestion/pending`       | Archivos de banco pendientes en Drive. |
 | `POST`   | `/api/import`                  | **Importa:** descarga, parsea, guarda los movimientos y solo entonces mueve el archivo a `procesados/`. |
 

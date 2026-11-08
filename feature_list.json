@@ -3430,6 +3430,102 @@
         }
       ],
       "status": "done"
+    },
+    {
+      "id": 69,
+      "name": "last-imports",
+      "title": "Hasta qué fecha hay datos y cuándo se importó cada cosa, con aviso de huecos",
+      "sdd": true,
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-11-08) a partir de la conversación con el humano (idea de mejora 1 de ../docs/ideas-de-mejora.md). Aprobado por el humano el 2026-11-08 («me parece bien como está escrita»). Procedencia de cada frase, tal como se le enseñó: [humano] = lo dijo él; [leader] = propuesta del leader, aprobada con el borrador.",
+        "que_quiero": "El backend da una lista de todo lo que importo: las cuentas corrientes por banco y cada producto de los archivos de inversiones [humano]. De cada cosa, dos fechas completas: hasta qué fecha hay datos y en qué fecha se hizo la importación [humano]. Solo sale lo vivo: lo que tiene fecha de cierre o fecha de vencimiento ya pasada deja de salir, sea del tipo que sea; no se distingue por tipo de producto [humano]. Lo que tiene fecha de vencimiento futura sale como que no hace falta importarlo cada mes; lo que no tiene fecha de vencimiento se espera todos los meses [leader]. Si faltan fechas intermedias, sale un aviso [humano]. El frontend lo enseña en una ventana emergente, en su propia sesión [humano].",
+        "por_que": "Saber qué he importado este mes y qué me falta. No es lo mismo tener datos hasta mitad de mes que hacer ese import en una fecha diferente [humano].",
+        "como_se_que_esta_bien": [
+          "Importo un extracto de Bankinter con movimientos hasta el 15 de octubre, y lo importo el 2 de noviembre: Bankinter sale con datos hasta el 2026-10-15 e importado el 2026-11-02 [humano].",
+          "Importo la foto de un fondo: sale con la fecha de la foto y la de la importación [humano].",
+          "Un depósito vivo sale sin pedir importación mensual; cuando vence, deja de salir [humano].",
+          "Un producto cerrado no sale [humano].",
+          "Un fondo con fotos de agosto y octubre pero no de septiembre sale con aviso de que falta septiembre [leader].",
+          "Una cuenta corriente con un hueco entre dos extractos sale con aviso; el tamaño del hueco que avisa lo decide el agente [humano].",
+          "Revolut, si la importo sin movimientos nuevos, sale con su fecha de importación nueva aunque «datos hasta» siga siendo la de su último movimiento [leader].",
+          "Consultar la lista no cambia nada en la base [leader]."
+        ],
+        "que_no_quiero": [
+          "Tocar el frontend [humano].",
+          "Cambiar cómo se importa: los mismos archivos y el mismo botón [leader].",
+          "Tener que marcar a mano qué se importa cada mes y qué no: solo nos basamos en fechas [humano]."
+        ],
+        "delego_en_agente": [
+          "Cómo detectar un hueco en una cuenta corriente: un día sin movimientos puede ser real, así que no basta con las fechas de los movimientos; mirar si los extractos traen el periodo que cubren (los parsers hoy no leen ninguno, y no se han abierto los archivos reales).",
+          "Qué fecha de importación sale para lo importado antes de esta feature: hoy no se guarda en ningún sitio; lo más parecido es el día en que entraron las filas.",
+          "El nombre y la forma del endpoint."
+        ]
+      },
+      "acceptance": [
+        "GET /api/last-imports responde 200 con asOf, accounts (todas las cuentas) y products (solo los vivos), cada entrada con dataUntil, importedAt, expectedMonthly y gaps.",
+        "Importar un extracto (también sin movimientos nuevos) escribe Account.lastImportedAt en su transacción; uno que falla no lo toca.",
+        "Importar un archivo de producto escribe InvestmentProduct.lastImportedAt en la misma transacción que el producto y su foto.",
+        "importedAt sale como la fecha de Madrid del instante guardado; para lo importado antes de la feature, la migración rellena con el createdAt más reciente de sus filas.",
+        "Un producto cuya fecha de cierre (la más temprana de closedAt y maturityDate) es <= hoy no sale; uno con maturityDate futura sale con expectedMonthly false y sin gaps.",
+        "Un producto sin maturityDate sale con expectedMonthly true y gaps = los meses sin foto entre su primera y su última foto.",
+        "Una cuenta sale con gaps donde dos movimientos consecutivos de importaciones distintas distan más de 31 días; dentro de una misma importación nunca.",
+        "Consultar no escribe nada en la base, y el contrato publica la ruta en docs/api-contract.md."
+      ],
+      "status": "done",
+      "checks": [
+        {
+          "descripcion": "Importo un extracto de Bankinter con movimientos hasta el 15 de octubre, y lo importo el 2 de noviembre: Bankinter sale con datos hasta el 2026-10-15 e importado el 2026-11-02.",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.test.ts -t \"shows a statement with data until its last movement and the day it was imported\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Importo la foto de un fondo: sale con la fecha de la foto y la de la importación.",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.test.ts -t \"shows a fund photo with its date and the day it was imported\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un depósito vivo sale sin pedir importación mensual; cuando vence, deja de salir.",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.test.ts -t \"lists a live deposit as not expected every month and drops it once it matures\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un producto cerrado no sale.",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.test.ts -t \"does not list a closed product\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un fondo con fotos de agosto y octubre pero no de septiembre sale con aviso de que falta septiembre.",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.test.ts -t \"reports September as missing for a fund with August and October photos\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una cuenta corriente con un hueco entre dos extractos sale con aviso; el tamaño del hueco que avisa lo decide el agente.",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.test.ts -t \"reports a gap between two statements of a current account\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Una cuenta corriente con un hueco entre dos extractos sale con aviso (y un tramo sin movimientos dentro de un mismo extracto no avisa).",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.test.ts -t \"does not report a quiet stretch inside one statement\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Revolut, si la importo sin movimientos nuevos, sale con su fecha de importación nueva aunque «datos hasta» siga siendo la de su último movimiento.",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.test.ts -t \"keeps data until and moves the import date when a statement brings no new movements\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Consultar la lista no cambia nada en la base.",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.test.ts -t \"does not change the database when listing\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Un extracto que falla no cambia la fecha de importación de su cuenta.",
+          "comando": "pnpm exec vitest run src/modules/import/import.last-imported.test.ts -t \"a failed statement leaves the import date as it was\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Lo importado antes de esta feature sale con el día en que entraron sus filas.",
+          "comando": "pnpm exec vitest run src/modules/import/import.last-imported-migration.test.ts -t \"fills the import date of what was imported before the feature\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) El contrato publica GET /api/last-imports.",
+          "comando": "pnpm exec vitest run src/modules/last-imports/last-imports.docs.test.ts -t \"the contract describes GET /api/last-imports\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Lo que ya funciona sigue igual: la importación, su informe y el resto de rutas.",
+          "comando": "pnpm test"
+        }
+      ]
     }
   ]
 }

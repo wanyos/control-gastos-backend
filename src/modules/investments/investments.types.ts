@@ -587,3 +587,32 @@ export interface ProductImportResult {
     created: boolean
   } | null
 }
+
+// ---------------------------------------------------------------------------
+// Feature 69 `last-imports`: what the module `last-imports` needs of each
+// product. It lives here because `investments.service.ts` is the only file of
+// `src/` allowed to read the investment tables (`src/architecture.test.ts`).
+// ---------------------------------------------------------------------------
+
+/**
+ * One product as `listProductsForLastImports` hands it over: the facts only.
+ * Whether it is live, whether it is expected every month and its gaps are
+ * decided by the module `last-imports`, not here.
+ */
+export interface ProductImportFacts {
+  id: number
+  bank: string
+  name: string
+  type: InvestmentProductType
+  /** Date-only (midnight UTC); `null` = no closing date written. */
+  closedAt: Date | null
+  /** Date-only (midnight UTC); only a deposit has one. */
+  maturityDate: Date | null
+  /** The instant an import last stored a file of it; `null` = never. */
+  lastImportedAt: Date | null
+  /**
+   * The `date` of every photo of the product (`Valuation` and
+   * `SavingsSnapshot` rows), date-only, oldest first. Empty for a deposit.
+   */
+  photoDates: Date[]
+}

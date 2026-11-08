@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## F69 `last-imports` — CERRADA (2026-11-08, sin commit todavía)
+
+**Qué se hizo:** idea de mejora 1 del workspace. La importación guarda el instante en que importó cada cuenta y cada producto (`lastImportedAt`, dos migraciones: columna y relleno de lo ya importado), y `GET /api/last-imports` da, por cada cuenta y producto vivo, hasta qué fecha hay datos, qué día se importó, si se espera cada mes y los tramos sin datos. ADR-044. SDD, lotes A y B; reviewer `APPROVED` sin hallazgos → [resumen](summaries/last-imports.md), [implementación](implementations/last-imports.md), [revisión](reviews/last-imports.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E5 de `docs/roadmap.md`. Sin commit. Las dos migraciones **no** están aplicadas a la base `gastos`: es deber del humano, con copia antes (`docs/roadmap.md` §Deberes tuyos pendientes). Sección publicada en `docs/api-contract.md`: la sesión del frontend puede hacer su ventana emergente.
+
 ## F68 `movements-hide-not-counted` — CERRADA (2026-11-06, sin commit todavía)
 
 **Qué se hizo:** encargo del frontend (su cabo 37 b). `GET /api/movements` acepta `hideNotCounted=true`: esconde lo marcado y lo emparejado salvo los movimientos de depósito que suman algo. Spec aprobado sin cambios; lote A; review 1 CHANGES_REQUESTED (fila del README y esta línea), review 2 `APPROVED` sin hallazgos → [resumen](summaries/movements-hide-not-counted.md), [implementación](implementations/movements-hide-not-counted.md), [revisión](reviews/movements-hide-not-counted.md). Pendiente: que la sesión del frontend cambie su casilla al parámetro nuevo.

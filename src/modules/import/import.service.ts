@@ -76,6 +76,12 @@ export interface ImportPendingDeps {
    * caller that predates feature 26 keeps behaving exactly as it did.
    */
   productParsers?: ProductParserRegistry
+  /**
+   * The clock that dates each file this run stores (feature 69), handed down to
+   * `importStatement` and `importProductFile`. Absent: the real one. Only tests
+   * pass it, to fix the instant they check.
+   */
+  now?: () => Date
 }
 
 /** The account a file's movements belong to, and how it was obtained. */
@@ -394,6 +400,7 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
                   adapter: adapter.adapter,
                   bankSlug,
                   file: { bank: bankSlug, year: year.name, name: file.name },
+                  now: deps.now,
                 }),
             }),
           )
@@ -420,6 +427,7 @@ export async function importPending(deps: ImportPendingDeps): Promise<ImportRunR
                   fileName: file.name,
                   year: year.name,
                   storedInRun,
+                  now: deps.now,
                 }),
             }),
           )
@@ -610,6 +618,8 @@ export interface ImportProductFileDeps {
   year?: string
   /** Files of this run already stored. Absent: nothing is compared (as before). */
   storedInRun?: ProductFilesStoredInRun
+  /** Feature 69: the clock that dates the import of the file. Absent: the real one. */
+  now?: () => Date
 }
 
 /** Exact comparison, like the unique key `(bank, name)` of the database. */
@@ -656,7 +666,15 @@ export async function importProductFile(deps: ImportProductFileDeps): Promise<Pr
     }
     // The bank of a file is the one of its FOLDER (ADR-009), never the one its
     // contents claim: the parser's own slug is overwritten here on purpose.
-    const stored = await persistProductSnapshot(deps.prisma, { ...parsed, bank: deps.bankSlug })
+    // Feature 69: the instant travels to the writer, which stores it as the
+    // product's `lastImportedAt` in the same transaction as the product and its
+    // photo (R6). A file that failed above never gets here.
+    const now = deps.now ?? (() => new Date())
+    const stored = await persistProductSnapshot(
+      deps.prisma,
+      { ...parsed, bank: deps.bankSlug },
+      now(),
+    )
     deps.storedInRun?.set(key, { year: deps.year ?? '', name: deps.fileName })
     result.product = stored.product
     result.snapshot = stored.snapshot
@@ -681,6 +699,8 @@ export interface ImportStatementDeps {
    */
   file: WarningFileRef
   content: Buffer
+  /** Feature 69: the clock that dates the import of the file. Absent: the real one. */
+  now?: () => Date
 }
 
 /**
@@ -698,10 +718,11 @@ const STATEMENT_TRANSACTION_TIMEOUT_MS = 60_000
  * place.
  *
  * Everything the file writes -- the account if it is new, its movements, the
- * balances it fills, the anchor and its warnings -- goes in ONE database
- * transaction per file (feature 66): if any step fails, nothing of that file
- * stays. Parsing and the "brings movements" check write nothing and run before
- * it, so an empty or unreadable file opens no transaction.
+ * balances it fills, the anchor and its warnings, and since feature 69 the
+ * account's `lastImportedAt` -- goes in ONE database transaction per file
+ * (feature 66): if any step fails, nothing of that file stays. Parsing and the
+ * "brings movements" check write nothing and run before it, so an empty or
+ * unreadable file opens no transaction.
  *
  * It never throws: a per-file failure comes back as `status: 'failed'` plus its
  * sanitized error, exactly as it travelled inside the report before. The rows
@@ -709,6 +730,7 @@ const STATEMENT_TRANSACTION_TIMEOUT_MS = 60_000
  */
 export async function importStatement(deps: ImportStatementDeps): Promise<StatementResult> {
   const result = emptyStatementResult()
+  const now = deps.now ?? (() => new Date())
 
   try {
     const statement = await deps.adapter.parse(deps.content)
@@ -771,6 +793,15 @@ export async function importStatement(deps: ImportStatementDeps): Promise<Statem
         await persistImportWarnings(tx, deps.file, {
           unparsedRows: statement.unparsedRows,
           balanceMismatches: result.balanceMismatches,
+        })
+
+        // Feature 69 (R4, R5): the account was imported now, also when every row
+        // was already stored (`imported` 0). Last, after the last step that can
+        // fail, and inside this transaction: a file that fails anywhere above
+        // never reaches it, and one that fails here undoes everything (feature 66).
+        await tx.account.update({
+          where: { id: resolution.account.id },
+          data: { lastImportedAt: now() },
         })
       },
       { timeout: STATEMENT_TRANSACTION_TIMEOUT_MS },

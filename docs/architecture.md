@@ -3672,6 +3672,78 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
     `GET /api/net-worth` no cambian. Sin migraciones. Contrato en
     `docs/api-contract.md` §`GET /api/investments/gains`.
 
+### ADR-044: El día de la última importación se guarda en una columna de la cuenta y otra del producto, y los huecos se calculan al leer: en una cuenta, más de 31 días entre dos importaciones distintas; en un producto, meses enteros sin foto
+
+- **Fecha:** 2026-11-08
+- **Estado:** aceptada (implementada en la feature #69 `last-imports`, SDD; hoja
+  aprobada por el humano el 2026-11-08).
+- **Contexto:** el humano quiere ver, para cada cuenta y cada producto vivo, hasta
+  qué fecha hay datos y qué día se importó por última vez, y que se le diga qué
+  falta. La base sabía la fecha de los datos (`bookingDate`, la fecha de cada
+  foto), pero no cuándo se importó cada cosa: un extracto de Revolut sin
+  movimientos nuevos no dejaba ninguna fila, y el `updatedAt` de un producto se
+  mueve también al renombrarlo a mano (2026-11-08).
+- **Decisión:**
+  1. **Dos columnas, no una tabla.** `Account.lastImportedAt` e
+     `InvestmentProduct.lastImportedAt` (`DateTime?`, el instante). Solo las escribe
+     el importador, dentro de la transacción del archivo: `importStatement` (también
+     cuando todos los movimientos ya estaban) y `upsertProduct`, a través de los
+     tres escritores de producto. Un archivo que falla no las mueve. El reloj se
+     inyecta (`now`) para los tests.
+  2. **La consulta es una ruta propia, `GET /api/last-imports`**, módulo
+     `src/modules/last-imports/`, sin parámetros y a fecha de hoy en Madrid. Las
+     tablas de inversiones las lee `listProductsForLastImports`, en
+     `investments.service.ts` (único archivo que puede nombrarlas,
+     `src/architecture.test.ts`); el módulo nuevo decide con funciones puras
+     (`closingDate`, `missingPhotoMonths`, `accountGaps`). Solo `find*`.
+  3. **Producto vivo:** sin fecha de cierre, o con ella posterior a hoy; la fecha de
+     cierre es la más temprana escrita entre `closedAt` y `maturityDate`, sea del
+     tipo que sea (la regla de la F67). Con `maturityDate` (futura) no se espera
+     cada mes y no tiene huecos; sin ella, sí. Las cuentas se esperan siempre.
+  4. **Hueco en una cuenta:** dos movimientos seguidos (orden `bookingDate`,
+     posición dentro del día, `id`) de **importaciones distintas** y separados más
+     de 31 días (`ACCOUNT_GAP_DAYS`). Dos movimientos son de la misma importación si
+     comparten `createdAt`: un archivo los guarda todos en un solo `createMany`
+     (medido en la base del humano el 2026-11-08). Dentro de un mismo archivo no hay
+     hueco nunca: el banco ya cubrió ese periodo.
+  5. **Hueco en un producto:** cada racha de meses naturales sin foto entre el mes
+     de la primera y el de la última, en toda su historia.
+  6. **`importedAt` se publica como el día en Madrid** del instante guardado.
+  7. **Lo importado antes de la feature se rellena con `createdAt`** en una migración
+     solo de datos (`20261108120100_last_imported_at_backfill`): en la cuenta, el
+     `createdAt` más reciente de sus movimientos; en el producto, el más reciente
+     entre el suyo y el de sus fotos. Nunca `updatedAt`. Solo toca lo que está a
+     `NULL`.
+- **Alternativas descartadas:**
+  - **Una tabla con una fila por archivo importado:** daría historial y el periodo
+    que cubre cada archivo, pero se pide solo la última fecha, el pasado no se puede
+    rellenar con nombres de archivo y el `createdAt` de los movimientos ya separa
+    una importación de otra.
+  - **Leer el periodo que escribe cada extracto:** sería lo exacto, pero ningún
+    parser lo lee y no se han abierto los archivos reales de los cinco bancos.
+  - **Sacar la fecha de importación al leer** (`MAX(createdAt)`): no ve una
+    importación sin movimientos nuevos.
+  - **El `updatedAt` del producto o de la foto:** se mueve por cambios que no son
+    importaciones.
+  - **Umbral de 20 días:** con los datos del 2026-11-08 sacaría dos huecos en una
+    cuenta con pocos movimientos que no se sabe si son reales.
+  - **La ruta bajo `/api/import`** (`GET /api/import/status`): el módulo de
+    importación es el que escribe; esta consulta mezcla cuentas e inversiones, como
+    `net-worth`, y va en módulo propio.
+- **Consecuencias:**
+  - Solo se guarda la última importación: no se puede ver qué se importó en un mes
+    concreto. Si hace falta, es una tabla nueva.
+  - Un mes olvidado en una cuenta casi sin movimientos puede no salir como hueco
+    (si el salto entre dos importaciones no pasa de 31 días).
+  - Lo importado antes de la feature sale con el día en que entraron sus filas más
+    recientes; una foto vuelta a subir después sale con el día de la primera vez.
+  - Un depósito vencido sin `closedAt` no sale aquí, como en
+    `GET /api/investments/gains`, pero `GET /api/net-worth` lo sigue sumando con
+    `matured_not_closed`.
+  - `POST /api/import` responde lo mismo y ninguna otra ruta cambia. Contrato en
+    `docs/api-contract.md` §`GET /api/last-imports`; columnas en
+    `docs/data-model.md`.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

@@ -215,6 +215,14 @@ describe('architecture invariants', () => {
       'modules/net-worth/net-worth.schema.ts',
       'modules/net-worth/net-worth.types.ts',
       'modules/net-worth/net-worth.test.ts',
+      // Feature 69: the last imports. One read-only endpoint; the investment
+      // tables are read through `listProductsForLastImports` of the investments
+      // service.
+      'modules/last-imports/last-imports.routes.ts',
+      'modules/last-imports/last-imports.service.ts',
+      'modules/last-imports/last-imports.schema.ts',
+      'modules/last-imports/last-imports.types.ts',
+      'modules/last-imports/last-imports.test.ts',
       // Feature 40: the transfer detection. The detection itself has no
       // endpoint -- the importer calls it after its file loop and its result
       // travels inside the import report. The routes/schema files are

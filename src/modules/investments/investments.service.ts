@@ -32,6 +32,7 @@ import type {
   NetWorthProduct,
   ProductFileCommon,
   ProductFileInput,
+  ProductImportFacts,
   ProductImportResult,
   SavingsSnapshotInput,
   SerializedSavingsSnapshot,
@@ -60,6 +61,7 @@ import type {
 export async function persistSavingsSnapshot(
   prisma: AppPrismaClient,
   input: SavingsSnapshotInput,
+  importedAt: Date = new Date(),
 ): Promise<ProductImportResult> {
   // Belt and braces for a caller that is not the type checker (a registry entry
   // wired by hand in `app.ts`): only a savings account has a SavingsSnapshot.
@@ -72,7 +74,7 @@ export async function persistSavingsSnapshot(
   // ONE transaction for the two writes: a failure halfway cannot leave a product
   // without its photo, and it cannot leave a photo of a month that was rejected.
   return prisma.$transaction(async (tx) => {
-    const { product, created } = await upsertProduct(tx, input)
+    const { product, created } = await upsertProduct(tx, input, importedAt)
 
     const date = toDateOnly(input.date)
     const previousSnapshot = await tx.savingsSnapshot.findUnique({
@@ -124,14 +126,15 @@ export async function persistSavingsSnapshot(
 export async function persistProductSnapshot(
   prisma: AppPrismaClient,
   input: ProductFileInput,
+  importedAt: Date = new Date(),
 ): Promise<ProductImportResult> {
   switch (input.type) {
     case 'savings_account':
-      return persistSavingsSnapshot(prisma, input)
+      return persistSavingsSnapshot(prisma, input, importedAt)
     case 'deposit':
-      return persistDeposit(prisma, input)
+      return persistDeposit(prisma, input, importedAt)
     default:
-      return persistValuation(prisma, input)
+      return persistValuation(prisma, input, importedAt)
   }
 }
 
@@ -153,6 +156,7 @@ export async function persistProductSnapshot(
 export async function persistValuation(
   prisma: AppPrismaClient,
   input: ValuationInput,
+  importedAt: Date = new Date(),
 ): Promise<ProductImportResult> {
   // Belt and braces for a caller that is not the type checker (a registry entry
   // wired by hand in `app.ts`): only these three types have a Valuation.
@@ -164,7 +168,7 @@ export async function persistValuation(
   }
 
   return prisma.$transaction(async (tx) => {
-    const { product, created } = await upsertProduct(tx, input)
+    const { product, created } = await upsertProduct(tx, input, importedAt)
 
     const date = toDateOnly(input.date)
     const previousValuation = await tx.valuation.findUnique({
@@ -217,6 +221,7 @@ export async function persistValuation(
 export async function persistDeposit(
   prisma: AppPrismaClient,
   input: DepositInput,
+  importedAt: Date = new Date(),
 ): Promise<ProductImportResult> {
   if (input.type !== 'deposit') {
     throw new ValidationError(
@@ -229,7 +234,7 @@ export async function persistDeposit(
   // reads before it writes, and reading and writing outside one would let a
   // concurrent load slip between the two.
   return prisma.$transaction(async (tx) => {
-    const { product, created } = await upsertProduct(tx, input, {
+    const { product, created } = await upsertProduct(tx, input, importedAt, {
       principal: input.depositTerms.principal.toFixed(2),
       // A PERCENTAGE, never a fraction: 2.75 is 2,75 % (`Decimal(6,4)`).
       interestRate: input.depositTerms.interestRate.toFixed(4),
@@ -275,10 +280,18 @@ interface ProductRow {
  *
  * `created` is read BEFORE the upsert and inside the same transaction: comparing
  * `createdAt` with `updatedAt` would depend on the clock resolution.
+ *
+ * Feature 69: `importedAt` is written as `lastImportedAt` on create AND on
+ * update, so reloading the same file moves it too (R6). It is a parameter of the
+ * writers and not a field of `ProductFileCommon`: that type is what a parser
+ * returns, and a parser does not know when the file is imported. The writers
+ * default it to "now" because every write of a product file IS an import, also
+ * the one of a test that calls a writer directly.
  */
 async function upsertProduct(
   tx: TransactionClient,
   input: ProductFileCommon & { type: ProductFileInput['type'] },
+  importedAt: Date,
   depositColumns?: DepositColumns,
 ): Promise<{ product: ProductRow; created: boolean }> {
   const where = { bank_name: { bank: input.bank, name: input.name } }
@@ -306,6 +319,7 @@ async function upsertProduct(
     interestRate: depositColumns?.interestRate ?? null,
     expectedGain: depositColumns?.expectedGain ?? null,
     maturityDate: depositColumns?.maturityDate ?? null,
+    lastImportedAt: importedAt,
   }
 
   const product = await tx.investmentProduct.upsert({
@@ -1240,4 +1254,43 @@ function withClosedOn(product: GainsProduct, closedOn: Date): ClosedGainsProduct
     valuedAt,
     reason,
   } as ClosedGainsProduct
+}
+
+// ---------------------------------------------------------------------------
+// Feature 69 `last-imports`: the read of the investment tables that view needs.
+// ---------------------------------------------------------------------------
+
+/**
+ * Feature 69: every product with what the last-imports view needs (R7). Only
+ * `find*`: it writes NOTHING (R15).
+ *
+ * It lives here and not in the module `last-imports` because this is the only
+ * file of `src/` allowed to name the investment tables
+ * (`src/architecture.test.ts`). It returns EVERY product, closed ones included:
+ * which are live, and their gaps, is decided there, as pure functions.
+ */
+export async function listProductsForLastImports(
+  prisma: AppPrismaClient,
+): Promise<ProductImportFacts[]> {
+  const products = await prisma.investmentProduct.findMany({
+    orderBy: [{ bank: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+    select: {
+      id: true,
+      bank: true,
+      name: true,
+      type: true,
+      closedAt: true,
+      maturityDate: true,
+      lastImportedAt: true,
+      valuations: { select: { date: true } },
+      savingsSnapshots: { select: { date: true } },
+    },
+  })
+
+  return products.map(({ valuations, savingsSnapshots, ...product }) => ({
+    ...product,
+    photoDates: [...valuations, ...savingsSnapshots]
+      .map((photo) => photo.date)
+      .sort((a, b) => a.getTime() - b.getTime()),
+  }))
 }

@@ -704,7 +704,9 @@ describe('investments model: InvestmentProduct and Valuation', () => {
       // The three `balanceAnchor*` ones are NOT hers: feature 31 added them so
       // an account can remember the balance its statement stated. This guardian
       // is a closed list on purpose: it went red the day feature 31 touched the
-      // table, which is exactly what it is here for.
+      // table, which is exactly what it is here for. `lastImportedAt` is not hers
+      // either: feature 69 added it, the instant an import last stored a
+      // statement of the account.
       const flowColumns = await app.prisma.$queryRaw<Array<{ column_name: string }>>`
         SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'Account'
@@ -720,6 +722,7 @@ describe('investments model: InvestmentProduct and Valuation', () => {
         'iban',
         'id',
         'initialBalance',
+        'lastImportedAt',
         'type',
         'updatedAt',
       ])

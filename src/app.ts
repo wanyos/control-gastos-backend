@@ -15,6 +15,7 @@ import type {
   ProductParserRegistry,
 } from './modules/investments/investments.types.js'
 import ingestionRoutes from './modules/ingestion/ingestion.routes.js'
+import lastImportsRoutes from './modules/last-imports/last-imports.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
 import {
   classifyMyinvestorDepositMovement,
@@ -123,6 +124,7 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(netWorthRoutes, { prefix: '/api/net-worth' })
   app.register(investmentsRoutes, { prefix: '/api/investments', depositMaturityMatchers })
   app.register(ingestionRoutes, { prefix: '/api/ingestion' })
+  app.register(lastImportsRoutes, { prefix: '/api/last-imports' })
   app.register(transfersRoutes, { prefix: '/api/transfers' })
   app.register(importRoutes, { prefix: '/api/import', parsers: bankParsers, productParsers })
 
