@@ -414,16 +414,10 @@ tiene etapa, es que se va a perder.
 
 ## Deberes tuyos pendientes (no son código)
 
-- **Aplicar a tu base las dos migraciones de la F69 `last-imports`** (2026-11-08):
-  `20261108120000_last_imported_at` (añade la columna `lastImportedAt` a `Account` y a
-  `InvestmentProduct`) y `20261108120100_last_imported_at_backfill` (la rellena con el
-  día en que entraron las filas de lo que ya tenías importado). ⚠️ Escriben en tu base
-  real: saca antes una copia con `pnpm run db:backup`. Después,
-  `pnpm exec prisma migrate deploy`. Aplícalas antes de volver a importar o de pedir
-  `GET /api/last-imports`: el código ya lee y escribe esa columna (qué pasa sin ella
-  contra tu base no se ha probado).
-  Con ellas aplicadas, pide `GET /api/last-imports` y comprueba que las cinco cuentas
-  salen sin huecos y que el depósito que venció el 3 de noviembre ya no sale.
+- ~~**Aplicar a tu base las dos migraciones de la F69 `last-imports`**~~ ✅ **hecho el
+  2026-11-08** por el leader, con su permiso: copia `control-gastos-2026-11-08-171005.dump`
+  y `pnpm exec prisma migrate deploy` (las dos aplicadas). `GET /api/last-imports` contra
+  tu base: las cinco cuentas sin huecos y el depósito que venció el 3 de noviembre ya no sale.
 
 - **Comprobar la ingesta con `qs` 6.17.1** (2026-11-06). Se subió `qs`, que usa la
   librería de Google Drive para montar sus peticiones. Ya está probada contra tu Drive
