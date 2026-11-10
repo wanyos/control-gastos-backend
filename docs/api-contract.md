@@ -1161,6 +1161,14 @@ Lo que no está marcado ni emparejado sale siempre, aunque no sume. Los `totals`
 respuesta no cambia de forma: ver
 [Esconder lo que no cuenta](#esconder-lo-que-no-cuenta).
 
+Desde la feature 71 `myinvestor-investment-purchases` (2026-11-10) cada
+movimiento trae además el campo `investmentPurchase`, y los `totals` dejan fuera
+todo gasto de una cuenta de MyInvestor que sea una compra de inversión, sin
+marcarlo a mano y aunque el producto sea nuevo: ver
+[Compras de inversión de MyInvestor en las sumas](#compras-de-inversión-de-myinvestor-en-las-sumas).
+Los parámetros no cambian; `hideNotCounted` tampoco: una compra sin marcar ni
+emparejar sale siempre.
+
 **Parámetros de querystring** (todos opcionales, combinables entre sí):
 
 | Parámetro   | Tipo                                     | Qué filtra                                                       |
@@ -1236,7 +1244,8 @@ respuesta no cambia de forma: ver
       "createdAt": "2026-08-06T18:30:00.000Z",
       "updatedAt": "2026-08-06T18:30:00.000Z",
       "deposit": null,
-      "ownership": null
+      "ownership": null,
+      "investmentPurchase": null
     }
   ],
   "pagination": { "page": 1, "pageSize": 50, "total": 132, "totalPages": 3 },
@@ -1247,13 +1256,14 @@ respuesta no cambia de forma: ver
 - `movements`: la página pedida. Cada movimiento con la forma de
   [`Movement`](#movement); desde la feature 49 lleva **un campo más**,
   `excludedFromTotals`, desde la feature 57 **otro más**, `deposit`, desde la
-  feature 60 **otro más**, `categorySource`, y desde la feature 62 **dos más**,
-  `ownershipDecision` y `ownership` (ningún campo anterior cambia ni
+  feature 60 **otro más**, `categorySource`, desde la feature 62 **dos más**,
+  `ownershipDecision` y `ownership`, y desde la feature 71 **otro más**,
+  `investmentPurchase` (ningún campo anterior cambia ni
   desaparece). `categorySource` y `ownershipDecision` viajan en todas las
   respuestas que devuelven movimientos serializados; `deposit` **solo** viaja en esta
   respuesta: las de `PATCH /api/movements`, `PATCH /api/movements/:id` y
-  `/api/transfers` no lo llevan. `ownership` tampoco: **solo** viaja en esta
-  respuesta.
+  `/api/transfers` no lo llevan. `ownership` e `investmentPurchase` tampoco:
+  **solo** viajan en esta respuesta.
 - `movements[].deposit` (feature 57): `null` si el movimiento **no es de
   depósito**; si lo es, un objeto que dice qué clase de movimiento de depósito es
   y cuánto suma en los `totals` (la regla, en
@@ -1307,6 +1317,27 @@ respuesta no cambia de forma: ver
   ```json
   { "status": "doubtful", "ownAccountId": 4, "ownAccountName": "Cartera indexada inventada", "matchedText": "Trade Republic" }
   ```
+- `movements[].investmentPurchase` (feature 71): si el movimiento es una compra
+  de inversión de MyInvestor, que no suma en los `totals`. `null` si no lo es;
+  si lo es, un objeto (la regla, en
+  [Compras de inversión de MyInvestor en las sumas](#compras-de-inversión-de-myinvestor-en-las-sumas)).
+  No cambia el `amount` ni el `type` del movimiento, que siguen siendo los del
+  banco:
+
+  | Clave | Tipo | Qué es |
+  | --- | --- | --- |
+  | `certain` | boolean | `true` si el concepto acaba en `@` y un número de participaciones (`ETC INVENTADO METAL @ 3`); `false` si es compra solo por no empezar por ninguno de los conceptos fijos del banco (`FONDO INVENTADO GLOBAL INDX`). Las dos clases dejan de sumar igual: `false` solo avisa de que conviene revisarla. |
+
+  Una compra con participaciones en el concepto y una sin ellas (conceptos
+  inventados):
+
+  ```json
+  { "certain": true }
+  ```
+
+  ```json
+  { "certain": false }
+  ```
 - `pagination.total`: cuántos movimientos **coinciden con el filtro entero**, no
   cuántos trae la página. `totalPages` = `ceil(total / pageSize)` (`0` si no
   coincide ninguno).
@@ -1331,6 +1362,10 @@ respuesta no cambia de forma: ver
   `ownership.status` `"own"` o `"mine"` (dinero entre tus cuentas, ver
   [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas)),
   salvo un movimiento de depósito, que sigue sumando lo de su regla.
+  **Desde la feature 71** queda fuera además toda compra de inversión de
+  MyInvestor (`investmentPurchase` no nulo, con `certain` `true` o `false`),
+  tenga o no marca u `ownership` (ver
+  [Compras de inversión de MyInvestor en las sumas](#compras-de-inversión-de-myinvestor-en-las-sumas)).
 - Con `transfer=only` o con `excluded=only` los `totals` salen a `"0.00"` los
   tres mientras el filtro no deje ningún vencimiento de depósito con capital
   cierto: el resto de movimientos de ese filtro están, por construcción, fuera de
@@ -1348,7 +1383,8 @@ Desde la feature 68 `movements-hide-not-counted` (2026-11-06). Con
 - **Sale** todo movimiento que no esté marcado (`excludedFromTotals: false`) ni
   emparejado (`transferId: null`), sea o no de depósito y sea cual sea su
   `ownership`, su `productId` o su `type`, aunque no sume (dinero entre tus
-  cuentas, un `neutral`, una aportación a un producto, una apertura sin marcar).
+  cuentas, un `neutral`, una aportación a un producto, una apertura sin marcar y,
+  desde la feature 71, una compra de inversión de MyInvestor).
 - **Sale** todo movimiento de depósito que suma algo
   (`deposit.countedAmount` distinto de `"0.00"`), esté marcado, emparejado, las dos
   cosas o ninguna. Si suma algo se decide con toda la historia de su cuenta, no con
@@ -1515,6 +1551,10 @@ ni con ninguna forma de tu nombre.
   siempre).
 - **Un movimiento de depósito** (`deposit` no nulo) suma lo que diga
   [su regla](#movimientos-de-depósito-en-las-sumas), sea cual sea su `ownership`.
+- **Desde la feature 71, una compra de inversión de MyInvestor**
+  (`investmentPurchase` no nulo) no cuenta, sea cual sea su `ownership`, también
+  un `"doubtful"` o un `"not_mine"` (ver
+  [Compras de inversión de MyInvestor en las sumas](#compras-de-inversión-de-myinvestor-en-las-sumas)).
 
 **Cómo se ven los dudosos.** Con
 [`GET /api/movements?ownership=doubtful`](#get-apimovements): solo los dudosos de
@@ -1537,6 +1577,76 @@ movimiento**: el `amount`, el `type`, el `balanceAfter`, el `balance` de las
 cuentas, `transferId`, `excludedFromTotals` y las parejas que forma la detección
 de traspasos quedan exactamente como estarían sin la tabla. Lo único que se
 guarda en un movimiento es tu decisión (`ownershipDecision`).
+
+#### Compras de inversión de MyInvestor en las sumas
+
+Desde la feature 71 `myinvestor-investment-purchases` (2026-11-10). Vale igual
+para las **tres sumas**: los `totals` de [`GET /api/movements`](#get-apimovements),
+los `period.totals` de [`GET /api/overview`](#get-apioverview) y lo que
+[`GET /api/expenses-by-category`](#get-apiexpenses-by-category) cuenta como gasto.
+Las tres salen de la misma regla: una compra que no suma en una no suma en
+ninguna.
+
+**Qué es una compra de inversión.** Un movimiento que cumple las cuatro cosas:
+
+1. es de una cuenta de **MyInvestor** (en una cuenta de otro banco, el mismo
+   concepto no es compra y suma como siempre);
+2. es de `type` `expense` (un `income` nunca es compra, tampoco una venta o un
+   reembolso: suma como siempre);
+3. no es una pierna de un traspaso emparejado (`transferId: null`);
+4. su concepto (`description`) **no empieza por ninguno de los conceptos fijos
+   del banco** de esta lista cerrada. Se compara después de quitar los espacios
+   iniciales, sin distinguir mayúsculas ni tildes y con los espacios repetidos
+   contados como uno:
+
+   | El concepto empieza por | Qué es |
+   | --- | --- |
+   | `SUSCRIPCION PREMIUM` | La suscripción premium del banco |
+   | `IVA SUSCRIPCION PREMIUM` | El IVA de esa suscripción |
+   | `RET. REMUNERACION PREMIUM` | La retención de la remuneración premium |
+   | `APERTURA DEP` | La apertura de un depósito |
+   | `APORTACION AUTOMATICA CARTERA` | Una aportación automática a la cartera |
+   | `APORTACION A MI CARTERA` | Una aportación a la cartera |
+
+Todo lo demás es compra, **también la de un producto que la aplicación no
+conoce**: no hace falta archivo de producto, ni texto en la tabla de cuentas
+propias, ni marcarla. Un gasto de verdad que la regla tome por compra (un pago
+con tarjeta, una transferencia a otra persona) se devuelve a las sumas añadiendo
+su concepto a esta lista, que es un cambio de código; no hay forma de hacerlo
+desde la API.
+
+**Con certeza o sin ella** (`investmentPurchase.certain`):
+
+- `true` si el concepto acaba en `@`, espacios opcionales y un número de
+  participaciones (entero o con decimales, con punto o coma), con espacios
+  opcionales al final. Ejemplos inventados: `ETC INVENTADO METAL @ 3`,
+  `ETC INVENTADO METAL @2,5`.
+- `false` en cualquier otra compra (`FONDO INVENTADO GLOBAL INDX`).
+
+Las dos dejan de sumar igual; `false` solo dice que se reconoció por descarte.
+
+**Qué suma una compra:** nada, ni en `income` ni en `expense`, en las tres sumas,
+tenga o no `excludedFromTotals`, tenga el `ownership` que tenga. Quitarle la
+marca a una compra no la devuelve a las sumas.
+
+**Orden en que se aplican las reglas a un movimiento:**
+
+1. [Movimientos de depósito](#movimientos-de-depósito-en-las-sumas): un
+   movimiento de depósito suma lo de su regla y nunca se mira como compra.
+2. Compras de inversión de MyInvestor (esta sección): no suma.
+3. [Movimientos entre tus cuentas](#movimientos-entre-tus-cuentas-en-las-sumas)
+   (`ownership`).
+4. Lo de siempre: los `neutral`, `transferId`, `productId` y
+   `excludedFromTotals` (ver los `totals` de
+   [`GET /api/movements`](#get-apimovements)).
+
+**Se calcula en cada lectura y no se guarda nada**, como las reglas de depósitos
+y de cuentas propias. Vale para las compras que ya estaban y para las que entren
+en cada importación: la siguiente consulta ya las deja fuera. **No escribe en
+ningún movimiento**: el `amount`, el `type`, el `balanceAfter`,
+`excludedFromTotals`, `ownershipDecision`, los textos de la tabla de cuentas
+propias y el `balance` de la cuenta quedan exactamente como estaban. La compra
+se sigue listando en `GET /api/movements` con el `amount` y el `type` del banco.
 
 **Errores**
 
@@ -1641,9 +1751,9 @@ Sin `categoryId` en el body, `categorySource` no cambia.
   siempre `ids.length` (los ids no se repiten y todos existen).
 - `movements`: **los movimientos ya cambiados**, serializados con la misma forma
   que cada elemento de `movements` en `GET /api/movements` (con su `account` y su
-  `category` embebidos), **salvo `deposit`**, que solo viaja en
-  `GET /api/movements` (feature 57). Vienen para que la pantalla no tenga que
-  releer la lista después de cambiarlos.
+  `category` embebidos), **salvo `deposit`**, `ownership` e `investmentPurchase`,
+  que solo viajan en `GET /api/movements` (features 57, 62 y 71). Vienen para
+  que la pantalla no tenga que releer la lista después de cambiarlos.
 
 **Es todo o nada.** Las comprobaciones se hacen sobre el conjunto entero **antes**
 de escribir, y la escritura va en una transacción: si un solo movimiento de `ids`
@@ -1779,9 +1889,9 @@ cambia.
 > descarta en silencio.
 
 **Respuesta 200** — el movimiento serializado completo (la misma forma que cada
-elemento de `movements` en `GET /api/movements`, **salvo `deposit`** y
-**`ownership`**, que solo viajan en `GET /api/movements` desde las features 57 y
-62), con su `account` y su `category` embebidos. Lleva `ownershipDecision`.
+elemento de `movements` en `GET /api/movements`, **salvo `deposit`**,
+**`ownership`** e **`investmentPurchase`**, que solo viajan en
+`GET /api/movements` desde las features 57, 62 y 71), con su `account` y su `category` embebidos. Lleva `ownershipDecision`.
 
 **Errores**
 | Código HTTP | `code`             | Cuándo                                                            |
@@ -1823,8 +1933,9 @@ a mano una pareja que tú mismo deshiciste es legítimo.
 ```
 
 `movements` son los dos movimientos serializados completos (la misma forma que
-en `GET /api/movements`, salvo `deposit`, que solo viaja allí desde la feature
-57), en el orden en que llegaron los ids.
+en `GET /api/movements`, salvo `deposit`, `ownership` e `investmentPurchase`, que
+solo viajan allí desde las features 57, 62 y 71), en el orden en que llegaron
+los ids.
 
 **Traspasos y la marca `excludedFromTotals` (feature 49).** Son independientes:
 un movimiento marcado se puede enlazar igual que uno sin marcar, y enlazarlo no
@@ -1908,7 +2019,8 @@ respuesta sigue trayendo todas las parejas.
 - `pairs[].movements`: las **dos piernas**, serializadas completas con la misma
   forma que cada elemento de `movements` en
   [`GET /api/movements`](#get-apimovements) (con `account` y `category`
-  embebidos), salvo `deposit`, que solo viaja allí desde la feature 57.
+  embebidos), salvo `deposit`, `ownership` e `investmentPurchase`, que solo viajan
+  allí desde las features 57, 62 y 71.
   **Primero el `expense`, después el `income`.**
 - **Orden de las parejas:** de la más reciente a la más antigua, según la
   `bookingDate` **más reciente de sus dos piernas**. Si dos parejas empatan en
@@ -2013,6 +2125,10 @@ No calcula nada propio — ese es el punto del endpoint:
   cuentas propias reconoce como dinero entre tus cuentas, igual que los `totals`
   de `GET /api/movements` (ver
   [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas)).
+  Los saldos no cambian.
+- **Desde la feature 71**, `period.totals` deja fuera también las compras de
+  inversión de MyInvestor, igual que los `totals` de `GET /api/movements` (ver
+  [Compras de inversión de MyInvestor en las sumas](#compras-de-inversión-de-myinvestor-en-las-sumas)).
   Los saldos no cambian.
 
 Las **inversiones no aparecen aquí**: tendrán su propia consulta (feature 39).
@@ -2119,7 +2235,8 @@ concepto que escribe el banco. **Solo gastos**: los ingresos no entran.
 
 **Qué gasto entra.** Exactamente lo que [`GET /api/overview`](#get-apioverview)
 suma como `period.totals.expense` (en el código, la misma función,
-`isCountedExpense`, con las mismas lecturas de depósitos y de cuentas propias):
+`isCountedExpense`, con las mismas lecturas de depósitos, de cuentas propias y,
+desde la feature 71, de compras de inversión de MyInvestor):
 `type: "expense"`, sin `transferId` (fuera las dos piernas de un traspaso), sin
 `productId` (fuera las aportaciones a un producto de inversión), sin
 `excludedFromTotals: true`, que no sea un movimiento de depósito (ver
@@ -2127,7 +2244,10 @@ suma como `period.totals.expense` (en el código, la misma función,
 y que no sea dinero entre tus cuentas (`ownership.status` `"own"` o `"mine"`,
 ver
 [Movimientos entre tus cuentas en las sumas](#movimientos-entre-tus-cuentas-en-las-sumas);
-un dudoso sí entra). Los ingresos y los `neutral` no entran nunca. Por eso **el
+un dudoso sí entra) y, desde la feature 71, que no sea una compra de inversión
+de MyInvestor (ver
+[Compras de inversión de MyInvestor en las sumas](#compras-de-inversión-de-myinvestor-en-las-sumas)).
+Los ingresos y los `neutral` no entran nunca. Por eso **el
 `amount` de un mes es igual al `period.totals.expense` de
 `GET /api/overview?month=` de ese mes**, y el de un año, a la suma de los de sus
 meses.

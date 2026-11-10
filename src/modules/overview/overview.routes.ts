@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import type { DepositMaturityMatcherRegistry } from '../investments/investments.types.js'
+import type { InvestmentPurchaseMatcherRegistry } from '../movements/movements.types.js'
 import { getOverviewSchema } from './overview.schema.js'
 import { getOverview, overviewDb } from './overview.service.js'
 import type { OverviewQuery } from './overview.types.js'
@@ -22,6 +23,11 @@ export interface OverviewRoutesOptions {
    * `GET /api/movements` gets from `src/app.ts`: both totals follow one rule.
    */
   depositMaturityMatchers?: DepositMaturityMatcherRegistry
+  /**
+   * Bank → investment purchase matcher registry (feature 71), the same one
+   * `GET /api/movements` gets: a purchase counts in neither total.
+   */
+  investmentPurchaseMatchers?: InvestmentPurchaseMatcherRegistry
 }
 
 export default async function overviewRoutes(
@@ -30,12 +36,13 @@ export default async function overviewRoutes(
 ) {
   const db = overviewDb(fastify)
   const depositMaturityMatchers = options.depositMaturityMatchers ?? []
+  const investmentPurchaseMatchers = options.investmentPurchaseMatchers ?? []
 
   fastify.get<{ Querystring: OverviewQuery }>(
     '/',
     { schema: getOverviewSchema },
     async (request) => {
-      return getOverview(db, request.query, depositMaturityMatchers)
+      return getOverview(db, request.query, depositMaturityMatchers, investmentPurchaseMatchers)
     },
   )
 }

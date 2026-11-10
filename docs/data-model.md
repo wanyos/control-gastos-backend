@@ -525,6 +525,23 @@ guarda en ningún movimiento; lo único que se guarda es la decisión del humano
 `ownershipDecision`, que manda sobre la tabla. Un movimiento de depósito sigue
 sumando lo que dice su regla, diga lo que diga la tabla.
 
+**Compras de inversión de MyInvestor — desde la F71
+`myinvestor-investment-purchases` (2026-11-10, ADR-046).** Un `expense` de una
+cuenta `myinvestor`, sin `transferId`, cuyo concepto no empieza por ninguno de los
+seis conceptos fijos del banco (`SUSCRIPCION PREMIUM`, `IVA SUSCRIPCION PREMIUM`,
+`RET. REMUNERACION PREMIUM`, `APERTURA DEP`, `APORTACION AUTOMATICA CARTERA`,
+`APORTACION A MI CARTERA`) es una compra de inversión y **no suma** en
+`computeTotals` ni en `isCountedExpense`, tenga o no `excludedFromTotals` y diga
+lo que diga la tabla de cuentas propias. El orden es: regla de depósitos →
+compras de inversión → cuentas propias → las tres exclusiones de arriba. Lo
+decide, **al leer**, `readInvestmentPurchases`
+(`src/modules/movements/movements.investment-purchases.ts`) con el registro
+`investmentPurchaseMatchers` de `src/app.ts`. **No hay columna nueva ni ningún
+escritor nuevo**: no se guarda en ningún movimiento, ni se toca su `amount`, su
+`type`, su `balanceAfter`, `excludedFromTotals`, `ownershipDecision` ni el saldo de
+la cuenta. La regla completa está en `docs/api-contract.md` §Compras de inversión de
+MyInvestor en las sumas.
+
 **El saldo no mira ninguna de las tres.** `computeAccountBalance` suma y resta
 por `type`, sin consultar `transferId`, `productId` ni `excludedFromTotals`
 (ver el párrafo de arriba sobre `transferId`): marcar o desmarcar un movimiento

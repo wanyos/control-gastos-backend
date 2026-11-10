@@ -3614,6 +3614,97 @@
           "comando": "pnpm test"
         }
       ]
+    },
+    {
+      "id": 71,
+      "name": "myinvestor-investment-purchases",
+      "title": "Que una compra de inversión en MyInvestor no cuente nunca como gasto",
+      "sdd": true,
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-11-10), escrito a petición del humano («escribe tú el intent y yo lo corrijo»), tras ver que una compra del ETC de oro de octubre de 2026 contaba como gasto en Overview y en Expenses by category. Aprobado por el humano sin cambios el 2026-11-10 («aprobado»). [humano] = lo dijo él; [leader] = propuesta del leader, a confirmar. El 2026-11-10 el humano aprobó quitar del texto un importe y un concepto copiados de sus movimientos (src/no-real-data.test.ts). El mismo día aprobó quitar también la cifra del gasto de octubre de la última frase de como_se_que_esta_bien (revisión 1).",
+        "que_quiero": "Cuando importo el extracto de MyInvestor, una compra de una inversión (un ETF, un ETC, un fondo…) no cuenta como gasto en ningún sitio: ni en los totales de movimientos, ni en Overview, ni en Expenses by category [humano]. Tiene que pasar sola, al importar, sin que yo marque nada a mano ni añada un texto para cada producto [humano]. Vale también para una inversión que compre por primera vez y que la aplicación todavía no conozca [leader]. El movimiento se sigue viendo en la lista de movimientos y el saldo de la cuenta no cambia [leader].",
+        "por_que": "Una compra de inversión no es un gasto, es una inversión [humano]. Hasta ahora cada compra se marcaba a mano para que no contara, y las que entraban nuevas al importar contaban como gasto hasta que alguien se daba cuenta: la del oro de octubre infló el gasto del mes en cientos de euros [humano].",
+        "como_se_que_esta_bien": [
+          "Al importar un extracto de MyInvestor con una compra del ETC de oro, esa compra no suma en el gasto del mes en Overview ni en Expenses by category, sin haberla marcado [humano].",
+          "Lo mismo con una compra de un producto que la aplicación no ha visto nunca, sin texto en la tabla de cuentas propias [leader].",
+          "La suscripción premium de MyInvestor y su IVA siguen contando como gasto: son un pago de verdad, no una inversión [leader].",
+          "Los intereses, las aperturas, cancelaciones y vencimientos de depósitos suman igual que hoy [leader].",
+          "Las compras que ya estaban marcadas a mano, y las que ya reconoce la tabla de cuentas propias, siguen sin contar [leader].",
+          "El gasto de octubre de 2026 en Overview sigue siendo el mismo que antes de la feature [leader]."
+        ],
+        "que_no_quiero": [
+          "Que se cuente como gasto ninguna compra de inversión de MyInvestor [humano].",
+          "Que cambie cómo se tratan los depósitos, que ya tienen su propia regla [leader].",
+          "Que se toquen otros bancos (Trade Republic, Revolut…) en esta feature [leader].",
+          "Que se borren o cambien las marcas a mano ni los textos que ya hay en la tabla de cuentas propias [leader].",
+          "Que se añada en ninguna página un apartado nuevo de «invertido este mes» [leader]."
+        ],
+        "delego_en_agente": [
+          "Cómo reconocer una compra de inversión en el extracto de MyInvestor (por la forma del concepto, por los productos importados, u otra cosa). Que lo mida con los movimientos reales de la base y me enseñe en decisions.md qué movimientos reconocería y cuáles no.",
+          "Qué pasa con un movimiento que podría ser una compra pero no está claro. Que lo proponga y me lo marque.",
+          "SIN DECIDIR POR EL HUMANO (llevar a decisions.md como punto a confirmar): si una venta o un reembolso de una inversión en MyInvestor debe dejar también de contar como ingreso. En la base de hoy no hay ninguna venta."
+        ]
+      },
+      "acceptance": [],
+      "status": "done",
+      "checks": [
+        {
+          "descripcion": "Al importar un extracto de MyInvestor con la compra del ETC de oro, esa compra no suma en el gasto del mes en Overview ni en Expenses by category, sin haberla marcado [humano].",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"an imported MyInvestor purchase with shares in its concept counts in none of the three sums without any mark\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lo mismo con una compra de un producto que la aplicación no ha visto nunca, sin texto en la tabla de cuentas propias [leader].",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"an imported MyInvestor purchase of a product never seen counts in none of the three sums with the own accounts table empty\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Lo mismo con una compra de un producto que la aplicación no ha visto nunca, sin texto en la tabla de cuentas propias [leader].",
+          "comando": "pnpm exec vitest run src/modules/myinvestor/myinvestor.investment-purchase.test.ts -t \"classifies every known non-purchase concept as no purchase, ignoring case, accents and leading spaces\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "La suscripción premium de MyInvestor y su IVA siguen contando como gasto: son un pago de verdad, no una inversión [leader].",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"the MyInvestor premium subscription, its VAT and the premium withholding still count as expense in the three sums\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los intereses, las aperturas, cancelaciones y vencimientos de depósitos suman igual que hoy [leader].",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"MyInvestor deposit openings, cancellations and maturities add up as they did before\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Los intereses, las aperturas, cancelaciones y vencimientos de depósitos suman igual que hoy [leader].",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"a MyInvestor income is never a purchase and counts as before\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Las compras que ya estaban marcadas a mano, y las que ya reconoce la tabla de cuentas propias, siguen sin contar [leader].",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"a purchase marked by hand or recognized by the own accounts table still counts in no sum and keeps its mark\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Reconocer una compra no escribe nada: ni marcas, ni textos de la tabla de cuentas propias, ni importe, tipo o saldo.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"recognizing a purchase writes nothing: mark, ownership decision, own account texts, amount, type and balance stay the same\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) La compra sigue en la lista de movimientos, con el campo que dice si se reconoció con certeza.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"lists the purchase with the bank amount and type and investmentPurchase certain true or false\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Solo es con certeza la compra que lleva «@» y el número de participaciones.",
+          "comando": "pnpm exec vitest run src/modules/myinvestor/myinvestor.investment-purchase.test.ts -t \"marks as certain only a concept ending in @ and a number of shares\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Otros bancos no se tocan: el mismo concepto en otra cuenta suma como hoy.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"the same concept in an account of another bank is not a purchase and counts as before\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Una pierna de un traspaso emparejado no se toma por compra.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.test.ts -t \"a leg of a paired transfer is not a purchase\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) docs/api-contract.md describe el campo nuevo y la regla.",
+          "comando": "pnpm exec vitest run src/modules/movements/movements.investment-purchases.docs.test.ts -t \"api-contract: describes the investmentPurchase field and the rule of MyInvestor investment purchases in the sums\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Lo demás sigue igual: la suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ]
     }
   ]
 }

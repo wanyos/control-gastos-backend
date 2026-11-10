@@ -107,6 +107,10 @@ describe('deposit movements in GET /api/movements (feature 57)', () => {
 
   it('counts a deposit opening and cancellation as zero in the totals', async () => {
     const account = await createAccount()
+    // Feature 71: an ordinary expense of a MyInvestor account would be an
+    // investment purchase, so the card payment goes in an account of another bank
+    // and the listing reads the dates of the test instead of one account.
+    const cardAccount = await createAccount('bankinter')
     await seed(account.id, {
       type: 'expense',
       amount: '2840.16',
@@ -119,14 +123,14 @@ describe('deposit movements in GET /api/movements (feature 57)', () => {
       date: '2026-03-20',
       description: CANCELLATION,
     })
-    await seed(account.id, {
+    await seed(cardAccount.id, {
       type: 'expense',
       amount: '52.37',
       date: '2026-03-21',
       description: 'SYNTHETIC CARD PAYMENT',
     })
 
-    const response = await list(`accountId=${account.id}`)
+    const response = await list('from=2026-03-05&to=2026-03-21')
 
     expect(response.totals).toEqual({ income: '0.00', expense: '52.37', net: '-52.37' })
   })
@@ -301,7 +305,10 @@ describe('deposit movements in GET /api/movements (feature 57)', () => {
 
   it('returns deposit null on a movement that is not a deposit one', async () => {
     const myinvestor = await createAccount()
-    const plain = await seed(myinvestor.id, {
+    const otherBank = await createAccount('bankinter')
+    // Feature 71: in a MyInvestor account this expense would be an investment
+    // purchase and add nothing, so it goes in the account of another bank.
+    const plain = await seed(otherBank.id, {
       type: 'expense',
       amount: '52.37',
       date: '2026-03-21',
@@ -315,7 +322,6 @@ describe('deposit movements in GET /api/movements (feature 57)', () => {
       description: OPENING,
     })
     // …nor is one of a bank without matcher.
-    const otherBank = await createAccount('bankinter')
     const elsewhere = await seed(otherBank.id, {
       type: 'income',
       amount: '1622.54',

@@ -239,12 +239,40 @@ export interface SerializedOwnership {
 }
 
 /**
+ * Bank → investment purchase matcher (feature 71). Which statement description
+ * is an investment purchase is knowledge of each bank: it reaches this module
+ * through the registry of `src/app.ts` (ADR-015), the fourth one.
+ */
+export interface InvestmentPurchaseMatcher {
+  bank: string
+  /** `null` when the description is not a purchase. The `type` is checked by the caller. */
+  classifyInvestmentPurchase(description: string): { certain: boolean } | null
+}
+
+export type InvestmentPurchaseMatcherRegistry = InvestmentPurchaseMatcher[]
+
+/**
+ * How a movement recognized as an investment purchase is read (feature 71):
+ * it adds nothing to the totals, and `certain` says whether its description
+ * carries a number of shares (R10). Nothing of it is stored.
+ */
+export interface InvestmentPurchaseReading {
+  certain: boolean
+}
+
+/** `investmentPurchase` of a listed movement (feature 71, R9); `null` on any other. */
+export interface SerializedInvestmentPurchase {
+  certain: boolean
+}
+
+/**
  * A movement of `GET /api/movements`: the shared shape plus `deposit`
- * (feature 57) and `ownership` (feature 62).
+ * (feature 57), `ownership` (feature 62) and `investmentPurchase` (feature 71).
  */
 export type ListedMovement = SerializedMovement & {
   deposit: SerializedDeposit | null
   ownership: SerializedOwnership | null
+  investmentPurchase: SerializedInvestmentPurchase | null
 }
 
 /** Shape of the `GET /api/movements` response since feature 36. */

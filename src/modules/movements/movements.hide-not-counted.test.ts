@@ -400,7 +400,9 @@ describe('hideNotCounted in GET /api/movements (feature 68)', () => {
     await maturityWithInterest({ paired: true })
     await maturityWithInterest({ paired: true, excludedFromTotals: true })
 
-    const main = await createAccount()
+    // Feature 71: not MyInvestor, where the pharmacy would be an investment
+    // purchase and add nothing.
+    const main = await createAccount('bankinter')
     await seed(main.id, {
       type: 'income',
       amount: '1842.67',

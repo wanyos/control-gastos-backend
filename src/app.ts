@@ -17,10 +17,12 @@ import type {
 import ingestionRoutes from './modules/ingestion/ingestion.routes.js'
 import lastImportsRoutes from './modules/last-imports/last-imports.routes.js'
 import movementsRoutes from './modules/movements/movements.routes.js'
+import type { InvestmentPurchaseMatcherRegistry } from './modules/movements/movements.types.js'
 import {
   classifyMyinvestorDepositMovement,
   isMyinvestorDepositMaturity,
 } from './modules/myinvestor/myinvestor.deposit-maturity.js'
+import { classifyMyinvestorInvestmentPurchase } from './modules/myinvestor/myinvestor.investment-purchase.js'
 import netWorthRoutes from './modules/net-worth/net-worth.routes.js'
 import { parseMyinvestorProductFile } from './modules/myinvestor/myinvestor.service.js'
 import { parseMyinvestorStatement } from './modules/myinvestor/myinvestor.statement.parser.js'
@@ -95,6 +97,17 @@ export const depositMaturityMatchers: DepositMaturityMatcherRegistry = [
   },
 ]
 
+/**
+ * Bank → investment purchase matcher registry (feature 71). The FOURTH registry
+ * of this composition root, twin of the deposit one: which statement
+ * description is an investment purchase is knowledge of each bank, and the
+ * movements, overview and expenses-by-category modules that leave it out of
+ * their sums may not name a bank. A bank with no entry has no purchase.
+ */
+export const investmentPurchaseMatchers: InvestmentPurchaseMatcherRegistry = [
+  { bank: 'myinvestor', classifyInvestmentPurchase: classifyMyinvestorInvestmentPurchase },
+]
+
 export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -114,11 +127,20 @@ export function buildApp(config: AppConfig = loadConfig()): FastifyInstance {
   app.register(accountsRoutes, { prefix: '/api/accounts' })
   app.register(categoriesRoutes, { prefix: '/api/categories' })
   app.register(categoryRulesRoutes, { prefix: '/api/category-rules' })
-  app.register(movementsRoutes, { prefix: '/api/movements', depositMaturityMatchers })
-  app.register(overviewRoutes, { prefix: '/api/overview', depositMaturityMatchers })
+  app.register(movementsRoutes, {
+    prefix: '/api/movements',
+    depositMaturityMatchers,
+    investmentPurchaseMatchers,
+  })
+  app.register(overviewRoutes, {
+    prefix: '/api/overview',
+    depositMaturityMatchers,
+    investmentPurchaseMatchers,
+  })
   app.register(expensesByCategoryRoutes, {
     prefix: '/api/expenses-by-category',
     depositMaturityMatchers,
+    investmentPurchaseMatchers,
   })
   app.register(ownAccountsRoutes, { prefix: '/api/own-accounts' })
   app.register(netWorthRoutes, { prefix: '/api/net-worth' })

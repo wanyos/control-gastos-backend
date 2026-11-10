@@ -519,7 +519,7 @@ describe('computeTotals', () => {
   ]
 
   it('excludes transfer legs and neutral movements from the totals', () => {
-    const totals = computeTotals(dataset, new Map(), new Map())
+    const totals = computeTotals(dataset, new Map(), new Map(), new Map())
 
     expect(totals.expense.toFixed(2)).toBe('45.90')
     expect(totals.income.toFixed(2)).toBe('1200.00')
@@ -550,6 +550,7 @@ describe('computeTotals', () => {
       ],
       new Map(),
       new Map(),
+      new Map(),
     )
 
     expect(totals.expense.toFixed(2)).toBe('45.90')
@@ -578,6 +579,7 @@ describe('computeTotals', () => {
       ],
       new Map(),
       new Map(),
+      new Map(),
     )
 
     expect(totals.expense.toFixed(2)).toBe('10.00')
@@ -585,7 +587,7 @@ describe('computeTotals', () => {
   })
 
   it('returns zero totals for an empty dataset', () => {
-    const totals = computeTotals([], new Map(), new Map())
+    const totals = computeTotals([], new Map(), new Map(), new Map())
 
     expect(totals.expense.toFixed(2)).toBe('0.00')
     expect(totals.income.toFixed(2)).toBe('0.00')
@@ -645,6 +647,7 @@ describe('computeTotals', () => {
       ],
       deposits,
       new Map(),
+      new Map(),
     )
 
     expect(totals.income.toFixed(2)).toBe('13.86')
@@ -673,6 +676,7 @@ describe('serializeTotals', () => {
           excludedFromTotals: false,
         },
       ],
+      new Map(),
       new Map(),
       new Map(),
     )
@@ -704,6 +708,7 @@ describe('serializeTotals', () => {
           excludedFromTotals: false,
         },
       ],
+      new Map(),
       new Map(),
       new Map(),
     )
@@ -1451,6 +1456,8 @@ describe('movement routes (read-only) and database indexes', () => {
         'deposit',
         // Feature 62 (R11): only on GET /api/movements, `null` on this one.
         'ownership',
+        // Feature 71 (R9): only on GET /api/movements, `null` on this one.
+        'investmentPurchase',
       ].sort(),
     )
   })

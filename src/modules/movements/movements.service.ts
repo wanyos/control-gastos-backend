@@ -12,6 +12,7 @@ import type {
 } from '../investments/investments.types.js'
 import type { OwnershipReading } from '../own-accounts/own-accounts.recognition.js'
 import { readOwnership } from '../own-accounts/own-accounts.service.js'
+import { readInvestmentPurchases } from './movements.investment-purchases.js'
 import type {
   AnchorColumns,
   BalanceAnchor,
@@ -21,6 +22,8 @@ import type {
   ConfirmAllMovementsBody,
   ConfirmAllMovementsResult,
   DecimalLike,
+  InvestmentPurchaseMatcherRegistry,
+  InvestmentPurchaseReading,
   ListedMovement,
   RecencyPoint,
   MovementListQuery,
@@ -29,6 +32,7 @@ import type {
   MovementTotals,
   MovementWithRelations,
   SerializedDeposit,
+  SerializedInvestmentPurchase,
   SerializedMovement,
   SerializedOwnership,
   SerializedMovementTotals,
@@ -295,11 +299,17 @@ const movementListOrder: Prisma.MovementOrderByWithRelationInput[] = [
  *
  * Since feature 68 the deposit map is read before the count as well, so that
  * `hideNotCounted` can enter the shared `where`.
+ *
+ * Since feature 71 every movement carries `investmentPurchase`, and the totals
+ * leave out what `readInvestmentPurchases` recognizes as an investment
+ * purchase. Read over the whole table too, and written nowhere.
+ * `hideNotCounted` does not look at it: an unmarked purchase is still listed.
  */
 export async function listMovements(
   prisma: AppPrismaClient,
   query: MovementListQuery,
   matchers: DepositMaturityMatcherRegistry,
+  purchaseMatchers: InvestmentPurchaseMatcherRegistry,
 ): Promise<MovementListResponse> {
   if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
     throw new ValidationError(`'from' (${query.from}) is after 'to' (${query.to})`)
@@ -336,6 +346,7 @@ export async function listMovements(
   // Feature 68: the deposit readings too, for `hideNotCounted` (R6).
   const ownership = await readOwnership(prisma)
   const deposits = await readDepositMovements(prisma, matchers)
+  const purchases = await readInvestmentPurchases(prisma, purchaseMatchers)
   const where = movementListWhere(query, ownership, deposits)
   const total = await prisma.movement.count({ where })
   const totalPages = Math.ceil(total / query.pageSize)
@@ -374,10 +385,19 @@ export async function listMovements(
       ...serializeMovement(row),
       deposit: serializeDeposit(deposits.get(row.id)),
       ownership: serializeOwnership(ownership.get(row.id)),
+      investmentPurchase: serializeInvestmentPurchase(purchases.get(row.id)),
     })),
     pagination: { page: query.page, pageSize: query.pageSize, total, totalPages },
-    totals: serializeTotals(computeTotals(totalsRows, deposits, ownership)),
+    totals: serializeTotals(computeTotals(totalsRows, deposits, ownership, purchases)),
   }
+}
+
+/** `investmentPurchase` of a listed movement (feature 71, R9): `null` when it is not one. */
+function serializeInvestmentPurchase(
+  reading: InvestmentPurchaseReading | undefined,
+): SerializedInvestmentPurchase | null {
+  if (reading === undefined) return null
+  return { certain: reading.certain }
 }
 
 /**
@@ -671,18 +691,21 @@ function toDateOnly(date: Date): string {
  * Whether a movement adds its `amount` to `expense` in `computeTotals`: an
  * `expense` that is not a deposit movement (feature 57), not recognized as the
  * human's own money moving (feature 62: its `ownership` reading leaves the
- * totals), not marked `excludedFromTotals`, not a leg of a linked transfer and
- * not a contribution to an investment product. The single answer to "is this
- * an expense" in the backend: the totals and `GET /api/expenses-by-category`
- * (feature 63) both ask here, so they can never disagree.
+ * totals), not an investment purchase (feature 71), not marked
+ * `excludedFromTotals`, not a leg of a linked transfer and not a contribution
+ * to an investment product. The single answer to "is this an expense" in the
+ * backend: the totals and `GET /api/expenses-by-category` (feature 63) both ask
+ * here, so they can never disagree.
  */
 export function isCountedExpense(
   movement: TotalsMovement,
   deposits: Map<number, DepositMovementReading>,
   ownership: Map<number, OwnershipReading>,
+  purchases: Map<number, InvestmentPurchaseReading>,
 ): boolean {
   return (
     deposits.get(movement.id) === undefined &&
+    purchases.get(movement.id) === undefined &&
     ownership.get(movement.id)?.leavesTotals !== true &&
     !movement.excludedFromTotals &&
     movement.transferId === null &&
@@ -713,11 +736,20 @@ export function isCountedExpense(
  * by the deposit rule first, whatever its reading (R9); a `doubtful` or a
  * `not_mine` one counts as it would without the own accounts table (R7, R10).
  * Nothing is written on the movement (ADR-040).
+ *
+ * Since feature 71 an investment purchase (one with an entry in `purchases`,
+ * from `readInvestmentPurchases`) adds nothing, whatever its mark or its
+ * `ownership` (R2, R8). The order is deposit → purchase → `ownership`: a
+ * deposit movement never gets to be read as a purchase. Only an `expense` can
+ * be a purchase, so the `income` branch does not change (R12). The map is a
+ * required parameter on purpose: a caller that forgets it does not compile,
+ * instead of counting purchases in silence.
  */
 export function computeTotals(
   movements: TotalsMovement[],
   deposits: Map<number, DepositMovementReading>,
   ownership: Map<number, OwnershipReading>,
+  purchases: Map<number, InvestmentPurchaseReading>,
 ): MovementTotals {
   return movements.reduce<MovementTotals>(
     (totals, movement) => {
@@ -726,8 +758,9 @@ export function computeTotals(
         if (deposit.kind !== 'maturity') return totals
         return { ...totals, income: totals.income.plus(deposit.counted) }
       }
+      if (purchases.get(movement.id) !== undefined) return totals
       if (ownership.get(movement.id)?.leavesTotals === true) return totals
-      if (isCountedExpense(movement, deposits, ownership)) {
+      if (isCountedExpense(movement, deposits, ownership, purchases)) {
         return { ...totals, expense: totals.expense.plus(toDecimal(movement.amount)) }
       }
       if (movement.excludedFromTotals) return totals

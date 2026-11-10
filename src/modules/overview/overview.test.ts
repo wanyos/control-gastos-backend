@@ -356,12 +356,29 @@ describe('GET /api/overview', () => {
     await seed('income', '2747.29', '2026-06-19', 'INTERESES DEP.: 880452')
     await seed('expense', '1694.08', '2026-06-22', 'APERTURA DEP.: 880453')
     await seed('income', '1694.08', '2026-06-25', 'CANCELACION DEP:880453')
-    await seed('expense', '41.73', '2026-06-26', 'SYNTHETIC CARD PAYMENT')
+    // Feature 71: an ordinary expense of a MyInvestor account would be an
+    // investment purchase, so the card payment goes in an account of another
+    // bank, and the listing reads the whole month, as the overview does.
+    const cardAccount = await app.prisma.account.create({
+      data: { iban: syntheticIban(), bank: 'bankinter', alias: 'Overview card account' },
+    })
+    createdAccountIds.push(cardAccount.id)
+    await app.prisma.movement.create({
+      data: {
+        accountId: cardAccount.id,
+        type: 'expense',
+        amount: '41.73',
+        description: 'SYNTHETIC CARD PAYMENT',
+        bookingDate: new Date('2026-06-26T00:00:00.000Z'),
+        valueDate: new Date('2026-06-26T00:00:00.000Z'),
+        daySequence: 1,
+      },
+    })
 
     const overview = await getOverview('?month=2026-06')
     const movements = await app.inject({
       method: 'GET',
-      url: `/api/movements?accountId=${account.id}&from=2026-06-01&to=2026-06-30`,
+      url: '/api/movements?from=2026-06-01&to=2026-06-30',
     })
 
     expect(overview.period.totals).toEqual({ income: '15.83', expense: '41.73', net: '-25.90' })

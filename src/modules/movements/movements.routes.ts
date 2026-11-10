@@ -23,6 +23,7 @@ import {
 import type {
   BulkUpdateMovementsBody,
   ConfirmAllMovementsBody,
+  InvestmentPurchaseMatcherRegistry,
   MovementIdParams,
   MovementListQuery,
   UpdateMovementBody,
@@ -35,6 +36,12 @@ export interface MovementsRoutesOptions {
    * no movement is a deposit one: the totals count every movement as before.
    */
   depositMaturityMatchers?: DepositMaturityMatcherRegistry
+  /**
+   * Bank → investment purchase matcher registry (feature 71), from the same
+   * composition root. Empty means no movement is a purchase: the totals count
+   * every movement as before.
+   */
+  investmentPurchaseMatchers?: InvestmentPurchaseMatcherRegistry
 }
 
 /**
@@ -95,6 +102,8 @@ function assertStrictBoolean(body: unknown, property: string): void {
  * Since feature 62 the totals leave out what the own accounts table recognizes
  * as the human's own money moving; each listed movement says it (`ownership`)
  * and `ownership=doubtful` lists only the doubtful ones.
+ * Since feature 71 the totals leave out the investment purchases of the banks
+ * of the registry, and each listed movement says it (`investmentPurchase`).
  */
 export default async function movementsRoutes(
   fastify: FastifyInstance,
@@ -102,12 +111,13 @@ export default async function movementsRoutes(
 ) {
   const db = movementsDb(fastify)
   const depositMaturityMatchers = options.depositMaturityMatchers ?? []
+  const investmentPurchaseMatchers = options.investmentPurchaseMatchers ?? []
 
   fastify.get<{ Querystring: MovementListQuery }>(
     '/',
     { schema: listMovementsSchema },
     async (request) => {
-      return listMovements(db, request.query, depositMaturityMatchers)
+      return listMovements(db, request.query, depositMaturityMatchers, investmentPurchaseMatchers)
     },
   )
 

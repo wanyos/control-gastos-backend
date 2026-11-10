@@ -3801,6 +3801,82 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - Sin migración, sin columna y sin ruta nueva. Contrato en `docs/api-contract.md`
     §`POST /api/import`.
 
+### ADR-046: Una compra de inversión de MyInvestor se reconoce al leer, por no ser ninguno de los conceptos fijos del banco, y no suma
+
+- **Fecha:** 2026-11-10
+- **Estado:** aceptada (implementada en la feature #71
+  `myinvestor-investment-purchases`, SDD; hoja aprobada por el humano el
+  2026-11-10). Se añade a ADR-035 (depósitos) y ADR-040 (cuentas propias) y no
+  revisa ninguno: sus reglas siguen igual y van antes y después de esta.
+- **Contexto:** una compra de un fondo o de un ETC desde la cuenta de MyInvestor
+  es un `expense` del extracto, y contaba como gasto en las tres sumas (los
+  `totals` de `GET /api/movements`, los `period.totals` de `GET /api/overview` y
+  el gasto de `GET /api/expenses-by-category`) hasta que el humano la marcaba a
+  mano o daba de alta un texto para ese producto en la tabla de cuentas propias.
+  Pidió que pase sola, al importar, también con un producto que la aplicación no
+  conoce.
+- **Decisión:**
+  1. **Qué es una compra:** un `expense` de una cuenta con `bank = 'myinvestor'`,
+     sin `transferId`, cuyo concepto **no empieza por ninguno de los seis
+     conceptos fijos del banco**: `SUSCRIPCION PREMIUM`,
+     `IVA SUSCRIPCION PREMIUM`, `RET. REMUNERACION PREMIUM`, `APERTURA DEP`,
+     `APORTACION AUTOMATICA CARTERA`, `APORTACION A MI CARTERA` (quitados los
+     espacios iniciales, sin distinguir mayúsculas ni tildes, con los espacios
+     repetidos como uno). Un `income` nunca es compra: las ventas y los
+     reembolsos quedan para cuando llegue la primera línea real.
+  2. **Con certeza o sin ella:** `certain: true` si el concepto acaba en `@` y un
+     número de participaciones; `false` en el resto. Las dos dejan de sumar
+     igual; `false` solo avisa.
+  3. **Dónde vive:** la lista y la regla de `certain` son conocimiento del banco y
+     viven en `classifyMyinvestorInvestmentPurchase`
+     (`src/modules/myinvestor/myinvestor.investment-purchase.ts`, función pura).
+     Llegan a los demás módulos por un **cuarto registro de `src/app.ts`**,
+     `investmentPurchaseMatchers`, gemelo de `depositMaturityMatchers` (ADR-015:
+     solo `app.ts` nombra bancos; lo vigila `src/architecture.test.ts`).
+  4. **Se calcula en cada lectura y no se guarda nada**, como ADR-035 y ADR-040.
+     `readInvestmentPurchases` (`src/modules/movements/movements.investment-purchases.ts`,
+     solo `findMany`; con el registro vacío no consulta) devuelve un mapa
+     `id de movimiento → { certain }`, y `resolveInvestmentPurchases` es la parte
+     pura. Vale igual para las compras ya guardadas y para las que entren en la
+     siguiente importación, sin migración.
+  5. **Una sola regla en las tres sumas.** `computeTotals` e `isCountedExpense`
+     (`movements.service.ts`) reciben el mapa como **cuarto parámetro,
+     obligatorio**: un llamador que lo olvide no compila, en vez de sumar compras
+     en silencio. `listMovements`, `getOverview` y `getExpensesByCategory` lo leen.
+     Orden en `computeTotals`: regla de depósitos → compra (no suma nada, tenga o
+     no marca u `ownership`) → `ownership` → lo de siempre.
+  6. **El listado lo enseña:** cada movimiento de `GET /api/movements` lleva
+     `investmentPurchase` (`null` o `{ certain }`). Solo viaja ahí, como `deposit`
+     y `ownership`. `hideNotCounted` (F68) no cambia: una compra sin marcar ni
+     emparejar sale siempre.
+- **Alternativas descartadas:**
+  - **Escribir `excludedFromTotals = true` al importar:** confunde la marca del
+    humano con la del importador, no arregla las compras ya guardadas y
+    contradice ADR-040 (lo único que se guarda es la decisión del humano).
+  - **Escribir `productId` al importar:** una compra de un producto nuevo no tiene
+    archivo de producto con el que enlazar.
+  - **Reconocer solo por forma positiva** (solo `@ n`, o una lista de gestoras):
+    `@ n` no reconoce las compras de un fondo, y una lista de gestoras falla con la
+    primera gestora nueva.
+  - **Reutilizar `depositMaturityMatchers`** con un método más: mezcla en un nombre
+    de depósitos algo que no lo es.
+- **Consecuencias:**
+  - No hay forma de devolver a las sumas, desde la aplicación, un gasto de verdad
+    que la regla tome por compra (un pago con la tarjeta de MyInvestor, una
+    transferencia a otra persona): se arregla añadiendo su concepto a la lista, que
+    es un cambio de código. Un concepto fijo nuevo del banco se comporta igual
+    hasta que se añada.
+  - No cambia el `amount`, el `type`, el `balanceAfter` ni el `balance` de nada,
+    ni `excludedFromTotals`, `ownershipDecision` o los textos de la tabla de
+    cuentas propias. Las compras que ya estaban marcadas o reconocidas siguen
+    igual de fuera.
+  - Cada lectura de las tres sumas lee además los `expense` sin `transferId` de las
+    cuentas de MyInvestor.
+  - Sin migración, sin columna y sin ruta nueva. Contrato en
+    `docs/api-contract.md` (§`GET /api/movements` y §Compras de inversión de
+    MyInvestor en las sumas); lo comprueba
+    `src/modules/movements/movements.investment-purchases.docs.test.ts`.
+
 ## Qué NO hacer
 
 - **No importar el cliente de Prisma en una ruta.** El acceso a datos vive en

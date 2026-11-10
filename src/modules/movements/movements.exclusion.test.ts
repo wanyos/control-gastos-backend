@@ -36,9 +36,14 @@ describe('excludedFromTotals and the transfer/excluded filters (feature 49)', ()
     await app.close()
   })
 
+  // Not a MyInvestor account since feature 71: there, every expense whose
+  // concept is not one of the bank's fixed ones is an investment purchase and
+  // counts in no total, and these tests sum ordinary expenses. No test here
+  // relies on the deposit rule of that bank (no description starts with
+  // `APERTURA DEP`, `CANCELACION DEP` or `INTERESES DEP`).
   async function createAccount() {
     const account = await app.prisma.account.create({
-      data: { iban: syntheticIban(), bank: 'myinvestor', alias: 'Exclusion test account' },
+      data: { iban: syntheticIban(), bank: 'bankinter', alias: 'Exclusion test account' },
     })
     createdAccountIds.push(account.id)
     return account

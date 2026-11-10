@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## F71 `myinvestor-investment-purchases` — CERRADA (2026-11-10, sin commit todavía)
+
+**Qué se hizo:** un gasto de la cuenta de MyInvestor que es una compra de inversión (ETF, ETC, fondo, también uno que la app no ha visto nunca) no cuenta como gasto en los totales de movimientos, en Overview ni en Expenses by category, sin marcarlo a mano. Se decide al sumar, sin escribir en la base; cada movimiento de `GET /api/movements` trae `investmentPurchase` (`null`, `{ "certain": true }` o `{ "certain": false }`). SDD, lotes A y B; review 1 `CHANGES_REQUESTED`, review 2 `APPROVED` → [resumen](summaries/myinvestor-investment-purchases.md), [implementación](implementations/myinvestor-investment-purchases.md), [revisión](reviews/myinvestor-investment-purchases.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E7 de `docs/roadmap.md`. Sin commit. Sin migración. Pendiente fuera de este proyecto (anotado en `docs/roadmap.md` §E8): que una sesión del frontend lea el campo `investmentPurchase`.
+
 ## F70 `product-file-same-opening` — CERRADA (2026-11-10, sin commit todavía)
 
 **Qué se hizo:** al importar un archivo de producto con un `name` nuevo, si ya hay otro producto del mismo banco, tipo y `openedAt` (vivo o cerrado, depósitos incluidos), el archivo sale fallido con `SAME_OPENING_PRODUCT`: no se guarda nada, no se mueve a `procesados/` y el mensaje nombra el producto con el que coincide. ADR-045. SDD, lote A (único); review 1 `CHANGES_REQUESTED`, review 2 `APPROVED` → [resumen](summaries/product-file-same-opening.md), [implementación](implementations/product-file-same-opening.md), [revisión](reviews/product-file-same-opening.md).
@@ -189,3 +194,4 @@ _Cada corrección que el humano hace a un agente durante la feature, en una
 línea: qué se hizo, qué agente, qué quería él. El leader la usa al cerrar para
 proponer entradas de `docs/lessons.md`. Esta sección no se vacía al cerrar la
 sesión, solo al cerrar la feature._
+

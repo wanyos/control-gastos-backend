@@ -6,7 +6,9 @@ import { ValidationError } from '../../errors/app-error.js'
 import type { AppPrismaClient } from '../../lib/prisma.js'
 import { readDepositMovements } from '../investments/investments.service.js'
 import type { DepositMaturityMatcherRegistry } from '../investments/investments.types.js'
+import { readInvestmentPurchases } from '../movements/movements.investment-purchases.js'
 import { isCountedExpense } from '../movements/movements.service.js'
+import type { InvestmentPurchaseMatcherRegistry } from '../movements/movements.types.js'
 import { monthRange } from '../overview/overview.service.js'
 import { readOwnership } from '../own-accounts/own-accounts.service.js'
 import type {
@@ -146,9 +148,12 @@ function toDateOnly(date: Date): string {
  * variable by the mark of each category (ADR-041).
  *
  * What is an expense is NOT decided here: a movement counts only when
- * `isCountedExpense` says so, with the same deposit and ownership readings
- * `GET /api/overview` uses, so a month adds up to its `period.totals.expense`
- * by construction (R9).
+ * `isCountedExpense` says so, with the same deposit, ownership and (since
+ * feature 71) investment purchase readings `GET /api/overview` uses, so a
+ * month adds up to its `period.totals.expense` by construction (R9).
+ *
+ * `purchaseMatchers` goes last and defaults to none so that the existing
+ * direct callers keep their arguments; the route always passes the registry.
  *
  * Read-only: only `findMany`. Nothing is stored.
  */
@@ -157,12 +162,13 @@ export async function getExpensesByCategory(
   matchers: DepositMaturityMatcherRegistry,
   query: ExpensesByCategoryQuery,
   today: string,
+  purchaseMatchers: InvestmentPurchaseMatcherRegistry = [],
 ): Promise<ExpensesByCategoryResponse> {
   const { period, compared, compare } = resolvePeriods(query, today)
   const from = compared.from < period.from ? compared.from : period.from
   const to = compared.to > period.to ? compared.to : period.to
 
-  const [rows, categories, deposits, ownership] = await Promise.all([
+  const [rows, categories, deposits, ownership, purchases] = await Promise.all([
     prisma.movement.findMany({
       where: {
         type: 'expense',
@@ -199,11 +205,13 @@ export async function getExpensesByCategory(
     readDepositMovements(prisma, matchers),
     // Feature 62: what the own accounts table recognizes as the human's own money.
     readOwnership(prisma),
+    // Feature 71: what is an investment purchase, read as the overview reads it.
+    readInvestmentPurchases(prisma, purchaseMatchers),
   ])
 
   const accumulators = new Map<number | null, Accumulator>()
   for (const row of rows) {
-    if (!isCountedExpense(row, deposits, ownership)) continue
+    if (!isCountedExpense(row, deposits, ownership, purchases)) continue
     const bookingDate = toDateOnly(row.bookingDate)
     const inPeriod = bookingDate >= period.from && bookingDate <= period.to
     const inCompared = bookingDate >= compared.from && bookingDate <= compared.to

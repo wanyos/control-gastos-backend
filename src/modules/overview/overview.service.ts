@@ -7,7 +7,9 @@ import type { AppPrismaClient } from '../../lib/prisma.js'
 import { listAccounts } from '../accounts/accounts.service.js'
 import { readDepositMovements } from '../investments/investments.service.js'
 import type { DepositMaturityMatcherRegistry } from '../investments/investments.types.js'
+import { readInvestmentPurchases } from '../movements/movements.investment-purchases.js'
 import { computeTotals, serializeTotals } from '../movements/movements.service.js'
+import type { InvestmentPurchaseMatcherRegistry } from '../movements/movements.types.js'
 import { readOwnership } from '../own-accounts/own-accounts.service.js'
 import type { OverviewQuery, OverviewResponse } from './overview.types.js'
 
@@ -45,8 +47,9 @@ export function monthRange(month: string): { from: string; to: string } {
  *    movements the human marked `excludedFromTotals` (feature 49) and the
  *    `neutral` movements, and since feature 57 counts a deposit movement only
  *    by its interest, and since feature 62 leaves out what the own accounts
- *    table recognizes as the human's own money moving (`readOwnership`). Two
- *    different sums of the same money diverge.
+ *    table recognizes as the human's own money moving (`readOwnership`), and
+ *    since feature 71 leaves out the investment purchases
+ *    (`readInvestmentPurchases`). Two different sums of the same money diverge.
  *
  * A month with no movements is not an error: the totals are simply zero.
  * Read-only: this view writes nothing (its queries are `findMany` only).
@@ -55,11 +58,12 @@ export async function getOverview(
   prisma: AppPrismaClient,
   query: OverviewQuery,
   matchers: DepositMaturityMatcherRegistry,
+  purchaseMatchers: InvestmentPurchaseMatcherRegistry,
 ): Promise<OverviewResponse> {
   const month = query.month ?? currentMonth()
   const { from, to } = monthRange(month)
 
-  const [accounts, periodMovements, deposits, ownership] = await Promise.all([
+  const [accounts, periodMovements, deposits, ownership, purchases] = await Promise.all([
     listAccounts(prisma),
     prisma.movement.findMany({
       // Both ends inclusive: `bookingDate` is date-only stored at midnight UTC,
@@ -84,6 +88,8 @@ export async function getOverview(
     readDepositMovements(prisma, matchers),
     // Feature 62: the same reading `GET /api/movements` uses, so the two sums agree.
     readOwnership(prisma),
+    // Feature 71: the same reading too.
+    readInvestmentPurchases(prisma, purchaseMatchers),
   ])
 
   const totalBalance = accounts.reduce(
@@ -105,7 +111,7 @@ export async function getOverview(
       month,
       from,
       to,
-      totals: serializeTotals(computeTotals(periodMovements, deposits, ownership)),
+      totals: serializeTotals(computeTotals(periodMovements, deposits, ownership, purchases)),
     },
   }
 }
