@@ -28,6 +28,11 @@
 
 **Ninguna feature en curso.**
 
+## F70 `product-file-same-opening` — CERRADA (2026-11-10, sin commit todavía)
+
+**Qué se hizo:** al importar un archivo de producto con un `name` nuevo, si ya hay otro producto del mismo banco, tipo y `openedAt` (vivo o cerrado, depósitos incluidos), el archivo sale fallido con `SAME_OPENING_PRODUCT`: no se guarda nada, no se mueve a `procesados/` y el mensaje nombra el producto con el que coincide. ADR-045. SDD, lote A (único); review 1 `CHANGES_REQUESTED`, review 2 `APPROVED` → [resumen](summaries/product-file-same-opening.md), [implementación](implementations/product-file-same-opening.md), [revisión](reviews/product-file-same-opening.md).
+**Estado:** `done` en `feature_list.json`, línea en `history.md`, fila E5 de `docs/roadmap.md`. Sin commit. Sin migración. Pendiente fuera de este proyecto: que una sesión del frontend añada `SAME_OPENING_PRODUCT` a su `fileMessages.ts`.
+
 ## F69 `last-imports` — CERRADA (2026-11-08, sin commit todavía)
 
 **Qué se hizo:** idea de mejora 1 del workspace. La importación guarda el instante en que importó cada cuenta y cada producto (`lastImportedAt`, dos migraciones: columna y relleno de lo ya importado), y `GET /api/last-imports` da, por cada cuenta y producto vivo, hasta qué fecha hay datos, qué día se importó, si se espera cada mes y los tramos sin datos. ADR-044. SDD, lotes A y B; reviewer `APPROVED` sin hallazgos → [resumen](summaries/last-imports.md), [implementación](implementations/last-imports.md), [revisión](reviews/last-imports.md).

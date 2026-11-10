@@ -178,7 +178,7 @@ de ninguno de los dos y lo cerró el humano ese día.
 | Campo | A: fund / etf / managed_portfolio | B: deposit | Origen |
 | --- | --- | --- | --- |
 | `type` | obligatorio | obligatorio | **MODELO** — `fund` \| `etf` \| `managed_portfolio` \| `deposit` |
-| `name` | obligatorio | obligatorio | **MODELO** + **MUESTRA** (parcial) — es la **identidad** del producto: cambiarlo crea otro |
+| `name` | obligatorio | obligatorio | **MODELO** + **MUESTRA** (parcial) — es la **identidad** del producto: cambiarlo crea otro, salvo que mantengas el `type` y la `openedAt` del guardado, que entonces se rechaza (feature 70) |
 | `date` | obligatorio | obligatorio | **MODELO** (A: la fecha de la foto) / **HUMANO (2026-08-11)** (B: el día de la nota) |
 | `openedAt` | **obligatorio** | **obligatorio** | **MODELO** (la columna, desde la f9) + **HUMANO (2026-08-13)** como campo obligatorio del archivo |
 | `currency` | opcional (def. `EUR`) | opcional (def. `EUR`) | **MODELO** — decidido: no se escribe nunca |
@@ -295,6 +295,7 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 | Un campo se quedó con el marcador `<…>` de la plantilla | *«campos sin sustituir, siguen con el marcador …»* y **cuáles** |
 | Un campo se quedó con **medio** marcador (`"<nombre del producto"`) | *«A MEDIO SUSTITUIR, te dejaste un símbolo suelto»*, el campo y el valor recibido |
 | Otro archivo de la **misma importación** ya guardó el mismo `name` con la misma `date` | código `DUPLICATE_PRODUCT_FILE`: el nombre del otro archivo y su carpeta de año, y que de este no se ha guardado nada ni se ha movido a `procesados/` |
+| El `name` **no existe** todavía en el banco y ya hay otro producto guardado del **mismo `type`** y con la **misma `openedAt`**, vivo o cerrado (feature 70) | código `SAME_OPENING_PRODUCT`: el producto guardado con el que coincide, que corrijas el `"name"` del archivo para que diga ese nombre, y que de este no se ha guardado nada ni se ha movido a `procesados/` |
 
 ## Dónde acaba lo que escribes
 
@@ -311,7 +312,10 @@ InvestmentProduct  (uno por producto, identificado por su "name")
   `maturityDate`) se guardan **en el producto**, y volver a subirlo las reescribe.
 - **El `name` es la identidad del producto.** Si lo cambias en el archivo se crea
   **otro** producto y la serie anterior se queda colgando del nombre viejo. Escríbelo
-  igual todos los meses. Y si reutilizas un `name` que ya existe **con otro tipo**, el
+  igual todos los meses. Si el `name` nuevo mantiene el `type` y la `openedAt` de un
+  producto ya guardado de ese banco, el archivo se **rechaza** con
+  `SAME_OPENING_PRODUCT` (feature 70) en vez de crear el duplicado: corrige el `name`
+  y vuelve a importar. Y si reutilizas un `name` que ya existe **con otro tipo**, el
   archivo se **rechaza** en vez de convertirte el producto en silencio.
 - **Subir el mismo mes dos veces no duplica nada**: la fecha del archivo es la
   identidad de la foto y se sobrescribe. El mes siguiente añade una fila más.

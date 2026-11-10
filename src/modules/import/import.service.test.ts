@@ -12,6 +12,7 @@ import type {
   SavingsSnapshotInput,
 } from '../investments/investments.types.js'
 import type { AppPrismaClient, TransactionClient } from '../../lib/prisma.js'
+import { persistSavingsSnapshot } from '../investments/investments.service.js'
 import {
   deriveAnchorFromStatement,
   importPending,
@@ -1607,7 +1608,13 @@ describe('importPending: two product files of one run declaring the same product
       [bank]: {
         '2026': [
           ...sameProductAndDate(uniqueAccountName()),
-          { id: 'third', name: 'cuenta-c.json', file: productFile({ name: otherName }) },
+          // Feature 70: another opening day, or a new name with the bank, type
+          // and opening day of the stored one would be rejected for that.
+          {
+            id: 'third',
+            name: 'cuenta-c.json',
+            file: productFile({ name: otherName, openedAt: '2025-04-22' }),
+          },
         ],
       },
     })
@@ -1712,6 +1719,293 @@ describe('importPending: two product files of one run declaring the same product
     expect(
       await app.prisma.investmentProduct.count({ where: { bank: { in: [bank, otherBank] } } }),
     ).toBe(2)
+  })
+})
+
+// ── Feature 70: a new product name with the opening day of a stored product ──
+//
+// 🔒 Nothing here is real (ADR-017): unique `zz-product-…` banks, generated
+// names, invented dates and amounts that add up by hand.
+
+describe('importPending: a product file with a new name and the opening day of an existing product (feature 70)', () => {
+  let app: FastifyInstance
+  const usedBanks: string[] = []
+  let counter = 0
+
+  /** The day every product of these tests was opened unless a test says otherwise. */
+  const openedAt = '2024-11-18'
+  const firstImport = new Date('2026-09-02T08:15:00.000Z')
+  const secondImport = new Date('2026-10-03T09:40:00.000Z')
+
+  interface PendingProductFile {
+    id: string
+    name: string
+    file: ProductFile
+  }
+
+  function uniqueBank(): string {
+    counter += 1
+    const slug = `zz-product-${Date.now()}-open-${counter}`
+    usedBanks.push(slug)
+    return slug
+  }
+
+  function uniqueAccountName(): string {
+    counter += 1
+    return `Cuenta Sintetica Apertura ${Date.now()}-${counter}`
+  }
+
+  /** One year folder per bank, with its pending files in order. */
+  function driveOf(banks: Record<string, PendingProductFile[]>) {
+    const tree: DriveTree = { folders: { root: [] }, files: {} }
+    const contents = new Map<string, ProductFile>()
+    for (const [bank, files] of Object.entries(banks)) {
+      const yearId = `y-${bank}-2026`
+      tree.folders.root.push({ id: `b-${bank}`, name: bank })
+      tree.folders[`b-${bank}`] = [{ id: yearId, name: '2026' }]
+      tree.folders[yearId] = [{ id: `proc-${yearId}`, name: 'procesados' }]
+      tree.files[yearId] = files.map(({ id, name }) => ({
+        id,
+        name,
+        mimeType: 'application/json',
+      }))
+      for (const { id, file } of files) {
+        contents.set(id, file)
+      }
+    }
+    return buildDrive(tree, {
+      get: vi.fn(async ({ fileId }: { fileId: string }) => ({
+        data: productBytes(contents.get(fileId) ?? {}),
+      })),
+    })
+  }
+
+  function run(client: AppDriveClient, banks: string[], at = secondImport) {
+    return importPending({
+      client,
+      prisma: app.prisma,
+      rootFolderId: 'root',
+      parsers: [],
+      productParsers: banks.map((bank) => fakeProductAdapter(bank)),
+      now: () => at,
+    })
+  }
+
+  function reports(result: { files: unknown[] }): AttemptedProductFileReport[] {
+    return result.files as AttemptedProductFileReport[]
+  }
+
+  function movedIds(update: ReturnType<typeof vi.fn>): string[] {
+    return update.mock.calls.map(([call]) => (call as { fileId: string }).fileId)
+  }
+
+  /** Stores product `name` of `bank` through a first import, as the human did. */
+  async function storeFirst(bank: string, name: string, overrides: ProductFile = {}) {
+    const { client } = driveOf({
+      [bank]: [
+        {
+          id: 'stored',
+          name: 'cuenta-guardada.json',
+          file: productFile({ name, openedAt, date: '2026-08-31', ...overrides }),
+        },
+      ],
+    })
+    const [stored] = reports(await run(client, [bank], firstImport))
+    expect(stored.status).toBe('imported')
+  }
+
+  /** The file of a later month that declares `name` with the shared opening day. */
+  function laterFile(name: string, overrides: ProductFile = {}): ProductFile {
+    return productFile({
+      name,
+      openedAt,
+      date: '2026-09-30',
+      openingBalance: 4006.4,
+      moneyIn: 250,
+      moneyOut: 80.35,
+      interest: 6.95,
+      balance: 4183,
+      ...overrides,
+    })
+  }
+
+  beforeAll(async () => {
+    app = buildApp()
+    await app.ready()
+  })
+
+  afterEach(async () => {
+    if (usedBanks.length > 0) {
+      const products = await app.prisma.investmentProduct.findMany({
+        where: { bank: { in: usedBanks } },
+      })
+      const ids = products.map((product) => product.id)
+      await app.prisma.savingsSnapshot.deleteMany({ where: { productId: { in: ids } } })
+      await app.prisma.investmentProduct.deleteMany({ where: { id: { in: ids } } })
+      usedBanks.length = 0
+    }
+  })
+
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('rejects a product file whose new name matches the bank, type and opening day of an existing product, naming it', async () => {
+    const bank = uniqueBank()
+    const storedName = uniqueAccountName()
+    const renamed = uniqueAccountName()
+    await storeFirst(bank, storedName)
+    const { client } = driveOf({
+      [bank]: [{ id: 'renamed', name: 'cuenta-renombrada.json', file: laterFile(renamed) }],
+    })
+
+    const [file] = reports(await run(client, [bank]))
+
+    expect(file.status).toBe('failed')
+    expect(file.error?.code).toBe('SAME_OPENING_PRODUCT')
+    expect(file.error?.message).toContain(`ya existe en ${bank} el producto '${storedName}'`)
+    expect(file.error?.message).toContain('del mismo tipo (savings_account)')
+    expect(file.error?.message).toContain(`abierto el mismo día (${openedAt})`)
+    expect(file.error?.message).toContain(`este archivo declara '${renamed}'`)
+    expect(file.error?.message).toContain(
+      `corrige el "name" del archivo para que diga '${storedName}'`,
+    )
+    expect(file.error?.message).toContain('NO se ha movido a procesados/')
+    expect(file.product).toBeNull()
+    expect(file.snapshot).toBeNull()
+  })
+
+  it('stores nothing from a file rejected for its opening day and leaves it pending in Drive', async () => {
+    const bank = uniqueBank()
+    const storedName = uniqueAccountName()
+    await storeFirst(bank, storedName)
+    const storedWith = {
+      where: { bank_name: { bank, name: storedName } },
+      include: { savingsSnapshots: { orderBy: { date: 'asc' as const } } },
+    }
+    const before = await app.prisma.investmentProduct.findUniqueOrThrow(storedWith)
+    const { client, update } = driveOf({
+      [bank]: [
+        { id: 'renamed', name: 'cuenta-renombrada.json', file: laterFile(uniqueAccountName()) },
+      ],
+    })
+
+    const [file] = reports(await run(client, [bank]))
+
+    expect(file.error?.code).toBe('SAME_OPENING_PRODUCT')
+    expect(file.movedToProcessed).toBe(false)
+    expect(movedIds(update)).not.toContain('renamed')
+    expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(1)
+    const after = await app.prisma.investmentProduct.findUniqueOrThrow(storedWith)
+    expect(after).toEqual(before)
+    expect(after.savingsSnapshots).toHaveLength(1)
+    expect(after.lastImportedAt).toEqual(firstImport)
+  })
+
+  it('goes on with the files after one rejected for its opening day', async () => {
+    const bank = uniqueBank()
+    await storeFirst(bank, uniqueAccountName())
+    const otherName = uniqueAccountName()
+    const { client, update } = driveOf({
+      [bank]: [
+        { id: 'renamed', name: 'cuenta-renombrada.json', file: laterFile(uniqueAccountName()) },
+        {
+          id: 'other',
+          name: 'cuenta-otra.json',
+          file: laterFile(otherName, { openedAt: '2025-06-09' }),
+        },
+      ],
+    })
+
+    const [rejected, other] = reports(await run(client, [bank]))
+
+    expect(rejected.error?.code).toBe('SAME_OPENING_PRODUCT')
+    expect(other.status).toBe('imported')
+    expect(other.product).toMatchObject({ bank, name: otherName, created: true })
+    expect(other.movedToProcessed).toBe(true)
+    expect(movedIds(update)).toEqual(['other'])
+  })
+
+  it('imports a file whose name already exists as always, even with another product opened that same day', async () => {
+    const bank = uniqueBank()
+    const storedName = uniqueAccountName()
+    await storeFirst(bank, storedName)
+    // Product B, same bank, type and opening day, stored by calling the writer
+    // directly: the writer does not check, only the import does.
+    const sibling = fakeProductAdapter(bank).parse(
+      'hermana.json',
+      productBytes(productFile({ name: uniqueAccountName(), openedAt, date: '2026-08-31' })),
+    )
+    await persistSavingsSnapshot(app.prisma, { ...sibling, bank } as SavingsSnapshotInput)
+    expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(2)
+    const { client } = driveOf({
+      [bank]: [{ id: 'same', name: 'cuenta-septiembre.json', file: laterFile(storedName) }],
+    })
+
+    const [file] = reports(await run(client, [bank]))
+
+    expect(file.status).toBe('imported')
+    expect(file.product).toMatchObject({ bank, name: storedName, created: false })
+    expect(file.snapshot).toEqual({ date: '2026-09-30', created: true })
+    expect(file.movedToProcessed).toBe(true)
+  })
+
+  it('creates a new product with another opening day as it did before', async () => {
+    const bank = uniqueBank()
+    await storeFirst(bank, uniqueAccountName())
+    const newName = uniqueAccountName()
+    const { client } = driveOf({
+      [bank]: [
+        {
+          id: 'new',
+          name: 'cuenta-nueva.json',
+          file: laterFile(newName, { openedAt: '2026-09-01' }),
+        },
+      ],
+    })
+
+    const [file] = reports(await run(client, [bank]))
+
+    expect(file.status).toBe('imported')
+    expect(file.product).toMatchObject({ bank, name: newName, created: true })
+    expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(2)
+  })
+
+  it('creates the product when only the bank differs', async () => {
+    const bank = uniqueBank()
+    const otherBank = uniqueBank()
+    await storeFirst(bank, uniqueAccountName())
+    const newName = uniqueAccountName()
+    const { client } = driveOf({
+      [otherBank]: [{ id: 'elsewhere', name: 'cuenta-otro-banco.json', file: laterFile(newName) }],
+    })
+
+    const [file] = reports(await run(client, [otherBank]))
+
+    expect(file.status).toBe('imported')
+    expect(file.product).toMatchObject({ bank: otherBank, name: newName, created: true })
+  })
+
+  it('rejects against a closed product opened the same day', async () => {
+    const bank = uniqueBank()
+    const storedName = uniqueAccountName()
+    await storeFirst(bank, storedName, { closedAt: '2026-08-31' })
+    const stored = await app.prisma.investmentProduct.findUniqueOrThrow({
+      where: { bank_name: { bank, name: storedName } },
+    })
+    expect(stored.closedAt).not.toBeNull()
+    const { client } = driveOf({
+      [bank]: [
+        { id: 'renamed', name: 'cuenta-renombrada.json', file: laterFile(uniqueAccountName()) },
+      ],
+    })
+
+    const [file] = reports(await run(client, [bank]))
+
+    expect(file.status).toBe('failed')
+    expect(file.error?.code).toBe('SAME_OPENING_PRODUCT')
+    expect(file.error?.message).toContain(`'${storedName}'`)
+    expect(await app.prisma.investmentProduct.count({ where: { bank } })).toBe(1)
   })
 })
 

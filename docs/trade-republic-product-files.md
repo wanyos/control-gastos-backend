@@ -134,7 +134,7 @@ forma del archivo.
 | Campo | ¿Obligatorio? | De dónde sale |
 | --- | --- | --- |
 | `type` | **sí** | **DISEÑO** — único valor admitido `savings_account` |
-| `name` | **sí** | **HUMANO** — cómo llamas a esta cuenta. Es la **identidad**: cambiarlo crea otra |
+| `name` | **sí** | **HUMANO** — cómo llamas a esta cuenta. Es la **identidad**: cambiarlo crea otra, salvo que mantengas la `openedAt` de la guardada, que entonces se rechaza (feature 70) |
 | `date` | **sí** | **MUESTRA** — la columna `FECHA` del apunte de intereses de ese mes |
 | `openedAt` | **sí** | **HUMANO** — el extracto **no lo trae**; se escribe una vez y se copia igual todos los meses |
 | `openingBalance` | **sí** | **MUESTRA** — el `BALANCE` de la fila de intereses **anterior** (y solo en el primer mes del extracto, el `BALANCE INICIAL` del resumen). Es el `balance` del archivo del mes anterior |
@@ -204,6 +204,7 @@ golpe**, no el primero, para que arreglarlo sea un solo viaje.
 | Una clave desconocida | las claves sobrantes, por su nombre |
 | **Los cinco importes no cuadran** | la desviación con signo, el saldo esperado frente al escrito y los cinco importes |
 | Otro archivo de la **misma importación** ya guardó la misma cuenta (`name`) con la misma `date` | código `DUPLICATE_PRODUCT_FILE`: el nombre del otro archivo y su carpeta de año, y que de este no se ha guardado nada ni se ha movido a `procesados/` |
+| El `name` **no existe** todavía en el banco y ya hay otra cuenta guardada con la **misma `openedAt`**, viva o cerrada (feature 70) | código `SAME_OPENING_PRODUCT`: la cuenta guardada con la que coincide, que corrijas el `"name"` del archivo para que diga ese nombre, y que de este no se ha guardado nada ni se ha movido a `procesados/` |
 
 > **El símbolo a medio borrar es la errata número uno** al rellenar a mano (pasó en el primer
 > archivo real, en dos campos a la vez). Por eso tiene motivo propio: el de antes decía
@@ -253,7 +254,10 @@ tus importes, lo da la importación. No guarda nada y no toca la base de datos n
 ### Qué pasa cuando el archivo entra de verdad
 
 - **Tu cuenta es su `name`.** Se guarda (o se actualiza) sobre la pareja banco + nombre;
-  el banco lo dice la **carpeta**, nunca el contenido.
+  el banco lo dice la **carpeta**, nunca el contenido. Si escribes un `name` nuevo con
+  la misma `openedAt` que una cuenta ya guardada de ese banco, el archivo se
+  **rechaza** con `SAME_OPENING_PRODUCT` (feature 70) en vez de crear otra cuenta:
+  corrige el `name` y vuelve a importar.
 - **Cada `date` es una foto.** Subir **el mismo mes otra vez lo sobrescribe**; subir el
   **mes siguiente añade una fila** y no crea otra cuenta.
 - **Los cinco importes se guardan tal como los escribes.** Nada se calcula ni se redondea.

@@ -151,6 +151,24 @@ export class DuplicateProductFileError extends AppError {
 }
 
 /**
+ * A product file declares a `name` that does not exist yet in its bank, while
+ * another product of the same bank, the same type and the same `openedAt` is
+ * already stored, closed or not (feature 70). The file itself may be well
+ * written, which is why it is not `VALIDATION_ERROR`; and the clash is with the
+ * database, not with another file of the same run, which is why it is not
+ * `DUPLICATE_PRODUCT_FILE`. Storing it would create a second product that is
+ * most likely the stored one under another name.
+ *
+ * 422, and it only ever travels inside `files[].error` of the 200 report: the
+ * file is not stored and does NOT move.
+ */
+export class SameOpeningProductError extends AppError {
+  constructor(message = 'Another product of this bank and type was opened that same day') {
+    super(message, 'SAME_OPENING_PRODUCT', 422)
+  }
+}
+
+/**
  * A step of `pnpm run db:backup` or `pnpm run db:restore` failed (feature 55).
  * It never reaches an HTTP response: those two commands are not part of the
  * app. It exists so they do not throw bare `Error`s, and its message is what

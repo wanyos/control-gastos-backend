@@ -1108,6 +1108,11 @@ comercial, no una condición del producto contratado.
   fichero, el importador lo verá como un producto **nuevo** y la serie anterior
   quedará colgando del nombre viejo. Es el precio de usar el nombre como clave; a
   cambio, el fichero no necesita ningún identificador técnico que copiar a mano.
+  Desde la F70, si el archivo con el nombre nuevo mantiene el banco, el `type` y la
+  `openedAt` de un producto ya guardado (vivo o cerrado), la importación lo
+  **rechaza** con `SAME_OPENING_PRODUCT` y no guarda nada (ADR-045); el producto
+  nuevo solo se crea si alguno de los tres es distinto. No hay columna ni índice
+  nuevo: es una consulta antes de escribir.
 - **`lastImportedAt` (F69) no entra en ninguna clave natural**, ni en la de
   `InvestmentProduct` ni en la de `Account` (`iban`): cambia en cada importación,
   así que volver a subir el mismo archivo la mueve y deja la fila donde estaba.

@@ -3251,6 +3251,28 @@ está. El resto de archivos se sigue importando.
   la llamada siguiente está solo (el otro ya está en `procesados/`), entra y
   **sustituye** el valor que guardó el primero.
 
+**Un archivo de producto con un `name` nuevo y el mismo día de apertura que un producto
+guardado (feature 70):** antes de guardar un archivo de producto, si su `name` **no
+existe** todavía en ese banco (comparado carácter a carácter) y en la base ya hay otro
+producto del **mismo banco** (el de la carpeta), del **mismo `type`** y con la **misma
+`openedAt`**, el archivo se **rechaza** con `SAME_OPENING_PRODUCT`: **no se guarda nada**
+de él (ni producto ni valor; el producto que ya había queda igual, incluido su
+`lastImportedAt`), **no se mueve a `procesados/`** y su `error.message` nombra el
+producto (o los productos) con el que coincide y te pide corregir el `"name"` del
+archivo para que diga ese nombre. El resto de archivos se sigue importando.
+
+- **Solo aplica a un `name` que no existe.** Un archivo cuyo `name` ya existe en ese
+  banco se importa como siempre, aunque haya otro producto del mismo día.
+- **Con banco, `type` u `openedAt` distintos** no hay rechazo: el producto se crea como
+  antes.
+- **Vale para los cinco tipos**, depósitos incluidos, y también si el producto que
+  coincide está **cerrado** (`closedAt`).
+- **Mira la base de datos**, no otros archivos de la llamada; el choque entre dos
+  archivos de la misma llamada sigue siendo `DUPLICATE_PRODUCT_FILE`. Dos llamadas a
+  `POST /api/import` lanzadas a la vez no se ven entre sí.
+- La aplicación **no renombra ni junta** productos: si es el mismo producto con otro
+  nombre, se corrige el `name` del archivo en Drive y se vuelve a importar.
+
 **Idempotencia:** subir **la misma fecha** otra vez (mismo `name`, misma `date`) **en
 otra llamada** a `POST /api/import` —el archivo corregido de otro día—
 sobrescribe la foto y deja **un** producto y **una** fila; subir el **mes siguiente**
@@ -3259,7 +3281,9 @@ limita a reescribir sus mismas condiciones. Ninguna de las dos claves lleva un
 contador ni una posición que se renumere, a diferencia de la de los movimientos.
 
 > ⚠️ **El `name` es la identidad de la cuenta.** Cambiarlo en el archivo crea **otra**
-> cuenta y deja la serie anterior colgando del nombre viejo (límite conocido de ADR-012).
+> cuenta y deja la serie anterior colgando del nombre viejo (límite conocido de ADR-012),
+> salvo que el archivo mantenga el banco, el `type` y la `openedAt` del producto
+> guardado: entonces se rechaza con `SAME_OPENING_PRODUCT` (feature 70).
 >
 > **Un archivo de producto no crea ni modifica ninguna `Account` ni ningún `Movement`.**
 
@@ -3434,8 +3458,9 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 >   `importedProductCount` (feature 45), tanto si creó el producto como si volvió a
 >   escribir el mismo mes (`created: false` no es un descarte: la foto se pisa y se
 >   guarda). Si falla, suma a `failedCount` y a nada más. El archivo rechazado con
->   `DUPLICATE_PRODUCT_FILE` (feature 53) es un fallo más: lleva `product: null` y
->   `snapshot: null`, suma **1** a `failedCount` y **0** a `importedProductCount`.
+>   `DUPLICATE_PRODUCT_FILE` (feature 53) o con `SAME_OPENING_PRODUCT` (feature 70) es
+>   un fallo más: lleva `product: null` y `snapshot: null`, suma **1** a `failedCount`
+>   y **0** a `importedProductCount`.
 
 - **Totales:** `importedCount` movimientos guardados, `duplicateCount` descartados
   por ya existir, `unparsedCount` líneas que ningún parser supo interpretar,
@@ -3633,6 +3658,7 @@ contador ni una posición que se renumere, a diferencia de la de los movimientos
 | `VALIDATION_ERROR`       | El archivo no es un extracto reconocible para el parser de su banco. En un **archivo de producto**: el parser lo ha rechazado y el `message` trae el motivo **íntegro** —descuadre de los cinco importes, marcador `<…>` sin sustituir, campo obligatorio ausente, número escrito como texto, fecha inválida, clave desconocida, o un `name` que ya existe en ese banco **con otro
 tipo**—. **No se guarda ni el producto ni la foto** y **no** se mueve a `procesados/`: corrígelo y vuelve a subirlo. |
 | `DUPLICATE_PRODUCT_FILE` | Solo en un **archivo de producto**: declara el mismo banco, `name` y `date` que otro archivo que **esta misma llamada** ya guardó (feature 53). El archivo puede estar bien escrito. **No se guarda nada** de él y **no** se mueve a `procesados/`; el `message` nombra el otro archivo y su carpeta de año. Si son dos productos distintos, corrige el `name` de uno; si es el mismo archivo subido dos veces, bórralo de Drive. |
+| `SAME_OPENING_PRODUCT` | Solo en un **archivo de producto**: su `name` no existe en ese banco y la base ya tiene otro producto del mismo banco, el mismo `type` y la misma `openedAt`, vivo o cerrado (feature 70). El archivo puede estar bien escrito. **No se guarda nada** de él y **no** se mueve a `procesados/`; el `message` nombra el producto (o los productos) con el que coincide. Si es el mismo producto con otro nombre, corrige el `"name"` del archivo para que diga el del guardado y vuelve a importar. |
 | `DRIVE_CONNECTION_ERROR` | Falló la descarga de **ese** archivo.                                              |
 | `INTERNAL_SERVER_ERROR`  | Cualquier otro fallo de ese archivo (mensaje sanitizado).                          |
 

@@ -3526,6 +3526,94 @@
           "comando": "pnpm test"
         }
       ]
+    },
+    {
+      "id": 70,
+      "name": "product-file-same-opening",
+      "title": "Rechazar un archivo de producto que duplicaría uno existente con otro nombre",
+      "sdd": true,
+      "intent": {
+        "_procedencia": "BORRADOR del leader (2026-11-09) tras el duplicado de una cartera en la importación del 2026-11-09 (el archivo llegó con su nombre anterior; se arregló a mano en la base ese día). Aprobado por el humano el 2026-11-09 («el borrador me sirve»). [humano] = lo dijo él; [leader] = propuesta del leader, aprobada con el borrador.",
+        "que_quiero": "Al importar un archivo de producto cuyo nombre todavía no existe, si ya hay otro producto del mismo banco, del mismo tipo y con la misma fecha de apertura, el archivo se rechaza: no se guarda nada y no se mueve a procesados/ [humano]. El mensaje dice con qué producto coincide y que corrija el name [humano]. El resto de archivos de esa importación se importan como siempre [leader].",
+        "por_que": "Este mes el archivo de una cartera llegó con su nombre anterior y se creó un producto duplicado, que hubo que arreglar a mano en la base [humano].",
+        "como_se_que_esta_bien": [
+          "Un archivo con el nombre anterior de una cartera y su misma fecha de apertura se rechaza, el mensaje nombra la cartera con su nombre actual y no se guarda nada [humano].",
+          "Un archivo con el nombre actual de la cartera se importa como siempre [leader].",
+          "Un producto nuevo de verdad, con otra fecha de apertura, se crea como hoy [leader]."
+        ],
+        "que_no_quiero": [
+          "Que la aplicación renombre o junte productos ella sola [leader].",
+          "Que cambie cómo se importa un producto que ya existe [leader]."
+        ],
+        "delego_en_agente": [
+          "El texto exacto del mensaje y el código del error.",
+          "SIN DECIDIR POR EL HUMANO (llevar a decisions.md como punto a confirmar, con datos medidos en su base): si dos productos distintos del mismo tipo pueden abrirse el mismo día (por ejemplo, dos depósitos contratados el mismo día), con esta regla el segundo se rechazaría. Opciones que se le dieron: (a) aplicar la regla a todos, y si pasa ya se verá; (b) no aplicarla a los depósitos, porque el riesgo de duplicar está en lo que se importa cada mes."
+        ]
+      },
+      "acceptance": [
+        "Un archivo de producto cuyo (bank de carpeta, name) no existe y cuyo banco, type y openedAt coinciden con los de un producto existente sale status \"failed\" con error.code SAME_OPENING_PRODUCT (422, dentro de files[].error del 200), y el message nombra cada producto coincidente y pide corregir el \"name\".",
+        "El archivo rechazado no crea ni modifica InvestmentProduct, Valuation ni SavingsSnapshot (tampoco el lastImportedAt del otro producto) y no se mueve a procesados/; los archivos siguientes de la importación se importan.",
+        "Un archivo cuyo (bank, name) ya existe se guarda igual que antes, aunque haya otro producto del mismo banco, tipo y openedAt.",
+        "Un nombre nuevo con otro openedAt, otro type u otro banco crea el producto como antes.",
+        "La regla vale para los cinco tipos, depósitos incluidos (opción (a), aprobada por el humano el 2026-11-09), y también cuando el producto coincidente está cerrado.",
+        "La comprobación vive en importProductFile llamando a findSameOpeningProducts (investments.service.ts); los escritores no cambian.",
+        "docs/api-contract.md y los dos documentos de archivos de producto describen el código SAME_OPENING_PRODUCT."
+      ],
+      "status": "done",
+      "checks": [
+        {
+          "descripcion": "Un archivo con el nombre anterior de una cartera y su misma fecha de apertura se rechaza, el mensaje nombra la cartera con su nombre actual y no se guarda nada [humano].",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"rejects a product file whose new name matches the bank, type and opening day of an existing product, naming it\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un archivo con el nombre anterior de una cartera y su misma fecha de apertura se rechaza, el mensaje nombra la cartera con su nombre actual y no se guarda nada [humano].",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"stores nothing from a file rejected for its opening day and leaves it pending in Drive\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un archivo con el nombre anterior de una cartera y su misma fecha de apertura se rechaza, el mensaje nombra la cartera con su nombre actual y no se guarda nada [humano].",
+          "comando": "pnpm exec vitest run src/modules/myinvestor/myinvestor.import.test.ts -t \"rejects a renamed managed portfolio file that keeps the opening day of the stored one\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un archivo con el nombre actual de la cartera se importa como siempre [leader].",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"imports a file whose name already exists as always, even with another product opened that same day\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "Un producto nuevo de verdad, con otra fecha de apertura, se crea como hoy [leader].",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"creates a new product with another opening day as it did before\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) El resto de archivos de esa importación se importan como siempre.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"goes on with the files after one rejected for its opening day\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Con otro banco o con otro tipo, un nombre nuevo del mismo día se crea como hoy.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"creates the product when only the bank differs\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Con otro banco o con otro tipo, un nombre nuevo del mismo día se crea como hoy.",
+          "comando": "pnpm exec vitest run src/modules/myinvestor/myinvestor.import.test.ts -t \"creates the product when only the type differs\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) La regla vale también para los depósitos (opción (a), aprobada por el humano el 2026-11-09).",
+          "comando": "pnpm exec vitest run src/modules/myinvestor/myinvestor.import.test.ts -t \"rejects a second deposit opened the same day under another name\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) La regla vale también cuando el producto del mismo día está cerrado.",
+          "comando": "pnpm exec vitest run src/modules/import/import.service.test.ts -t \"rejects against a closed product opened the same day\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) docs/api-contract.md describe el rechazo nuevo.",
+          "comando": "pnpm exec vitest run src/modules/import/import.product-files.docs.test.ts -t \"api-contract: describes the rejection of a new product name with an existing opening day\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Los documentos de archivos de producto listan el rechazo nuevo.",
+          "comando": "pnpm exec vitest run src/modules/import/import.product-files.docs.test.ts -t \"product-file documents: list the rejection for the opening day\" | grep -E \"Tests +1 passed\""
+        },
+        {
+          "descripcion": "(añadido) Cómo se importa un producto que ya existe no cambia: la suite entera pasa.",
+          "comando": "pnpm test"
+        }
+      ]
     }
   ]
 }

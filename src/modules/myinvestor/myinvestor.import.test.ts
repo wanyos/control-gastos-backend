@@ -354,3 +354,85 @@ describe('two product files of one run declaring the same product and date (feat
     expect(stored[0]?.principal?.toFixed(2)).toBe('1200.00')
   })
 })
+
+describe('a product file with a new name and the opening day of an existing product (feature 70)', () => {
+  function errorOf(file: ImportedFileReport) {
+    return 'error' in file ? file.error : undefined
+  }
+
+  it('rejects a renamed managed portfolio file that keeps the opening day of the stored one', async () => {
+    const storedName = trackedName()
+    const renamed = trackedName()
+    pendingFile(
+      'cartera-agosto.json',
+      buildProductPortfolio({ name: storedName, openedAt: '2024-05-21', date: '2026-08-31' }),
+    )
+    expect(reportOf(await run('cartera-agosto.json'), 'cartera-agosto.json').status).toBe(
+      'imported',
+    )
+    const [stored] = await productsNamed([storedName])
+    const valuationsBefore = await app.prisma.valuation.findMany({
+      where: { productId: stored.id },
+      orderBy: { date: 'asc' },
+    })
+    pendingFile(
+      'cartera-septiembre.json',
+      buildProductPortfolio({ name: renamed, openedAt: '2024-05-21', date: '2026-09-30' }),
+    )
+
+    const rejected = reportOf(await run('cartera-septiembre.json'), 'cartera-septiembre.json')
+
+    expect(rejected).toMatchObject({ status: 'failed', movedToProcessed: false, product: null })
+    expect(errorOf(rejected)?.code).toBe('SAME_OPENING_PRODUCT')
+    expect(errorOf(rejected)?.message).toContain(`el producto '${storedName}'`)
+    expect(errorOf(rejected)?.message).toContain('del mismo tipo (managed_portfolio)')
+    expect(errorOf(rejected)?.message).toContain(`para que diga '${storedName}'`)
+    expect((await productsNamed([storedName, renamed])).map((product) => product.name)).toEqual([
+      storedName,
+    ])
+    expect(
+      await app.prisma.valuation.findMany({
+        where: { productId: stored.id },
+        orderBy: { date: 'asc' },
+      }),
+    ).toEqual(valuationsBefore)
+    expect(await app.prisma.investmentProduct.findUnique({ where: { id: stored.id } })).toEqual(
+      stored,
+    )
+  })
+
+  it('rejects a second deposit opened the same day under another name', async () => {
+    const first = trackedName()
+    const second = trackedName()
+    pendingFile('deposito-a.json', buildProductDeposit({ name: first, openedAt: '2026-02-03' }))
+    pendingFile(
+      'deposito-b.json',
+      buildProductDeposit({ name: second, openedAt: '2026-02-03', principal: 2500 }),
+    )
+
+    expect(reportOf(await run('deposito-a.json'), 'deposito-a.json').status).toBe('imported')
+    const rejected = reportOf(await run('deposito-b.json'), 'deposito-b.json')
+
+    expect(rejected).toMatchObject({ status: 'failed', movedToProcessed: false })
+    expect(errorOf(rejected)?.code).toBe('SAME_OPENING_PRODUCT')
+    expect(errorOf(rejected)?.message).toContain(`el producto '${first}'`)
+    expect((await productsNamed([first, second])).map((product) => product.name)).toEqual([first])
+  })
+
+  it('creates the product when only the type differs', async () => {
+    const fund = trackedName()
+    const etf = trackedName()
+    pendingFile('fondo.json', buildProductFund({ name: fund, openedAt: '2024-07-08' }))
+    pendingFile('etf.json', buildProductFund({ type: 'etf', name: etf, openedAt: '2024-07-08' }))
+
+    expect(reportOf(await run('fondo.json'), 'fondo.json').status).toBe('imported')
+    const file = reportOf(await run('etf.json'), 'etf.json')
+
+    expect(file).toMatchObject({ status: 'imported', movedToProcessed: true })
+    const stored = await productsNamed([fund, etf])
+    expect(Object.fromEntries(stored.map((product) => [product.name, product.type]))).toEqual({
+      [fund]: 'fund',
+      [etf]: 'etf',
+    })
+  })
+})

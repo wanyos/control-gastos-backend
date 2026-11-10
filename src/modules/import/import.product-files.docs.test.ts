@@ -78,3 +78,49 @@ describe('the documents describe the rejection of feature 53', () => {
     expect(open).toContain('**sin abrir**')
   })
 })
+
+// Feature 70 (R12, R13): the rejection of a new product name with the bank, type
+// and opening day of a stored product, as the contract and the two product-file
+// documents describe it. The behaviour is tested in `import.service.test.ts`.
+describe('the documents describe the rejection of feature 70', () => {
+  const sameOpeningCode = 'SAME_OPENING_PRODUCT'
+
+  it('api-contract: describes the rejection of a new product name with an existing opening day', () => {
+    const section = sectionOf(doc('api-contract.md'), '### `POST /api/import`', /\n## /)
+    expect(section, 'the contract has no `POST /api/import` section').not.toBe('')
+
+    const codesTable = section.slice(
+      section.indexOf('**Códigos que aparecen por archivo (dentro del 200)**'),
+    )
+    const row = codesTable
+      .split(/\r?\n/)
+      .find((line) => line.startsWith(`| \`${sameOpeningCode}\` |`))
+    expect(row, 'no row for the code in the per-file codes table').toBeDefined()
+    expect(row).toContain('**No se guarda nada**')
+    expect(row).toContain('**no** se mueve a `procesados/`')
+
+    const productFiles = folded(
+      sectionOf(section, '#### Archivos de producto (features 26 y 29)', /\n#### |\n### /),
+    )
+    expect(productFiles).toContain(`se **rechaza** con \`${sameOpeningCode}\``)
+    expect(productFiles).toContain(
+      '**no se guarda nada** de él (ni producto ni valor; el producto que ya había queda igual',
+    )
+    expect(productFiles).toContain(
+      '**no se mueve a `procesados/`** y su `error.message` nombra el producto',
+    )
+  })
+
+  it('product-file documents: list the rejection for the opening day', () => {
+    for (const name of ['myinvestor-product-files.md', 'trade-republic-product-files.md']) {
+      const text = doc(name)
+      const table = sectionOf(text, '## Qué pasa cuando un archivo está mal', /\n## /)
+      expect(table, `${name} has no table of what happens when a file is wrong`).not.toBe('')
+      const row = table
+        .split(/\r?\n/)
+        .find((line) => line.includes(`código \`${sameOpeningCode}\``))
+      expect(row, `${name} does not list the rejection in its table`).toBeDefined()
+      expect(row).toContain('`openedAt`')
+    }
+  })
+})

@@ -9,6 +9,7 @@ import {
   DuplicateProductFileError,
   EmptyStatementError,
   MissingAccountDataError,
+  SameOpeningProductError,
   UnreadableStatementError,
 } from '../../errors/app-error.js'
 import type { AppDriveClient } from '../../lib/drive.js'
@@ -27,7 +28,10 @@ import type { ParsedMovement, ParsedStatement } from '../../lib/parsed-statement
 import type { AppPrismaClient, TransactionClient } from '../../lib/prisma.js'
 import { findOrCreateAccountFromMetadata } from '../accounts/accounts.service.js'
 import { applyCategoryRules } from '../category-rules/category-rules.service.js'
-import { persistProductSnapshot } from '../investments/investments.service.js'
+import {
+  findSameOpeningProducts,
+  persistProductSnapshot,
+} from '../investments/investments.service.js'
 import type {
   ProductParserAdapter,
   ProductParserRegistry,
@@ -664,6 +668,19 @@ export async function importProductFile(deps: ImportProductFileDeps): Promise<Pr
           'si es el mismo archivo subido dos veces, bórralo de Drive.',
       )
     }
+    // Feature 70: also BEFORE anything is written, and with the bank of the
+    // FOLDER. A NEW name with the bank, type and opening day of a stored product
+    // is most likely that product renamed: the file is rejected, nothing is
+    // stored and it does not move. A name that already exists is not affected.
+    const sameOpening = await findSameOpeningProducts(deps.prisma, {
+      bank: deps.bankSlug,
+      name: parsed.name,
+      type: parsed.type,
+      openedAt: parsed.openedAt,
+    })
+    if (sameOpening.length > 0) {
+      throw new SameOpeningProductError(sameOpeningMessage(deps.bankSlug, parsed, sameOpening))
+    }
     // The bank of a file is the one of its FOLDER (ADR-009), never the one its
     // contents claim: the parser's own slug is overwritten here on purpose.
     // Feature 69: the instant travels to the writer, which stores it as the
@@ -684,6 +701,28 @@ export async function importProductFile(deps: ImportProductFileDeps): Promise<Pr
     result.error = describeError(error)
     return result
   }
+}
+
+/**
+ * Feature 70: the message of a file rejected because its new name has the bank,
+ * type and opening day of stored products. It names every one of them (R2).
+ */
+function sameOpeningMessage(
+  bank: string,
+  file: { name: string; type: string; openedAt: string },
+  stored: string[],
+): string {
+  const quoted = stored.map((name) => `'${name}'`).join(', ')
+  const head =
+    stored.length === 1
+      ? `ya existe en ${bank} el producto ${quoted}, del mismo tipo (${file.type}) y abierto`
+      : `ya existen en ${bank} los productos ${quoted}, del mismo tipo (${file.type}) y abiertos`
+  const target = stored.length === 1 ? quoted : 'el nombre del que sea'
+  return (
+    `${head} el mismo día (${file.openedAt}), y este archivo declara '${file.name}', que no ` +
+    'existe: si es el mismo producto con otro nombre, corrige el "name" del archivo para que ' +
+    `diga ${target}. De este archivo no se ha guardado nada y NO se ha movido a procesados/.`
+  )
 }
 
 /** What one file needs to become rows of its account. No Drive in here. */

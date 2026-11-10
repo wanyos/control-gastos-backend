@@ -743,6 +743,13 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
 
 ### ADR-012: Modelo de datos de inversiones — un `InvestmentProduct` único con la parte del depósito en columnas nullable, `Valuation` como serie, `invested` en la foto, clave natural `(bank, name)`, recarga por UPSERT y cero SQL crudo
 
+> **Revisado el 2026-11-09 por la feature 70 `product-file-same-opening`:** el
+> «Límite conocido» de que renombrar un producto en el fichero crea uno nuevo ya no
+> vale siempre: si el `name` nuevo mantiene el banco, el `type` y la `openedAt` de un
+> producto guardado, el archivo se rechaza con `SAME_OPENING_PRODUCT` sin guardar
+> nada. Por qué: un archivo llegó con el nombre viejo y duplicó un producto
+> (ADR-045).
+
 > **Revisado el 2026-10-16 por la feature 57 `deposit-totals-interest-only`:** la
 > regla 5 (un movimiento con `productId != null` no cuenta en los totales) ya no se
 > aplica a un movimiento de depósito: lo que suma lo calcula su propia regla, sin
@@ -3743,6 +3750,56 @@ Errores: cualquier throw de dominio → error-handler central → respuesta HTTP
   - `POST /api/import` responde lo mismo y ninguna otra ruta cambia. Contrato en
     `docs/api-contract.md` §`GET /api/last-imports`; columnas en
     `docs/data-model.md`.
+
+### ADR-045: Un archivo de producto con un `name` nuevo y el mismo banco, tipo y día de apertura que un producto guardado se rechaza antes de escribir nada
+
+- **Fecha:** 2026-11-09
+- **Estado:** aceptada (implementada en la feature #70 `product-file-same-opening`,
+  SDD; hoja aprobada por el humano el 2026-11-09).
+- **Contexto:** la clave natural de un producto es `(bank, name)` (ADR-012), así que
+  un archivo con el `name` viejo o mal copiado crea un producto **nuevo** y parte la
+  serie. Pasó en la importación del 2026-11-09 y hubo que arreglarlo a mano en la
+  base. El humano pide que ese archivo se rechace.
+- **Decisión:**
+  1. **Cuándo se rechaza:** el `name` del archivo no existe en ese banco (comparado
+     carácter a carácter, como la clave única) y ya hay al menos un producto del
+     **mismo banco** (el de la carpeta, ADR-009), del **mismo `type`** y con la
+     **misma `openedAt`**. Vale para los cinco tipos, depósitos incluidos, y también
+     si el producto guardado está cerrado (`closedAt`). Un producto guardado con
+     `openedAt` a `NULL` nunca coincide.
+  2. **Qué pasa:** el archivo sale `failed` con el código nuevo `SAME_OPENING_PRODUCT`
+     (`SameOpeningProductError`, 422), no se guarda nada, no se mueve a
+     `procesados/` y el mensaje nombra el producto (o los productos) con el que
+     coincide y pide corregir el `"name"`. El resto de archivos sigue.
+  3. **Dónde:** en `importProductFile` (`src/modules/import/import.service.ts`),
+     después de la comprobación de la F53 y antes de `persistProductSnapshot`. La
+     consulta es `findSameOpeningProducts`, en `investments.service.ts` (único
+     archivo de `src/` que puede nombrar la tabla de productos,
+     `src/architecture.test.ts`). Solo `find*`.
+  4. **Los escritores no cambian** (`persistProductSnapshot`, los tres de debajo y
+     `upsertProduct`): un archivo cuyo `name` ya existe se importa exactamente igual
+     que antes, aunque haya otro producto del mismo día.
+- **Alternativas descartadas:**
+  - **Comprobar dentro de `upsertProduct`, en la transacción del escritor:** cerraría
+    el caso de dos importaciones a la vez, pero cambia los tres escritores y los
+    tests que los llaman directamente.
+  - **Reutilizar `DUPLICATE_PRODUCT_FILE` o `VALIDATION_ERROR`:** el primero es el
+    choque entre dos archivos de la misma importación; el segundo, un archivo mal
+    escrito. Aquí el archivo puede estar bien escrito y el choque es con la base.
+  - **Renombrar o juntar productos automáticamente:** el humano no lo quiere.
+  - **Dejar fuera los depósitos:** el archivo del vencimiento se escribe a mano
+    meses después y un `name` mal copiado crearía un depósito que nunca se cierra.
+- **Consecuencias:**
+  - Dos productos del mismo banco y tipo abiertos el mismo día con nombres
+    distintos no pueden entrar los dos: el segundo se rechaza hasta cambiar esta
+    regla. Medido el 2026-11-09: ningún producto de la base comparte banco, tipo y
+    `openedAt` con otro.
+  - Un renombrado que además cambie la `openedAt` del archivo sigue creando un
+    producto nuevo sin avisar.
+  - Dos llamadas a `POST /api/import` lanzadas a la vez no se ven entre sí, igual
+    que en la F53.
+  - Sin migración, sin columna y sin ruta nueva. Contrato en `docs/api-contract.md`
+    §`POST /api/import`.
 
 ## Qué NO hacer
 

@@ -343,6 +343,34 @@ function toProductReport(product: ProductRow, created: boolean): ProductImportRe
 }
 
 /**
+ * Feature 70: the products a NEW name would duplicate. Empty when `(bank, name)`
+ * already exists (the file is that product, R6) or when nothing of the same
+ * bank, type and opening day exists. Read only: it writes NOTHING.
+ *
+ * It does not look at `closedAt` (R11): a product renamed right when it is
+ * closed is still the same product. A stored product with a NULL `openedAt`
+ * never matches. It lives here because this is the only file of `src/` allowed
+ * to name `InvestmentProduct` (`src/architecture.test.ts`).
+ */
+export async function findSameOpeningProducts(
+  prisma: AppPrismaClient,
+  file: { bank: string; name: string; type: ProductFileInput['type']; openedAt: string },
+): Promise<string[]> {
+  const existing = await prisma.investmentProduct.findUnique({
+    where: { bank_name: { bank: file.bank, name: file.name } },
+    select: { id: true },
+  })
+  if (existing !== null) return []
+
+  const sameOpening = await prisma.investmentProduct.findMany({
+    where: { bank: file.bank, type: file.type, openedAt: toDateOnly(file.openedAt) },
+    select: { name: true },
+    orderBy: { name: 'asc' },
+  })
+  return sameOpening.map((product) => product.name)
+}
+
+/**
  * A date-only column is built with an explicit `T00:00:00.000Z`: a local
  * `new Date('YYYY-MM-DD')` shifts the day in a negative timezone.
  */
